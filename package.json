@@ -14,7 +14,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "data:fetch": "node tools/refs/fetch-data.mjs",
     "refs:fetch": "node tools/refs/fetch.mjs",
-    "bake": "uv run --project tools/bake python -m bake",
+    "bake": "uv run --project tools/bake python tools/bake/run.py",
     "shots": "tsx tools/capture/shots.ts",
     "qa": "tsx tools/capture/qa.ts",
     "check": "tsx tools/check/run.ts"

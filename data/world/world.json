@@ -1,0 +1,137 @@
+{
+  "version": 1,
+  "notes": "Single source of truth for the world frame. Source coordinates are ME-GIS metres (flat grid, y north). World units: 1 unit = 1 km; origin at frame centre; X east, -Z north, Y up.",
+  "source": {
+    "crs": "ME-GIS flat metric grid (tagged EPSG:32631, never reprojected)",
+    "dem": "data/source/arda/rasters/32k/dem.vrt",
+    "vectors": "data/source/arda/vectors/vectors.gpkg"
+  },
+  "frame": {
+    "xMinKm": 100,
+    "xMaxKm": 1700,
+    "yMinKm": 440,
+    "yMaxKm": 1400
+  },
+  "heightfield": {
+    "width": 4000,
+    "height": 2400,
+    "kmPerPixel": 0.4,
+    "lookMaskDownsample": 4
+  },
+  "vertical": {
+    "notes": "Terrain height in world units = exaggeration * H * (h/H)^gamma with h = (DEM metres - seaLevelMetres)/1000 and H = referenceKm. The ME-DEM datum puts sea level at 16 grey levels (304.8 m): DEM values below it are real shelf bathymetry; seas are below-datum regions connected to coast.seaSeedsKm.",
+    "exaggeration": 12,
+    "gamma": 0.8,
+    "referenceKm": 4.9,
+    "seaLevelMetres": 304.8,
+    "seaFloorDepth": 6.0,
+    "shelfWidthKm": 60,
+    "demCalibration": {
+      "notes": "Arda 32k UInt16 -> ME-DEM 8-bit grey (19.05 m per grey level). Measured table from data/source/arda/docs/2026-09-20-32k-dem.md; top point extrapolated.",
+      "metresPerGrey": 19.05,
+      "u16": [
+        0,
+        5166,
+        6063,
+        6479,
+        17575,
+        25596,
+        30393,
+        48800,
+        56300,
+        64727
+      ],
+      "grey": [
+        0,
+        15,
+        17,
+        18,
+        51,
+        80,
+        101,
+        180,
+        220,
+        265
+      ]
+    }
+  },
+  "rivers": {
+    "notes": "Exaggerated channel widths (km) for readability at diorama scale.",
+    "widthKm": {
+      "great": 4.0,
+      "major": 2.2,
+      "minor": 1.2,
+      "stream": 0.6
+    },
+    "classes": {
+      "great": [
+        "Anduin"
+      ],
+      "major": [
+        "Brandywine",
+        "Baranduin",
+        "Greyflood",
+        "Gwathlo",
+        "Isen",
+        "Entwash",
+        "Celduin",
+        "River Running",
+        "Carnen",
+        "Redwater",
+        "Forest River",
+        "Hoarwell",
+        "Mitheithel",
+        "Loudwater",
+        "Bruinen",
+        "Lhun",
+        "Poros",
+        "Anduin Delta",
+        "Lefnui",
+        "Morthond",
+        "Gilrain",
+        "Serni",
+        "Glanduin",
+        "Swanfleet"
+      ],
+      "minor": [
+        "*"
+      ]
+    }
+  },
+  "tableScale": {
+    "notes": "Lens/DOF physics treat the diorama as a physical model: 1 km of world = 1 mm of table (1:1,000,000).",
+    "metresPerWorldUnit": 0.001
+  },
+  "seeds": {
+    "world": 1954
+  },
+  "coast": {
+    "notes": "Sea seeds (ME-GIS km) for the coastline flood fill: west ocean, Bay of Belfalas, south coast.",
+    "seaSeedsKm": [
+      [
+        120,
+        700
+      ],
+      [
+        150,
+        500
+      ],
+      [
+        850,
+        470
+      ],
+      [
+        960,
+        455
+      ],
+      [
+        1060,
+        445
+      ],
+      [
+        140,
+        1300
+      ]
+    ]
+  }
+}

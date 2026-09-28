@@ -10,7 +10,11 @@ __pycache__/
 *.pyc
 
 # third-party source data & derived bake outputs (never pushed — regenerate with `pnpm data:fetch` + `pnpm bake`)
-data/source/
+# (data/source/ keeps only its README + manifest; git cannot re-include a file under an excluded dir,
+#  so ignore the directory's *contents* instead of the directory itself)
+data/source/*
+!data/source/README.md
+!data/source/manifest.json
 data/baked/
 
 # reference material is dev-only (binaries never pushed; README + manifest are committed)

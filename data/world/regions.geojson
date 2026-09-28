@@ -1,0 +1,26 @@
+{
+  "type": "FeatureCollection",
+  "name": "regions",
+  "notes": "Authored soft-edged look regions in ME-GIS KILOMETRES (x east, y north). Index order = look texture channel order (region 'eriador' is the default for uncovered land). softKm = Gaussian edge width. Overlaps are normalised.",
+  "features": [
+    { "type": "Feature", "properties": { "id": "eriador", "index": 0, "softKm": 40 }, "geometry": { "type": "Polygon", "coordinates": [[[330, 850], [800, 850], [800, 1230], [330, 1230], [330, 850]]] } },
+    { "type": "Feature", "properties": { "id": "lindon", "index": 1, "softKm": 30 }, "geometry": { "type": "Polygon", "coordinates": [[[100, 850], [305, 850], [315, 1000], [300, 1150], [320, 1400], [100, 1400], [100, 850]]] } },
+    { "type": "Feature", "properties": { "id": "north", "index": 2, "softKm": 45 }, "geometry": { "type": "Polygon", "coordinates": [[[320, 1235], [1000, 1235], [1000, 1275], [1350, 1275], [1350, 1400], [320, 1400], [320, 1235]]] } },
+    { "type": "Feature", "properties": { "id": "shire", "index": 3, "softKm": 14 }, "geometry": { "type": "Polygon", "coordinates": [[[445, 1000], [505, 992], [560, 995], [572, 1040], [566, 1090], [520, 1098], [470, 1100], [440, 1062], [445, 1000]]] } },
+    { "type": "Feature", "properties": { "id": "enedwaith", "index": 4, "softKm": 40 }, "geometry": { "type": "Polygon", "coordinates": [[[330, 680], [790, 680], [800, 790], [790, 850], [330, 850], [330, 680]]] } },
+    { "type": "Feature", "properties": { "id": "rhovanion", "index": 5, "softKm": 30 }, "geometry": { "type": "Polygon", "coordinates": [[[900, 860], [1060, 860], [1060, 1260], [900, 1260], [900, 860]]] } },
+    { "type": "Feature", "properties": { "id": "mirkwood", "index": 6, "softKm": 25 }, "geometry": { "type": "Polygon", "coordinates": [[[1060, 900], [1270, 900], [1270, 1250], [1060, 1250], [1060, 900]]] } },
+    { "type": "Feature", "properties": { "id": "wilderland", "index": 7, "softKm": 35 }, "geometry": { "type": "Polygon", "coordinates": [[[1265, 1060], [1520, 1060], [1520, 1400], [1265, 1400], [1265, 1060]]] } },
+    { "type": "Feature", "properties": { "id": "brown-lands", "index": 8, "softKm": 30 }, "geometry": { "type": "Polygon", "coordinates": [[[1050, 780], [1300, 780], [1300, 900], [1050, 900], [1050, 780]]] } },
+    { "type": "Feature", "properties": { "id": "lorien", "index": 9, "softKm": 12 }, "geometry": { "type": "Polygon", "coordinates": [[[925, 900], [960, 895], [985, 905], [995, 930], [985, 955], [955, 962], [925, 952], [915, 925], [925, 900]]] } },
+    { "type": "Feature", "properties": { "id": "fangorn", "index": 10, "softKm": 12 }, "geometry": { "type": "Polygon", "coordinates": [[[828, 800], [880, 792], [932, 805], [935, 845], [915, 878], [860, 880], [826, 850], [828, 800]]] } },
+    { "type": "Feature", "properties": { "id": "rohan", "index": 11, "softKm": 30 }, "geometry": { "type": "Polygon", "coordinates": [[[790, 762], [900, 726], [1000, 696], [1080, 672], [1105, 705], [1095, 790], [1050, 800], [930, 802], [830, 802], [790, 792], [790, 762]]] } },
+    { "type": "Feature", "properties": { "id": "gondor", "index": 12, "softKm": 30 }, "geometry": { "type": "Polygon", "coordinates": [[[700, 480], [1138, 480], [1140, 560], [1135, 625], [1080, 665], [1000, 690], [900, 720], [800, 756], [700, 700], [700, 480]]] } },
+    { "type": "Feature", "properties": { "id": "ithilien", "index": 13, "softKm": 10 }, "geometry": { "type": "Polygon", "coordinates": [[[1140, 545], [1172, 545], [1170, 640], [1172, 718], [1152, 728], [1142, 700], [1136, 625], [1140, 545]]] } },
+    { "type": "Feature", "properties": { "id": "dagorlad", "index": 14, "softKm": 18 }, "geometry": { "type": "Polygon", "coordinates": [[[1105, 728], [1250, 728], [1250, 790], [1105, 790], [1105, 728]]] } },
+    { "type": "Feature", "properties": { "id": "mordor", "index": 15, "softKm": 16 }, "geometry": { "type": "Polygon", "coordinates": [[[1168, 600], [1330, 600], [1345, 660], [1340, 725], [1175, 725], [1168, 600]]] } },
+    { "type": "Feature", "properties": { "id": "nurn", "index": 16, "softKm": 25 }, "geometry": { "type": "Polygon", "coordinates": [[[1250, 480], [1520, 480], [1520, 662], [1335, 662], [1250, 600], [1250, 480]]] } },
+    { "type": "Feature", "properties": { "id": "rhun", "index": 17, "softKm": 45 }, "geometry": { "type": "Polygon", "coordinates": [[[1300, 730], [1700, 730], [1700, 1060], [1300, 1060], [1300, 730]]] } },
+    { "type": "Feature", "properties": { "id": "harad", "index": 18, "softKm": 40 }, "geometry": { "type": "Polygon", "coordinates": [[[1100, 440], [1700, 440], [1700, 500], [1520, 500], [1150, 540], [1100, 520], [1100, 440]]] } }
+  ]
+}

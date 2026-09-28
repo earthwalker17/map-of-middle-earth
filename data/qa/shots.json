@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "notes": "Named review shots. camera = explicit {position,target,fov} in world units, or {orbit:{place|targetKm, distanceKm, elevationDeg, azimuthDeg (compass direction from target to camera: 180 = camera south of target looking north), fov}}. 'compare' lists reference images for side-by-side QA sheets.",
+  "shots": [
+    { "id": "overview-day", "tod": 11.0, "camera": { "orbit": { "targetKm": [900, 900], "distanceKm": 1850, "elevationDeg": 52, "azimuthDeg": 180, "fov": 32 } }, "compare": ["reference/lego-moc/lego-overview.webp", "reference/maps/ct-1980-west-of-middle-earth.png"] },
+    { "id": "overview-golden", "tod": 18.3, "camera": { "orbit": { "targetKm": [900, 900], "distanceKm": 1850, "elevationDeg": 52, "azimuthDeg": 180, "fov": 32 } }, "compare": ["reference/lego-moc/lego-overview.webp"] },
+    { "id": "overview-night", "tod": 23.0, "camera": { "orbit": { "targetKm": [900, 900], "distanceKm": 1850, "elevationDeg": 52, "azimuthDeg": 180, "fov": 32 } } },
+    { "id": "overview-low-west", "tod": 16.5, "camera": { "orbit": { "targetKm": [860, 880], "distanceKm": 1300, "elevationDeg": 24, "azimuthDeg": 235, "fov": 36 } } },
+    { "id": "shire", "tod": 16.0, "camera": { "orbit": { "place": "hobbiton", "distanceKm": 140, "elevationDeg": 30, "azimuthDeg": 200, "fov": 35 } }, "compare": ["reference/film/hobbiton"] },
+    { "id": "misty-moria", "tod": 14.0, "camera": { "orbit": { "place": "moria", "distanceKm": 230, "elevationDeg": 26, "azimuthDeg": 245, "fov": 35 } }, "compare": ["reference/film/caradhras", "reference/film/moria"] },
+    { "id": "rohan-isengard", "tod": 16.0, "camera": { "orbit": { "targetKm": [835, 775], "distanceKm": 280, "elevationDeg": 30, "azimuthDeg": 165, "fov": 35 } }, "compare": ["reference/film/isengard", "reference/film/rohan"] },
+    { "id": "anduin-gondor", "tod": 15.0, "camera": { "orbit": { "targetKm": [1110, 660], "distanceKm": 320, "elevationDeg": 30, "azimuthDeg": 215, "fov": 35 } }, "compare": ["reference/film/minas-tirith"] },
+    { "id": "mordor", "tod": 17.0, "camera": { "orbit": { "targetKm": [1235, 662], "distanceKm": 300, "elevationDeg": 30, "azimuthDeg": 250, "fov": 35 } }, "compare": ["reference/film/mordor", "reference/film/mount-doom", "reference/film/barad-dur"] },
+    { "id": "erebor-long-lake", "tod": 12.0, "camera": { "orbit": { "targetKm": [1265, 1155], "distanceKm": 220, "elevationDeg": 28, "azimuthDeg": 190, "fov": 35 } }, "compare": ["reference/film/erebor", "reference/film/lake-town"] }
+  ]
+}

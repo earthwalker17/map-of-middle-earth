@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "notes": "Frodo's route as shown in the FILMS (spatial only; timing lives in timeline.json). Points are ME-GIS km [x, y]; 'place' links to places.json; 'hidden' = underground/unseen (rendered faded); 'mode' = foot|boat. S1 draft — S8 refines against roads/rivers.",
+  "segments": [
+    { "id": "shire", "film": "FOTR", "points": [
+      { "place": "bag-end" }, { "at": [535, 1044] }, { "place": "bucklebury-ferry" } ] },
+    { "id": "to-bree", "film": "FOTR", "points": [ { "at": [585, 1045] }, { "place": "bree" } ] },
+    { "id": "weathertop", "film": "FOTR", "points": [ { "at": [640, 1050] }, { "place": "weathertop" } ] },
+    { "id": "to-rivendell", "film": "FOTR", "points": [ { "at": [760, 1046] }, { "place": "trollshaws" }, { "place": "ford-of-bruinen" }, { "place": "rivendell" } ] },
+    { "id": "hollin-caradhras", "film": "FOTR", "points": [ { "at": [870, 1010] }, { "at": [858, 960] }, { "place": "caradhras" }, { "at": [852, 928] } ] },
+    { "id": "moria", "film": "FOTR", "points": [ { "place": "moria" }, { "at": [868, 925], "hidden": true }, { "place": "dimrill-dale" } ] },
+    { "id": "lorien", "film": "FOTR", "points": [ { "at": [930, 925] }, { "place": "lothlorien" } ] },
+    { "id": "anduin", "film": "FOTR", "mode": "boat", "points": [ { "at": [995, 905] }, { "at": [1015, 860] }, { "at": [1040, 820] }, { "at": [1065, 790] }, { "place": "argonath" }, { "at": [1076, 752] }, { "place": "amon-hen" } ] },
+    { "id": "emyn-muil", "film": "TTT", "points": [ { "at": [1090, 760] }, { "place": "emyn-muil" }, { "at": [1128, 768] } ] },
+    { "id": "dead-marshes", "film": "TTT", "points": [ { "place": "dead-marshes" }, { "at": [1165, 738] }, { "place": "black-gate" } ] },
+    { "id": "ithilien", "film": "TTT", "points": [ { "at": [1158, 705] }, { "place": "henneth-annun" }, { "place": "osgiliath" } ] },
+    { "id": "morgul", "film": "ROTK", "points": [ { "at": [1150, 640] }, { "place": "minas-morgul" }, { "place": "cirith-ungol" } ] },
+    { "id": "gorgoroth", "film": "ROTK", "points": [ { "at": [1205, 648] }, { "at": [1225, 657] }, { "place": "mount-doom" } ] }
+  ]
+}

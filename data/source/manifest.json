@@ -1,0 +1,163 @@
+{
+  "$comment": "Third-party geography source data (never committed or redistributed). Paths are relative to the project root. See data/source/README.md and CREDITS.md.",
+  "restore": "pnpm data:fetch  (node tools/refs/fetch-data.mjs --only data [--check])",
+  "generated": "2026-09-29",
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+  "items": [
+    {
+      "file": "data/source/arda/vectors/vectors.gpkg",
+      "url": "https://raw.githubusercontent.com/bburns/Arda/main/data/vectors/vectors.gpkg",
+      "shows": "Arda GeoPackage vector layers (coasts, rivers, forests, roads, places)",
+      "subject": "general",
+      "kind": "data",
+      "source": "GitHub bburns/Arda",
+      "license": "MIT (code); DEM/vector data provenance uncertain (ME-DEM: monks, SeerBlue, Redrobes; jvangeld; bburns) — ask before redistribution",
+      "bytes": 12357632,
+      "sha256": "9f175b9eb84a4412885772869aae93fac2ecfd2b8b29c9cb115ef1d59bdadeae"
+    },
+    {
+      "file": "data/source/arda/rasters/10k/dem.jpg",
+      "url": "https://raw.githubusercontent.com/bburns/Arda/main/data/rasters/10k/dem.jpg",
+      "shows": "10000x10000 8-bit greyscale DEM of Middle-earth",
+      "subject": "general",
+      "kind": "data",
+      "source": "GitHub bburns/Arda (ME-DEM)",
+      "license": "MIT (code); DEM/vector data provenance uncertain (ME-DEM: monks, SeerBlue, Redrobes; jvangeld; bburns) — ask before redistribution",
+      "bytes": 4414201,
+      "sha256": "e34f8bcc133ee419a983116c150e35b27d58640828fcfa6da1e96dfae3cc2cfb"
+    },
+    {
+      "file": "data/source/arda/rasters/10k/dem.wld",
+      "url": "https://raw.githubusercontent.com/bburns/Arda/main/data/rasters/10k/dem.wld",
+      "shows": "World file for 10k DEM (200.1 m/px)",
+      "subject": "general",
+      "kind": "data",
+      "source": "GitHub bburns/Arda",
+      "license": "MIT (code); DEM/vector data provenance uncertain (ME-DEM: monks, SeerBlue, Redrobes; jvangeld; bburns) — ask before redistribution",
+      "bytes": 30,
+      "sha256": "72b8ec728557159e5ac8ed70cdbc96ca849a63018ddd0fddc67c6259220b7a26"
+    },
+    {
+      "file": "data/source/arda/rasters/32k/dem.vrt",
+      "url": "https://raw.githubusercontent.com/bburns/Arda/main/data/rasters/32k/dem.vrt",
+      "shows": "GDAL VRT mosaic of 32257x32257 UInt16 DEM (EPSG:32631)",
+      "subject": "general",
+      "kind": "data",
+      "source": "GitHub bburns/Arda",
+      "license": "MIT (code); DEM/vector data provenance uncertain (ME-DEM: monks, SeerBlue, Redrobes; jvangeld; bburns) — ask before redistribution",
+      "bytes": 2620,
+      "sha256": "7c268b5834910500394bbbca1cb26acf1e990462da599ff52805a2a73dd2ef01"
+    },
+    {
+      "file": "data/source/arda/rasters/32k/dem_nw.tif",
+      "url": "https://github.com/bburns/Arda/releases/download/dem-32k-v1/dem_nw.tif",
+      "shows": "32k DEM NW quadrant GeoTIFF (UInt16)",
+      "subject": "general",
+      "kind": "data",
+      "source": "GitHub bburns/Arda release dem-32k-v1",
+      "license": "MIT (code); DEM/vector data provenance uncertain (ME-DEM: monks, SeerBlue, Redrobes; jvangeld; bburns) — ask before redistribution",
+      "bytes": 264716689,
+      "sha256": "062ce1a7707b352327432132599bf51d77e73defd094c464e5d5303febb76ff9"
+    },
+    {
+      "file": "data/source/arda/rasters/32k/dem_ne.tif",
+      "url": "https://github.com/bburns/Arda/releases/download/dem-32k-v1/dem_ne.tif",
+      "shows": "32k DEM NE quadrant GeoTIFF (UInt16)",
+      "subject": "general",
+      "kind": "data",
+      "source": "GitHub bburns/Arda release dem-32k-v1",
+      "license": "MIT (code); DEM/vector data provenance uncertain (ME-DEM: monks, SeerBlue, Redrobes; jvangeld; bburns) — ask before redistribution",
+      "bytes": 273380420,
+      "sha256": "bde198b39617cafd1dee76f7f19c8959a343ade76e75f5a29d39f0d870cbee33"
+    },
+    {
+      "file": "data/source/arda/rasters/32k/dem_sw.tif",
+      "url": "https://github.com/bburns/Arda/releases/download/dem-32k-v1/dem_sw.tif",
+      "shows": "32k DEM SW quadrant GeoTIFF (UInt16)",
+      "subject": "general",
+      "kind": "data",
+      "source": "GitHub bburns/Arda release dem-32k-v1",
+      "license": "MIT (code); DEM/vector data provenance uncertain (ME-DEM: monks, SeerBlue, Redrobes; jvangeld; bburns) — ask before redistribution",
+      "bytes": 161370870,
+      "sha256": "fce71d30fca900a910af8e9277e23f68c7c8261740bf3497ddf1f225b8d68f23"
+    },
+    {
+      "file": "data/source/arda/rasters/32k/dem_se.tif",
+      "url": "https://github.com/bburns/Arda/releases/download/dem-32k-v1/dem_se.tif",
+      "shows": "32k DEM SE quadrant GeoTIFF (UInt16)",
+      "subject": "general",
+      "kind": "data",
+      "source": "GitHub bburns/Arda release dem-32k-v1",
+      "license": "MIT (code); DEM/vector data provenance uncertain (ME-DEM: monks, SeerBlue, Redrobes; jvangeld; bburns) — ask before redistribution",
+      "bytes": 313992276,
+      "sha256": "fb4d7fcfb8034ddcd95eb80fcdfb27962e1c0a5126db8e42a4870d7ce626a30e"
+    },
+    {
+      "file": "data/source/arda/docs/README.md",
+      "url": "https://raw.githubusercontent.com/bburns/Arda/main/README.md",
+      "shows": "Arda repo README (credits, licence note)",
+      "subject": "general",
+      "kind": "doc",
+      "source": "GitHub bburns/Arda",
+      "license": "MIT",
+      "bytes": 6472,
+      "sha256": "27f5adb08d36fc5ba01bb69aca93371ba6713e311e995ab90ed283b20a2f25cc"
+    },
+    {
+      "file": "data/source/arda/docs/2026-09-20-32k-dem.md",
+      "url": "https://raw.githubusercontent.com/bburns/Arda/main/docs/2026-09-20-32k-dem.md",
+      "shows": "32k DEM calibration/build notes",
+      "subject": "general",
+      "kind": "doc",
+      "source": "GitHub bburns/Arda",
+      "license": "MIT",
+      "bytes": 5079,
+      "sha256": "de309bc820891dd65cfccd0c9da76af3a7de0f1ff37c3fc83c4dd7124c0b3bc0"
+    },
+    {
+      "file": "data/source/arda/docs/build-dem.ps1",
+      "url": "https://raw.githubusercontent.com/bburns/Arda/main/scripts/build-dem.ps1",
+      "shows": "DEM build script (reference only)",
+      "subject": "general",
+      "kind": "doc",
+      "source": "GitHub bburns/Arda",
+      "license": "MIT",
+      "bytes": 5380,
+      "sha256": "f38343e3054c816002e6688b8396c2a508c52693b962132b43ae8eb7e18c63bc"
+    },
+    {
+      "file": "data/source/me-gis/README.md",
+      "url": "https://raw.githubusercontent.com/andrewheiss/ME-GIS/master/README.md",
+      "shows": "ME-GIS README (terms/credits)",
+      "subject": "general",
+      "kind": "doc",
+      "source": "GitHub andrewheiss/ME-GIS",
+      "license": "ME-GIS terms: ask before use; usually approved for personal/educational",
+      "bytes": 727,
+      "sha256": "53e31e113dde06442cde92aaf98d09e398033fa80312617769c078e9a918a923"
+    },
+    {
+      "file": "data/source/me-gis/Combined_Placenames.xyz",
+      "url": "https://raw.githubusercontent.com/andrewheiss/ME-GIS/master/Combined_Placenames.xyz",
+      "shows": "Place-name label anchors (text)",
+      "subject": "general",
+      "kind": "data",
+      "source": "GitHub andrewheiss/ME-GIS",
+      "license": "ME-GIS terms: ask before use; usually approved for personal/educational",
+      "bytes": 148049,
+      "sha256": "c3c8a04144d004449a3b79323114e6ce68ed1263dd45bdee8bdf08d67a6c9378"
+    },
+    {
+      "file": "data/source/README.md",
+      "url": null,
+      "shows": "Index/licence notes for data/source (written locally)",
+      "subject": "general",
+      "kind": "doc",
+      "source": "geo-data agent",
+      "license": "project doc",
+      "bytes": 2774,
+      "sha256": "7f4ed0dff02a25e10dcd8bfc054efa1c57f759c5c13d90203dec9ed43bd6d17a",
+      "note": "written locally and committed alongside this manifest"
+    }
+  ]
+}
