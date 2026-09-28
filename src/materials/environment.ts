@@ -17,7 +17,7 @@ export const env = {
   sunDir: uniform(new Vector3(0.3, 0.8, 0.5)),
   sunColor: uniform(new Color(1, 0.95, 0.88)),
   sunIntensity: uniform(3),
-  /** direction TO the moon */
+  /** direction TO the moon (moonColor × moonIntensity = moonlight on the key light at night) */
   moonDir: uniform(new Vector3(-0.3, 0.6, -0.5)),
   moonColor: uniform(new Color(0.6, 0.7, 0.9)),
   moonIntensity: uniform(0),
@@ -36,6 +36,20 @@ export const env = {
   wind: uniform(new Vector2(0.8, 0.3)),
   cloudCoverage: uniform(0.35),
   cameraPos: uniform(new Vector3()),
+  // ---- added by environment v1 ----
+  /** moon phase 0..1 (0 new, 0.5 full) and lit fraction of the disc */
+  moonPhase: uniform(0.42),
+  moonIllum: uniform(0.8),
+  /** 0..1 blue-hour amount (sun a few degrees below the horizon) */
+  twilight: uniform(0),
+  /** the active shadow-casting key light (sun by day, moon by night): direction TO it, colour, intensity */
+  keyDir: uniform(new Vector3(0.3, 0.8, 0.5)),
+  keyColor: uniform(new Color(1, 0.95, 0.88)),
+  keyIntensity: uniform(3),
+  /** average sky colour at the horizon (the haze colour distant things fade to) */
+  horizonColor: uniform(new Color(0.62, 0.68, 0.78)),
+  /** colour of the atmospheric void below the horizon around the floating slab */
+  voidColor: uniform(new Color(0.02, 0.025, 0.035)),
 };
 
 export type EnvUniforms = typeof env;
