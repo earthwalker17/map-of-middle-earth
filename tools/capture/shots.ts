@@ -7,7 +7,7 @@
  *
  * Output: renders/shots/<stamp>/<name>.png + manifest.json, mirrored to renders/shots/latest/.
  */
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { acquireGpuLock } from './gpuLock.ts';
@@ -58,10 +58,15 @@ function stamp(): string {
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
 }
 
+/** data/qa/shots.json + data/qa/shots.d/*.json (per-module shot sets, avoids merge conflicts). */
 export function loadShots(): ShotSpec[] {
-  const file = join(process.cwd(), 'data', 'qa', 'shots.json');
-  if (!existsSync(file)) return [];
-  return (JSON.parse(readFileSync(file, 'utf8')) as { shots: ShotSpec[] }).shots;
+  const dir = join(process.cwd(), 'data', 'qa');
+  const files = [join(dir, 'shots.json')];
+  const extra = join(dir, 'shots.d');
+  if (existsSync(extra)) for (const f of readdirSync(extra).sort()) if (f.endsWith('.json')) files.push(join(extra, f));
+  const shots: ShotSpec[] = [];
+  for (const f of files) if (existsSync(f)) shots.push(...(JSON.parse(readFileSync(f, 'utf8')) as { shots: ShotSpec[] }).shots);
+  return shots;
 }
 
 async function main(): Promise<void> {
