@@ -14,58 +14,82 @@ import { VegetationSystem } from '../vegetation/VegetationSystem.ts';
 import { DioramaSystem } from '../diorama/DioramaSystem.ts';
 import { resolveShot, type ShotSpecInput } from '../camera/shots.ts';
 import { gradeUniforms } from '../render/PostPipeline.ts';
+import { LANDMARKS } from '../landmarks/registry.ts';
+import { LandmarkSystem, landmarkStamps } from '../landmarks/LandmarkSystem.ts';
 
 /**
- * Boot the world. System order matters: environment first (writes env uniforms), then the
- * systems that read them.
+ * Load the world and register every system. Order matters: environment first (writes the shared
+ * env uniforms), then the systems that read them. Landmark stamps are composited into the
+ * HeightField before any system samples heights.
  */
+async function buildWorld(engine: Engine, quality: QualityTierId, shots: ShotSpecInput[], status: HTMLElement): Promise<World> {
+  status.textContent = 'loading world…';
+  const world = await World.load((m) => (status.textContent = `loading ${m}…`));
+  world.heights.setStamps(landmarkStamps(world, LANDMARKS));
+  engine.heightAt = (x, z) => world.heights.sample(x, z);
+  // landmark bookmarks join the shot list (explorer + capture)
+  for (const def of LANDMARKS)
+    for (const b of def.bookmarks ?? [])
+      shots.push({ id: b.id, tod: b.tod ?? 15, camera: { orbit: { place: def.placeId, distanceKm: b.distanceKm, elevationDeg: b.elevationDeg, azimuthDeg: b.azimuthDeg, fov: b.fov } } });
+
+  const environment = new EnvironmentSystem();
+  const terrain = new TerrainSystem(world);
+  const water = new WaterSystem(world);
+  const vegetation = new VegetationSystem(world);
+  const diorama = new DioramaSystem(world);
+  const landmarks = new LandmarkSystem(world, LANDMARKS);
+  for (const s of [environment, terrain, water, vegetation, diorama, landmarks]) await engine.register(s);
+
+  // warm up: compile pipelines, then one throwaway frame realizes lazily-created GPU resources
+  // (texture uploads, shadow maps, post targets) so the first captured frame is bit-identical to
+  // any later render of the same state
+  const first = resolveShot(world, shots[0]);
+  const warmState = defaultSceneState({ camera: first.camera, tod: first.tod, quality });
+  engine.applyState(warmState);
+  await engine.renderer.compileAsync(engine.scene, engine.camera);
+  engine.renderAccumulated(() => warmState, 1);
+  await engine.post.readPixels();
+
+  // dev handle for diagnostics scripts (tools/capture/probe.ts)
+  (window as unknown as { __app: unknown }).__app = { engine, world, terrain, environment, water, vegetation, diorama, landmarks };
+  return world;
+}
+
 export async function boot(canvas: HTMLCanvasElement, status: HTMLElement, params: URLSearchParams): Promise<void> {
   const capture = params.has('capture');
   const quality = (params.get('quality') as QualityTierId | null) ?? (capture ? 'review' : 'preview');
   const engine = await Engine.create({ canvas, width: innerWidth, height: innerHeight, quality, capture });
   engine.assertHardwareGpu();
 
-  let readyResolve!: () => void;
-  const ready = new Promise<void>((r) => (readyResolve = r));
-  const shots = shotsJson.shots as unknown as ShotSpecInput[];
-  let world!: World;
-  installCaptureApi(engine, ready, (s) => resolveShot(world, s));
+  const shots = [...(shotsJson.shots as unknown as ShotSpecInput[])];
+  let world: World | null = null;
+  let settle!: { resolve: () => void; reject: (e: unknown) => void };
+  const ready = new Promise<void>((resolve, reject) => (settle = { resolve, reject }));
+  ready.catch(() => {}); // surfaced to the capture harness through window.__mm.ready
+  const resolveInWorld = (s: ShotSpecInput) => {
+    if (!world) throw new Error('world not loaded');
+    return resolveShot(world, s);
+  };
+  installCaptureApi(engine, ready, resolveInWorld, (id) => shots.find((s) => s.id === id));
 
-  status.textContent = 'loading world…';
-  world = await World.load((m) => (status.textContent = `loading ${m}…`));
-  engine.heightAt = (x, z) => world.heights.sample(x, z);
-
-  const environment = new EnvironmentSystem();
-  const terrain = new TerrainSystem(world);
-  const water = new WaterSystem(world);
-  await engine.register(environment);
-  await engine.register(terrain);
-  await engine.register(water);
-  const vegetation = new VegetationSystem(world);
-  const diorama = new DioramaSystem(world);
-  await engine.register(vegetation);
-  await engine.register(diorama);
-
-  // warm up: compile pipelines once with a representative state
-  const first = resolveShot(world, shots[0]);
-  const warmState = defaultSceneState({ camera: first.camera, tod: first.tod, quality });
-  engine.applyState(warmState);
-  await engine.renderer.compileAsync(engine.scene, engine.camera);
-  // one throwaway frame realizes lazily-created GPU resources (texture uploads, shadow maps, post
-  // targets) so the first captured frame is bit-identical to any later render of the same state
-  engine.renderAccumulated(() => warmState, 1);
-  await engine.post.readPixels();
-  // dev handle for diagnostics scripts (tools/capture/probe.ts)
-  (window as unknown as { __app: unknown }).__app = { engine, world, terrain, environment, water, vegetation, diorama };
-  readyResolve();
+  try {
+    world = await buildWorld(engine, quality, shots, status);
+    settle.resolve();
+  } catch (e) {
+    settle.reject(e);
+    throw e;
+  }
   status.textContent = `${engine.gpu.vendor} ${engine.gpu.architecture} · ${engine.gpu.backend} · ${quality}`;
-  if (capture) return;
+  if (!capture) runExplorer(engine, world, shots, quality, canvas);
+}
 
-  // ------------------------------------------------------------------ explorer (interactive)
+/** Interactive explorer: orbit controls + debug GUI (wall-clock time is allowed here only). */
+function runExplorer(engine: Engine, world: World, shots: ShotSpecInput[], quality: QualityTierId, canvas: HTMLCanvasElement): void {
   const controls = new OrbitControls(engine.camera, canvas);
   controls.enableDamping = true;
   controls.maxPolarAngle = Math.PI * 0.495;
   controls.zoomSpeed = 1.2;
+  const ui = { shot: shots[0].id, tod: shots[0].tod, dayOfYear: 200, fov: 32, animateDay: false };
   const applyShot = (id: string) => {
     const s = shots.find((x) => x.id === id);
     if (!s) return;
@@ -76,14 +100,6 @@ export async function boot(canvas: HTMLCanvasElement, status: HTMLElement, param
     ui.tod = r.tod;
     controls.update();
   };
-  const ui = {
-    shot: shots[0].id,
-    tod: shots[0].tod,
-    dayOfYear: 200,
-    fov: 32,
-    animateDay: false,
-    exposure: 1,
-  };
   const gui = new GUI({ title: 'Map of Middle-Earth' });
   gui.add(ui, 'shot', shots.map((s) => s.id)).onChange(applyShot);
   gui.add(ui, 'tod', 0, 24, 0.05).name('time of day').listen();
@@ -93,8 +109,7 @@ export async function boot(canvas: HTMLCanvasElement, status: HTMLElement, param
   gui.add(gradeUniforms.exposure, 'value', 0.2, 3, 0.01).name('exposure');
   applyShot(ui.shot);
 
-  const onResize = () => engine.setSize(innerWidth, innerHeight);
-  addEventListener('resize', onResize);
+  addEventListener('resize', () => engine.setSize(innerWidth, innerHeight));
   const t0 = performance.now();
   const target = new Vector3();
   let last = t0;

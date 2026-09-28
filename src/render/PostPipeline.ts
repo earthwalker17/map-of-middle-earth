@@ -26,6 +26,7 @@ import {
   smoothstep,
   interleavedGradientNoise,
   dot,
+  max,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 
@@ -108,7 +109,7 @@ export class PostPipeline {
       c.assign(c.mul(g.tint).add(g.lift));
       // saturation around luminance
       const luma = dot(c, vec3(0.2126, 0.7152, 0.0722));
-      c.assign(mix(vec3(luma), c, g.saturation));
+      c.assign(max(mix(vec3(luma), c, g.saturation), vec3(0))); // saturation > 1 extrapolates: clamp (pow of negatives = NaN)
       // contrast pivot at mid-grey (log-ish, gentle)
       const pivot = float(0.18);
       c.assign(c.div(pivot).pow(vec3(g.contrast)).mul(pivot));

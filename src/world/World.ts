@@ -128,6 +128,22 @@ export class World {
     return p;
   }
 
+  /** Water surface level at (x, z): the lake level if inside a lake polygon, 0 over the sea, else null. */
+  waterLevelAt(x: number, z: number): number | null {
+    for (const lake of this.lakes) {
+      if (lake.level === null) continue;
+      let inside = false;
+      const r = lake.ring;
+      for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+        const [xi, zi] = r[i];
+        const [xj, zj] = r[j];
+        if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside;
+      }
+      if (inside) return lake.level;
+    }
+    return this.heights.sample(x, z) < 0 ? 0 : null;
+  }
+
   /** Ground height under a place's display position. */
   groundAt(x: number, z: number): number {
     return this.heights.sample(x, z);

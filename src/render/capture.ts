@@ -8,6 +8,10 @@ export interface CaptureRequest {
   name: string;
   /** a still shot, or the id of a registered timeline */
   shot?: ShotSpecInput;
+  /** id of a shot known to the page (data/qa shots + landmark bookmarks) */
+  shotId?: string;
+  /** override the time of day of shotId shots */
+  tod?: number;
   timelineId?: string;
   t?: number;
   width: number;
@@ -48,7 +52,12 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-export function installCaptureApi(engine: Engine, ready: Promise<void>, resolveShot: (s: ShotSpecInput) => ShotSpec): CaptureApi {
+export function installCaptureApi(
+  engine: Engine,
+  ready: Promise<void>,
+  resolveShot: (s: ShotSpecInput) => ShotSpec,
+  findShot: (id: string) => ShotSpecInput | undefined = () => undefined,
+): CaptureApi {
   const timelines = new Map<string, Timeline>();
   const api: CaptureApi = {
     version: 1,
@@ -57,9 +66,14 @@ export function installCaptureApi(engine: Engine, ready: Promise<void>, resolveS
     registerTimeline: (t) => timelines.set(t.id, t),
     async render(req) {
       await ready;
-      const timeline: Timeline | undefined = req.shot ? new StaticTimeline(resolveShot(req.shot)) : timelines.get(req.timelineId ?? '');
+      let input = req.shot;
+      if (!input && req.shotId) {
+        const found = findShot(req.shotId);
+        if (found) input = req.tod !== undefined ? { ...found, tod: req.tod } : found;
+      }
+      const timeline: Timeline | undefined = input ? new StaticTimeline(resolveShot(input)) : timelines.get(req.timelineId ?? '');
       if (!timeline) throw new Error(`capture: no shot/timeline for ${req.name}`);
-      if (req.shot?.quality) engine.setQuality(req.shot.quality);
+      if (input?.quality) engine.setQuality(input.quality);
       engine.setSize(req.width, req.height);
       const spp = Math.max(1, req.spp ?? engine.quality.spp);
       const t0 = req.t ?? 0;

@@ -52,6 +52,18 @@ function parseArgs(argv: string[]): Args {
   return a;
 }
 
+const RENDER_TIMEOUT = 10 * 60_000;
+
+async function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => (timer = setTimeout(() => reject(new Error(`timeout after ${ms / 1000}s: ${what}`)), ms)));
+  try {
+    return await Promise.race([p, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function stamp(): string {
   const d = new Date();
   const p = (n: number) => String(n).padStart(2, '0');
@@ -100,23 +112,29 @@ async function main(): Promise<void> {
     } else {
       const all = loadShots();
       const wanted = args.all ? all : all.filter((s) => args.shots.includes(s.id));
-      const missing = args.shots.filter((id) => !all.some((s) => s.id === id));
-      if (missing.length) throw new Error(`unknown shots: ${missing.join(', ')} (see data/qa/shots.json)`);
-      if (!wanted.length) throw new Error('no shots selected (use --shot <id> or --all)');
+      // ids not in the JSON files are resolved by the page (landmark bookmarks)
+      const pageShots = args.shots.filter((id) => !all.some((s) => s.id === id));
+      if (!wanted.length && !pageShots.length) throw new Error('no shots selected (use --shot <id> or --all)');
 
       await page.goto(`${srv.url}/?capture=1&quality=${args.quality ?? 'review'}`);
       await page.waitForFunction(() => Boolean(window.__mm), undefined, { timeout: 120_000 });
-      await page.evaluate(() => window.__mm!.ready);
+      // fail fast (never hold the machine-wide GPU lock on a broken page)
+      await withTimeout(page.evaluate(() => window.__mm!.ready), 240_000, 'app boot (window.__mm.ready)');
       const info = await page.evaluate(() => window.__mm!.info());
       console.log(`[shots] ${info.gpu.vendor}/${info.gpu.architecture} ${info.gpu.backend} three r${info.three}`);
       if (info.gpu.backend !== 'webgpu' || info.gpu.isFallback) throw new Error('not running on hardware WebGPU');
 
       for (const shot of wanted) {
         const spec: ShotSpec = { ...shot, tod: args.tod ?? shot.tod, quality: (args.quality as ShotSpec['quality']) ?? shot.quality };
-        const res = await page.evaluate((req) => window.__mm!.render(req), { name: shot.id, shot: spec, width: args.w, height: args.h, spp: args.spp });
+        const res = await withTimeout(page.evaluate((req) => window.__mm!.render(req), { name: shot.id, shot: spec, width: args.w, height: args.h, spp: args.spp }), RENDER_TIMEOUT, `render ${shot.id}`);
         results.push({ ...res, file: `${shot.id}.png` });
         console.log(`[shots] ${shot.id}: ${Math.round(res.renderMs)} ms, spp ${res.spp}, luma ${res.meanLuma.toFixed(1)}`);
         if (res.meanLuma < 3) console.warn(`[shots] WARNING: ${shot.id} is (nearly) black`);
+      }
+      for (const id of pageShots) {
+        const res = await withTimeout(page.evaluate((req) => window.__mm!.render(req), { name: id, shotId: id, tod: args.tod, width: args.w, height: args.h, spp: args.spp }), RENDER_TIMEOUT, `render ${id}`);
+        results.push({ ...res, file: `${id}.png` });
+        console.log(`[shots] ${id}: ${Math.round(res.renderMs)} ms, spp ${res.spp}, luma ${res.meanLuma.toFixed(1)}`);
       }
       if (args.determinism && wanted.length) {
         const shot = wanted[0];
