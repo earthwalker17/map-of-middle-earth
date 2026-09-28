@@ -38,5 +38,5 @@ export default defineLandmark({
   emitters: [{ preset: 'smoke', at: [0, 24, 0], rate: 0.3 }],
   lookOverride: 'mordor',
   annotation: { title: 'Barad-dûr', subtitle: 'The Dark Tower', blurb: 'Fortress of Sauron, its crown ever watchful with the lidless Eye.' },
-  bookmarks: [{ id: 'barad-dur-close', distanceKm: 70, elevationDeg: 10, azimuthDeg: 230, fov: 32, tod: 18.5 }],
+  bookmarks: [{ id: 'barad-dur-close', distanceKm: 70, elevationDeg: 12, azimuthDeg: 60, fov: 32, tod: 18.5 }],
 });

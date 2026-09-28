@@ -6,7 +6,7 @@ export default defineLandmark({
   placeId: 'minas-tirith',
   tier: 'A',
   stamps: [
-    { kind: 'flatten', at: [4, 0], radius: 12, falloff: 6, height: 'auto', strength: 0.7 },
+    { kind: 'flatten', at: [5, 0], radius: 10, falloff: 7, height: 0, strength: 0.5 },
     { kind: 'plateau', at: [0, 0], radius: 7.4, rim: 4.5, height: 0.6 },
   ],
   proxy: (k) => {

@@ -21,5 +21,5 @@ export default defineLandmark({
   },
   night: { windows: 60, flicker: 0.4 },
   annotation: { title: 'Lake-town', subtitle: 'Esgaroth upon the Long Lake', blurb: 'A town of Men built out on the waters, in the shadow of the Lonely Mountain.' },
-  bookmarks: [{ id: 'lake-town-close', distanceKm: 12, elevationDeg: 16, azimuthDeg: 200, fov: 35, tod: 19.5 }],
+  bookmarks: [{ id: 'lake-town-close', distanceKm: 22, elevationDeg: 24, azimuthDeg: 200, fov: 35, tod: 17.2 }],
 });

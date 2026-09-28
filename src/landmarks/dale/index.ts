@@ -9,8 +9,9 @@ export default defineLandmark({
       const x = -1.2 + k.r(1) * 2.4;
       const z = -1 + k.r(2) * 2;
       const h = 0.25 + k.r(3) * 0.4;
-      k.box('weathered', 0.3, h, 0.3, { at: [x, 0, z], tint: 0xb4aa94 });
-      k.cone('wood', 0.24, 0.22, { at: [x, h, z], seg: 4, rot: [0, 45, 0], tint: 0x6a5a4a });
+      const y = k.ground(x, z) - 0.04;
+      k.box('weathered', 0.3, h, 0.3, { at: [x, y, z], tint: 0xb4aa94 });
+      k.cone('wood', 0.24, 0.22, { at: [x, y + h, z], seg: 4, rot: [0, 45, 0], tint: 0x6a5a4a });
     }
     k.cylinder('weathered', 0.2, 0.22, 1.4, { tint: 0xc0b6a0 });
   },

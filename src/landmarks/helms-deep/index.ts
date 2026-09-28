@@ -23,5 +23,5 @@ export default defineLandmark({
   lights: [{ at: [2, 3, -1], color: 0xff9a3c, intensity: 3, radius: 4, kind: 'fire' }],
   night: { windows: 20, flicker: 0.4 },
   annotation: { title: "Helm's Deep", subtitle: 'The Hornburg', blurb: 'Fortress-refuge of the Rohirrim, where the Deeping Wall held against ten thousand.' },
-  bookmarks: [{ id: 'helms-deep-close', distanceKm: 24, elevationDeg: 20, azimuthDeg: 20, fov: 35, tod: 6.8 }],
+  bookmarks: [{ id: 'helms-deep-close', distanceKm: 28, elevationDeg: 26, azimuthDeg: 5, fov: 35, tod: 8 }],
 });

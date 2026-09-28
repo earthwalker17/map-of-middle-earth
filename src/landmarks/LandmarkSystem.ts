@@ -77,8 +77,16 @@ export class LandmarkSystem implements System {
       const place = this.world.place(def.placeId);
       const g = new Group();
       g.name = `landmark:${def.id}`;
+      const groundY = this.world.heights.sample(place.x, place.z);
+      const originY = def.anchor === 'water' ? (this.world.waterLevelAt(place.x, place.z) ?? groundY) : groundY;
+      const hd = def.headingDeg ?? 0;
+      const s = def.scale ?? 1;
+      const localGround = (x: number, z: number) => {
+        const [wx, wz] = rotate([x * s, z * s], hd);
+        return (this.world.heights.sample(place.x + wx, place.z + wz) - originY) / s;
+      };
       if (def.proxy) {
-        const kit = new ProxyKit(hashString(def.id));
+        const kit = new ProxyKit(hashString(def.id), localGround);
         def.proxy(kit);
         for (const [fam, geo] of kit.build()) {
           const mesh = new Mesh(geo, family(fam));
@@ -88,12 +96,9 @@ export class LandmarkSystem implements System {
           g.add(mesh);
         }
       }
-      const s = def.scale ?? 1;
       g.scale.setScalar(s);
-      g.rotation.y = (-(def.headingDeg ?? 0) * Math.PI) / 180;
-      const ground = this.world.heights.sample(place.x, place.z);
-      const y = def.anchor === 'water' ? (this.world.waterLevelAt(place.x, place.z) ?? ground) : ground;
-      g.position.set(place.x, y, place.z);
+      g.rotation.y = (-hd * Math.PI) / 180;
+      g.position.set(place.x, originY, place.z);
       g.updateMatrixWorld(true);
       this.root.add(g);
       this.groups.set(def.id, g);

@@ -39,7 +39,19 @@ export class ProxyKit {
   readonly parts = new Map<FamilyId, BufferGeometry[]>();
   private n = 0;
 
-  constructor(readonly seed: number) {}
+  /**
+   * @param groundFn local terrain height at local (x, z) relative to the origin's ground (y = 0),
+   *                 after stamps — use `k.ground(x, z)` to sit parts on slopes.
+   */
+  constructor(
+    readonly seed: number,
+    private readonly groundFn: (x: number, z: number) => number = () => 0,
+  ) {}
+
+  /** local terrain height under local (x, z) */
+  ground(x: number, z: number): number {
+    return this.groundFn(x, z);
+  }
 
   /** uniform [0,1) random for procedural variation (stateless per call index) */
   r(k = 0): number {

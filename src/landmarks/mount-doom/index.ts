@@ -1,17 +1,18 @@
 import { defineLandmark } from '../types.ts';
 
-const R = 17;
-const SUMMIT = 24;
+const R = 22;
+const SUMMIT = 23;
 const CRATER = 2.4;
 /** height of the cone surface above the crater floor at radius r (local y) */
-const coneY = (r: number) => SUMMIT * Math.pow(Math.max(0, 1 - r / R), 1.22) - (SUMMIT - CRATER);
+const EXP = 1.7; // concave profile: broad ash apron, steep upper cone
+const coneY = (r: number) => SUMMIT * Math.pow(Math.max(0, 1 - r / R), EXP) - (SUMMIT - CRATER);
 
 /** Orodruin: a steep volcanic cone rising from the ash plain of Gorgoroth, fire in its crater. */
 export default defineLandmark({
   id: 'mount-doom',
   placeId: 'mount-doom',
   tier: 'A',
-  stamps: [{ kind: 'cone', at: [0, 0], radius: R, summit: SUMMIT, exponent: 1.22, craterRadius: 2.3, craterDepth: CRATER }],
+  stamps: [{ kind: 'cone', at: [0, 0], radius: R, summit: SUMMIT, exponent: EXP, craterRadius: 2.3, craterDepth: CRATER }],
   proxy: (k) => {
     // lava pool in the crater (local y = 0 is the crater floor)
     k.cylinder('lava', 1.7, 1.7, 0.25, { seg: 32 });
@@ -23,7 +24,7 @@ export default defineLandmark({
         const wob = Math.sin(i * 1.7 + f) * 0.08;
         k.box('lava', 0.9, 0.12, 0.16, {
           at: [Math.cos(a + wob) * r0, coneY(r0) + 0.05, Math.sin(a + wob) * r0],
-          rot: [0, (-(a + wob) * 180) / Math.PI, -Math.atan(0.9 * 1.22) * 57],
+          rot: [0, (-(a + wob) * 180) / Math.PI, -Math.atan((coneY(r0 - 0.45) - coneY(r0 + 0.45)) / 0.9) * 57.3],
         });
       }
     }

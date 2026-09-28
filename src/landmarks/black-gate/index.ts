@@ -5,7 +5,7 @@ export default defineLandmark({
   id: 'black-gate',
   placeId: 'black-gate',
   tier: 'A',
-  stamps: [{ kind: 'flatten', at: [0, -2], radius: 7, falloff: 4, height: 'auto', strength: 0.8 }],
+  stamps: [{ kind: 'flatten', at: [0, -1], radius: 5, falloff: 4, height: 0, strength: 0.5 }],
   proxy: (k) => {
     k.wall('darkStone', [-8, 0], [-1.3, 0], 4.2, 1.1);
     k.wall('darkStone', [1.3, 0], [8, 0], 4.2, 1.1);

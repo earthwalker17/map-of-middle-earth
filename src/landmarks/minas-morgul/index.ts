@@ -25,5 +25,5 @@ export default defineLandmark({
   lights: [{ at: [0, 13, 0], color: 0x9cf0b4, intensity: 8, radius: 12, kind: 'magic' }],
   lookOverride: 'mordor',
   annotation: { title: 'Minas Morgul', subtitle: 'The Tower of Sorcery', blurb: 'Once Minas Ithil, Tower of the Rising Moon — now the stronghold of the Nazgûl.' },
-  bookmarks: [{ id: 'minas-morgul-close', distanceKm: 30, elevationDeg: 12, azimuthDeg: 270, fov: 35, tod: 21 }],
+  bookmarks: [{ id: 'minas-morgul-close', distanceKm: 30, elevationDeg: 14, azimuthDeg: 270, fov: 35, tod: 19.6 }],
 });

@@ -12,8 +12,11 @@ export default defineLandmark({
     for (let i = 0; i < 12; i++) {
       const a = k.r(1) * Math.PI * 2;
       const r = 0.4 + k.r(2) * 0.8;
-      k.box('wood', 0.2, 0.16, 0.2, { at: [Math.cos(a) * r, 0, Math.sin(a) * r], tint: 0x8a6a44 });
-      k.cone('thatch', 0.16, 0.15, { at: [Math.cos(a) * r, 0.16, Math.sin(a) * r], seg: 4, rot: [0, 45, 0] });
+      const x = Math.cos(a) * r;
+      const z = Math.sin(a) * r;
+      const y = k.ground(x, z) - 0.03;
+      k.box('wood', 0.2, 0.16, 0.2, { at: [x, y, z], tint: 0x8a6a44 });
+      k.cone('thatch', 0.16, 0.15, { at: [x, y + 0.16, z], seg: 4, rot: [0, 45, 0] });
     }
   },
   night: { windows: 15, flicker: 0.3 },

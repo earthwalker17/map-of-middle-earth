@@ -20,5 +20,5 @@ export default defineLandmark({
     }
   },
   annotation: { title: 'Moria', subtitle: 'The Doors of Durin', blurb: 'Speak, friend, and enter — the hidden West-gate of Khazad-dûm, greatest of the Dwarf-halls.' },
-  bookmarks: [{ id: 'moria-close', distanceKm: 18, elevationDeg: 12, azimuthDeg: 265, fov: 35, tod: 21.5 }],
+  bookmarks: [{ id: 'moria-close', distanceKm: 20, elevationDeg: 14, azimuthDeg: 262, fov: 35, tod: 18.9 }],
 });

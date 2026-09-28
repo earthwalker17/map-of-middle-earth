@@ -28,5 +28,5 @@ export default defineLandmark({
     king(k, 3.4);
   },
   annotation: { title: 'The Argonath', subtitle: 'The Pillars of the Kings', blurb: 'Two colossal kings of old guard the northern gate of Gondor upon the Great River.' },
-  bookmarks: [{ id: 'argonath-close', distanceKm: 26, elevationDeg: 6, azimuthDeg: 0, fov: 38, tod: 15 }],
+  bookmarks: [{ id: 'argonath-close', distanceKm: 17, elevationDeg: 10, azimuthDeg: 0, fov: 38, tod: 15 }],
 });
