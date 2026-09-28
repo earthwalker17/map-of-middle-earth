@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "notes": "Water module review shots (sea, lakes, rivers at wide / mid / close range). Low cameras are explicit (world units) so they clear the exaggerated hills.",
+  "shots": [
+    { "id": "water-nen-hithoel", "tod": 16.5, "camera": { "orbit": { "targetKm": [1077, 752], "distanceKm": 60, "elevationDeg": 32, "azimuthDeg": 165, "fov": 35 } }, "compare": ["reference/film/anduin", "reference/film/rauros"] },
+    { "id": "water-nen-hithoel-low", "tod": 17.0, "camera": { "position": [177.8, 6.2, 159.8], "target": [174.8, 5.6, 175.0], "fov": 40 }, "compare": ["reference/film/anduin/nen-hithoel-anduin-fotr.webp", "reference/film/rauros/amon-hen-from-nen-hithoel-fotr.webp"] },
+    { "id": "water-nen-hithoel-glint", "tod": 16.5, "camera": { "position": [184.0, 9.0, 167.0], "target": [168.0, 4.5, 166.0], "fov": 40 }, "compare": ["reference/film/rauros"] },
+    { "id": "water-argonath-close", "tod": 15.0, "camera": { "position": [177.6, 6.0, 165.0], "target": [180.6, 6.0, 154.0], "fov": 40 }, "compare": ["reference/film/argonath", "reference/photos/argonath"] },
+    { "id": "water-grey-havens", "tod": 18.0, "camera": { "orbit": { "place": "grey-havens", "distanceKm": 110, "elevationDeg": 18, "azimuthDeg": 80, "fov": 35 } }, "compare": ["reference/film/grey-havens"] },
+    { "id": "water-west-coast", "tod": 11.0, "camera": { "orbit": { "targetKm": [330, 880], "distanceKm": 520, "elevationDeg": 42, "azimuthDeg": 200, "fov": 35 } }, "compare": ["reference/maps/ct-1980-west-of-middle-earth.png"] },
+    { "id": "water-havens-close", "tod": 16.0, "camera": { "orbit": { "place": "grey-havens", "distanceKm": 26, "elevationDeg": 24, "azimuthDeg": 235, "fov": 38 } }, "compare": ["reference/film/grey-havens"] },
+    { "id": "water-coast-close", "tod": 13.0, "camera": { "orbit": { "targetKm": [712, 529], "distanceKm": 16, "elevationDeg": 20, "azimuthDeg": 15, "fov": 38 } } },
+    { "id": "water-coast-low", "tod": 14.0, "camera": { "orbit": { "targetKm": [700, 560], "distanceKm": 90, "elevationDeg": 8, "azimuthDeg": 230, "fov": 38 } } },
+    { "id": "water-mouths-anduin", "tod": 15.0, "camera": { "orbit": { "place": "mouths-of-anduin", "distanceKm": 150, "elevationDeg": 32, "azimuthDeg": 15, "fov": 35 } } },
+    { "id": "water-river-brandywine", "tod": 15.5, "camera": { "orbit": { "targetKm": [561.1, 1045.3], "distanceKm": 14, "elevationDeg": 26, "azimuthDeg": 30, "fov": 38 } }, "compare": ["reference/photos/argonath/kawarau-gorge-otago.jpg"] },
+    { "id": "water-river-anduin-osgiliath", "tod": 10.5, "camera": { "orbit": { "place": "osgiliath", "distanceKm": 18, "elevationDeg": 20, "azimuthDeg": 330, "fov": 38 } }, "compare": ["reference/film/osgiliath"] },
+    { "id": "water-mirrormere", "tod": 13.0, "camera": { "orbit": { "targetKm": [890.6, 926.5], "distanceKm": 13, "elevationDeg": 48, "azimuthDeg": 110, "fov": 35 } } },
+    { "id": "water-long-lake", "tod": 11.5, "camera": { "orbit": { "place": "lake-town", "distanceKm": 55, "elevationDeg": 30, "azimuthDeg": 200, "fov": 35 } }, "compare": ["reference/film/lake-town"] },
+    { "id": "water-rhun", "tod": 10.0, "camera": { "orbit": { "place": "sea-of-rhun", "distanceKm": 330, "elevationDeg": 35, "azimuthDeg": 200, "fov": 35 } } },
+    { "id": "water-nen-hithoel-night", "tod": 23.0, "camera": { "position": [184.0, 9.0, 167.0], "target": [168.0, 4.5, 166.0], "fov": 40 } }
+  ]
+}

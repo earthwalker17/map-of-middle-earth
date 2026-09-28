@@ -1,36 +1,97 @@
-import { Mesh, MeshStandardNodeMaterial, PlaneGeometry } from 'three/webgpu';
-import { Fn, float, mix, positionWorld, smoothstep, texture, vec2, vec3 } from 'three/tsl';
+import { Mesh, PlaneGeometry, type DataTexture } from 'three/webgpu';
 import type { FrameContext, InitContext, System } from '../core/types.ts';
 import type { World } from '../world/World.ts';
+import { createNoiseTexture, createWaveSlopeTexture } from './waveTexture.ts';
+import { createWaterMaterial, waterDebug } from './waterMaterial.ts';
+import { buildLakeGeometry, lakeInfos, type LakeInfo } from './lakes.ts';
+import { buildRiverGeometry, type RiverStats } from './rivers.ts';
+import { LAKE, RIVER, SEA } from './presets.ts';
 
 /**
- * Water v0 (placeholder, to be replaced by the water module in S1-E): one sea plane at sea level,
- * depth-tinted from the HeightField so shelves read through the surface.
+ * Water v1 — sea, lakes and rivers from one material family (waterMaterial.ts), three draws:
+ *  - sea: one plane at sea level (0) over the whole frame; the terrain hides it on land;
+ *  - lakes: earcut-triangulated polygons from world.lakes at their manifest levels;
+ *  - rivers: one merged ribbon mesh following the carved channels (rivers.ts).
+ * Everything animated reads env.tFx / env.wind in the shader, so evaluate() is stateless.
  */
 export class WaterSystem implements System {
   readonly id = 'water';
   sea!: Mesh;
+  lakes!: Mesh;
+  rivers!: Mesh;
+  waveTex!: DataTexture;
+  noiseTex!: DataTexture;
+  lakeList: LakeInfo[] = [];
+  riverStats!: RiverStats;
+  /** debug view selector (0 = beauty), see waterMaterial.ts */
+  readonly debug = waterDebug;
+  private includeStreams = true;
+  private heightsVersion = -1;
 
   constructor(private readonly world: World) {}
 
   init(ctx: InitContext): void {
-    const spec = this.world.spec;
-    const geo = new PlaneGeometry(spec.width, spec.depth, 1, 1);
-    geo.rotateX(-Math.PI / 2);
-    const mat = new MeshStandardNodeMaterial({ transparent: true, roughness: 0.08, metalness: 0 });
-    const hTex = this.world.heights.texture;
-    const depth = Fn(() => {
-      const uv = vec2(positionWorld.x.sub(spec.xMin).div(spec.width), positionWorld.z.sub(spec.zMin).div(spec.depth));
-      return float(0).sub(texture(hTex, uv).r);
-    })();
-    mat.colorNode = mix(vec3(0.16, 0.42, 0.44), vec3(0.015, 0.06, 0.12), smoothstep(0.2, 5.5, depth));
-    mat.opacityNode = mix(float(0.35), float(0.94), smoothstep(0.0, 2.0, depth));
-    this.sea = new Mesh(geo, mat);
-    this.sea.name = 'sea';
-    this.sea.receiveShadow = true;
+    const { world } = this;
+    const spec = world.spec;
+    const quality = ctx.quality;
+    this.waveTex = createWaveSlopeTexture();
+    this.noiseTex = createNoiseTexture();
+    const mat = (params: typeof SEA) => createWaterMaterial({ world, waveTex: this.waveTex, noiseTex: this.noiseTex, quality, params });
+
+    const seaGeo = new PlaneGeometry(spec.width, spec.depth, 32, 20);
+    seaGeo.rotateX(-Math.PI / 2);
+    seaGeo.translate((spec.xMin + spec.xMax) / 2, 0, (spec.zMin + spec.zMax) / 2);
+    this.sea = new Mesh(seaGeo, mat(SEA));
+    this.sea.name = 'water-sea';
     this.sea.renderOrder = 1;
-    ctx.scene.add(this.sea);
+
+    this.lakeList = lakeInfos(world);
+    this.lakes = new Mesh(buildLakeGeometry(this.lakeList), mat(LAKE));
+    this.lakes.name = 'water-lakes';
+    this.lakes.renderOrder = 2;
+
+    this.includeStreams = quality.density >= 0.5;
+    this.rivers = new Mesh(this.buildRivers(), mat(RIVER));
+    this.rivers.name = 'water-rivers';
+    this.rivers.renderOrder = 3;
+
+    for (const m of [this.sea, this.lakes, this.rivers]) {
+      m.castShadow = false;
+      m.receiveShadow = true;
+      m.matrixAutoUpdate = false;
+      m.updateMatrix();
+      ctx.scene.add(m);
+    }
   }
 
-  evaluate(_frame: FrameContext): void {}
+  private buildRivers() {
+    const r = buildRiverGeometry(this.world, this.lakeList, { includeStreams: this.includeStreams, widthScale: 1.4 });
+    this.riverStats = r.stats;
+    this.heightsVersion = this.world.heights.texture.version;
+    return r.geometry;
+  }
+
+  /**
+   * Nothing animates on the CPU (waves/flow/foam read env.tFx in the shaders). The only work is a
+   * one-off rebuild of the river ribbons when the HeightField stamp layer changed after init
+   * (landmark stamps): the ribbons are a pure function of the composite heights, so this stays
+   * deterministic and order-independent.
+   */
+  evaluate(_frame: FrameContext): void {
+    if (this.world.heights.texture.version !== this.heightsVersion) {
+      const old = this.rivers.geometry;
+      this.rivers.geometry = this.buildRivers();
+      old.dispose();
+    }
+  }
+
+  dispose(): void {
+    for (const m of [this.sea, this.lakes, this.rivers]) {
+      m?.removeFromParent();
+      m?.geometry.dispose();
+      (m?.material as { dispose?: () => void } | undefined)?.dispose?.();
+    }
+    this.waveTex?.dispose();
+    this.noiseTex?.dispose();
+  }
 }
