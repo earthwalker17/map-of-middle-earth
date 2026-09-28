@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "notes": "Vegetation module review shots (forest canopy close-ups, scatter, hedgerows).",
+  "shots": [
+    { "id": "veg-mirkwood-edge", "tod": 15.5, "camera": { "orbit": { "targetKm": [1066, 1085], "distanceKm": 55, "elevationDeg": 11, "azimuthDeg": 250, "fov": 35 } }, "compare": ["reference/film/mirkwood"] },
+    { "id": "veg-mirkwood-mid", "tod": 11.0, "camera": { "orbit": { "targetKm": [1150, 1060], "distanceKm": 160, "elevationDeg": 38, "azimuthDeg": 200, "fov": 35 } }, "compare": ["reference/film/mirkwood"] },
+    { "id": "veg-lorien-golden", "tod": 18.3, "camera": { "orbit": { "targetKm": [932, 930], "distanceKm": 70, "elevationDeg": 20, "azimuthDeg": 95, "fov": 35 } }, "compare": ["reference/film/lothlorien", "reference/concept-art/lothlorien"] },
+    { "id": "veg-fangorn-close", "tod": 15.0, "camera": { "orbit": { "place": "fangorn", "distanceKm": 55, "elevationDeg": 18, "azimuthDeg": 150, "fov": 35 } }, "compare": ["reference/film/fangorn"] },
+    { "id": "veg-hobbiton-close", "tod": 16.0, "camera": { "orbit": { "place": "hobbiton", "distanceKm": 40, "elevationDeg": 24, "azimuthDeg": 200, "fov": 35 } }, "compare": ["reference/film/hobbiton"] },
+    { "id": "veg-shire-golden", "tod": 18.4, "camera": { "orbit": { "place": "hobbiton", "distanceKm": 60, "elevationDeg": 14, "azimuthDeg": 95, "fov": 35 } }, "compare": ["reference/film/hobbiton"] },
+    { "id": "veg-ithilien", "tod": 15.0, "camera": { "orbit": { "targetKm": [1150, 665], "distanceKm": 75, "elevationDeg": 24, "azimuthDeg": 250, "fov": 35 } }, "compare": ["reference/film/ithilien", "reference/concept-art/ithilien"] }
+  ]
+}
