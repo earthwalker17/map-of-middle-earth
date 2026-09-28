@@ -9,7 +9,7 @@ import { spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import sharp from 'sharp';
-import { loadShots } from './shots.ts';
+import { loadShots } from './shotList.ts';
 
 function arg(name: string, def?: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);

@@ -15,7 +15,7 @@ import { DioramaSystem } from '../diorama/DioramaSystem.ts';
 import { resolveShot, type ShotSpecInput } from '../camera/shots.ts';
 import { gradeUniforms } from '../render/PostPipeline.ts';
 import { LANDMARKS } from '../landmarks/registry.ts';
-import { LandmarkSystem, landmarkStamps } from '../landmarks/LandmarkSystem.ts';
+import { LandmarkSystem, landmarkExclusions, landmarkStamps } from '../landmarks/LandmarkSystem.ts';
 
 /**
  * Load the world and register every system. Order matters: environment first (writes the shared
@@ -36,6 +36,7 @@ async function buildWorld(engine: Engine, quality: QualityTierId, shots: ShotSpe
   const terrain = new TerrainSystem(world);
   const water = new WaterSystem(world);
   const vegetation = new VegetationSystem(world);
+  vegetation.setExclusions(landmarkExclusions(world, LANDMARKS)); // before init → placed once
   const diorama = new DioramaSystem(world);
   const landmarks = new LandmarkSystem(world, LANDMARKS);
   for (const s of [environment, terrain, water, vegetation, diorama, landmarks]) await engine.register(s);

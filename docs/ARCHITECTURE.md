@@ -58,12 +58,19 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
   particle, text — one factory per family; per-instance parameters instead of new materials.
 
 ## Systems (registration order in src/app/boot.ts)
-1. `EnvironmentSystem` (environment/) — time of day → sun/moon/sky/hemisphere/fog, view-fitted texel-snapped
-   sun shadow. Owns the sky (reversed-Z depth patch for SkyMesh).
+1. `EnvironmentSystem` (environment/) — time of day → keyframed daylight (by sun elevation), own TSL sky
+   (Preetham port + twilight/night layer, sun/moon discs, deterministic stars, void backdrop below the
+   horizon), fog coloured by the sky at the horizon, one shadow light (sun → moon handover at −4°) with a
+   slab-clipped, size-quantized, texel-snapped soft PCF shadow (re-rotated per accumulation sample).
 2. `TerrainSystem` (terrain/) — one instanced CDLOD draw (root 320 km, 8 levels, morph + skirts).
-3. `WaterSystem` (water/) — sea, lakes, rivers, waterfalls.
-4. `VegetationSystem` (vegetation/) — forest canopy + instanced near clumps, scatter.
-5. `DioramaSystem` (diorama/) — the slab: strata sides, sea cross-section, base, backdrop, props.
+3. `WaterSystem` (water/) — one material family (presets sea/lake/river): depth absorption, sky+heightfield
+   reflection, env.tFx waves, shore foam; sea plane, earcut lakes at manifest levels, merged river ribbons
+   (monotone downhill level, rebuilt if stamps change). Waterfalls → effects (S6).
+4. `VegetationSystem` (vegetation/) — hashed world-grid placement from forest/look/water masks, forest types
+   (Mirkwood, Fangorn, Lórien, old, deciduous), hedgerows/scatter, 32 km chunks × 4 LODs, near-camera fill
+   band, foliage material (wrap + translucency); `setExclusions(circles)` (landmark footprints).
+5. `DioramaSystem` (diorama/) — the slab: strata cut faces following the terrain edge profile, glassy sea
+   cross-section, satin-stone plinth.
 6. `LandmarkSystem` (landmarks/) — realizes `defineLandmark` bundles.
 7. (later) `EffectsSystem`, `RouteSystem`, `AnnotationSystem`.
 
@@ -74,6 +81,7 @@ Folders are auto-discovered (`import.meta.glob`). Landmarks never create materia
 render loops — shared systems realize their declarations. Proxies (S1) → Blender GLB LODs (S4+).
 
 ## Capture & QA (tools/capture)
+- The readback target stores bytes as-is (NoColorSpace): the post pass already encodes sRGB.
 - `window.__mm` (capture mode `?capture=1`): `ready`, `info()`, `render({name, shot|timelineId, t, width,
   height, spp, shutter, fps})` → RGBA readback POSTed to `/__capture/frame`.
 - `pnpm shots --shot <id> | --all | --smoke [--spp n --w --h --tod --quality --determinism]` →

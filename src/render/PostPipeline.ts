@@ -6,6 +6,7 @@ import {
   QuadMesh,
   RenderPipeline,
   RenderTarget,
+  NoColorSpace,
   SRGBColorSpace,
   UnsignedByteType,
   type Texture,
@@ -27,6 +28,7 @@ import {
   interleavedGradientNoise,
   dot,
   max,
+  select,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 
@@ -83,12 +85,15 @@ export class PostPipeline {
     });
     const accumOpts = { type: HalfFloatType, depthBuffer: false, minFilter: LinearFilter, magFilter: LinearFilter };
     this.accum = [new RenderTarget(width, height, accumOpts), new RenderTarget(width, height, accumOpts)];
+    // The post pass already encodes to sRGB (renderOutput), so the readback target must store the
+    // bytes as-is: a SRGBColorSpace RGBA8 target becomes rgba8unorm-srgb and encodes a second time.
     this.out = new RenderTarget(width, height, { type: UnsignedByteType, depthBuffer: false });
-    this.out.texture.colorSpace = SRGBColorSpace;
+    this.out.texture.colorSpace = NoColorSpace;
 
     // running average: acc_i = mix(acc_{i-1}, cur, 1/(i+1))
     this.accumMaterial = new NodeMaterial();
-    this.accumMaterial.fragmentNode = vec4(mix(this.accumPrev.rgb, this.accumCur.rgb, this.accumWeight), 1);
+    // weight 1 (first sample) takes the current sample verbatim: stale/NaN history never leaks in
+    this.accumMaterial.fragmentNode = vec4(select(this.accumWeight.greaterThanEqual(0.999), this.accumCur.rgb, mix(this.accumPrev.rgb, this.accumCur.rgb, this.accumWeight)), 1);
     this.accumQuad = new QuadMesh(this.accumMaterial);
 
     renderer.toneMapping = AgXToneMapping;
