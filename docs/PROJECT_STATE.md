@@ -6,8 +6,9 @@ instead of appending logs._
 **Last updated:** 2026-09-29 · Session 1 (in progress)
 
 ## Where we are
-Session 1 — Foundation & Geography. Tooling and the rendering foundation are in place and verified
-(WebGPU on Intel gen-11, readback capture harness, reversed-Z, float textures). Next: contracts + bake.
+Session 1 — Foundation & Geography. Tooling, rendering foundation, geography bake, world v0 (CDLOD
+terrain, environment, capture QA), landmark contract + 24 proxies are committed. Water / vegetation /
+environment+diorama v1 are being built by worktree agents; QA loop follows.
 
 ## Roadmap (≈11 sessions incl. buffer)
 | # | Session | Status |
@@ -37,16 +38,25 @@ Session 1 — Foundation & Geography. Tooling and the rendering foundation are i
 - [x] Environment inspected; WebGPU hardware adapter verified headless
 - [x] Repo, pnpm/Vite 8/TS 6, Python bake env (uv, 3.12)
 - [x] Smoke: hardware WebGPU, RT readback, reversed-Z, float vertex textures (`pnpm shots --smoke` PASS)
-- [ ] Reference + data acquisition (background agents) → reference/README.md, manifest, CREDITS
-- [ ] Contracts + docs (ARCHITECTURE.md), data seeds (world/places/regions/looks/route/shots)
-- [ ] Bake v1 + overlay check
-- [ ] Terrain v1 → first beauty wide shot (world v0 commit)
-- [ ] Water / vegetation / environment v1 (worktree agents)
-- [ ] Landmark proxies + scale budget + overlap validator
+- [x] Reference + data acquisition (143 refs, 1 GB DEM + vectors, 14 CC0 texture sets, 6 OFL fonts) → reference/README.md, manifests, fetch scripts, CREDITS
+- [x] Contracts + docs (ARCHITECTURE.md), data seeds (world/places/regions/looks/route/shots)
+- [x] Bake v1 (DEM tone-curve inversion, ME-DEM sea-level datum 304.8 m, coastline flood fill, DEM shelf bathymetry, canon rivers/lakes/forests/wetlands/vulcanism/roads, scale-split exaggeration, region look weights)
+- [ ] Overlay check vs Christopher Tolkien 1980 map (TPS control points) — pending (QA critic)
+- [x] Terrain v1 → world v0 commit (bit-identical determinism verified)
+- [ ] Water / vegetation / environment+diorama v1 (worktree agents) — in progress
+- [x] Landmark contract + 24 proxies (14 Tier A, 10 Tier B), stamps, `pnpm check` overlap validator, distance readability boost
 - [ ] QA loop (scripted checks + 2 critics)
 
 ## Next session
 _(filled at the end of Session 1)_
+
+## Learned gotchas (r186 / this machine)
+- TSL `vec3(new Color())` silently yields black → use `color(c)`; `int(x)` index into uniformArray must be `.toVar()`.
+- SkyMesh pins depth to 1 → wrong with reversed-Z (patched in EnvironmentSystem).
+- WebGPU canvas screenshots are black in headless → readback only. First frame after boot differs → warm-up frame.
+- Grade saturation > 1 can push saturated HDR emissives negative → clamp before pow.
+- ME-DEM sea level = 16 grey levels (304.8 m); DEM encodes shelves/enclosed seas above 0.
+- Browsers decode 16-bit PNG to 8-bit → heights ship as raw u16; masks as raw RGBA8.
 
 ## Open issues / notes
 - Optional user action: update Intel UHD driver (current 31.0.101.2125, 2023). Not required.

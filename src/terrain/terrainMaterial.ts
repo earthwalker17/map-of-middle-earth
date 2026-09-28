@@ -130,7 +130,10 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     ground.assign(mix(ground, rockCol, rockAmt));
 
     // snow line (none in Mordor)
-    const snowLine = float(27).add(n1.mul(5)).add(n2.mul(1.5));
+    // snow line rises toward the south (Forodwaith ~23 → Harad ~36 world units): the Grey and Misty
+    // Mountains are snow-capped, the Ephel Dúath and southern White Mountain foothills are not
+    const southness = p.z.sub(spec.zMin).div(D);
+    const snowLine = float(23).add(southness.mul(13)).add(n1.mul(4)).add(n2.mul(1.5));
     const snowAmt = smoothstep(snowLine, snowLine.add(3.5), h).mul(float(1).sub(smoothstep(0.55, 0.8, slope))).mul(float(1).sub(mordor.clamp(0, 1)));
     ground.assign(mix(ground, srgb(0xeef1f5), snowAmt));
 

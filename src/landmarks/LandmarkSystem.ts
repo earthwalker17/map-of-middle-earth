@@ -93,7 +93,20 @@ export class LandmarkSystem implements System {
     ctx.scene.add(this.root);
   }
 
-  evaluate(_frame: FrameContext): void {}
+  evaluate(frame: FrameContext): void {
+    const cam = frame.camera.position;
+    for (const def of this.defs) {
+      const g = this.groups.get(def.id);
+      if (!g) continue;
+      const boost = def.wideBoost ?? (def.tier === 'A' ? { refKm: 160, max: 2.6 } : { refKm: 160, max: 1.8 });
+      const d = cam.distanceTo(g.position);
+      // smoothstep-shaped growth so the boost eases in rather than kinking at refKm
+      const t = Math.min(1, Math.max(0, (d / boost.refKm - 1) / (boost.max - 1)));
+      const k = 1 + (boost.max - 1) * t * t * (3 - 2 * t);
+      g.scale.setScalar((def.scale ?? 1) * k);
+      g.updateMatrixWorld(true);
+    }
+  }
 
   /** Circles to clear of vegetation (km, world). */
   exclusions(): { x: number; z: number; r: number }[] {

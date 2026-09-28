@@ -44,6 +44,12 @@ export interface LandmarkDefinition {
   headingDeg?: number;
   /** multiplies the proxy/model size (km) */
   scale?: number;
+  /**
+   * Readability boost in wide shots: the landmark grows smoothly with camera distance
+   * (scale × clamp(distance / refKm, 1, max)). Tier defaults: A {refKm: 160, max: 2.6}, B {160, 1.8}.
+   * A pure function of the camera → deterministic.
+   */
+  wideBoost?: { refKm: number; max: number };
   /** vertical anchor of local y = 0: the ground (default) or the local water surface (lake/sea) */
   anchor?: 'ground' | 'water';
   stamps?: LocalStamp[];
