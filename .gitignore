@@ -40,3 +40,6 @@ renders/
 .idea/
 .DS_Store
 Thumbs.db
+
+# agent worktrees (Claude Code)
+.claude/worktrees/
