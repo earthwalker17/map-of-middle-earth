@@ -40,13 +40,13 @@ export interface ExclusionCircle {
 /** sRGB palettes per kind (tuned against reference/film/* and docs/research landmark palettes). */
 const PALETTE: Record<number, string[]> = {
   [Kind.Generic]: ['#3a5026', '#44592b', '#324823', '#4b5f2e', '#3d5530', '#475a2a', '#36502c', '#506434'],
-  [Kind.Mirkwood]: ['#1a2415', '#1f2917', '#232b17', '#172012', '#262a17', '#1d2618', '#202414'],
+  [Kind.Mirkwood]: ['#1f2c19', '#25321c', '#2a341c', '#1c2716', '#2e331c', '#232e1c', '#272d18'],
   [Kind.Fangorn]: ['#222b19', '#2a331e', '#333b23', '#26341f', '#3a4326', '#2e341c', '#252e20'],
   [Kind.Lorien]: ['#8a7a2e', '#9a8434', '#7e7230', '#a88e3a', '#74702e', '#b0943c', '#96803a'],
   [Kind.Dark]: ['#263a1d', '#2e4025', '#22331a', '#344322', '#2a3c21', '#213019'],
   [Kind.Ithilien]: ['#3e5a2a', '#4a622e', '#354f26', '#566532', '#44602f', '#263c22', '#50683a'],
   [Kind.Oak]: ['#3f5020', '#4b5c26', '#37481c', '#465826', '#34451c', '#52632a'],
-  [Kind.Hedge]: ['#34491f', '#3c5222', '#2c401c', '#384e23', '#30451e'],
+  [Kind.Hedge]: ['#4a6a2c', '#557533', '#43622a', '#4f6e30', '#46662b'],
   [Kind.River]: ['#4a5e2b', '#405229', '#56633e', '#3a4f28', '#4f5f36'],
   [Kind.Scrub]: ['#3f5427', '#495d2c', '#364c26', '#50602f', '#425226'],
 };
@@ -459,7 +459,7 @@ export function placeVegetation(world: World, opts: PlacementOptions): Placement
             if (excluded(ex, px, pz, halfLen)) continue;
             const width = 0.17 + 0.05 * rand(seed, eid, 70 + q);
             const hid = hash32(eid, q);
-            coarse.push(px, pz, halfLen, 0.15 + 0.06 * rand(seed, eid, 90 + q), -0.03, Kind.Hedge, yaw, width / halfLen, pickColor(Kind.Hedge, seed, hid, px, pz));
+            coarse.push(px, pz, halfLen, 0.09 + 0.04 * rand(seed, eid, 90 + q), -0.03, Kind.Hedge, yaw, width / halfLen, pickColor(Kind.Hedge, seed, hid, px, pz));
           }
           // hedgerow oaks
           const oaks = rand(seed, eid, 5) < 0.45 * w ? 1 + Math.floor(rand(seed, eid, 6) * 2) : 0;

@@ -177,7 +177,7 @@ export function createFoliageMaterial(world: World, opts: FoliageOptions = {}): 
   const noiseAmpK = perKind({ [Kind.Fangorn]: 0.3, [Kind.Hedge]: 0.1, [Kind.Mirkwood]: 0.16, [Kind.Lorien]: 0.16 }, 0.22);
   const transK = perKind({ [Kind.Mirkwood]: 0.15, [Kind.Fangorn]: 0.2, [Kind.Lorien]: 0.55, [Kind.Dark]: 0.25, [Kind.Hedge]: 0.25 }, 0.35);
   // effective canopy albedo: a leaf mass self-shadows far more than a smooth clump can show
-  const densK = perKind({ [Kind.Lorien]: 0.72, [Kind.Mirkwood]: 0.58, [Kind.Fangorn]: 0.46, [Kind.Hedge]: 0.55 }, 0.52);
+  const densK = perKind({ [Kind.Lorien]: 1.0, [Kind.Mirkwood]: 1.0, [Kind.Fangorn]: 0.9, [Kind.Hedge]: 0.95 }, 0.9);
   const glowK = perKind({ [Kind.Lorien]: 1 }, 0);
   const grainK = perKind({ [Kind.Hedge]: 0.55, [Kind.Mirkwood]: 1.15, [Kind.Fangorn]: 1.05 }, 1);
 

@@ -263,7 +263,10 @@ export function daylight(sunDir: Vector3): Daylight {
   const golden = smooth(-2, 4, el) * (1 - smooth(9, 24, el));
   const twilight = smooth(1, -3, el) * (1 - smooth(-9, -14, el));
 
-  const skyColor = curveRgb(el, HEMI_SKY);
+  // The dark-side tables were calibrated against the S1 double-sRGB capture bug (darks lifted ~4×);
+  // with the fixed single encode, lift the night regime back so moonlit terrain stays readable.
+  const nightLift = 1 + 2 * night;
+  const skyColor = curveRgb(el, HEMI_SKY).multiplyScalar(nightLift);
   // warm bounce off the land (dimmer than the sky; carries a little of the sun's colour)
   const skyLum = 0.2126 * skyColor.r + 0.7152 * skyColor.g + 0.0722 * skyColor.b;
   const bounce = sunIntensity * Math.max(0, Math.sin(el * D2R)) * 0.028;
@@ -273,11 +276,11 @@ export function daylight(sunDir: Vector3): Daylight {
 
   const skyGain = curve(el, SKY_GAIN);
   const dayWeight = smooth(-3, 1, el);
-  const twiZenith = curveRgb(el, TWI_ZENITH);
-  const twiHorizon = curveRgb(el, TWI_HORIZON);
+  const twiZenith = curveRgb(el, TWI_ZENITH).multiplyScalar(nightLift);
+  const twiHorizon = curveRgb(el, TWI_HORIZON).multiplyScalar(nightLift);
   const twiGlow = curveRgb(el, TWI_GLOW);
   const twiBelt = curveRgb(el, TWI_BELT);
-  const voidColor = curveRgb(el, VOID);
+  const voidColor = curveRgb(el, VOID).multiplyScalar(2.2);
   const glowPower = curve(el, [[-12, 1.6], [-6, 2.2], [0, 3.2], [6, 5]]);
   const glowHeight = curve(el, [[-12, 0.07], [-6, 0.1], [0, 0.14], [6, 0.08]]);
   const stars = smooth(-5, -13, el);
@@ -322,6 +325,6 @@ export function moonlight(moonDir: Vector3, illum: number, sunElevationDeg: numb
   const el = MathUtils.radToDeg(Math.asin(MathUtils.clamp(moonDir.y, -1, 1)));
   const up = smooth(-1, 12, el);
   const dark = smooth(-4, -11, sunElevationDeg);
-  const key = 0.36 * Math.pow(illum, 1.3) * up * dark;
+  const key = 0.85 * Math.pow(illum, 1.3) * up * dark;
   return { key, sky: Math.pow(illum, 1.5) * up * dark, color: new Color(0.6, 0.72, 1.0) };
 }

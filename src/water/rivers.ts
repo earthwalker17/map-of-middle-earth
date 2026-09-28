@@ -330,7 +330,7 @@ export function buildRiverGeometry(world: World, lakes: LakeInfo[], opts: RiverB
       const a = Math.max(0, i - 2);
       const b = Math.min(n - 1, i + 2);
       const grade = Math.abs(centre[a] - centre[b]) / Math.max(1e-3, p.s[b] - p.s[a]);
-      const rapid = smooth01(0.15, 0.4, grade);
+      const rapid = smooth01(0.3, 0.75, grade);
       if (rapid > 0.5 && i > 0) rapidKm += p.s[i] - p.s[i - 1];
       let fade = smooth01(-0.12, 0.0, p.bed[i]); // hand over to the sea at the mouth
       if (p.taper) fade *= smooth01(0, 0.8, p.s[i]);
