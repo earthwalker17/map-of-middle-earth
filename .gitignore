@@ -1,0 +1,38 @@
+# dependencies / builds
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# python
+.venv/
+__pycache__/
+*.pyc
+
+# third-party source data & derived bake outputs (never pushed — regenerate with `pnpm data:fetch` + `pnpm bake`)
+data/source/
+data/baked/
+
+# reference material is dev-only (binaries never pushed; README + manifest are committed)
+reference/**
+!reference/README.md
+!reference/manifest.json
+!reference/*/
+reference/_fragments/
+
+# third-party CC0 textures are fetched by script (manifest committed)
+public/textures/**
+!public/textures/_manifest.json
+!public/textures/*/
+
+# renders, captures, caches
+renders/
+.cache/
+*.log
+
+# editors / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,35 @@
+{
+  "name": "map-of-middle-earth",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "A cinematic miniature 3D diorama of Middle-earth (Three.js WebGPU) and the 'Journey Through Middle-Earth' virtual-tour film.",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "data:fetch": "node tools/refs/fetch-data.mjs",
+    "refs:fetch": "node tools/refs/fetch.mjs",
+    "bake": "uv run --project tools/bake python -m bake",
+    "shots": "tsx tools/capture/shots.ts",
+    "qa": "tsx tools/capture/qa.ts",
+    "check": "tsx tools/check/run.ts"
+  },
+  "dependencies": {
+    "lil-gui": "0.21.0",
+    "three": "0.186.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "@types/three": "0.186.0",
+    "playwright": "1.63.0",
+    "sharp": "^0.35.5",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0.3",
+    "vite": "^8.3.1"
+  }
+}

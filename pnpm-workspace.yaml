@@ -1,0 +1,10 @@
+packages:
+  - '.'
+
+# pnpm 11 blocks dependency install scripts by default; explicitly allow the ones we need.
+allowBuilds:
+  esbuild: true
+  sharp: true
+
+# keep node_modules paths short on Windows (long-path safety for worktrees)
+virtualStoreDirMaxLength: 60

@@ -1,0 +1,20 @@
+[project]
+name = "mome-bake"
+version = "0.1.0"
+description = "Offline geography bake for Map of Middle-Earth: DEM + vectors -> heightfield, masks, rivers, look mask."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "numpy>=2.1",
+  "scipy>=1.14",
+  "numba>=0.61",
+  "pillow>=11",
+  "opencv-python-headless>=4.10",
+  "rasterio>=1.4",
+  "pyogrio>=0.10",
+  "shapely>=2.0",
+  "scikit-image>=0.24",
+  "tifffile>=2024.8",
+]
+
+[tool.uv]
+package = false
