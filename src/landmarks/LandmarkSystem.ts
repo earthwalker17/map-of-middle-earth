@@ -52,6 +52,14 @@ export function landmarkStamps(world: World, defs: LandmarkDefinition[]): Stamp[
   return out;
 }
 
+/** Circles (world km) that must stay clear of vegetation — pure data, usable before any system init. */
+export function landmarkExclusions(world: World, defs: LandmarkDefinition[]): { x: number; z: number; r: number }[] {
+  return defs.map((d) => {
+    const p = world.place(d.placeId);
+    return { x: p.x, z: p.z, r: d.vegetationExclusion ?? p.footprintKm ?? 5 };
+  });
+}
+
 /** Realizes landmark bundles as meshes (S1: proxies; S4+: Blender GLB LODs). */
 export class LandmarkSystem implements System {
   readonly id = 'landmarks';
@@ -106,13 +114,5 @@ export class LandmarkSystem implements System {
       g.scale.setScalar((def.scale ?? 1) * k);
       g.updateMatrixWorld(true);
     }
-  }
-
-  /** Circles to clear of vegetation (km, world). */
-  exclusions(): { x: number; z: number; r: number }[] {
-    return this.defs.map((d) => {
-      const p = this.world.place(d.placeId);
-      return { x: p.x, z: p.z, r: d.vegetationExclusion ?? p.footprintKm ?? 5 };
-    });
   }
 }
