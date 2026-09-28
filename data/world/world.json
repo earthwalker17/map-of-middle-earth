@@ -108,7 +108,7 @@
     "world": 1954
   },
   "coast": {
-    "notes": "Sea seeds (ME-GIS km) for the coastline flood fill: west ocean, Bay of Belfalas, south coast.",
+    "notes": "Sea seeds (ME-GIS km) for the coastline flood fill: west ocean, Bay of Belfalas, south coast, Ice Bay of Forochel (joins the ocean only north of the frame).",
     "seaSeedsKm": [
       [
         120,
@@ -133,6 +133,10 @@
       [
         140,
         1300
+      ],
+      [
+        480,
+        1375
       ]
     ]
   }
