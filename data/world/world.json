@@ -19,9 +19,11 @@
     "lookMaskDownsample": 4
   },
   "vertical": {
-    "notes": "Terrain height in world units = exaggeration * H * (h/H)^gamma with h = (DEM metres - seaLevelMetres)/1000 and H = referenceKm. The ME-DEM datum puts sea level at 16 grey levels (304.8 m): DEM values below it are real shelf bathymetry; seas are below-datum regions connected to coast.seaSeedsKm.",
+    "notes": "Terrain height in world units = exaggeration * H * (h/H)^gamma with h = (DEM metres - seaLevelMetres)/1000 and H = referenceKm. The ME-DEM datum puts sea level at 16 grey levels (304.8 m): DEM values below it are real shelf bathymetry; seas are below-datum regions connected to coast.seaSeedsKm. Relief is split by scale: a Gaussian low-pass (macroSigmaKm) keeps the full exaggeration so ranges tower, while local relief above it is scaled by detailRatio so hills and peaks keep plausible slopes.",
     "exaggeration": 12,
     "gamma": 0.8,
+    "macroSigmaKm": 12,
+    "detailRatio": 0.45,
     "referenceKm": 4.9,
     "seaLevelMetres": 304.8,
     "seaFloorDepth": 6.0,

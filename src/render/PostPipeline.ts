@@ -31,17 +31,17 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 
 /** Global grade parameters (driven by the RegionLook system; plain values here in S1). */
 export const gradeUniforms = {
-  exposure: uniform(1.0),
-  saturation: uniform(1.0),
-  contrast: uniform(1.0),
+  exposure: uniform(0.9),
+  saturation: uniform(1.12),
+  contrast: uniform(1.08),
   /** multiplicative tint (white balance), linear */
   tint: uniform(vec3(1, 1, 1)),
   /** additive lift in linear space (shadows) */
   lift: uniform(vec3(0, 0, 0)),
   vignette: uniform(0.35),
-  bloomStrength: uniform(0.18),
+  bloomStrength: uniform(0.12),
   bloomRadius: uniform(0.55),
-  bloomThreshold: uniform(0.9),
+  bloomThreshold: uniform(2.2),
 };
 
 /**

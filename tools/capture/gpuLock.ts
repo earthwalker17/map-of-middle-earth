@@ -1,11 +1,13 @@
 import { closeSync, mkdirSync, openSync, readFileSync, rmSync, statSync, writeSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 /**
  * One GPU render queue for the whole machine: every tool that drives a WebGPU browser takes this
  * lock first, so parallel agents code concurrently but render one at a time (1 GB shared iGPU).
  */
-const LOCK = join(process.cwd(), '.cache', 'gpu.lock');
+// machine-wide (shared by all worktrees/agents), not per checkout
+const LOCK = process.env.MOME_GPU_LOCK ?? join(tmpdir(), 'map-of-middle-earth-gpu.lock');
 const STALE_MS = 45 * 60 * 1000;
 
 function alive(pid: number): boolean {

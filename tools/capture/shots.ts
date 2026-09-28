@@ -13,7 +13,7 @@ import sharp from 'sharp';
 import { acquireGpuLock } from './gpuLock.ts';
 import { startCaptureServer } from './server.ts';
 import { browserVersion, collectConsole, launchChrome } from './browser.ts';
-import type { ShotSpec } from '../../src/core/Timeline.ts';
+import type { ShotSpecInput as ShotSpec } from '../../src/camera/shots.ts';
 import type { CaptureResult } from '../../src/render/capture.ts';
 
 interface Args {

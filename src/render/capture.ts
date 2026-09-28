@@ -1,12 +1,13 @@
 import { REVISION } from 'three/webgpu';
 import type { Engine, GpuInfo } from '../core/Engine.ts';
 import { StaticTimeline, type ShotSpec, type Timeline } from '../core/Timeline.ts';
+import type { ShotSpecInput } from '../camera/shots.ts';
 
 export interface CaptureRequest {
   /** output name (file stem) — the Node harness decides the directory */
   name: string;
   /** a still shot, or the id of a registered timeline */
-  shot?: ShotSpec;
+  shot?: ShotSpecInput;
   timelineId?: string;
   t?: number;
   width: number;
@@ -47,7 +48,7 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-export function installCaptureApi(engine: Engine, ready: Promise<void>): CaptureApi {
+export function installCaptureApi(engine: Engine, ready: Promise<void>, resolveShot: (s: ShotSpecInput) => ShotSpec): CaptureApi {
   const timelines = new Map<string, Timeline>();
   const api: CaptureApi = {
     version: 1,
@@ -56,7 +57,7 @@ export function installCaptureApi(engine: Engine, ready: Promise<void>): Capture
     registerTimeline: (t) => timelines.set(t.id, t),
     async render(req) {
       await ready;
-      const timeline: Timeline | undefined = req.shot ? new StaticTimeline(req.shot) : timelines.get(req.timelineId ?? '');
+      const timeline: Timeline | undefined = req.shot ? new StaticTimeline(resolveShot(req.shot)) : timelines.get(req.timelineId ?? '');
       if (!timeline) throw new Error(`capture: no shot/timeline for ${req.name}`);
       if (req.shot?.quality) engine.setQuality(req.shot.quality);
       engine.setSize(req.width, req.height);

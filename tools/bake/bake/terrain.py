@@ -36,6 +36,11 @@ def synthesize(cfg: Config, metres: np.ndarray, land: np.ndarray, vec: dict) -> 
         sl = float(V["seaLevelMetres"])
         hkm = np.clip((metres - sl) / 1000.0, 0, None)
         land_h = (E * href * np.power(hkm / href, gamma)).astype(np.float32)
+        # scale-split exaggeration: massifs keep full lift, local relief is compressed
+        sigma = V.get("macroSigmaKm", 12) / cfg.px_km
+        macro = ndimage.gaussian_filter(land_h, sigma)
+        land_h = (macro + (land_h - macro) * V.get("detailRatio", 0.45)).astype(np.float32)
+        land_h = np.maximum(land_h, 0)
         land_b = land >= 0.5
         d_sea = ndimage.distance_transform_edt(~land_b) * cfg.px_km
         # bathymetry: DEM shelf depth below the datum, deepened with distance offshore

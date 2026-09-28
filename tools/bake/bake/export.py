@@ -17,9 +17,15 @@ def _u8(a: np.ndarray) -> np.ndarray:
     return np.clip(np.rint(a * 255), 0, 255).astype(np.uint8)
 
 
-def _png(path: Path, channels: list[np.ndarray]) -> None:
-    rgba = np.stack([_u8(c) for c in channels], axis=-1)
-    Image.fromarray(rgba, "RGBA").save(path, optimize=False, compress_level=6)
+def _raw(path: Path, channels: list[np.ndarray]) -> tuple[int, int]:
+    """Interleaved RGBA8 raw (row 0 = north). Raw instead of PNG: no premultiplied-alpha,
+    colour-space or flip ambiguity for data masks. A PNG copy goes to preview/ for inspection."""
+    rgba = np.ascontiguousarray(np.stack([_u8(c) for c in channels], axis=-1))
+    rgba.tofile(path)
+    prev = path.parent / "preview"
+    prev.mkdir(exist_ok=True)
+    Image.fromarray(rgba[..., :3], "RGB").save(prev / (path.stem + "-rgb.png"), compress_level=6)
+    return rgba.shape[1], rgba.shape[0]
 
 
 def _sha(path: Path) -> str:
@@ -66,15 +72,14 @@ def export_all(cfg: Config, h: np.ndarray, info: dict, vec: dict, region_ids: li
         for m in vec["lake_masks"].values():
             lake = np.maximum(lake, m)
         land = np.clip((h > 0).astype(np.float32), 0, 1)
-        p = out / "water.png"
-        _png(p, [vec["river_channel"], lake, land, vec["river_valley"]])
-        files["water"] = {"file": p.name, "channels": ["riverChannel", "lake", "land", "riverValley"], "sha256": _sha(p)}
-        p = out / "landcover.png"
-        _png(p, [vec["forest"], vec["wetland"], vec["vulcanism"], vec["road"]])
-        files["landcover"] = {"file": p.name, "channels": ["forest", "wetland", "vulcanism", "road"], "sha256": _sha(p)}
-        p = out / "forests.png"
-        _png(p, [vec["forest_mirkwood"], vec["forest_fangorn"], vec["forest_lorien"], vec["forest_old"]])
-        files["forests"] = {"file": p.name, "channels": ["mirkwood", "fangorn", "lorien", "oldForest"], "sha256": _sha(p)}
+        for key, chans, names in (
+            ("water", [vec["river_channel"], lake, land, vec["river_valley"]], ["riverChannel", "lake", "land", "riverValley"]),
+            ("landcover", [vec["forest"], vec["wetland"], vec["vulcanism"], vec["road"]], ["forest", "wetland", "vulcanism", "road"]),
+            ("forests", [vec["forest_mirkwood"], vec["forest_fangorn"], vec["forest_lorien"], vec["forest_old"]], ["mirkwood", "fangorn", "lorien", "oldForest"]),
+        ):
+            p = out / f"{key}.rgba8"
+            w, hh = _raw(p, chans)
+            files[key] = {"file": p.name, "format": "rgba8", "width": w, "height": hh, "channels": names, "sha256": _sha(p)}
 
     with Timer("export: look weights"):
         L, lh, lw = region_layers.shape
@@ -82,9 +87,9 @@ def export_all(cfg: Config, h: np.ndarray, info: dict, vec: dict, region_ids: li
         stack = np.zeros((tiles * lh, lw, 4), np.float32)
         for i in range(L):
             stack[(i // 4) * lh:(i // 4 + 1) * lh, :, i % 4] = region_layers[i]
-        p = out / "look.png"
-        Image.fromarray(_u8(stack), "RGBA").save(p, compress_level=6)
-        files["look"] = {"file": p.name, "layers": tiles, "tileWidth": lw, "tileHeight": lh, "regions": region_ids, "sha256": _sha(p)}
+        p = out / "look.rgba8"
+        np.ascontiguousarray(_u8(stack)).tofile(p)
+        files["look"] = {"file": p.name, "format": "rgba8", "layers": tiles, "tileWidth": lw, "tileHeight": lh, "regions": region_ids, "sha256": _sha(p)}
 
     with Timer("export: rivers / lakes / roads json"):
         rivers = []
