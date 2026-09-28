@@ -3,21 +3,67 @@ import { Color, MathUtils, Vector3 } from 'three/webgpu';
 /** Latitude used for the sun path (Hobbiton ≈ Oxford's latitude per Letter 294). */
 export const LATITUDE_DEG = 50;
 
-/** Direction TO the sun in world space (X east, Y up, −Z north) for time of day + day of year. */
-export function sunDirection(tod: number, dayOfYear: number, out = new Vector3(), latDeg = LATITUDE_DEG): Vector3 {
-  const lat = MathUtils.degToRad(latDeg);
-  const decl = MathUtils.degToRad(23.44 * Math.sin((2 * Math.PI * (dayOfYear - 81)) / 365));
-  const H = MathUtils.degToRad((tod - 12) * 15);
+const D2R = Math.PI / 180;
+/** obliquity of the ecliptic */
+const OBLIQUITY = 23.44 * D2R;
+const SYNODIC_DAYS = 29.530588;
+/**
+ * Day-of-year of a new moon. Chosen so the default day (200) shows a bright waxing gibbous moon
+ * (phase ≈ 0.42) that rides low in the southern summer night sky — long, cinematic moon shadows.
+ */
+const NEW_MOON_DAY = 187.6;
+
+/** Ecliptic longitude of the sun (radians), 0 at the March equinox (≈ day 81). */
+function sunLongitude(dayOfYear: number): number {
+  return (2 * Math.PI * (dayOfYear - 81)) / 365;
+}
+
+/** Direction to a body with hour angle H and declination decl (radians) — X east, Y up, −Z north. */
+function directionFrom(H: number, decl: number, out: Vector3, latDeg = LATITUDE_DEG): Vector3 {
+  const lat = latDeg * D2R;
   const east = -Math.cos(decl) * Math.sin(H);
   const north = Math.cos(lat) * Math.sin(decl) - Math.sin(lat) * Math.cos(decl) * Math.cos(H);
   const up = Math.sin(lat) * Math.sin(decl) + Math.cos(lat) * Math.cos(decl) * Math.cos(H);
   return out.set(east, up, -north).normalize();
 }
 
-/** Moon: roughly opposite the sun with a phase-dependent offset (full moon ≈ opposite). */
+/** Direction TO the sun in world space (X east, Y up, −Z north) for time of day + day of year. */
+export function sunDirection(tod: number, dayOfYear: number, out = new Vector3(), latDeg = LATITUDE_DEG): Vector3 {
+  const decl = Math.asin(Math.sin(OBLIQUITY) * Math.sin(sunLongitude(dayOfYear)));
+  return directionFrom((tod - 12) * 15 * D2R, decl, out, latDeg);
+}
+
+/** Moon phase in [0, 1): 0 = new, 0.25 = first quarter, 0.5 = full, 0.75 = last quarter. */
+export function moonPhase(dayOfYear: number, tod = 0): number {
+  const p = (dayOfYear + tod / 24 - NEW_MOON_DAY) / SYNODIC_DAYS;
+  return p - Math.floor(p);
+}
+
+/** Illuminated fraction of the lunar disc for a phase. */
+export function moonIllumination(phase: number): number {
+  return 0.5 * (1 - Math.cos(2 * Math.PI * phase));
+}
+
+/**
+ * Direction TO the moon. The moon trails the sun by `phase` of a day in hour angle and sits
+ * `phase` of a turn further along the ecliptic (so a summer full moon rides low, like the real one).
+ */
 export function moonDirection(tod: number, dayOfYear: number, phase: number, out = new Vector3()): Vector3 {
-  // phase 0 = new, 0.5 = full; the moon lags the sun by phase * 24h
-  return sunDirection((tod - phase * 24 + 48) % 24, dayOfYear, out);
+  const decl = Math.asin(Math.sin(OBLIQUITY) * Math.sin(sunLongitude(dayOfYear) + phase * 2 * Math.PI));
+  return directionFrom((tod - 12 - phase * 24) * 15 * D2R, decl, out);
+}
+
+/**
+ * Sidereal rotation angle of the star field (radians) about the celestial pole. One turn per
+ * sidereal day; the day-of-year term shifts the constellations through the seasons.
+ */
+export function siderealAngle(tod: number, dayOfYear: number): number {
+  return 2 * Math.PI * (tod / 24 + dayOfYear / 365.2422) * 1.0027379;
+}
+
+/** Unit vector towards the north celestial pole. */
+export function celestialPole(out = new Vector3(), latDeg = LATITUDE_DEG): Vector3 {
+  return out.set(0, Math.sin(latDeg * D2R), -Math.cos(latDeg * D2R));
 }
 
 const smooth = (e0: number, e1: number, x: number) => {
@@ -44,35 +90,238 @@ export function kelvinToLinear(k: number, out = new Color()): Color {
   return out.convertSRGBToLinear();
 }
 
+// ------------------------------------------------------------------ keyframe curves over sun elevation
+
+type Rgb = [number, number, number];
+
+/** Piecewise-linear scalar curve over sun elevation (keys sorted by elevation). */
+function curve(el: number, keys: [number, number][]): number {
+  if (el <= keys[0][0]) return keys[0][1];
+  for (let i = 1; i < keys.length; i++) {
+    if (el <= keys[i][0]) {
+      const [e0, v0] = keys[i - 1];
+      const [e1, v1] = keys[i];
+      return MathUtils.lerp(v0, v1, (el - e0) / (e1 - e0));
+    }
+  }
+  return keys[keys.length - 1][1];
+}
+
+/**
+ * Colour curve over sun elevation, interpolated per channel in log space — twilight light falls
+ * off roughly exponentially with the sun's depression, so log-lerp keeps the fades even.
+ */
+function curveRgb(el: number, keys: [number, Rgb][], out = new Color()): Color {
+  const lg = (v: number) => Math.log(Math.max(v, 1e-6));
+  let a = keys[0];
+  let b = keys[0];
+  let t = 0;
+  if (el > keys[0][0]) {
+    a = keys[keys.length - 1];
+    b = a;
+    for (let i = 1; i < keys.length; i++) {
+      if (el <= keys[i][0]) {
+        a = keys[i - 1];
+        b = keys[i];
+        t = (el - a[0]) / (b[0] - a[0]);
+        break;
+      }
+    }
+  }
+  const ch = (k: 0 | 1 | 2) => {
+    const va = a[1][k];
+    const vb = b[1][k];
+    if (va <= 1e-6 || vb <= 1e-6) return MathUtils.lerp(va, vb, t);
+    return Math.exp(MathUtils.lerp(lg(va), lg(vb), t));
+  };
+  return out.setRGB(ch(0), ch(1), ch(2));
+}
+
+/** sun colour temperature (K) */
+const KELVIN: [number, number][] = [
+  [-2, 1800], [0, 1950], [2, 2250], [5, 2600], [10, 3100], [15, 3500], [20, 3900], [35, 4900], [60, 5500], [90, 5800],
+];
+/** sun key illuminance (includes a gentle exposure compensation at low sun) */
+const SUN_I: [number, number][] = [
+  [-2.5, 0], [0, 0.55], [2, 1.9], [5, 3.1], [10, 3.7], [20, 3.7], [40, 3.5], [90, 3.4],
+];
+/** hemisphere sky irradiance (colour × intensity) */
+const HEMI_SKY: [number, Rgb][] = [
+  [-18, [0.013, 0.021, 0.048]],
+  [-14, [0.020, 0.031, 0.070]],
+  [-10, [0.032, 0.046, 0.104]],
+  [-6, [0.062, 0.082, 0.190]],
+  [-3, [0.140, 0.170, 0.360]],
+  [0, [0.220, 0.270, 0.520]],
+  [5, [0.300, 0.390, 0.640]],
+  [12, [0.360, 0.450, 0.690]],
+  [35, [0.420, 0.510, 0.700]],
+  [90, [0.440, 0.520, 0.680]],
+];
+/** Preetham sky gain (the analytic model's radiance is far above our exposure range) */
+const SKY_GAIN: [number, number][] = [
+  [-3, 1.4], [0, 0.4], [3, 0.2], [8, 0.135], [20, 0.115], [90, 0.1],
+];
+/** twilight / night parametric sky layer */
+const TWI_ZENITH: [number, Rgb][] = [
+  [-18, [0.0014, 0.0024, 0.0070]],
+  [-12, [0.0028, 0.0055, 0.0170]],
+  [-9, [0.0055, 0.0115, 0.0360]],
+  [-6, [0.0120, 0.0250, 0.0760]],
+  [-4, [0.0190, 0.0380, 0.1050]],
+  [-2, [0.0230, 0.0420, 0.1150]],
+  [0, [0.0180, 0.0320, 0.0850]],
+  [3, [0.0060, 0.0100, 0.0250]],
+  [8, [0, 0, 0]],
+];
+const TWI_HORIZON: [number, Rgb][] = [
+  [-18, [0.0045, 0.0066, 0.0140]],
+  [-12, [0.0075, 0.0105, 0.0240]],
+  [-9, [0.0125, 0.0170, 0.0400]],
+  [-6, [0.0260, 0.0320, 0.0720]],
+  [-4, [0.0450, 0.0480, 0.0980]],
+  [-2, [0.0680, 0.0650, 0.1150]],
+  [0, [0.0800, 0.0700, 0.1000]],
+  [3, [0.0300, 0.0260, 0.0350]],
+  [8, [0, 0, 0]],
+];
+/** glow hugging the horizon under the sun (sunset / afterglow / dawn) */
+const TWI_GLOW: [number, Rgb][] = [
+  [-16, [0.0005, 0.0004, 0.0005]],
+  [-12, [0.0080, 0.0050, 0.0055]],
+  [-9, [0.0320, 0.0160, 0.0120]],
+  [-6, [0.0950, 0.0400, 0.0200]],
+  [-4, [0.1900, 0.0700, 0.0250]],
+  [-2, [0.3300, 0.1150, 0.0300]],
+  [0, [0.4500, 0.1600, 0.0350]],
+  [2, [0.3000, 0.1200, 0.0300]],
+  [6, [0.0700, 0.0350, 0.0100]],
+  [12, [0, 0, 0]],
+];
+/** Belt of Venus: pink band above the Earth's shadow, opposite the sun */
+const TWI_BELT: [number, Rgb][] = [
+  [-9, [0, 0, 0]],
+  [-6, [0.0150, 0.0110, 0.0180]],
+  [-3, [0.0550, 0.0340, 0.0500]],
+  [0, [0.0650, 0.0400, 0.0480]],
+  [3, [0.0300, 0.0200, 0.0200]],
+  [8, [0, 0, 0]],
+];
+/**
+ * The atmospheric void below the horizon, around and under the floating slab. Calibrated against
+ * the S1 capture path, which lifts darks strongly (HDR 0.005 → ~38/255, 0.02 → ~88/255): if the
+ * post pipeline's output transform changes, re-check these (and the night levels) first.
+ */
+const VOID: [number, Rgb][] = [
+  [-18, [0.00045, 0.0006, 0.0012]],
+  [-12, [0.0007, 0.0009, 0.0017]],
+  [-8, [0.0012, 0.0014, 0.0026]],
+  [-4, [0.0022, 0.0022, 0.0036]],
+  [0, [0.0036, 0.0030, 0.0038]],
+  [5, [0.0042, 0.0037, 0.0044]],
+  [15, [0.0036, 0.0042, 0.0056]],
+  [90, [0.0034, 0.0042, 0.0058]],
+];
+
 export interface Daylight {
   sunElevationDeg: number;
   sunColor: Color;
   sunIntensity: number;
   night: number;
   golden: number;
+  /** 0..1 blue-hour amount (sun a few degrees below the horizon) */
+  twilight: number;
   skyColor: Color;
   groundColor: Color;
   hemiIntensity: number;
-  fogColor: Color;
+  // sky model parameters
+  skyGain: number;
+  dayWeight: number;
+  twiZenith: Color;
+  twiHorizon: Color;
+  twiGlow: Color;
+  /** angular tightness of the glow around the sun's azimuth */
+  glowPower: number;
+  /** vertical extent of the glow (in sin(elevation)) */
+  glowHeight: number;
+  twiBelt: Color;
+  voidColor: Color;
+  stars: number;
+  sunDisc: number;
+  fogDensity: number;
+  fogHeightDensity: number;
+  fogHeightFalloff: number;
+  turbidity: number;
 }
 
 /** Smooth, continuous daylight model — every quantity is a function of sun elevation. */
 export function daylight(sunDir: Vector3): Daylight {
   const el = MathUtils.radToDeg(Math.asin(MathUtils.clamp(sunDir.y, -1, 1)));
-  const kelvin = MathUtils.lerp(1900, 5600, smooth(-1, 35, el));
-  const sunColor = kelvinToLinear(kelvin);
-  const sunIntensity = 3.4 * smooth(-3, 6, el);
+  const sunColor = kelvinToLinear(curve(el, KELVIN));
+  const sunIntensity = curve(el, SUN_I);
   const night = 1 - smooth(-14, 1, el);
   const golden = smooth(-2, 4, el) * (1 - smooth(9, 24, el));
-  const daySky = new Color(0.36, 0.52, 0.8);
-  const duskSky = new Color(0.48, 0.38, 0.42);
-  const nightSky = new Color(0.02, 0.035, 0.07);
-  const skyColor = nightSky.clone().lerp(duskSky, smooth(-14, -2, el)).lerp(daySky, smooth(-1, 16, el));
-  const groundColor = new Color(0.22, 0.2, 0.15).multiplyScalar(0.25 + 0.75 * smooth(-6, 20, el));
-  const hemiIntensity = 0.05 + 0.5 * smooth(-12, 18, el);
-  const fogDay = new Color(0.66, 0.74, 0.84);
-  const fogDusk = new Color(0.74, 0.55, 0.45);
-  const fogNight = new Color(0.03, 0.045, 0.08);
-  const fogColor = fogNight.clone().lerp(fogDusk, smooth(-12, -1, el)).lerp(fogDay, smooth(2, 20, el));
-  return { sunElevationDeg: el, sunColor, sunIntensity, night, golden, skyColor, groundColor, hemiIntensity, fogColor };
+  const twilight = smooth(1, -3, el) * (1 - smooth(-9, -14, el));
+
+  const skyColor = curveRgb(el, HEMI_SKY);
+  // warm bounce off the land (dimmer than the sky; carries a little of the sun's colour)
+  const skyLum = 0.2126 * skyColor.r + 0.7152 * skyColor.g + 0.0722 * skyColor.b;
+  const bounce = sunIntensity * Math.max(0, Math.sin(el * D2R)) * 0.028;
+  const groundColor = new Color(0.42, 0.34, 0.25)
+    .multiplyScalar(skyLum * 0.55)
+    .add(sunColor.clone().multiplyScalar(bounce));
+
+  const skyGain = curve(el, SKY_GAIN);
+  const dayWeight = smooth(-3, 1, el);
+  const twiZenith = curveRgb(el, TWI_ZENITH);
+  const twiHorizon = curveRgb(el, TWI_HORIZON);
+  const twiGlow = curveRgb(el, TWI_GLOW);
+  const twiBelt = curveRgb(el, TWI_BELT);
+  const voidColor = curveRgb(el, VOID);
+  const glowPower = curve(el, [[-12, 1.6], [-6, 2.2], [0, 3.2], [6, 5]]);
+  const glowHeight = curve(el, [[-12, 0.07], [-6, 0.1], [0, 0.14], [6, 0.08]]);
+  const stars = smooth(-5, -13, el);
+  const sunDisc = curve(el, [[-1, 6], [2, 8], [6, 12], [12, 18], [25, 30], [90, 40]]);
+
+  // haze: a touch denser at golden hour / dawn (morning mist), clear at noon
+  const fogHeightDensity = 0.0017 + 0.0006 * golden + 0.0008 * twilight + 0.0004 * night;
+  const fogHeightFalloff = 0.18;
+  const fogDensity = 0.000008 + 0.000006 * golden;
+  const turbidity = 2.6 + 0.8 * golden;
+
+  return {
+    sunElevationDeg: el,
+    sunColor,
+    sunIntensity,
+    night,
+    golden,
+    twilight,
+    skyColor,
+    groundColor,
+    hemiIntensity: 1,
+    skyGain,
+    dayWeight,
+    twiZenith,
+    twiHorizon,
+    twiGlow,
+    glowPower,
+    glowHeight,
+    twiBelt,
+    voidColor,
+    stars,
+    sunDisc,
+    fogDensity,
+    fogHeightDensity,
+    fogHeightFalloff,
+    turbidity,
+  };
+}
+
+/** Moonlight contribution: key intensity (for the shadow-casting light) and sky brightening. */
+export function moonlight(moonDir: Vector3, illum: number, sunElevationDeg: number): { key: number; sky: number; color: Color } {
+  const el = MathUtils.radToDeg(Math.asin(MathUtils.clamp(moonDir.y, -1, 1)));
+  const up = smooth(-1, 12, el);
+  const dark = smooth(-4, -11, sunElevationDeg);
+  const key = 0.36 * Math.pow(illum, 1.3) * up * dark;
+  return { key, sky: Math.pow(illum, 1.5) * up * dark, color: new Color(0.6, 0.72, 1.0) };
 }

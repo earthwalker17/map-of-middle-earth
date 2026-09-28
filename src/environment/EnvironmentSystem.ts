@@ -1,85 +1,91 @@
-import { DirectionalLight, HemisphereLight, Matrix4, Object3D, Vector3 } from 'three/webgpu';
+import { DirectionalLight, HemisphereLight, Vector3, type Mesh } from 'three/webgpu';
 import { tsl } from '../materials/tsl.ts';
-import { SkyMesh } from 'three/addons/objects/SkyMesh.js';
 import type { FrameContext, InitContext, System } from '../core/types.ts';
 import { env } from '../materials/environment.ts';
-import { daylight, moonDirection, sunDirection } from './timeOfDay.ts';
+import { SLAB } from '../diorama/slabSpec.ts';
+import { daylight, moonDirection, moonIllumination, moonlight, moonPhase, siderealAngle, sunDirection } from './timeOfDay.ts';
+import { SkyModel } from './sky.ts';
+import { KeyShadow, type ShadowBounds } from './shadows.ts';
 
-const { Fn, clamp, dot, exp, float, fog, length, max, mix, normalize, positionWorld, pow, select, abs, vec4 } = tsl;
+const { Fn, abs, clamp, exp, float, fog, length, max, normalize, positionWorld, select } = tsl;
 
-const _v = new Vector3();
-const _t = new Vector3();
-const _m = new Matrix4();
+const _focus = new Vector3();
 
 /**
- * Sun/moon/sky/fog from SceneState.tod — continuous, no preset switching. Writes the shared
- * `env` uniforms that every material reads, and drives the three.js lights.
+ * Sun / moon / sky / fog from SceneState (tod, dayOfYear, tFx, camera) — continuous, no preset
+ * switching. Writes the shared `env` uniforms every material reads and drives the three.js lights:
+ *  - one shadow-casting key light: the sun by day, the moon by night (it swaps while both are dark)
+ *  - a hemisphere light carrying the sky/ground balance (cool shadows at golden hour)
+ *  - the sky dome (Preetham day + twilight/night layer + stars/moon/sun disc + the dark void
+ *    around the floating diorama) and an analytic height fog whose colour is the same sky model
+ *    evaluated at the horizon, so haze always matches the sky behind it.
  */
 export class EnvironmentSystem implements System {
   readonly id = 'environment';
+  /** the key light (sun by day, moon by night) — the only shadow-casting light */
   readonly sun = new DirectionalLight(0xffffff, 3);
-  readonly moon = new DirectionalLight(0x9fb4d9, 0);
   readonly hemi = new HemisphereLight(0x9ab8e0, 0x3a3226, 1);
-  sky!: SkyMesh;
-  private readonly sunTarget = new Object3D();
-  readonly skyGain = tsl.uniform(0.2);
+  readonly skyModel = new SkyModel();
+  sky!: Mesh;
+  shadow!: KeyShadow;
+  /** true when the key light is the moon */
+  keyIsMoon = false;
+  /** the shared uniforms (dev handle for diagnostics scripts) */
+  readonly env = env;
+  private bounds!: ShadowBounds;
 
   init(ctx: InitContext): void {
     const { scene, quality } = ctx;
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(quality.shadowMapSize, quality.shadowMapSize);
-    this.sun.shadow.bias = -0.0004;
-    this.sun.shadow.normalBias = 0.02;
-    this.sun.target = this.sunTarget;
-    scene.add(this.sun, this.sunTarget, this.moon, this.hemi);
+    this.shadow = new KeyShadow(this.sun, quality.id === 'preview' ? 6 : quality.id === 'review' ? 12 : 16);
+    scene.add(this.sun, this.sun.target, this.hemi);
 
-    this.sky = new SkyMesh();
-    this.sky.scale.setScalar(6000);
-    this.sky.turbidity.value = 3.2;
-    this.sky.rayleigh.value = 1.4;
-    this.sky.mieCoefficient.value = 0.004;
-    this.sky.mieDirectionalG.value = 0.82;
-    this.sky.cloudCoverage.value = 0; // SkyMesh clouds animate on wall-clock time → disabled (determinism)
-    this.sky.cloudSpeed.value = 0;
-    this.sky.material.fog = false;
-    this.sky.frustumCulled = false;
-    // SkyMesh pins depth to 1 (the far plane for standard depth); with our reversed-Z buffer the far
-    // plane is 0 — keep the sky just inside it so terrain always occludes it.
-    // Preetham radiance is far brighter than our lit terrain; scale it into the same exposure range
-    this.sky.material.colorNode = vec4(vec4(this.sky.material.colorNode).rgb.mul(this.skyGain), 1);
-    const skyVertex = this.sky.material.vertexNode;
-    this.sky.material.vertexNode = Fn(() => {
-      const p = vec4(skyVertex).toVar();
-      p.z.assign(p.w.mul(1e-7));
-      return p;
-    })();
+    this.sky = this.skyModel.createDome();
     scene.add(this.sky);
 
+    this.bounds = {
+      xMin: SLAB.xMin - SLAB.plinthOut - 1,
+      xMax: SLAB.xMax + SLAB.plinthOut + 1,
+      zMin: SLAB.zMin - SLAB.plinthOut - 1,
+      zMax: SLAB.zMax + SLAB.plinthOut + 1,
+      yMin: SLAB.plinthBottom - 1,
+      yMax: 62,
+    };
     scene.fogNode = fog(this.fogColorNode(), this.fogFactorNode());
   }
 
-  /** Analytic exponential height fog along the view ray + mild distance haze. */
+  /**
+   * Analytic exponential height fog along the view ray + mild distance haze. Only the part of the
+   * ray above sea level is hazy: the slab sides and plinth hang in clear museum air, not in fog that
+   * would grow exponentially denser below y = 0.
+   */
   private fogFactorNode() {
     return Fn(() => {
       const ray = positionWorld.sub(env.cameraPos);
       const d = length(ray);
-      const yc = env.cameraPos.y;
-      const yp = positionWorld.y;
+      const yc = max(env.cameraPos.y, 0);
+      const yRaw = positionWorld.y;
+      // the haze lives above sea level: clip the ray where it dips below y = 0 (slab sides, plinth
+      // and sea floor get only the air in front of them, not an ever-denser fog)
+      const frac = select(yRaw.lessThan(0), clamp(yc.div(max(yc.sub(yRaw), 1e-4)), 0, 1), float(1));
+      const yp = max(yRaw, 0);
+      const dAir = d.mul(frac);
       const k = env.fogHeightFalloff;
       const dy = yp.sub(yc);
       const ec = exp(k.mul(yc).negate());
       const ep = exp(k.mul(yp).negate());
-      const integral = select(abs(dy).greaterThan(1e-3), d.mul(ec.sub(ep)).div(k.mul(dy)), d.mul(ec));
+      const integral = select(abs(dy).greaterThan(1e-3), dAir.mul(ec.sub(ep)).div(k.mul(dy)), dAir.mul(ec));
       const total = env.fogHeightDensity.mul(integral).add(env.fogDensity.mul(d));
       return clamp(float(1).sub(exp(total.negate())), 0, 1);
     })();
   }
 
+  /** Fog colour = the sky model's horizon haze in the view azimuth (sun glow, twilight, night). */
   private fogColorNode() {
     return Fn(() => {
       const dir = normalize(positionWorld.sub(env.cameraPos));
-      const sunAmt = pow(max(dot(dir, env.sunDir), 0), 6).mul(float(1).sub(env.night));
-      return mix(env.fogColor, env.sunColor.mul(1.2), sunAmt.mul(0.45));
+      return this.skyModel.horizon(dir);
     })();
   }
 
@@ -90,55 +96,62 @@ export class EnvironmentSystem implements System {
     env.tod.value = state.tod;
     env.cameraPos.value.copy(camera.position);
 
+    // ---- sun & daylight
     const sunDir = sunDirection(state.tod, state.dayOfYear, env.sunDir.value);
     const dl = daylight(sunDir);
     env.sunColor.value.copy(dl.sunColor);
     env.sunIntensity.value = dl.sunIntensity;
     env.night.value = dl.night;
     env.golden.value = dl.golden;
-    env.skyColor.value.copy(dl.skyColor);
+    env.twilight.value = dl.twilight;
+
+    // ---- moon
+    const phase = moonPhase(state.dayOfYear, state.tod);
+    const illum = moonIllumination(phase);
+    env.moonPhase.value = phase;
+    env.moonIllum.value = illum;
+    moonDirection(state.tod, state.dayOfYear, phase, env.moonDir.value);
+    const ml = moonlight(env.moonDir.value, illum, dl.sunElevationDeg);
+    env.moonColor.value.copy(ml.color);
+    env.moonIntensity.value = ml.key;
+
+    // ---- key light: sun above −4°, moon below (both are ~0 at the swap, so it never pops)
+    this.keyIsMoon = dl.sunElevationDeg < -4;
+    const keyDir = this.keyIsMoon ? env.moonDir.value : sunDir;
+    env.keyDir.value.copy(keyDir);
+    env.keyColor.value.copy(this.keyIsMoon ? ml.color : dl.sunColor);
+    env.keyIntensity.value = this.keyIsMoon ? ml.key : dl.sunIntensity;
+    this.sun.color.copy(env.keyColor.value);
+    this.sun.intensity = env.keyIntensity.value;
+
+    // ---- hemisphere (moonlit sky adds a cool lift at night)
+    const skyCol = dl.skyColor.clone();
+    skyCol.r += 0.012 * ml.sky;
+    skyCol.g += 0.02 * ml.sky;
+    skyCol.b += 0.042 * ml.sky;
+    env.skyColor.value.copy(skyCol);
     env.groundColor.value.copy(dl.groundColor);
-    env.fogColor.value.copy(dl.fogColor);
-
-    moonDirection(state.tod, state.dayOfYear, 0.5, env.moonDir.value);
-    const moonUp = Math.max(0, env.moonDir.value.y);
-    env.moonIntensity.value = dl.night * Math.min(1, moonUp * 3) * 0.35;
-
-    // lights
-    this.sun.color.copy(dl.sunColor);
-    this.sun.intensity = dl.sunIntensity;
-    this.moon.intensity = env.moonIntensity.value;
-    this.moon.position.copy(env.moonDir.value).multiplyScalar(1000);
-    this.hemi.color.copy(dl.skyColor);
+    this.hemi.color.copy(skyCol);
     this.hemi.groundColor.copy(dl.groundColor);
     this.hemi.intensity = dl.hemiIntensity;
-    this.sky.sunPosition.value.copy(sunDir);
-    this.sky.showSunDisc.value = 1;
 
-    // view-fitted sun shadow, snapped to shadow texels (no shimmer between frames)
+    // ---- sky dome
+    this.skyModel.update(dl, sunDir, siderealAngle(state.tod, state.dayOfYear), ml.sky);
+
+    // ---- fog / haze / void (the exported haze colour is the sky model's horizon, averaged)
+    this.skyModel.horizonAverage(sunDir, env.fogColor.value);
+    env.horizonColor.value.copy(env.fogColor.value);
+    env.voidColor.value.copy(dl.voidColor);
+    env.fogDensity.value = dl.fogDensity;
+    env.fogHeightDensity.value = dl.fogHeightDensity;
+    env.fogHeightFalloff.value = dl.fogHeightFalloff;
+    this.sky.position.copy(camera.position);
+    this.sky.updateMatrixWorld();
+
+    // ---- key shadow fitted to the visible slab
     const [tx, ty, tz] = state.camera.target;
-    const focus = _t.set(tx, ty, tz);
-    const dist = camera.position.distanceTo(focus);
-    const radius = Math.min(1150, Math.max(18, dist * Math.tan((camera.fov * Math.PI) / 360) * 2.4));
-    const cam = this.sun.shadow.camera;
-    cam.left = -radius;
-    cam.right = radius;
-    cam.top = radius;
-    cam.bottom = -radius;
-    cam.near = 1;
-    cam.far = radius * 4 + 600;
-    cam.updateProjectionMatrix();
-    const texel = (2 * radius) / this.sun.shadow.mapSize.x;
-    _m.lookAt(_v.set(0, 0, 0), _v.copy(sunDir).negate(), new Vector3(0, 1, 0));
-    const inv = _m.clone().invert();
-    focus.applyMatrix4(inv);
-    focus.x = Math.round(focus.x / texel) * texel;
-    focus.y = Math.round(focus.y / texel) * texel;
-    focus.applyMatrix4(_m);
-    this.sunTarget.position.copy(focus);
-    this.sun.position.copy(focus).addScaledVector(sunDir, radius * 2 + 300);
-    this.sunTarget.updateMatrixWorld();
-    this.sun.updateMatrixWorld();
-    this.sun.castShadow = dl.sunIntensity > 0.01;
+    const focusDist = camera.position.distanceTo(_focus.set(tx, ty, tz));
+    const softKm = 0.22 + focusDist * 0.00055;
+    this.shadow.fit(camera, focusDist, keyDir, this.bounds, softKm);
   }
 }

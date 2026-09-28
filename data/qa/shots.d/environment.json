@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "notes": "Environment + diorama review shots (sky, day/night cycle, void backdrop, slab edges). Overview variants reuse the overview-day camera at other times of day.",
+  "shots": [
+    { "id": "env-corner-sw", "tod": 17.0, "camera": { "orbit": { "targetKm": [100, 440], "distanceKm": 220, "elevationDeg": 11, "azimuthDeg": 225, "fov": 35 } }, "note": "low oblique on the SW corner: both cut faces cross the sea (water column over seabed strata), plinth" },
+    { "id": "env-edge-south", "tod": 16.0, "camera": { "orbit": { "targetKm": [1290, 440], "distanceKm": 170, "elevationDeg": 9, "azimuthDeg": 185, "fov": 35 } }, "note": "south cut face under the southern Ephel Duath: folded strata beneath mountains" },
+    { "id": "env-plinth-close", "tod": 16.5, "camera": { "position": [-715, 5, 565], "target": [-752, -20, 480], "fov": 35 }, "note": "close on the south cut face in the sea: water column, seabed strata, plinth moulding" },
+    { "id": "env-slab-west-golden", "tod": 18.8, "camera": { "orbit": { "targetKm": [900, 920], "distanceKm": 1750, "elevationDeg": 14, "azimuthDeg": 250, "fov": 32 } }, "note": "the whole slab floating in the void, low from the west-south-west at golden hour" },
+    { "id": "env-horizon-golden", "tod": 19.2, "camera": { "orbit": { "targetKm": [420, 1040], "distanceKm": 420, "elevationDeg": 7, "azimuthDeg": 110, "fov": 40 } }, "note": "sunset towards the western sea: sun disc, glow, haze consistent with sky" },
+    { "id": "env-dawn", "tod": 4.0, "camera": { "orbit": { "targetKm": [1300, 1050], "distanceKm": 450, "elevationDeg": 7, "azimuthDeg": 235, "fov": 40 } }, "note": "dawn glow in the north-east" },
+    { "id": "env-bluehour", "tod": 21.0, "camera": { "orbit": { "targetKm": [600, 1150], "distanceKm": 450, "elevationDeg": 8, "azimuthDeg": 140, "fov": 40 } }, "note": "blue hour, afterglow in the north-west" },
+    { "id": "env-night-moon", "tod": 23.5, "camera": { "position": [0, 60, -300], "target": [0, 85, 220], "fov": 45 }, "note": "night looking south: stars, low gibbous moon, moonlit haze" },
+    { "id": "env-shadow-golden", "tod": 18.3, "camera": { "orbit": { "place": "caradhras", "distanceKm": 90, "elevationDeg": 28, "azimuthDeg": 160, "fov": 35 } }, "note": "close range golden-hour shadows on the Misty Mountains (acne / peter-panning check)" },
+    { "id": "env-ov-0300", "tod": 3.0, "camera": { "orbit": { "targetKm": [900, 900], "distanceKm": 1850, "elevationDeg": 52, "azimuthDeg": 180, "fov": 32 } } },
+    { "id": "env-ov-0650", "tod": 6.5, "camera": { "orbit": { "targetKm": [900, 900], "distanceKm": 1850, "elevationDeg": 52, "azimuthDeg": 180, "fov": 32 } } },
+    { "id": "env-ov-0800", "tod": 8.0, "camera": { "orbit": { "targetKm": [900, 900], "distanceKm": 1850, "elevationDeg": 52, "azimuthDeg": 180, "fov": 32 } } },
+    { "id": "env-ov-1600", "tod": 16.0, "camera": { "orbit": { "targetKm": [900, 900], "distanceKm": 1850, "elevationDeg": 52, "azimuthDeg": 180, "fov": 32 } } },
+    { "id": "env-ov-1920", "tod": 19.2, "camera": { "orbit": { "targetKm": [900, 900], "distanceKm": 1850, "elevationDeg": 52, "azimuthDeg": 180, "fov": 32 } } },
+    { "id": "env-ov-2100", "tod": 21.0, "camera": { "orbit": { "targetKm": [900, 900], "distanceKm": 1850, "elevationDeg": 52, "azimuthDeg": 180, "fov": 32 } } }
+  ]
+}
