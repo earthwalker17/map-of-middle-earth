@@ -2,9 +2,10 @@ import { DataTexture, LinearFilter, NoColorSpace, RGBAFormat, RepeatWrapping, Un
 import { tsl, type TslNode } from '../materials/tsl.ts';
 import { env } from '../materials/environment.ts';
 import { rand } from '../core/rng.ts';
+import { SLAB } from '../diorama/slabSpec.ts';
 
 type N = TslNode;
-const { clamp, float, max, smoothstep, texture, vec2 } = tsl;
+const { clamp, float, max, smoothstep, step, texture, vec2 } = tsl;
 
 /** texels of the tileable cloud field and its period in km (≈ 3.2 km per texel) */
 const TEX_W = 512;
@@ -56,19 +57,20 @@ function equalise(v: Float32Array): Float32Array {
 }
 
 /**
- * Deterministic cloud shadows on the landscape (and the sea, slab and landmarks — every lit
- * surface). A tileable fBm field of miniature-scale cloud patches (~15–60 km) sits on a deck at
- * env.cloudHeight; each fragment looks up where its ray to the key light crosses the deck, so
- * shadows lengthen with a low sun. The deck drifts with env.wind · env.tFx and its coverage is
+ * Deterministic cloud shadows on the landscape (the slab top: terrain, sea, landmarks and trees;
+ * never the cut faces or plinth, which stand in the clear studio air like the atmosphere keeps
+ * them). A tileable fBm field of miniature-scale cloud patches (~30–80 km, soft-edged) sits on a
+ * deck at env.cloudHeight; each fragment looks up where its ray to the key light crosses the deck,
+ * so shadows lengthen with a low sun. The deck drifts with env.wind · env.tFx and its coverage is
  * env.cloudCoverage (SceneState.weather) — a pure function of the frame state, random access.
  */
 export class CloudField {
   readonly texture: DataTexture;
 
   constructor(seed = 0xc10d) {
-    // R: equalised patch field (≈50 / 25 / 13 km lattice octaves → patches of ~15–40 km, a few
-    // larger clusters from the 100 km octave); G: finer detail that breaks the edges
-    const main = equalise(fbm(seed, 'cloud-main', [[16, 10, 0.35], [32, 20, 1], [64, 40, 0.5], [128, 80, 0.25]]));
+    // R: equalised patch field (≈100 / 50 / 25 km lattice octaves → rounded patches of ~30–80 km,
+    // weak fine octaves so edges stay soft); G: finer detail that breaks the edges a little
+    const main = equalise(fbm(seed, 'cloud-main', [[8, 5, 0.3], [16, 10, 1], [32, 20, 0.4], [64, 40, 0.14]]));
     const detail = fbm(seed, 'cloud-detail', [[32, 20, 1], [64, 40, 0.5], [128, 80, 0.25]]);
     // B: equalised weather-system field (~400 km): cloud fields gather in clusters with clear
     // skies between them instead of an even camouflage of patches
@@ -107,16 +109,27 @@ export class CloudField {
     const q = p.xz.add(L.xz.mul(t)).sub(env.wind.mul(env.tFx));
     const uv = vec2(q.x.div(PERIOD_X), q.y.div(PERIOD_Z));
     const m = texture(this.texture, uv);
-    const v = detail ? m.r.add(texture(this.texture, uv.mul(DETAIL).add(vec2(0.37, 0.61))).g.sub(0.5).mul(0.24)) : m.r;
+    const v = detail ? m.r.add(texture(this.texture, uv.mul(DETAIL).add(vec2(0.37, 0.61))).g.sub(0.5).mul(0.12)) : m.r;
     // local coverage: the weather-system field gathers the patches (mean stays ≈ cloudCoverage)
     const c = env.cloudCoverage;
     const cl = clamp(c.mul(m.b.mul(1.3).add(0.35)), 0, 1);
     const th = float(1).sub(cl);
-    return smoothstep(th.sub(0.03), th.add(0.07), v).mul(clamp(c.mul(40), 0, 1));
+    // wide, soft penumbra: the deck is a diffuse cloud, not a cut-out
+    return smoothstep(th.sub(0.1), th.add(0.16), v).mul(clamp(c.mul(40), 0, 1));
+  }
+
+  /**
+   * 1 on the slab top (inside the map footprint, at or above sea level), 0 on the cut faces
+   * (which sit just outside the footprint), the plinth and anything below the sea surface.
+   */
+  static slabTop(p: N): N {
+    const inX = step(SLAB.xMin, p.x).mul(step(p.x, SLAB.xMax));
+    const inZ = step(SLAB.zMin, p.z).mul(step(p.z, SLAB.zMax));
+    return inX.mul(inZ).mul(smoothstep(-0.6, -0.05, p.y));
   }
 
   /** Multiplier on the key light at p. */
   lightFactor(p: N, detail = true): N {
-    return float(1).sub(this.cover(p, detail).mul(env.cloudShadow));
+    return float(1).sub(this.cover(p, detail).mul(env.cloudShadow).mul(CloudField.slabTop(p)));
   }
 }
