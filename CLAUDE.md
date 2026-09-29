@@ -5,7 +5,8 @@ fantasy look inspired by Peter Jackson's films — *not* a LEGO look. The final 
 offline-rendered ~3–4 min 16:9 film, **"Journey Through Middle-Earth"** (Frodo's route, luminous route line,
 title cards, original score).
 
-**Start every session by reading `docs/PROJECT_STATE.md`** (where we are, what's next), then
+**Start every session with `pnpm host --fix`** (frees RAM: stops windowless approved background apps,
+re-disables their autostart, sweeps orphans), **then read `docs/PROJECT_STATE.md`** (where we are, what's next), then
 `docs/ARCHITECTURE.md` (contracts) as needed. Research briefs: `docs/research/`. References: `reference/`.
 
 ## Architectural principles

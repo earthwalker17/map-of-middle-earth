@@ -56,6 +56,59 @@ export interface MemoryGuardOptions {
   label?: string;
 }
 
+/**
+ * Background apps the user approved (2026-09-29) to be stopped automatically before heavy jobs —
+ * but only while none of their processes has an open window (never close something in use).
+ * Their autostart entries were disabled the same day; `pnpm host --fix` re-applies that if an
+ * app update re-enables them.
+ */
+export const APPROVED_BACKGROUND_APPS = [
+  'msedge',
+  'wps',
+  'wpscloudsvr',
+  'promecefpluginhost',
+  'OneDrive',
+  'OneDrive.Sync.Service',
+  'PhoneExperienceHost',
+  'ms-teams',
+  'MSPCManager',
+];
+
+/** Stop approved background apps that have no open window; returns what was stopped / skipped. */
+export function sweepBackgroundApps(): { stopped: string[]; skipped: string[] } {
+  if (process.platform !== 'win32') return { stopped: [], skipped: [] };
+  const names = APPROVED_BACKGROUND_APPS.map((n) => `'${n}'`).join(',');
+  try {
+    const out = powershell(
+      `$r = @(); foreach ($n in @(${names})) { $ps = @(Get-Process -Name $n -ErrorAction SilentlyContinue); if (-not $ps.Count) { continue }; ` +
+        `if (@($ps | Where-Object { $_.MainWindowHandle -ne 0 }).Count) { $r += "skip:$n" } else { $ps | Stop-Process -Force -ErrorAction SilentlyContinue; $r += "stop:$n x$($ps.Count)" } }; $r -join '|'`,
+      30_000,
+    ).trim();
+    const parts = out ? out.split('|') : [];
+    return {
+      stopped: parts.filter((p) => p.startsWith('stop:')).map((p) => p.slice(5)),
+      skipped: parts.filter((p) => p.startsWith('skip:')).map((p) => p.slice(5)),
+    };
+  } catch {
+    return { stopped: [], skipped: [] };
+  }
+}
+
+/** Largest processes by private memory (for an actionable "not enough memory" message). */
+export function topConsumers(n = 8): string[] {
+  if (process.platform !== 'win32') return [];
+  try {
+    return powershell(
+      `Get-Process | Group-Object ProcessName | ForEach-Object { [pscustomobject]@{ N=$_.Name; C=$_.Count; P=[math]::Round(($_.Group | Measure-Object PrivateMemorySize64 -Sum).Sum/1MB) } } | Sort-Object P -Descending | Select-Object -First ${n} | ForEach-Object { "$($_.N) x$($_.C) $($_.P) MB" }`,
+    )
+      .trim()
+      .split(/\r?\n/)
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 /** Wait (bounded) until the host has room for a heavy job; throws with advice if it never does. */
 export async function waitForMemory(opts: MemoryGuardOptions = {}): Promise<HostMemory> {
   const minAvail = Number(process.env.MOME_MIN_FREE_MB ?? opts.minAvailMB ?? 1800);
@@ -64,13 +117,25 @@ export async function waitForMemory(opts: MemoryGuardOptions = {}): Promise<Host
   const label = opts.label ?? 'heavy job';
   let m = hostMemory();
   if (process.env.MOME_MEM_GUARD === '0') return m;
+  const low = (x: HostMemory) => x.availMB < minAvail || (x.commitFreeMB !== null && x.commitFreeMB < minCommit);
+  if (low(m)) {
+    // free what the user pre-approved before waiting (windowless background apps only)
+    const { stopped, skipped } = sweepBackgroundApps();
+    if (stopped.length) console.log(`[host] stopped approved background apps: ${stopped.join(', ')}`);
+    if (skipped.length) console.log(`[host] left running (open windows): ${skipped.join(', ')}`);
+    if (stopped.length) {
+      await new Promise((r) => setTimeout(r, 3000));
+      m = hostMemory();
+    }
+  }
   const start = Date.now();
   let lastLog = 0;
-  while (m.availMB < minAvail || (m.commitFreeMB !== null && m.commitFreeMB < minCommit)) {
+  while (low(m)) {
     if (Date.now() - start > timeoutMs)
       throw new Error(
         `[host] not enough memory for ${label}: ${fmtMem(m)} (need ≥ ${minAvail} MB available and ≥ ${minCommit} MB commit headroom). ` +
-          'Close other apps (browsers, office suites), wait for other agents, or lower MOME_MIN_FREE_MB deliberately.',
+          `Top consumers: ${topConsumers().join('; ')}. Close apps you are not using (or approve stopping them), wait for other agents, ` +
+          'or lower MOME_MIN_FREE_MB deliberately.',
       );
     if (Date.now() - lastLog > 15_000) {
       console.log(`[host] waiting for memory before ${label}: ${fmtMem(m)} (need ${minAvail}/${minCommit} MB)…`);

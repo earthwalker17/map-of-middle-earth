@@ -18,7 +18,8 @@
     "shots": "node --import tsx tools/capture/shots.ts",
     "qa": "node --import tsx tools/capture/qa.ts",
     "check": "node --import tsx tools/check/run.ts",
-    "perf": "node --import tsx tools/capture/perf.ts"
+    "perf": "node --import tsx tools/capture/perf.ts",
+    "host": "node --import tsx tools/host.ts"
   },
   "dependencies": {
     "lil-gui": "0.21.0",
