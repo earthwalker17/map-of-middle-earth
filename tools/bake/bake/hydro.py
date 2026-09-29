@@ -3,16 +3,21 @@
 1. network   canon ME-GIS river lines (clipped to the frame) → a graph: shared endpoints and T-junctions
              (a tributary ending mid-segment) become nodes, lakes are nodes (inlets / outlets), river
              ends in the sea are one sink node. Lines are oriented by topology — multi-source Dijkstra
-             from the sinks (the sea; for basins without a sea outlet their lowest node, e.g. the
-             endorheic Rhûn / Núrnen), never by comparing end heights.
+             from the sinks (the sea, the endorheic lakes of world.json rivers.sinks, else a basin's
+             lowest node), never by comparing end heights.
 2. centre    one processed centreline per line (0.1 km resample, Gaussian-smoothed corners with pinned
-             ends, junction ends re-snapped onto their parent, resampled every `sampleKm`).
-3. profiles  monotone beds per line (profiles.py) solved parents-first: sea mouth → bed < 0, confluence →
-             the parent's level, lake inlet → the lake level, lake outlet → the lake level; declared
-             falls (world.json rivers.falls) are the only places the surface may drop steeply.
-4. lakes     levels from the outlet (or a shore percentile), beds deepened, shores graded to the level.
-5. carve     smooth U cross-section into h (only lowers), levee fill beside the channel where the bank is
-             lower than the water (so the runtime never needs to drape), valley walls eased.
+             ends, junction ends re-snapped onto their parent, resampled every `sampleKm`); widths from
+             the upstream network length (flow width).
+3. profiles  monotone water levels (profiles.py) per STEM — lines joined end-to-start and lakes between
+             their main inlet and their outlet — solved downstream-first: sea mouth → 0, confluence → the
+             parent's level, other inlets → the lake level. A lake is one pinned, heavily weighted sample,
+             so its level is decided with the rivers around it. Declared falls (world.json rivers.falls,
+             snapped to the steepest DEM drop) are the only places the surface drops steeply; a free
+             source in a hollow below a sill starts at the sill.
+4. lakes     beds deepened below the level as a shelf near the shore, shores graded to the level.
+5. carve     U cross-section into h (exact on land: the thalweg IS the centreline), levee fill beside the
+             channel where the bank is lower than the water (so the runtime never needs to drape), tapering
+             1:2 to the ground, valley walls eased to a per-class slope (gorge overrides).
 6. masks     channel / valley / distance rasters from the same centrelines; rivers.json v2 export data.
 """
 from __future__ import annotations
