@@ -509,7 +509,7 @@ export function placeVegetation(world: World, opts: PlacementOptions): Placement
     const hr = coarseCell * (0.42 + 0.14 * rand(seed, id, 4));
     if (excluded(ex, x, z, hr)) continue;
     const vr = hr * (1.6 + 0.4 * rand(seed, id, 5));
-    const trunk = p.top * (1.0 + 0.25 * rand(seed, id, 6));
+    const trunk = p.top * (1.12 + 0.28 * rand(seed, id, 6));
     coarse.push(x, z, hr, vr, trunk, Kind.Lorien, rand(seed, id, 7) * TAU, 0.9 + 0.2 * rand(seed, id, 8), pickColor(Kind.Lorien, seed, id, x, z), {
       spread: 0.6,
       gap: 0.04,
@@ -626,7 +626,7 @@ export function placeVegetation(world: World, opts: PlacementOptions): Placement
         if (rand(seed, id, 9) < barren.at(x, z)) continue;
         const t = rand(seed, id, 4);
         const yaw = rand(seed, id, 7) * TAU;
-        if (t < 0.55 * grove) {
+        if (t < 0.65 * grove) {
           // a grove: a cluster of crowns
           const hr = c * (0.42 + 0.16 * rand(seed, id, 5));
           if (excluded(ex, x, z, hr)) continue;

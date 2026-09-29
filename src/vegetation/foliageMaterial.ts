@@ -348,7 +348,7 @@ export function createFoliageMaterial(world: World, opts: FoliageOptions = {}): 
   material.roughnessNode = float(0.8);
   material.metalnessNode = float(0);
   // the fill matters most when the key light is weak: moonlit night, blue hour, dawn
-  material.skyFillNode = select(isTrunkF, float(0.3), fillK.element(ikF)).mul(float(1).add(env.night.mul(1.6)).add(env.twilight.mul(0.8)));
+  material.skyFillNode = select(isTrunkF, float(0.3), fillK.element(ikF)).mul(float(1).add(env.night.mul(2.6)).add(env.twilight.mul(0.9)));
   material.transColorNode = select(isTrunkF, vec3(0), vAlbedo.mul(vec3(1.1, 1.3, 0.6)).mul(transK.element(ikF)).mul(0.85));
   // Lórien: faintly luminous gold (stronger at night); mallorn bark catches a little of it
   material.emissiveNode = select(isTrunkF, bark.mul(0.2), vAlbedo)

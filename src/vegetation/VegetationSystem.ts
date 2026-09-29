@@ -33,6 +33,11 @@ const LODS: { detail: number; trunkSides: number; minPx: number; cap: number }[]
   { detail: -1, trunkSides: 3, minPx: 0, cap: Infinity },
 ];
 
+/** spread from a record's packed shape field (spread + 2·gapQ) */
+function spreadOf(shape: number): number {
+  return shape - 2 * Math.floor(shape / 2);
+}
+
 function lodFor(px: number): number {
   for (let i = 0; i < LODS.length - 1; i++) if (px > LODS[i].minPx) return i;
   return LODS.length - 1;
@@ -40,6 +45,8 @@ function lodFor(px: number): number {
 
 interface Chunk {
   box: Box3;
+  /** largest projected-size radius of the chunk's coarse instances (hr · (2 − spread)), km */
+  coarseMaxR: number;
   coarseStart: number;
   coarseCount: number;
   fineStart: number;
@@ -97,7 +104,7 @@ export class VegetationSystem implements System {
   private coarse = new Float32Array(0);
   private fine = new Float32Array(0);
   private fineY = new Float32Array(0);
-  private coarseCell = 2;
+  private coarseY = new Float32Array(0);
   private chunks: Chunk[] = [];
   private lastKey = '';
   /** diagnostics (probe): force every instance into one LOD bucket, or drop the fine band */
@@ -145,7 +152,6 @@ export class VegetationSystem implements System {
 
   private place(density: number): void {
     const res = placeVegetation(this.world, { density, seed: this.world.spec.json.seeds.world, exclusions: this.exclusions });
-    this.coarseCell = res.coarseCell;
     const spec = this.world.spec;
     const ncx = Math.ceil(spec.width / CHUNK);
     const ncz = Math.ceil(spec.depth / CHUNK);
@@ -177,9 +183,14 @@ export class VegetationSystem implements System {
     const f = sortByChunk(res.fine.data);
     this.coarse = c.out;
     this.fine = f.out;
-    const nFine = this.fine.length / FLOATS_PER_INSTANCE;
-    this.fineY = new Float32Array(nFine);
-    for (let k = 0; k < nFine; k++) this.fineY[k] = this.world.heights.sample(this.fine[k * FLOATS_PER_INSTANCE], this.fine[k * FLOATS_PER_INSTANCE + 1]);
+    const heightsOf = (list: Float32Array) => {
+      const n = list.length / FLOATS_PER_INSTANCE;
+      const y = new Float32Array(n);
+      for (let k = 0; k < n; k++) y[k] = this.world.heights.sample(list[k * FLOATS_PER_INSTANCE], list[k * FLOATS_PER_INSTANCE + 1]);
+      return y;
+    };
+    this.fineY = heightsOf(this.fine);
+    this.coarseY = heightsOf(this.coarse);
 
     this.chunks = [];
     for (let j = 0; j < ncz; j++)
@@ -190,8 +201,11 @@ export class VegetationSystem implements System {
         const z0 = spec.zMin + j * CHUNK;
         // crowns can reach a few km beyond the chunk edge and ~CROWN_TOP * vr above the ground
         const [y0, y1] = this.world.heights.rangeMinMax(x0 - 4, z0 - 4, x0 + CHUNK + 4, z0 + CHUNK + 4);
+        let coarseMaxR = 0;
+        for (let k = c.start[id]; k < c.start[id] + c.counts[id]; k++) coarseMaxR = Math.max(coarseMaxR, this.coarse[k * FLOATS_PER_INSTANCE + 2] * (2 - spreadOf(this.coarse[k * FLOATS_PER_INSTANCE + 8])));
         this.chunks.push({
           box: new Box3(new Vector3(x0 - 4, y0 - 1, z0 - 4), new Vector3(x0 + CHUNK + 4, y1 + CROWN_TOP * 3.5, z0 + CHUNK + 4)),
+          coarseMaxR,
           coarseStart: c.start[id],
           coarseCount: c.counts[id],
           fineStart: f.start[id],
@@ -274,41 +288,52 @@ export class VegetationSystem implements System {
     this.stats.bandRadius = bandR;
 
     for (const b of this.buckets) b.count = 0;
-    const coarseD = 2 * this.coarseCell * 0.7;
     const F = FLOATS_PER_INSTANCE;
+    const last = LODS.length - 1;
+    /** append record `s` of `src` to the bucket of `lod` (or the next one with room), crowns scaled by `sc` */
+    const emit = (src: Float32Array, s: number, lod: number, sc: number) => {
+      while (lod < last && this.buckets[lod].count >= this.buckets[lod].cap) lod++;
+      const bk = this.buckets[lod];
+      if (bk.count >= bk.cap) return;
+      const A = bk.a.array as Float32Array;
+      const B = bk.b.array as Float32Array;
+      const C = bk.c.array as Uint8Array;
+      const o = bk.count * 4;
+      A[o] = src[s];
+      A[o + 1] = src[s + 1];
+      A[o + 2] = src[s + 2] * sc;
+      A[o + 3] = src[s + 3] * sc;
+      B[o] = src[s + 4] * sc;
+      B[o + 1] = src[s + 5];
+      B[o + 2] = src[s + 6];
+      B[o + 3] = src[s + 8];
+      const rgb = src[s + 7];
+      C[o] = rgb >>> 16;
+      C[o + 1] = (rgb >>> 8) & 255;
+      C[o + 2] = rgb & 255;
+      C[o + 3] = Math.round(src[s + 9] * 255);
+      bk.count++;
+    };
+    /** LOD from the projected size of the sub-crowns (clustered trees have larger ones than canopy patches) */
+    const lodOf = (src: Float32Array, s: number, dist: number, sc: number) =>
+      this.debug.forceLod ?? lodFor((2 * src[s + 2] * sc * (2 - spreadOf(src[s + 8])) * pxPerKm) / Math.max(1, dist));
 
     for (const ch of this.chunks) {
       _box.copy(ch.box).expandByScalar(SHADOW_MARGIN);
       if (!_frustum.intersectsBox(_box)) continue;
       const d = Math.max(1, ch.box.distanceToPoint(camPos));
-      // coarse: whole chunk at one LOD
+      // coarse: per-instance LOD, or the whole chunk at the far LOD when even its largest crown is small
       if (ch.coarseCount > 0) {
-        const px = (coarseD * pxPerKm) / d;
-        let lod = this.debug.forceLod ?? lodFor(px);
-        while (lod < LODS.length - 1 && this.buckets[lod].count + ch.coarseCount > this.buckets[lod].cap) lod++;
-        const bk = this.buckets[lod];
-        const A = bk.a.array as Float32Array;
-        const B = bk.b.array as Float32Array;
-        const C = bk.c.array as Uint8Array;
-        let n = bk.count;
-        const end = (ch.coarseStart + ch.coarseCount) * F;
-        for (let s = ch.coarseStart * F; s < end; s += F, n++) {
-          const o = n * 4;
-          A[o] = this.coarse[s];
-          A[o + 1] = this.coarse[s + 1];
-          A[o + 2] = this.coarse[s + 2];
-          A[o + 3] = this.coarse[s + 3];
-          B[o] = this.coarse[s + 4];
-          B[o + 1] = this.coarse[s + 5];
-          B[o + 2] = this.coarse[s + 6];
-          B[o + 3] = this.coarse[s + 8];
-          const rgb = this.coarse[s + 7];
-          C[o] = rgb >>> 16;
-          C[o + 1] = (rgb >>> 8) & 255;
-          C[o + 2] = rgb & 255;
-          C[o + 3] = Math.round(this.coarse[s + 9] * 255);
+        const farChunk = this.debug.forceLod === null && lodFor((2 * ch.coarseMaxR * pxPerKm) / d) === last;
+        for (let k = ch.coarseStart; k < ch.coarseStart + ch.coarseCount; k++) {
+          const s = k * F;
+          if (farChunk) {
+            emit(this.coarse, s, last, 1);
+            continue;
+          }
+          const dist = _v.set(this.coarse[s] - camPos.x, this.coarseY[k] - camPos.y, this.coarse[s + 1] - camPos.z).length();
+          emit(this.coarse, s, lodOf(this.coarse, s, dist, 1), 1);
         }
-        bk.count = n;
       }
       // fine: near-camera band only, crowns grow in over [bandR, 0.7 bandR]
       if (ch.fineCount > 0 && d < bandR && !this.debug.noFine) {
@@ -321,29 +346,7 @@ export class VegetationSystem implements System {
           const t = Math.min(1, Math.max(0, (dist - bandIn) / (bandR - bandIn)));
           const sc = 1 - t * t * (3 - 2 * t);
           if (sc < 0.03) continue;
-          const px = (2 * this.fine[s + 2] * sc * pxPerKm) / Math.max(1, dist);
-          let lod = this.debug.forceLod ?? lodFor(px);
-          while (lod < LODS.length - 1 && this.buckets[lod].count >= this.buckets[lod].cap) lod++;
-          const bk = this.buckets[lod];
-          if (bk.count >= bk.cap) continue;
-          const A = bk.a.array as Float32Array;
-          const B = bk.b.array as Float32Array;
-          const C = bk.c.array as Uint8Array;
-          const o = bk.count * 4;
-          A[o] = x;
-          A[o + 1] = z;
-          A[o + 2] = this.fine[s + 2] * sc;
-          A[o + 3] = this.fine[s + 3] * sc;
-          B[o] = this.fine[s + 4] * sc;
-          B[o + 1] = this.fine[s + 5];
-          B[o + 2] = this.fine[s + 6];
-          B[o + 3] = this.fine[s + 8];
-          const rgb = this.fine[s + 7];
-          C[o] = rgb >>> 16;
-          C[o + 1] = (rgb >>> 8) & 255;
-          C[o + 2] = rgb & 255;
-          C[o + 3] = Math.round(this.fine[s + 9] * 255);
-          bk.count++;
+          emit(this.fine, s, lodOf(this.fine, s, dist, sc), sc);
         }
       }
     }
