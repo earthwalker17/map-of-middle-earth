@@ -18,7 +18,6 @@ export class LookNodes {
   readonly soil;
 
   constructor(readonly world: World) {
-    bindLookWorld(world);
     const ids = world.lookRegions;
     this.count = ids.length;
     const col = (hex: string) => new Color(hex);
@@ -176,30 +175,6 @@ export function isLookRegion(id: string | null | undefined): id is RegionId {
 // ------------------------------------------------------------------ region weights on the CPU
 
 /**
- * The world whose look layers the CPU-side looks (RegionLook grade, regional haze) read. Static
- * data, bound once before the first frame: by the EnvironmentSystem when it is given the world,
- * and by every LookNodes (the terrain material builds one at init).
- */
-let lookWorld: World | null = null;
-const lookListeners: ((w: World) => void)[] = [];
-
-export function bindLookWorld(world: World): void {
-  if (lookWorld === world) return;
-  lookWorld = world;
-  for (const f of lookListeners) f(world);
-}
-
-export function boundLookWorld(): World | null {
-  return lookWorld;
-}
-
-/** Run `f` once the look world is bound (immediately if it already is). */
-export function onLookWorld(f: (w: World) => void): void {
-  lookListeners.push(f);
-  if (lookWorld) f(lookWorld);
-}
-
-/**
  * Bilinear region weights at world (x, z) from the look layers' CPU copy (normalised to sum 1).
  * `out` must hold world.lookRegions.length values.
  */
@@ -234,9 +209,40 @@ export function sampleRegionWeights(world: World, x: number, z: number, out: Flo
 }
 
 /**
- * A coarse ground-albedo map (region palette grass/dry mix, linear, ≈ 6.4 km per texel) built once
- * on the CPU — for cheap secondary shading such as terrain seen in water reflections, where the
- * full per-pixel palette blend is not worth its cost. One per world.
+ * Terrain shading constants shared by the terrain material family and every system that
+ * approximates it (the water's reflected terrain today). terrainMaterial.ts still inlines the same
+ * numbers; wave 2's terrain look v2 owns them here and should import these instead of literals so
+ * the approximations never drift.
+ */
+export const TERRAIN_SHADE = {
+  /** snow line (world units): base + south · southness (0 at the north edge … 1 at the south) */
+  snowLineBase: 23,
+  snowLineSouth: 13,
+  /** amplitude of the 60 km / 12 km noise on the snow line (mean 0) */
+  snowLineNoise: [4, 1.5] as const,
+  /** snow fades in over this many units above the line; none on slopes steeper than [a, b] */
+  snowFade: 3.5,
+  snowSlope: [0.55, 0.8] as const,
+  /** snow albedo (sRGB) */
+  snow: 0xeef1f5,
+  /** rock: slope thresholds (1 − n.y), altitude onset [from, to, amount] */
+  rockSlope: [0.26, 0.46] as const,
+  rockAltitude: [20, 34, 0.55] as const,
+  /** grey rock (sRGB, noise mixes the two) and Mordor's basalt */
+  greyRock: [0x6b665f, 0x8e8a84] as const,
+  basalt: 0x2b2826,
+  /** mean grass ↔ dry mix at sea level (+ per unit of height) */
+  dryness: 0.38,
+  drynessPerHeight: 0.006,
+  /** Mordor weight = mordor + this × nurn (basalt rock, no snow) */
+  nurnInMordor: 0.6,
+} as const;
+
+/**
+ * A coarse ground-albedo map (region palette, linear, ≈ 6.4 km per texel) built once on the CPU —
+ * for cheap secondary shading such as terrain seen in water reflections, where the full per-pixel
+ * palette blend is not worth its cost. RGB = the grass/dry mix at the terrain's mean dryness
+ * (TERRAIN_SHADE), A = the Mordor weight (basalt rock, no snow). One per world.
  */
 const albedoCache = new WeakMap<World, DataTexture>();
 export function groundAlbedoTexture(world: World): DataTexture {
@@ -247,6 +253,9 @@ export function groundAlbedoTexture(world: World): DataTexture {
   const ids = world.lookRegions;
   const grass = ids.map((id) => new Color(looksJson.regions[id].ground.grass));
   const dry = ids.map((id) => new Color(looksJson.regions[id].ground.dry));
+  const iMordor = ids.indexOf('mordor' as never);
+  const iNurn = ids.indexOf('nurn' as never);
+  const dm = TERRAIN_SHADE.dryness;
   const w = new Float32Array(ids.length);
   const data = new Uint16Array(W * H * 4);
   const spec = world.spec;
@@ -259,11 +268,12 @@ export function groundAlbedoTexture(world: World): DataTexture {
       let s = 0;
       for (let k = 0; k < ids.length; k++) {
         if (w[k] <= 0) continue;
-        r += w[k] * (grass[k].r * 0.55 + dry[k].r * 0.45);
-        g += w[k] * (grass[k].g * 0.55 + dry[k].g * 0.45);
-        b += w[k] * (grass[k].b * 0.55 + dry[k].b * 0.45);
+        r += w[k] * (grass[k].r * (1 - dm) + dry[k].r * dm);
+        g += w[k] * (grass[k].g * (1 - dm) + dry[k].g * dm);
+        b += w[k] * (grass[k].b * (1 - dm) + dry[k].b * dm);
         s += w[k];
       }
+      const mordor = s > 0 ? Math.min(1, ((iMordor >= 0 ? w[iMordor] : 0) + (iNurn >= 0 ? w[iNurn] * TERRAIN_SHADE.nurnInMordor : 0)) / s) : 0;
       if (s <= 0) {
         r = 0.16;
         g = 0.15;
@@ -274,7 +284,7 @@ export function groundAlbedoTexture(world: World): DataTexture {
       data[o] = DataUtils.toHalfFloat(r / s);
       data[o + 1] = DataUtils.toHalfFloat(g / s);
       data[o + 2] = DataUtils.toHalfFloat(b / s);
-      data[o + 3] = DataUtils.toHalfFloat(1);
+      data[o + 3] = DataUtils.toHalfFloat(mordor);
     }
   const t = new DataTexture(data, W, H, RGBAFormat, HalfFloatType);
   t.wrapS = ClampToEdgeWrapping;

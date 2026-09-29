@@ -7,11 +7,13 @@ import { env } from '../materials/environment.ts';
 
 /**
  * The base look every region grade is relative to: the S1 look (saturation 1.12, contrast 1.08)
- * nudged up to hold colour and depth under the aerial perspective, as a DI grade would.
+ * a touch less saturated (away from the toy look; the region grades carry the colour) and a touch
+ * more contrast (depth). The near field is clear, so no compensation for haze is needed.
  */
-const BASE = { saturation: 1.16, contrast: 1.1, bloomStrength: 0.12, bloomRadius: 0.55, bloomThreshold: 2.2 };
-/** Night (moonlit) layer: Purkinje-like desaturated blue-grey, a little lift in exposure. */
-const NIGHT = { saturation: 0.42, tint: new Color(0.86, 0.95, 1.12), exposure: 0.6, contrast: 0.96, redKeep: 0.75 };
+const BASE = { saturation: 1.1, contrast: 1.1, bloomStrength: 0.12, bloomRadius: 0.55, bloomThreshold: 2.2 };
+/** Night (moonlit) layer: Purkinje-like desaturated blue-grey, a little lift in exposure (contrast
+ * held so the moonlit land reads crisp, not murky). */
+const NIGHT = { saturation: 0.42, tint: new Color(0.85, 0.95, 1.15), exposure: 0.62, contrast: 1.0, redKeep: 0.75 };
 /** How strongly SceneState.lookOverride pulls the grade towards its region. */
 const OVERRIDE = 0.85;
 

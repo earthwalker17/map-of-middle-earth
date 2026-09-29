@@ -19,7 +19,7 @@
     },
     "shire": {
       "ground": {"grass": "#6f9e3c", "dry": "#b0a95a", "soil": "#6e5a3a"},
-      "grade": {"tint": "#fff1da", "saturation": 1.12, "contrast": 0.97, "lift": [0.0015, 0.0012, 0.0004], "bloom": 0.12},
+      "grade": {"tint": "#fff1da", "saturation": 0.95, "contrast": 0.97, "lift": [0.0015, 0.0012, 0.0004], "bloom": 0.12},
       "atmo": {"tint": [1.07, 1.03, 0.92], "density": 0.85, "sky": [1.02, 1.0, 0.97]}
     },
     "enedwaith": {
@@ -75,17 +75,17 @@
     "dagorlad": {
       "ground": {"grass": "#6e6a4c", "dry": "#7f7456", "soil": "#4e4638"},
       "grade": {"tint": "#f7f3f2", "saturation": 0.6, "contrast": 1.06, "exposure": -0.1, "lift": [0.0015, 0.0015, 0.0018], "redKeep": 0.5},
-      "atmo": {"tint": [0.56, 0.54, 0.52], "density": 1.9, "sky": [0.62, 0.62, 0.64]}
+      "atmo": {"tint": [0.56, 0.54, 0.52], "density": 2.1, "sky": [0.62, 0.62, 0.64]}
     },
     "mordor": {
       "ground": {"grass": "#4a443d", "dry": "#57504a", "soil": "#2e2b29"},
-      "grade": {"tint": "#eff1f5", "saturation": 0.55, "contrast": 1.1, "exposure": -0.2, "redKeep": 0.9, "spots": [{"place": "minas-morgul", "radiusKm": 22, "tint": "#eaf8ef", "saturation": 0.62, "contrast": 1.08, "exposure": -0.25, "redKeep": 0.5}]},
-      "atmo": {"tint": [0.36, 0.36, 0.4], "density": 2.3, "sky": [0.36, 0.37, 0.42], "spots": [{"place": "mount-doom", "radiusKm": 32, "tint": [1.0, 0.38, 0.18], "density": 2.4}, {"place": "minas-morgul", "radiusKm": 14, "tint": [0.5, 0.72, 0.6], "density": 2.0}]}
+      "grade": {"tint": "#eff1f5", "saturation": 0.55, "contrast": 1.1, "exposure": -0.2, "redKeep": 0.9, "spots": [{"place": "minas-morgul", "radiusKm": 22, "tint": "#dcf5e2", "saturation": 0.62, "contrast": 1.08, "exposure": -0.25, "lift": [0.0006, 0.0014, 0.0009], "redKeep": 0.5}]},
+      "atmo": {"tint": [0.36, 0.36, 0.4], "density": 2.8, "sky": [0.36, 0.37, 0.42], "spots": [{"place": "mount-doom", "radiusKm": 32, "tint": [1.0, 0.38, 0.18], "density": 2.9}, {"place": "minas-morgul", "radiusKm": 14, "tint": [0.55, 0.78, 0.62], "density": 2.8}]}
     },
     "nurn": {
       "ground": {"grass": "#5d5a44", "dry": "#6e6650", "soil": "#3d3830"},
       "grade": {"tint": "#f7f2ec", "saturation": 0.76, "contrast": 1.04, "redKeep": 0.4},
-      "atmo": {"tint": [0.7, 0.68, 0.66], "density": 1.4, "sky": [0.8, 0.8, 0.82]}
+      "atmo": {"tint": [0.7, 0.68, 0.66], "density": 1.55, "sky": [0.8, 0.8, 0.82]}
     },
     "rhun": {
       "ground": {"grass": "#8f8a5a", "dry": "#a8996a", "soil": "#75664c"},

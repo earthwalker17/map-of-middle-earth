@@ -146,21 +146,22 @@ const SUN_I: [number, number][] = [
   [-2.5, 0], [0, 0.55], [2, 1.9], [5, 3.1], [10, 3.7], [20, 3.7], [40, 3.5], [90, 3.4],
 ];
 /**
- * Hemisphere sky irradiance (colour × intensity) — the shadow fill. A clear sky's diffuse light is
- * ~20–25 % of the sun's on the ground and much less saturated than the zenith colour (the whole
- * dome, haze and horizon included, ~10–12 kK): shadows read cool grey, never navy.
+ * Hemisphere sky irradiance (colour × intensity) — the shadow fill. About the S1 level (shadows
+ * keep their depth: they are lifted by the warm ground bounce, not by a brighter sky), but less
+ * saturated than S1's zenith blue — a clear sky's diffuse light includes the pale haze and horizon
+ * (~10–12 kK), so shadows read cool slate, neither navy nor grey.
  */
 const HEMI_SKY: [number, Rgb][] = [
-  [-18, [0.013, 0.019, 0.040]],
-  [-14, [0.020, 0.028, 0.058]],
-  [-10, [0.034, 0.045, 0.090]],
-  [-6, [0.068, 0.084, 0.165]],
-  [-3, [0.150, 0.175, 0.320]],
-  [0, [0.250, 0.290, 0.470]],
-  [5, [0.360, 0.420, 0.600]],
-  [12, [0.460, 0.530, 0.670]],
-  [35, [0.560, 0.630, 0.740]],
-  [90, [0.600, 0.660, 0.760]],
+  [-18, [0.013, 0.020, 0.044]],
+  [-14, [0.020, 0.030, 0.064]],
+  [-10, [0.033, 0.046, 0.097]],
+  [-6, [0.065, 0.083, 0.178]],
+  [-3, [0.145, 0.172, 0.340]],
+  [0, [0.232, 0.276, 0.490]],
+  [5, [0.320, 0.392, 0.610]],
+  [12, [0.395, 0.468, 0.650]],
+  [35, [0.455, 0.525, 0.680]],
+  [90, [0.470, 0.535, 0.680]],
 ];
 /** Preetham sky gain (the analytic model's radiance is far above our exposure range) */
 const SKY_GAIN: [number, number][] = [
@@ -305,14 +306,16 @@ export function daylight(sunDir: Vector3): Daylight {
   const sunDisc = curve(el, [[-1, 6], [2, 8], [6, 12], [12, 18], [25, 30], [90, 40]]);
 
   // haze: a touch denser at golden hour / dawn (evening and morning mist in the valleys), clearest
-  // at noon. Calibrated for the miniature at 20–2000 km (optical depth ≈ 0.08 at an overview,
-  // ≈ 0.09 at a regional target, ≈ 0.25–0.3 half a map away; peaks stand above the ground haze).
-  const fogHeightDensity = 0.0024 + 0.0016 * golden + 0.0007 * twilight + 0.0006 * night;
+  // at noon and at night (moonlit air must not turn murky). Layer optical depth ≈ 0.08 over a wide
+  // overview's steep rays, ≈ 0.1 to a regional target and ≈ 0.25 half a map away — before the
+  // distance ramp (env.hazeRamp), which keeps the near field clear and a 150–300 km target at
+  // ≈ 0.02–0.03 (see materials/atmosphere.ts).
+  const fogHeightDensity = 0.0024 + 0.0016 * golden + 0.0007 * twilight;
   const fogHeightFalloff = 0.16;
   const airDensity = 0.00072 + 0.00025 * golden + 0.0001 * twilight;
   const airFalloff = 0.016;
-  const fogDensity = 0.000015;
-  const cloudShadow = 0.34 - 0.12 * night;
+  const fogDensity = 0.00001;
+  const cloudShadow = 0.22 - 0.08 * night;
   const turbidity = 2.6 + 0.8 * golden;
 
   return {

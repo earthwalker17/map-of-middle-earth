@@ -4,7 +4,6 @@ import type { FrameContext, InitContext, System } from '../core/types.ts';
 import type { World } from '../world/World.ts';
 import { env } from '../materials/environment.ts';
 import { atmosphere } from '../materials/atmosphere.ts';
-import { bindLookWorld, boundLookWorld } from '../materials/looks.ts';
 import { SLAB } from '../diorama/slabSpec.ts';
 import { daylight, moonDirection, moonIllumination, moonlight, moonPhase, siderealAngle, sunDirection } from './timeOfDay.ts';
 import { SkyModel } from './sky.ts';
@@ -26,15 +25,15 @@ const smooth = (e0: number, e1: number, x: number) => {
  * material reads and drives the three.js lights:
  *  - one shadow-casting key light: the sun by day, the moon by night (it swaps while both are
  *    dark), dimmed under drifting cloud shadows (quality.clouds.shadows)
- *  - a hemisphere light carrying the sky/ground balance (cool grey shadow fill)
+ *  - a hemisphere light carrying the sky/ground balance (cool slate sky fill + warm ground bounce)
  *  - the sky dome (Preetham day + twilight/night layer + stars/moon/sun disc + the studio void
  *    around the floating diorama)
  *  - aerial perspective on every surface (materials/atmosphere.ts) whose in-scatter is the same
  *    sky model tabulated per frame, so haze always matches the sky behind it
  *  - RegionLook: the per-shot colour grade blended from the regions around the camera focus.
  *
- * `world` (static data) feeds the regional grade and haze; without it they are bound when the
- * terrain material builds its LookNodes (before the first frame).
+ * `world` (static data) is bound explicitly: it feeds the RegionLook grade and, at init, the
+ * atmosphere's regional haze texture.
  */
 export class EnvironmentSystem implements System {
   readonly id = 'environment';
@@ -50,16 +49,17 @@ export class EnvironmentSystem implements System {
   keyIsMoon = false;
   /** the shared uniforms (dev handle for diagnostics scripts) */
   readonly env = env;
-  regionLook: RegionLook | null = null;
+  readonly regionLook: RegionLook;
   private bounds!: ShadowBounds;
   private readonly radiance = this.skyModel.radianceCPU.bind(this.skyModel);
 
-  constructor(world?: World) {
-    if (world) bindLookWorld(world);
+  constructor(readonly world: World) {
+    this.regionLook = new RegionLook(world);
   }
 
   init(ctx: InitContext): void {
     const { scene, quality } = ctx;
+    atmosphere.bindWorld(this.world);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(quality.shadowMapSize, quality.shadowMapSize);
     this.shadow = new KeyShadow(this.sun, quality.id === 'preview' ? 6 : quality.id === 'review' ? 12 : 16);
@@ -153,9 +153,7 @@ export class EnvironmentSystem implements System {
     this.sky.updateMatrixWorld();
 
     // ---- region grade + sky tint around the camera focus
-    const world = boundLookWorld();
-    if (world && this.regionLook === null) this.regionLook = new RegionLook(world);
-    this.regionLook?.evaluate(state, camera.position, dl.night);
+    this.regionLook.evaluate(state, camera.position, dl.night);
 
     // ---- key shadow fitted to the visible slab
     const softKm = 0.22 + focusDist * 0.00055;

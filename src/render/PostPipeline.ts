@@ -29,13 +29,12 @@ import {
   interleavedGradientNoise,
   dot,
   max,
-  clamp,
   select,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 
 /**
- * Grade parameters. xposure is the user's (explorer GUI); everything else is written every
+ * Grade parameters. `exposure` is the user's (explorer GUI); everything else is written every
  * frame by RegionLook (src/environment/regionLook.ts) from SceneState — the defaults are the
  * neutral S1 look.
  */

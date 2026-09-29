@@ -13,12 +13,12 @@ import {
 } from 'three/webgpu';
 import { tsl, type TslNode } from './tsl.ts';
 import { env } from './environment.ts';
-import { atmoLook, lookColor, onLookWorld, sampleRegionWeights } from './looks.ts';
+import { atmoLook, lookColor, sampleRegionWeights } from './looks.ts';
 import type { World } from '../world/World.ts';
 import { SLAB } from '../diorama/slabSpec.ts';
 
 type N = TslNode;
-const { Fn, abs, atan, clamp, exp, float, length, max, min, output, positionWorld, select, sqrt, texture, uniform, vec2, vec3, vec4 } = tsl;
+const { Fn, abs, atan, clamp, dot, exp, float, length, max, min, mix, output, positionWorld, select, smoothstep, sqrt, texture, uniform, vec2, vec3, vec4 } = tsl;
 
 /** In-scatter LUT: azimuth × depression (rows at −dir.y = (j / (ROWS − 1))²). */
 const LUT_AZ = 96;
@@ -42,18 +42,24 @@ const _c = new Color();
  *   L = L₀ · T + C∞(dir) · (1 − T),   T = exp(−τ · β_rgb)
  *
  *  - τ integrates two exponential height layers analytically along the ray — a thin ground haze
- *    (hero height fog, thick in valleys, peaks stand clear) and a broad air layer (distance cue at
- *    regional range) scaled by the regional density, plus a trace of uniform "studio" air. The
- *    layers are the diorama's own air: the ray is clipped to the slab footprint and to y ≥ 0, so
- *    the cut faces, plinth and void stay crisp in clear studio air (the miniature's frame).
- *  - β_rgb is Rayleigh-like (blue extincts fastest), so dark distant land drifts to blue-grey and
- *    bright snow keeps its warmth.
+ *    (thick in valleys, peaks stand clear) and a broad air layer — plus a trace of uniform
+ *    "studio" air. The layers are the diorama's own air: the ray is clipped to the slab footprint
+ *    and to y ≥ 0, so the cut faces, plinth and void stay crisp (the miniature's frame).
+ *  - Haze grows with DISTANCE, not with altitude alone: the camera hovers far above most of the
+ *    air, so a pure height model lays the same veil over the whole frame. The layers therefore fade
+ *    in with the distance from the camera (env.hazeRamp.xy: clear near field, gentle depth at a
+ *    150–300 km regional target, real haze only far off and at the horizon; the steep rays of a
+ *    wide overview stay light).
+ *  - The regional haze texture (region weights × looks.json `atmo`) tints C∞ and scales τ per
+ *    pixel. Density below 1 thins the air; the EXCESS above 1 is a local feature (Mordor's fumes,
+ *    Dagorlad ash, marsh damp, elven luminous haze) and fades in over a much shorter range
+ *    (env.hazeRamp.zw), so Mordor keeps its gloom beyond a clear Ithilien at any shot scale.
+ *  - β_rgb is gently Rayleigh-like (blue extincts fastest), so distant land drifts to blue-grey;
+ *    the spread is kept small so dark albedos (forests) do not turn teal.
  *  - C∞(dir) is the sky model's single-scattering radiance for the view direction (Preetham with
  *    the true sun phase angle — the Mie forward lobe glows warm toward a low sun — + twilight and
  *    moonlit sky), tabulated on the CPU per frame into a small azimuth × depression LUT; at the
  *    horizon it equals the dome, so terrain fades into exactly the sky behind it.
- *  - The regional haze texture (built once from the region weights × looks.json `atmo`) tints C∞
- *    and scales τ per pixel: Mordor gloom, Dagorlad ash, Dead Marshes damp, elven luminous haze.
  */
 export class Atmosphere {
   readonly lut: DataTexture;
@@ -85,7 +91,6 @@ export class Atmosphere {
     this.haze.colorSpace = NoColorSpace;
     this.haze.name = 'atmosphere-regional-haze';
     this.haze.needsUpdate = true;
-    onLookWorld((w) => this.buildHaze(w));
   }
 
   // ---------------------------------------------------------------- CPU (per frame / once)
@@ -97,9 +102,10 @@ export class Atmosphere {
   }
 
   /**
-   * Re-tabulate C∞ for the current frame. `key` identifies the inputs (sun/moon/sky state): the
-   * table is a pure function of them, so an unchanged key skips the upload (accumulation
-   * sub-samples of one frame share it).
+   * Re-tabulate C∞ for the current frame. `key` must encode EXACTLY every input `radiance` reads
+   * (SkyModel.radianceKey: full-precision values, no rounding): the table is a pure function of
+   * them, so an equal key means an identical table and the upload is skipped (accumulation
+   * sub-samples of one frame share it) — jump and sequential rendering give the same frame.
    */
   updateInScatter(radiance: RadianceFn, key: string): void {
     if (key === this.lutKey) return;
@@ -142,10 +148,12 @@ export class Atmosphere {
   }
 
   /**
-   * The regional haze texture: RGB = in-scatter tint, A = density multiplier. Region weights ×
-   * looks.json atmo, local spots around places, then a soft blur (haze has no hard borders).
+   * Bind the world (static data; the EnvironmentSystem calls this at init, before the first
+   * frame) and build its regional haze texture: RGB = in-scatter tint, A = density multiplier.
+   * Region weights × looks.json atmo, softly blurred (haze has no hard borders), then the local
+   * spots around places. Until a world is bound the texture is neutral (tint 1, density 1).
    */
-  private buildHaze(world: World): void {
+  bindWorld(world: World): void {
     if (this.hazeWorld === world) return;
     this.hazeWorld = world;
     const ids = world.lookRegions;
@@ -190,7 +198,10 @@ export class Atmosphere {
         px[o + 2] = b / tot;
         px[o + 3] = a / tot;
       }
-    // local spots (Gaussian falloff at radiusKm)
+    // soften the region-weight borders (haze has no hard edges), THEN the place spots: they are
+    // Gaussian already (falloff at radiusKm), so blurring them would only shrink their authored
+    // strength (a 14 km spot kept ~30 % of its peak under the ~15 km blur)
+    blur(px, HAZE_W, HAZE_H, 2);
     for (const L of looks)
       for (const spot of L.spots) {
         const p = world.places.get(spot.place);
@@ -211,7 +222,6 @@ export class Atmosphere {
             px[o + 3] += (dens - px[o + 3]) * s;
           }
       }
-    blur(px, HAZE_W, HAZE_H, 2);
     const d = this.haze.image.data as Uint16Array;
     for (let i = 0; i < px.length; i++) d[i] = DataUtils.toHalfFloat(px[i]);
     this.haze.needsUpdate = true;
@@ -225,7 +235,7 @@ export class Atmosphere {
 
   /**
    * C∞: haze radiance at infinite optical depth for a view direction (one LUT fetch).
-   * xplicitLod makes the fetch legal inside non-uniform control flow (the tables have no mips).
+   * `explicitLod` makes the fetch legal inside non-uniform control flow (the tables have no mips).
    */
   inScatter(dir: N, explicitLod = false): N {
     const u = atan(dir.z, dir.x).div(TWO_PI).add(0.5);
@@ -243,10 +253,11 @@ export class Atmosphere {
   }
 
   /**
-   * Optical depth (green channel) from rom to 	o. The landscape's haze layers live in the air
-   * over the slab only: the ray is clipped to the slab's xz footprint and to y ≥ 0, so the cut
-   * faces, plinth and void (outside or below it) see nothing but the faint studio air.
-   * density scales every layer (the regional multiplier).
+   * Optical depth τ (scalar, green-channel reference: the per-channel extinction multiplies it)
+   * from `from` to `to`. The landscape's haze layers live in the air over the slab only: the ray
+   * is clipped to the slab's xz footprint and to y ≥ 0, so the cut faces, plinth and void (outside
+   * or below it) see nothing but the faint studio air. `density` is the regional multiplier: up
+   * to 1 it scales the distance-ramped air, the excess above 1 is local haze (short ramp).
    */
   opticalDepth(from: N, to: N, density: N): N {
     const ray = to.sub(from);
@@ -276,13 +287,14 @@ export class Atmosphere {
       const kdy = k.mul(dy);
       return select(abs(kdy).greaterThan(1e-3), seg.mul(eA.sub(eB)).div(kdy), seg.mul(eA));
     };
-    const tau = env.fogHeightDensity
-      .mul(layer(env.fogHeightFalloff))
-      .add(env.airDensity.mul(layer(env.airFalloff)))
-      .mul(density)
-      .add(env.fogDensity.mul(d.mul(frac)));
-    return tau;
+    const layers = env.fogHeightDensity.mul(layer(env.fogHeightFalloff)).add(env.airDensity.mul(layer(env.airFalloff)));
+    // distance ramps (see the class doc): the air fades in far from the camera, local haze early
+    const r = env.hazeRamp;
+    const air = smoothstep(r.x, r.y, d).mul(min(density, 1));
+    const local = smoothstep(r.z, r.w, d).mul(max(density.sub(1), 0));
+    return layers.mul(air.add(local)).add(env.fogDensity.mul(d.mul(frac)));
   }
+
   /**
    * Aerial perspective of a surface colour seen from `from` at world point `to`:
    * colour · T + C∞ · tint · (1 − T). `inScatter = false` (quality tier) uses grey extinction.
@@ -294,7 +306,14 @@ export class Atmosphere {
     const T = exp(beta.mul(tau).negate());
     const ray = to.sub(from);
     const dir = ray.div(max(length(ray), 1e-6));
-    const cInf = (inScatter ? this.inScatter(dir, explicitLod) : env.fogColor).mul(reg.rgb);
+    let cInf = (inScatter ? this.inScatter(dir, explicitLod) : env.fogColor).mul(reg.rgb);
+    if (inScatter) {
+      // thin haze is aerosol (Mie) scattering, close to neutral; the sky's blue builds up only over
+      // long paths — so a thin veil stays grey (dark forests do not turn teal) and thick haze at
+      // the horizon takes the full sky colour (no seam with the dome)
+      const grey = dot(cInf, vec3(0.2126, 0.7152, 0.0722));
+      cInf = mix(vec3(grey), cInf, mix(float(0.55), float(1), smoothstep(0, 0.6, tau)));
+    }
     return color.mul(T).add(cInf.mul(vec3(1).sub(T)));
   }
 

@@ -39,7 +39,7 @@ async function buildWorld(engine: Engine, quality: QualityTierId, shots: ShotSpe
         camera: { orbit: { place: def.placeId, distanceKm: b.distanceKm, elevationDeg: b.elevationDeg, azimuthDeg: b.azimuthDeg, fov: b.fov, lift: b.lift } },
       });
 
-  const environment = new EnvironmentSystem();
+  const environment = new EnvironmentSystem(world);
   const terrain = new TerrainSystem(world);
   const water = new WaterSystem(world);
   const vegetation = new VegetationSystem(world);
