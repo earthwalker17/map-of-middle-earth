@@ -55,3 +55,20 @@ export function halton(index: number, base: number): number {
   }
   return r;
 }
+
+/** Stateless 2D value noise in [0, 1) (lattice hashed with hash32). */
+export function valueNoise(x: number, z: number, seed: number): number {
+  const xi = Math.floor(x);
+  const zi = Math.floor(z);
+  const fx = x - xi;
+  const fz = z - zi;
+  const u = fx * fx * (3 - 2 * fx);
+  const v = fz * fz * (3 - 2 * fz);
+  const h00 = hash32(seed, xi, zi) / 4294967296;
+  const h10 = hash32(seed, xi + 1, zi) / 4294967296;
+  const h01 = hash32(seed, xi, zi + 1) / 4294967296;
+  const h11 = hash32(seed, xi + 1, zi + 1) / 4294967296;
+  const a = h00 + (h10 - h00) * u;
+  const b = h01 + (h11 - h01) * u;
+  return a + (b - a) * v;
+}

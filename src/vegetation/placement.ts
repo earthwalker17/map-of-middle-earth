@@ -1,5 +1,8 @@
-import { hash32, rand } from '../core/rng.ts';
+import { hash32, rand, valueNoise } from '../core/rng.ts';
+import { shireFieldGrid } from '../world/fields.ts';
 import type { World } from '../world/World.ts';
+
+export { valueNoise };
 
 /**
  * Deterministic vegetation placement: every instance is a pure function of (world seed, grid cell,
@@ -72,23 +75,6 @@ const smooth = (e0: number, e1: number, x: number) => {
   const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
   return t * t * (3 - 2 * t);
 };
-
-/** Stateless 2D value noise in [0, 1) (lattice hashed with hash32). */
-export function valueNoise(x: number, z: number, seed: number): number {
-  const xi = Math.floor(x);
-  const zi = Math.floor(z);
-  const fx = x - xi;
-  const fz = z - zi;
-  const u = fx * fx * (3 - 2 * fx);
-  const v = fz * fz * (3 - 2 * fz);
-  const h00 = hash32(seed, xi, zi) / 4294967296;
-  const h10 = hash32(seed, xi + 1, zi) / 4294967296;
-  const h01 = hash32(seed, xi, zi + 1) / 4294967296;
-  const h11 = hash32(seed, xi + 1, zi + 1) / 4294967296;
-  const a = h00 + (h10 - h00) * u;
-  const b = h01 + (h11 - h01) * u;
-  return a + (b - a) * v;
-}
 
 /** CPU bilinear access to the baked world masks (same data the GPU samples). */
 export class WorldSampler {
@@ -405,28 +391,8 @@ export function placeVegetation(world: World, opts: PlacementOptions): Placement
       if (bree) w = Math.max(w, 1 - smooth(16, 30, Math.hypot(x - bree.x, z - bree.z)));
       return w;
     };
-    const fs = 5.2; // field size, km (miniature exaggeration)
-    const ang = 0.38;
-    const ca = Math.cos(ang);
-    const sa = Math.sin(ang);
-    // field-grid covering the Shire + Bree bounding box (world coords)
-    const [bx0, bz0] = spec.kmToWorld(420, 1110);
-    const [bx1, bz1] = spec.kmToWorld(640, 980);
-    const cx = (bx0 + bx1) / 2;
-    const cz = (bz0 + bz1) / 2;
-    const half = Math.max(bx1 - bx0, bz1 - bz0) * 0.8;
-    const n = Math.ceil((2 * half) / fs);
-    const vert = (i: number, j: number): [number, number] => {
-      const id = hash32(i, j, 202);
-      const u = -half + (i + (rand(seed, id, 1) - 0.5) * 0.7) * fs;
-      const v = -half + (j + (rand(seed, id, 2) - 0.5) * 0.7) * fs;
-      const x = cx + u * ca - v * sa;
-      const z = cz + u * sa + v * ca;
-      // low-frequency domain warp: field boundaries curve and field sizes vary like an old patchwork
-      const wx = (valueNoise(x / 26, z / 26, seed + 41) - 0.5) * 9;
-      const wz = (valueNoise(x / 26, z / 26, seed + 43) - 0.5) * 9;
-      return [x + wx, z + wz];
-    };
+    // the field lattice is shared with the terrain's field mask (src/world/fields.ts)
+    const { n, vert } = shireFieldGrid(spec, seed);
     const landOk = (x: number, z: number) =>
       s.water(x, z, 2) > 0.5 && s.water(x, z, 0) < 0.25 && s.water(x, z, 1) < 0.2 && s.forest(x, z) < 0.4 && s.slope(x, z) < 0.3 && s.height(x, z) > 0.3;
     for (let j = 0; j <= n; j++)
