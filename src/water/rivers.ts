@@ -4,8 +4,10 @@ import { lakeNear, pushUpTri, type LakeInfo } from './lakes.ts';
 
 export interface RiverBuildOptions {
   includeStreams: boolean;
-  /** ribbon half width = widthKm / 2 × widthScale (slightly wider than the carved channel) */
+  /** ribbon half width = widthKm / 2 × widthScale (world.json rivers.ribbonScale; v2: never inside the carved core) */
   widthScale: number;
+  /** v2: the ribbon reaches at least this far beyond the carved core (world.json rivers.ribbonMarginKm) */
+  marginKm?: number;
 }
 
 export interface RiverStats {
@@ -16,6 +18,10 @@ export interface RiverStats {
   rapidKm: number;
   /** share of cross-sections whose centre vertex ends up below the ground (dry patches), % */
   dryCentrePct: number;
+  /** v2: rapid (whitewater) length within ±1 km of a declared fall; `rapidKm` counts the rest */
+  fallKm?: number;
+  /** v2: ribbons built on baked levels (true) or the v1 runtime estimate (false) */
+  baked?: boolean;
 }
 
 /** Water level above the thalweg the profile aims for (the terrain channel is carved ~0.35–0.53). */
@@ -114,18 +120,27 @@ function smoothLine(p: [number, number][], passes: number): void {
 
 /**
  * River surface ribbons: one merged mesh for every river line (streams optional).
- * The ribbon follows the carved channel (polyline resampled every ~0.5 km, corners smoothed,
- * vertices across ≤ 0.5 km apart). Its water level is a smoothed blend of the downhill-monotone
- * "cut" and "fill" envelopes of the thalweg (+ clearance), capped at lake-outlet / upstream-run
- * levels. Per vertex the level is clamped: never more than MAX_ABOVE_GROUND over the ground (no
- * floating over banks), the channel interior always at least INTERIOR_MIN over it (no dry
- * patches where the DEM slopes across the channel), outer vertices may sink under rising banks
- * (natural waterline). Steep reaches of the resulting surface are flagged as rapids (whitewater).
+ *  - Bake v2 (rivers.json carries per-point `level`): the ribbon runs on the processed centreline
+ *    exactly as the bake carved it, flat across at the baked water level. The bake cut the channel
+ *    below that level and built the banks above it, so nothing is draped or clamped here; whitewater
+ *    comes only from declared falls and genuinely steep baked reaches.
+ *  - v1 bakes: see buildEstimatedRivers (runtime level estimate + drape clamps).
  * Widths taper at sources, ribbons fade into the sea at mouths and into the main river at
  * confluences. Attributes: flow = (along km, across −1..1, half width km, fade),
  * flowDir = (dir.x, dir.z, rapid 0..1, 0).
  */
 export function buildRiverGeometry(world: World, lakes: LakeInfo[], opts: RiverBuildOptions): { geometry: BufferGeometry; stats: RiverStats } {
+  const baked = world.rivers.length > 0 && world.rivers.every((r) => r.level && r.level.length === r.points.length);
+  return baked ? buildBakedRivers(world, lakes, opts) : buildEstimatedRivers(world, lakes, opts);
+}
+
+/**
+ * v1 fallback: the level is a smoothed blend of the downhill-monotone "cut" and "fill" envelopes of
+ * the thalweg (+ clearance), capped at lake-outlet / upstream-run levels; per vertex it is clamped to
+ * the ground (never more than MAX_ABOVE_GROUND over it, the interior at least INTERIOR_MIN over it);
+ * steep reaches of the draped surface are flagged as rapids.
+ */
+function buildEstimatedRivers(world: World, lakes: LakeInfo[], opts: RiverBuildOptions): { geometry: BufferGeometry; stats: RiverStats } {
   const hf = world.heights;
   const runs: Run[] = [];
   for (const r of world.rivers) {
@@ -361,5 +376,182 @@ export function buildRiverGeometry(world: World, lakes: LakeInfo[], opts: RiverB
   return {
     geometry: g,
     stats: { lines: profiles.length, vertices: pos.length / 3, triangles: idx.length / 3, lengthKm: Math.round(lengthKm), rapidKm: Math.round(rapidKm), dryCentrePct: Math.round((1000 * dry) / Math.max(1, sections)) / 10 },
+  };
+}
+
+/** v2 whitewater: level grade (units per km) where rapids start / are full — mountain torrents only */
+const RAPID_GRADE: [number, number] = [1.5, 4.0];
+/** declared falls whiten the ribbon this far up- and downstream of the lip (km) */
+const FALL_SPRAY_KM = 1.0;
+/** a free end (a stream ending in its own valley) fades out over this length (km) */
+const FREE_END_FADE_KM = 0.8;
+/** on a bend tighter than the ribbon, the inner edge stays inside this share of the bend radius */
+const INNER_EDGE = 0.9;
+
+/** The carved channel core half width of a line (tools/bake/bake/hydro.py Line.core). */
+export const coreHalfWidth = (r: { widthKm: number }): number => Math.max(r.widthKm / 2, 0.5);
+
+/** Ribbon half width on bake v2 (tools/bake/bake/hydro.py ribbon_half): scale × half the width, but
+ * always `margin` beyond the carved core so no dry channel wall shows beside a stream. */
+export const ribbonHalfWidth = (r: { widthKm: number }, scale: number, margin: number): number => Math.max((scale * r.widthKm) / 2, coreHalfWidth(r) + margin);
+
+function distToPolyline(p: [number, number][], x: number, z: number): number {
+  let best = Infinity;
+  for (let i = 1; i < p.length; i++) {
+    const [ax, az] = p[i - 1];
+    const ex = p[i][0] - ax;
+    const ez = p[i][1] - az;
+    const t = Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / (ex * ex + ez * ez || 1)));
+    best = Math.min(best, Math.hypot(x - (ax + ex * t), z - (az + ez * t)));
+  }
+  return best;
+}
+
+/**
+ * Bake v2 ribbons: the processed centreline points, level per point, falls — used exactly as baked.
+ * Three vertices across (the surface is flat across), so the mesh is far lighter than the draped v1.
+ * The half width is `widthScale` × half the width but at least `marginKm` beyond the carved core, so
+ * the ribbon edge always lies on the bank just beyond the channel (never over a dry channel wall). A tributary ends at its parent's core
+ * edge (the bake clipped it there, at the parent's level) and fades out across the parent's ribbon; a
+ * distributary starts there and fades in; a line ending in its own valley (no `into`) fades out.
+ */
+function buildBakedRivers(world: World, lakes: LakeInfo[], opts: RiverBuildOptions): { geometry: BufferGeometry; stats: RiverStats } {
+  const hf = world.heights;
+  const lines = world.rivers.filter((r) => opts.includeStreams || r.cls !== 'stream');
+  const byId = new Map(world.rivers.map((r) => [r.id, r]));
+  const ends = world.rivers.map((r) => r.points[r.points.length - 1]);
+  const halfWidth = (r: RiverLine) => ribbonHalfWidth(r, opts.widthScale, opts.marginKm ?? 0.1);
+  /** the other line whose water (core) a start at (x, z) lies on: a continuation or a distributary */
+  const feeder = (self: RiverLine, x: number, z: number): RiverLine | null => {
+    for (let j = 0; j < world.rivers.length; j++) {
+      const o = world.rivers[j];
+      if (o === self) continue;
+      if (Math.hypot(ends[j][0] - x, ends[j][1] - z) < 0.5) return o;
+      if (distToPolyline(o.points, x, z) < coreHalfWidth(o) + 0.3) return o;
+    }
+    return null;
+  };
+  const K = 3;
+  const pos: number[] = [];
+  const flow: number[] = [];
+  const dir: number[] = [];
+  const idx: number[] = [];
+  let lengthKm = 0;
+  let rapidKm = 0;
+  let fallKm = 0;
+  let dry = 0;
+  let sections = 0;
+  let count = 0;
+  for (const r of lines) {
+    const pts = r.points;
+    const lv = r.level!;
+    const bed = r.bed ?? lv;
+    const n = pts.length;
+    if (n < 2) continue;
+    count++;
+    const s = new Float64Array(n);
+    for (let i = 1; i < n; i++) s[i] = s[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+    const L = s[n - 1];
+    lengthKm += L;
+    const [sx, sz] = pts[0];
+    const [ex, ez] = pts[n - 1];
+    const up = lakeNear(lakes, sx, sz, 1.0) ? null : feeder(r, sx, sz);
+    const source = !up && !lakeNear(lakes, sx, sz, 1.0);
+    const parent = typeof r.into === 'string' ? byId.get(r.into) : undefined;
+    const sp = world.spec;
+    const atEdge = Math.min(ex - sp.xMin, sp.xMax - ex, ez - sp.zMin, sp.zMax - ez) < 1.0;
+    const freeEnd = !r.into && bed[n - 1] >= 0 && !atEdge && !lakeNear(lakes, ex, ez, 1.0);
+    // across the parent's ribbon beyond its core (where the tributary's own ribbon overlaps it)
+    const overlap = (o: RiverLine | null | undefined) => (o ? Math.max(0.15, halfWidth(o) - coreHalfWidth(o) + 0.1) : 0);
+    const joinFade = parent ? overlap(parent) : 0;
+    const startFade = up && distToPolyline(up.points, sx, sz) > 0.3 ? overlap(up) : 0;
+    const hwFull = halfWidth(r);
+    const taperLen = Math.min(L * 0.25, r.widthKm * 5 + 2);
+    const at = (i: number) => s[Math.min(n - 1, i)];
+    const fallS = (r.falls ?? []).map((f) => 0.5 * (at(f.index) + at(f.index + 1)));
+    const base = pos.length / 3;
+    for (let i = 0; i < n; i++) {
+      const a = Math.max(0, i - 1);
+      const b = Math.min(n - 1, i + 1);
+      const dx = pts[b][0] - pts[a][0];
+      const dz = pts[b][1] - pts[a][1];
+      const dl = Math.hypot(dx, dz) || 1;
+      const tx = dx / dl;
+      const tz = dz / dl;
+      const hw = hwFull * (source ? 0.3 + 0.7 * smooth01(0, taperLen, s[i]) : 1);
+      // bend radius from the turn between the neighbouring segments: the inner edge never folds over
+      let inner = 0;
+      let rInner = Infinity;
+      if (i > 0 && i < n - 1) {
+        const ax = pts[i][0] - pts[i - 1][0];
+        const az = pts[i][1] - pts[i - 1][1];
+        const bx = pts[i + 1][0] - pts[i][0];
+        const bz = pts[i + 1][1] - pts[i][1];
+        const la = Math.hypot(ax, az) || 1;
+        const lb = Math.hypot(bx, bz) || 1;
+        const cross = (ax * bz - az * bx) / (la * lb);
+        const turn = Math.asin(Math.max(-1, Math.min(1, cross)));
+        if (Math.abs(turn) > 1e-4) {
+          rInner = (0.5 * (la + lb)) / Math.abs(turn);
+          // the normal (−tz, tx) (v = +1) is the tangent turned the way a positive cross product turns
+          inner = cross > 0 ? 1 : -1;
+        }
+      }
+      // whitewater: declared falls (spray around the lip) or a genuinely steep baked reach
+      const a2 = Math.max(0, i - 2);
+      const b2 = Math.min(n - 1, i + 2);
+      const grade = (lv[a2] - lv[b2]) / Math.max(1e-3, s[b2] - s[a2]);
+      const nearFall = fallS.some((f) => Math.abs(s[i] - f) < FALL_SPRAY_KM);
+      const rapid = nearFall ? 1 : smooth01(RAPID_GRADE[0], RAPID_GRADE[1], grade);
+      if (i > 0 && rapid > 0.5) {
+        if (nearFall) fallKm += s[i] - s[i - 1];
+        else rapidKm += s[i] - s[i - 1];
+      }
+      let fade = smooth01(-0.12, 0.0, bed[i]); // hand over to the sea at the mouth
+      if (source) fade *= smooth01(0, 0.8, s[i]);
+      if (startFade) fade *= smooth01(0, startFade, s[i]);
+      if (joinFade) fade *= smooth01(L, L - joinFade, s[i]);
+      if (freeEnd) fade *= smooth01(L, L - Math.min(FREE_END_FADE_KM, 0.5 * L), s[i]);
+      const nx = -tz;
+      const nz = tx;
+      const y = lv[i];
+      for (let k = 0; k < K; k++) {
+        const v = -1 + (2 * k) / (K - 1);
+        const off = v === inner ? Math.min(hw, INNER_EDGE * rInner) : hw;
+        pos.push(pts[i][0] + nx * v * off, y, pts[i][1] + nz * v * off);
+        flow.push(s[i], v, hw, fade);
+        dir.push(tx, tz, rapid, 0);
+      }
+      sections++;
+      if (y < hf.sample(pts[i][0], pts[i][1]) - 0.005) dry++;
+      if (i > 0) {
+        const r0 = base + (i - 1) * K;
+        const r1 = base + i * K;
+        for (let k = 0; k < K - 1; k++) {
+          pushUpTri(idx, pos, r0 + k, r1 + k, r0 + k + 1);
+          pushUpTri(idx, pos, r0 + k + 1, r1 + k, r1 + k + 1);
+        }
+      }
+    }
+  }
+  const g = new BufferGeometry();
+  g.setAttribute('position', new Float32BufferAttribute(pos, 3));
+  g.setAttribute('flow', new Float32BufferAttribute(flow, 4));
+  g.setAttribute('flowDir', new Float32BufferAttribute(dir, 4));
+  g.setIndex(new Uint32BufferAttribute(idx, 1));
+  g.computeBoundingSphere();
+  g.computeBoundingBox();
+  return {
+    geometry: g,
+    stats: {
+      lines: count,
+      vertices: pos.length / 3,
+      triangles: idx.length / 3,
+      lengthKm: Math.round(lengthKm),
+      rapidKm: Math.round(rapidKm),
+      fallKm: Math.round(fallKm * 10) / 10,
+      dryCentrePct: Math.round((1000 * dry) / Math.max(1, sections)) / 10,
+      baked: true,
+    },
   };
 }

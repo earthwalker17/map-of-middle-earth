@@ -1,8 +1,11 @@
 import { defineLandmark } from '../types.ts';
 import type { LocalStamp } from '../types.ts';
 
-const SUMMIT_AT: [number, number] = [2, -3.7];
-const spurs: LocalStamp[] = [0, 60, 120, 180, 240, 300].map((deg) => ({
+// the display position is the Front Gate at the southern foot, where the River Running issues
+// (places.json offset); the summit sits over the DEM summit, 8.7 km north. The cone ends at the gate
+// and there is no southern spur, so neither lifts the river
+const SUMMIT_AT: [number, number] = [2.545, -8.348];
+const spurs: LocalStamp[] = [0, 60, 120, 240, 300].map((deg) => ({
   kind: 'raise' as const,
   at: [SUMMIT_AT[0] + Math.sin((deg * Math.PI) / 180) * 9, SUMMIT_AT[1] - Math.cos((deg * Math.PI) / 180) * 9] as [number, number],
   radius: 7,
@@ -14,7 +17,7 @@ export default defineLandmark({
   id: 'erebor',
   placeId: 'erebor',
   tier: 'A',
-  stamps: [{ kind: 'cone', at: SUMMIT_AT, radius: 20, summit: 20, exponent: 1.05 }, ...spurs],
+  stamps: [{ kind: 'cone', at: SUMMIT_AT, radius: 9, summit: 24, exponent: 1.25 }, ...spurs],
   proxy: (k) => {
     // the Front Gate on the south face; local y = 0 is the slope under the gate
     k.box('weathered', 3.2, 2.8, 0.6, { at: [0, 0, 0.2], tint: 0x8c8a86 });

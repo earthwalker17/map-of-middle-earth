@@ -3,10 +3,15 @@
  *  - places: display offsets within the maximum, no overlapping landmark footprints
  *  - landmarks: every definition folder matches a place; every Tier-A place has a definition
  *  - assets: every shipped file in public/ is covered by CREDITS.md
+ *  - baked world (when a bake exists; MOME_WORLD_DIR overrides data/baked): monotone baked river levels,
+ *    no stamp moves a river channel / lake ("rivers win", onRiver allowlist), per-landmark stamp loss to
+ *    the river guard, the bake's hydro geometry gates (report.json) — see world.ts
  * Exit code 1 on any error.
  */
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { bakedDir, hasBake } from './baked.ts';
+import { checkBakedWorld } from './world.ts';
 
 const ROOT = process.cwd();
 const errors: string[] = [];
@@ -89,9 +94,20 @@ for (const file of walk(join(ROOT, 'public'))) {
   if (!credits.includes(key)) errors.push(`assets: public/${rel} not covered by CREDITS.md (looked for '${key}' from ${top})`);
 }
 
+// ------------------------------------------------------------------ baked world
+const baked = bakedDir();
+const bakedInfo: string[] = [];
+if (hasBake(baked)) {
+  const r = await checkBakedWorld(baked);
+  errors.push(...r.errors);
+  warnings.push(...r.warnings);
+  bakedInfo.push(...r.info);
+} else warnings.push(`baked world: no bake at ${baked} — river / stamp checks skipped`);
+
 // ------------------------------------------------------------------ report
 console.log(`[check] places: ${places.length} (${landmarks.length} landmarks), overlaps: ${overlaps}`);
 console.log(`[check] landmark definitions: ${defs.length}`);
+for (const i of bakedInfo) console.log(`[check] ${i}`);
 for (const w of warnings) console.warn(`  warn  ${w}`);
 for (const e of errors) console.error(`  ERROR ${e}`);
 console.log(errors.length ? `[check] FAILED (${errors.length} errors)` : '[check] OK');

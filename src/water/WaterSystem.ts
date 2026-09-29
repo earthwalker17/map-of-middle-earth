@@ -11,7 +11,9 @@ import { LAKE, RIVER, SEA } from './presets.ts';
  * Water v1 — sea, lakes and rivers from one material family (waterMaterial.ts), three draws:
  *  - sea: one plane at sea level (0) over the whole frame; the terrain hides it on land;
  *  - lakes: earcut-triangulated polygons from world.lakes at their manifest levels;
- *  - rivers: one merged ribbon mesh following the carved channels (rivers.ts).
+ *  - rivers: one merged ribbon mesh following the carved channels (rivers.ts) — on bake v2 exactly the
+ *    baked centrelines at their baked, monotone levels (the bake carved the channel and built the banks;
+ *    the HeightField guard keeps landmark stamps off them), on v1 bakes a runtime level estimate.
  * Everything animated reads env.tFx / env.wind in the shader, so evaluate() is stateless.
  */
 export class WaterSystem implements System {
@@ -65,7 +67,7 @@ export class WaterSystem implements System {
   }
 
   private buildRivers() {
-    const r = buildRiverGeometry(this.world, this.lakeList, { includeStreams: this.includeStreams, widthScale: 1.4 });
+    const r = buildRiverGeometry(this.world, this.lakeList, { includeStreams: this.includeStreams, widthScale: this.world.spec.json.rivers.ribbonScale, marginKm: this.world.spec.json.rivers.ribbonMarginKm });
     this.riverStats = r.stats;
     this.heightsVersion = this.world.heights.texture.version;
     return r.geometry;
@@ -74,8 +76,8 @@ export class WaterSystem implements System {
   /**
    * Nothing animates on the CPU (waves/flow/foam read env.tFx in the shaders). The only work is a
    * one-off rebuild of the river ribbons when the HeightField stamp layer changed after init
-   * (landmark stamps): the ribbons are a pure function of the composite heights, so this stays
-   * deterministic and order-independent.
+   * (landmark stamps): the ribbons are a pure function of the baked river data and the composite
+   * heights, so this stays deterministic and order-independent.
    */
   evaluate(_frame: FrameContext): void {
     if (this.world.heights.texture.version !== this.heightsVersion) {

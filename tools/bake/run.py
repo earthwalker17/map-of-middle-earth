@@ -1,4 +1,4 @@
-"""Entry point: `pnpm bake [--steps dem,vectors,regions,terrain,export,preview] [--force]`."""
+"""Entry point: `pnpm bake [-- --steps coast,vectors,regions,relief,hydro,mask,export,preview] [--no-preview] [--force]`."""
 import os
 import sys
 

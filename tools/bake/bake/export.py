@@ -10,17 +10,16 @@ import numpy as np
 from PIL import Image
 from shapely.geometry import LineString, MultiLineString, MultiPolygon, Polygon
 
+from .cache import q8
 from .config import Config, Timer
-
-
-def _u8(a: np.ndarray) -> np.ndarray:
-    return np.clip(np.rint(a * 255), 0, 255).astype(np.uint8)
+from .terrainmask import CHANNELS as TERRAIN_CHANNELS
+from .vectors import canon_lakes, canon_roads
 
 
 def _raw(path: Path, channels: list[np.ndarray]) -> tuple[int, int]:
-    """Interleaved RGBA8 raw (row 0 = north). Raw instead of PNG: no premultiplied-alpha,
+    """Interleaved RGBA8 raw (row 0 = north) from u8 channels. Raw instead of PNG: no premultiplied-alpha,
     colour-space or flip ambiguity for data masks. A PNG copy goes to preview/ for inspection."""
-    rgba = np.ascontiguousarray(np.stack([_u8(c) for c in channels], axis=-1))
+    rgba = np.ascontiguousarray(np.stack([np.asarray(c, dtype=np.uint8) for c in channels], axis=-1))
     rgba.tofile(path)
     prev = path.parent / "preview"
     prev.mkdir(exist_ok=True)
@@ -56,9 +55,10 @@ def _world_coords(cfg: Config, coords) -> list:
     return out
 
 
-def export_all(cfg: Config, h: np.ndarray, info: dict, vec: dict, region_ids: list[str], region_layers: np.ndarray) -> dict:
+def export_all(cfg: Config, hy: dict, rivers: list[dict], vec: dict, reg: dict, tm: dict) -> dict:
     out = cfg.out
     files: dict[str, dict] = {}
+    h = hy["height"]
 
     with Timer("export: height (u16)"):
         hmin, hmax = float(h.min()), float(h.max())
@@ -68,53 +68,58 @@ def export_all(cfg: Config, h: np.ndarray, info: dict, vec: dict, region_ids: li
         files["height"] = {"file": p.name, "format": "u16le", "width": cfg.W, "height": cfg.H, "min": hmin, "max": hmax, "sha256": _sha(p)}
 
     with Timer("export: masks"):
-        lake = np.zeros_like(h)
-        for m in vec["lake_masks"].values():
-            lake = np.maximum(lake, m)
-        land = np.clip((h > 0).astype(np.float32), 0, 1)
+        land = q8((h > 0).astype(np.float32))
         for key, chans, names in (
-            ("water", [vec["river_channel"], lake, land, vec["river_valley"]], ["riverChannel", "lake", "land", "riverValley"]),
+            ("water", [hy["river_channel"], hy["lake"], land, hy["river_valley"]], ["riverChannel", "lake", "land", "riverValley"]),
             ("landcover", [vec["forest"], vec["wetland"], vec["vulcanism"], vec["road"]], ["forest", "wetland", "vulcanism", "road"]),
             ("forests", [vec["forest_mirkwood"], vec["forest_fangorn"], vec["forest_lorien"], vec["forest_old"]], ["mirkwood", "fangorn", "lorien", "oldForest"]),
+            ("terrain", [tm[c] for c in TERRAIN_CHANNELS], TERRAIN_CHANNELS),
         ):
             p = out / f"{key}.rgba8"
             w, hh = _raw(p, chans)
             files[key] = {"file": p.name, "format": "rgba8", "width": w, "height": hh, "channels": names, "sha256": _sha(p)}
 
     with Timer("export: look weights"):
-        L, lh, lw = region_layers.shape
+        layers = reg["layers"]
+        region_ids = list(reg["_extra"]["ids"])
+        L, lh, lw = layers.shape
         tiles = (L + 3) // 4
-        stack = np.zeros((tiles * lh, lw, 4), np.float32)
+        stack = np.zeros((tiles * lh, lw, 4), np.uint8)
         for i in range(L):
-            stack[(i // 4) * lh:(i // 4 + 1) * lh, :, i % 4] = region_layers[i]
+            stack[(i // 4) * lh : (i // 4 + 1) * lh, :, i % 4] = layers[i]
         p = out / "look.rgba8"
-        np.ascontiguousarray(_u8(stack)).tofile(p)
+        np.ascontiguousarray(stack).tofile(p)
         files["look"] = {"file": p.name, "format": "rgba8", "layers": tiles, "tileWidth": lw, "tileHeight": lh, "regions": region_ids, "sha256": _sha(p)}
 
     with Timer("export: rivers / lakes / roads json"):
-        rivers = []
-        for row in vec["rivers_gdf"].itertuples():
-            for ln in _lines(row.geometry.simplify(250)):
-                if ln.length < 2000:
-                    continue
-                rivers.append({"name": row.name if isinstance(row.name, str) else None, "cls": row.cls, "widthKm": cfg.world["rivers"]["widthKm"][row.cls], "points": _world_coords(cfg, ln.coords)})
-        levels = {l["key"]: l["level"] for l in info.get("lakes", [])}
+        # rivers.json v2: the processed centrelines exactly as carved (points, level, bed, falls, into)
+        rv = [{k: v for k, v in r.items() if not k.startswith("_")} for r in rivers]
+        lake_info = hy["_extra"]["lakes"]
+        levels = {l["key"]: l["level"] for l in lake_info}
         lakes = []
-        for row in vec["lakes_gdf"].itertuples():
-            for poly in _polys(row.geometry.simplify(200)):
+        for row in canon_lakes(cfg).itertuples():
+            if row.key not in levels:
+                continue
+            for poly in _polys(row.geometry.simplify(200 if row.geometry.area > 4e6 else 60)):
                 lakes.append({"name": row.NAME if isinstance(row.NAME, str) else None, "key": row.key, "level": levels.get(row.key), "ring": _world_coords(cfg, poly.exterior.coords)})
         roads = []
-        for row in vec["roads_gdf"].itertuples():
+        for row in canon_roads(cfg).itertuples():
             for ln in _lines(row.geometry.simplify(300)):
                 roads.append({"name": row.name if isinstance(row.name, str) else None, "points": _world_coords(cfg, ln.coords)})
-        for name, data in (("rivers", rivers), ("lakes", lakes), ("roads", roads)):
+        for name, data in (("rivers", rv), ("lakes", lakes), ("roads", roads)):
             p = out / f"{name}.json"
             p.write_text(json.dumps(data, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
             files[name] = {"file": p.name, "count": len(data), "sha256": _sha(p)}
+        # hydro geometry report (for validators, not a runtime asset): tools/check gates on it
+        rep = hy["_extra"].get("report")
+        if rep is not None:
+            p = out / "report.json"
+            p.write_text(json.dumps(rep, indent=1, ensure_ascii=False), encoding="utf-8")
+            files["report"] = {"file": p.name, "sha256": _sha(p)}
 
     cx, cy = cfg.centre_km
     manifest = {
-        "version": 1,
+        "version": 2,
         "createdAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "frame": cfg.world["frame"],
         "centreKm": [cx, cy],
@@ -128,7 +133,7 @@ def export_all(cfg: Config, h: np.ndarray, info: dict, vec: dict, region_ids: li
         "kmPerPixel": cfg.px_km,
         "vertical": {k: v for k, v in cfg.world["vertical"].items() if k != "demCalibration"},
         "files": files,
-        "lakes": info.get("lakes", []),
+        "lakes": [{"key": l["key"], "level": l["level"], "areaKm2": l["areaKm2"]} for l in lake_info if l["level"] is not None],
     }
     (out / "manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
     return manifest

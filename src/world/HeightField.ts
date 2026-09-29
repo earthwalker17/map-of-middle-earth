@@ -3,12 +3,83 @@ import type { WorldSpec } from './WorldSpec.ts';
 import { applyStamp, stampBounds, type Stamp } from './stamps.ts';
 
 const BLOCK = 16;
+/** beyond the water's edge the guard hands over to the bank clamp over this distance (km) */
+const GUARD_EDGE = 0.3;
+/** the bank above/below the water level may reach this far above/below it at the edge (units) */
+const GUARD_EPS = 0.03;
+/** the bank clamp holds `slope` for this distance from the water's edge (km), then steepens by GUARD_RISE
+ * (units per km) — like the bake's eased valley walls: a natural bank at the water, the stamp's own
+ * shape a little further away */
+const GUARD_NEAR = 0.5;
+const GUARD_RISE = 4.0;
+
+/**
+ * Water the stamp layer must respect ("rivers win"), applied after the stamps are composited:
+ *  - on the water (a river's ribbon, a lake and its graded shore) every cell keeps its baked height —
+ *    a stamp may neither lift the channel (false cascades) nor sink the banks the ribbon edge hides in;
+ *  - beside it a stamp keeps its shape, but the ground may rise above (or fall below) the local water
+ *    level only as steeply as `slope` (units per km) from the water's edge: a hill beside a stream gets
+ *    a natural bank down to it instead of being cut off, a flatten never digs a hole under the ribbon.
+ * Allowlisted circles (landmarks on or over the water by design: places.json `onRiver`) are exempt.
+ */
+export interface RiverGuard {
+  /** centreline, water level per point (null = the baked ground there), ribbon half width (km) */
+  lines: { points: [number, number][]; level: number[] | null; halfWidth: number }[];
+  lakes: { ring: [number, number][]; level: number | null }[];
+  exempt: { x: number; z: number; r: number }[];
+  /** steepest bank a stamp may leave beside the water, units per km */
+  slope: number;
+}
+
+/** What the river guard took back from a set of stamps (validators: tools/check/world.ts). */
+export interface StampLoss {
+  /** cells the guard changed */
+  cells: number;
+  /** Σ |stamp delta| · texel² over the stamps' bounds, units·km² */
+  stampVolume: number;
+  /** Σ |guard correction| · texel², units·km² */
+  lostVolume: number;
+  /** largest single-cell correction, units */
+  maxLost: number;
+}
+
+const smoothstep = (e0: number, e1: number, x: number): number => {
+  const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
+  return t * t * (3 - 2 * t);
+};
+
+/** lake cells within this distance (km) of the shore polygon are guarded too (rasterised coverage) */
+const LAKE_MARGIN = 0.4;
+
+
+function ringDistance(r: [number, number][], x: number, z: number): number {
+  let best = Infinity;
+  for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+    const [ax, az] = r[j];
+    const ex = r[i][0] - ax;
+    const ez = r[i][1] - az;
+    const t = Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / (ex * ex + ez * ez || 1)));
+    best = Math.min(best, Math.hypot(x - (ax + ex * t), z - (az + ez * t)));
+  }
+  return best;
+}
+
+function inRing(r: [number, number][], x: number, z: number): boolean {
+  let c = false;
+  for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+    const [xi, zi] = r[i];
+    const [xj, zj] = r[j];
+    if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) c = !c;
+  }
+  return c;
+}
 
 /**
  * The ONLY height API in the project: base bake (u16 → float) + TypeScript stamp layer.
  * Provides the GPU texture (R32F, linear), CPU bilinear sampling, normals, min/max bounds for
  * culling and a ray-march for picking / camera clearance. Terrain, water, vegetation, landmarks,
- * labels and the route all go through this.
+ * labels and the route all go through this. The stamp layer never moves the water (rivers, lakes) and
+ * leaves natural banks beside it (RiverGuard, registered by World.load).
  */
 export class HeightField {
   readonly width: number;
@@ -20,6 +91,9 @@ export class HeightField {
   readonly texture: DataTexture;
   private pyramid: { w: number; h: number; min: Float32Array; max: Float32Array }[] = [];
   private stamps: Stamp[] = [];
+  private guard: RiverGuard | null = null;
+  /** cells the river guard restored at the last setStamps (diagnostics / validators) */
+  guardedCells = 0;
 
   private constructor(
     readonly spec: WorldSpec,
@@ -86,8 +160,170 @@ export class HeightField {
     this.stamps = stamps;
     this.data.set(this.base);
     for (const s of stamps) this.applyOne(s);
+    this.guardedCells = this.guard && stamps.length ? this.applyGuard(stamps, this.guard) : 0;
     this.texture.needsUpdate = true;
     this.buildPyramid();
+  }
+
+  /** Register the water the stamp layer must not raise (World.load, before any setStamps). */
+  setRiverGuard(guard: RiverGuard): void {
+    this.guard = guard;
+    if (this.stamps.length) this.setStamps(this.stamps);
+  }
+
+  /** Cell index range [c0, c1, r0, r1] covering a world rectangle. */
+  private cellRange(x0: number, z0: number, x1: number, z1: number): [number, number, number, number] {
+    return [
+      Math.max(0, Math.floor((x0 - this.spec.xMin) / this.texel)),
+      Math.min(this.width - 1, Math.ceil((x1 - this.spec.xMin) / this.texel)),
+      Math.max(0, Math.floor((z0 - this.spec.zMin) / this.texel)),
+      Math.min(this.height - 1, Math.ceil((z1 - this.spec.zMin) / this.texel)),
+    ];
+  }
+
+  /**
+   * What the guard takes back from `stamps` (composited alone, nothing else changes): cells touched,
+   * the stamps' own volume and the volume the guard removed. The current stamp layer is restored.
+   */
+  stampLoss(stamps: Stamp[], onCell?: (x: number, z: number, stamped: number, guarded: number) => void): StampLoss {
+    const saved = this.data.slice();
+    this.data.set(this.base);
+    for (const s of stamps) this.applyOne(s);
+    const raw = this.data.slice();
+    if (this.guard) this.applyGuard(stamps, this.guard);
+    const a2 = this.texel * this.texel;
+    const out: StampLoss = { cells: 0, stampVolume: 0, lostVolume: 0, maxLost: 0 };
+    for (const s of stamps) {
+      const [c0, c1, r0, r1] = this.cellRange(...stampBounds(s));
+      for (let r = r0; r <= r1; r++)
+        for (let c = c0; c <= c1; c++) {
+          const i = r * this.width + c;
+          if (Number.isNaN(raw[i])) continue;
+          const lost = Math.abs(raw[i] - this.data[i]);
+          out.stampVolume += Math.abs(raw[i] - this.base[i]) * a2;
+          out.lostVolume += lost * a2;
+          out.maxLost = Math.max(out.maxLost, lost);
+          if (lost > 1e-4) {
+            out.cells++;
+            onCell?.(this.spec.xMin + (c + 0.5) * this.texel, this.spec.zMin + (r + 0.5) * this.texel, raw[i], this.data[i]);
+          }
+          raw[i] = Number.NaN; // count overlapping stamp bounds once
+        }
+    }
+    this.data.set(saved);
+    return out;
+  }
+
+  /**
+   * "Rivers win", inside each stamp's bounds: on the water (ribbon, lake + graded shore) the baked
+   * height, beside it the stamped height clamped to the water level ± slope × distance from the edge
+   * (see RiverGuard). Cells beyond a line's ends are left to whatever the line joins (a stamp may
+   * build the mountain a river springs from).
+   */
+  private applyGuard(stamps: Stamp[], g: RiverGuard): number {
+    const seen = new Uint8Array(this.width * this.height);
+    const S = g.slope;
+    let n = 0;
+    for (const s of stamps) {
+      const [x0, z0, x1, z1] = stampBounds(s);
+      const [c0, c1, r0, r1] = this.cellRange(x0, z0, x1, z1);
+      let maxDelta = 0;
+      for (let r = r0; r <= r1; r++)
+        for (let c = c0; c <= c1; c++) {
+          const i = r * this.width + c;
+          maxDelta = Math.max(maxDelta, Math.abs(this.data[i] - this.base[i]));
+        }
+      if (maxDelta === 0) continue;
+      // per line, the segments whose clamp can bind anywhere in the bounds: [ax, az, bx, bz, la, lb, ends]
+      const groups: { segs: number[]; halfWidth: number }[] = [];
+      for (const l of g.lines) {
+        const m = l.halfWidth + GUARD_EDGE + GUARD_NEAR + maxDelta / (S + GUARD_RISE) + this.texel;
+        const p = l.points;
+        const lv = l.level;
+        const segs: number[] = [];
+        for (let i = 1; i < p.length; i++) {
+          const [ax, az] = p[i - 1];
+          const [bx, bz] = p[i];
+          if (Math.max(ax, bx) + m < x0 || Math.min(ax, bx) - m > x1 || Math.max(az, bz) + m < z0 || Math.min(az, bz) - m > z1) continue;
+          const ends = (i === 1 ? 1 : 0) | (i === p.length - 1 ? 2 : 0);
+          segs.push(ax, az, bx, bz, lv ? lv[i - 1] : 0, lv ? lv[i] : 0, ends);
+        }
+        if (segs.length) groups.push({ segs, halfWidth: l.halfWidth });
+      }
+      const rings = g.lakes.filter((lk) => {
+        let a0 = Infinity, b0 = Infinity, a1 = -Infinity, b1 = -Infinity;
+        for (const [x, z] of lk.ring) {
+          a0 = Math.min(a0, x);
+          a1 = Math.max(a1, x);
+          b0 = Math.min(b0, z);
+          b1 = Math.max(b1, z);
+        }
+        const m = LAKE_MARGIN + GUARD_EDGE + GUARD_NEAR + maxDelta / (S + GUARD_RISE);
+        return a1 + m >= x0 && a0 - m <= x1 && b1 + m >= z0 && b0 - m <= z1;
+      });
+      if (!groups.length && !rings.length) continue;
+      for (let r = r0; r <= r1; r++)
+        for (let c = c0; c <= c1; c++) {
+          const i = r * this.width + c;
+          if (seen[i]) continue;
+          seen[i] = 1;
+          const hs = this.data[i];
+          const b = this.base[i];
+          if (hs === b) continue;
+          const x = this.spec.xMin + (c + 0.5) * this.texel;
+          const z = this.spec.zMin + (r + 0.5) * this.texel;
+          if (g.exempt.some((e) => Math.hypot(x - e.x, z - e.z) < e.r)) continue;
+          let hi = Infinity;
+          let lo = -Infinity;
+          let w = 0;
+          const bank = (level: number, de: number) => {
+            if (de <= 0) {
+              w = 1;
+              return;
+            }
+            const reach = S * de + GUARD_RISE * Math.max(0, de - GUARD_NEAR);
+            hi = Math.min(hi, Math.max(b, level + GUARD_EPS + reach));
+            lo = Math.max(lo, Math.min(b, level + GUARD_EPS - reach));
+            w = Math.max(w, 1 - smoothstep(0, GUARD_EDGE, de));
+          };
+          for (const gr of groups) {
+            if (w >= 1) break;
+            // each line by its nearest point; cells beyond its source / end are left to what it joins
+            const segs = gr.segs;
+            let best = Infinity;
+            let level = 0;
+            let beyond = false;
+            for (let k = 0; k < segs.length; k += 7) {
+              const ax = segs[k];
+              const az = segs[k + 1];
+              const ex = segs[k + 2] - ax;
+              const ez = segs[k + 3] - az;
+              const tr = ((x - ax) * ex + (z - az) * ez) / (ex * ex + ez * ez || 1);
+              const t = Math.max(0, Math.min(1, tr));
+              const d = Math.hypot(x - (ax + ex * t), z - (az + ez * t));
+              if (d < best) {
+                best = d;
+                level = segs[k + 4] + (segs[k + 5] - segs[k + 4]) * t;
+                const ends = segs[k + 6];
+                beyond = (ends & 1 && tr < 0) || (ends & 2 && tr > 1) ? true : false;
+              }
+            }
+            // beyond an end only the water itself (the ribbon's round end) is kept
+            if (!beyond || best <= gr.halfWidth) bank(level, best - gr.halfWidth);
+          }
+          for (const lk of rings) {
+            if (w >= 1) break;
+            // lakes (and their graded shore, LAKE_MARGIN km beyond the polygon) stay as baked
+            bank(lk.level ?? b, inRing(lk.ring, x, z) ? 0 : ringDistance(lk.ring, x, z) - LAKE_MARGIN);
+          }
+          const v0 = Math.min(hi, Math.max(lo, hs));
+          const v = v0 + (b - v0) * w;
+          if (Math.abs(v - hs) < 1e-6) continue;
+          this.data[i] = v;
+          n++;
+        }
+    }
+    return n;
   }
 
   get stampCount(): number {
