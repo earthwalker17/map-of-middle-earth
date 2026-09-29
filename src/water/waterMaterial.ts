@@ -2,7 +2,7 @@ import { FrontSide, MeshStandardNodeMaterial, type DataTexture } from 'three/web
 import { tsl, type TslNode } from '../materials/tsl.ts';
 import { env } from '../materials/environment.ts';
 import { atmosphere } from '../materials/atmosphere.ts';
-import { LookNodes } from '../materials/looks.ts';
+import { bindLookWorld, groundAlbedoTexture } from '../materials/looks.ts';
 import type { QualityTier } from '../core/quality.ts';
 import type { World } from '../world/World.ts';
 
@@ -298,7 +298,8 @@ export function createWaterMaterial(opts: WaterMaterialOptions): MeshStandardNod
   const steps = preview ? Math.min(P.traceSteps, 4) : P.traceSteps;
   let refl: N = skyRefl;
   if (steps > 0) {
-    const looks = new LookNodes(world);
+    bindLookWorld(world);
+    const albedoTex = groundAlbedoTexture(world);
     const southness = (z: N): N => z.sub(spec.zMin).div(D);
     const R3 = normalize(vec3(Rv.x, Ry, Rv.z));
     // explicit-LOD fetches: legal inside the dynamic branch below
@@ -335,8 +336,7 @@ export function createWaterMaterial(opts: WaterMaterialOptions): MeshStandardNod
         const nH = normalize(vec3(hx.negate(), float(4 * e), hz.negate()));
         const hh = hs(vec2(0, 0));
         const steep = smoothstep(0.12, 0.4, float(1).sub(nH.y));
-        const pal = looks.palette(looks.regionWeights(huv, 0));
-        const ground = mix(pal.grass, pal.dry, 0.45);
+        const ground = texture(albedoTex, huv).level(0).rgb;
         const rock = vec3(0.2, 0.19, 0.175);
         const snowLine = float(24).add(southness(hitP.z).mul(13));
         const snow = smoothstep(snowLine, snowLine.add(3.5), hh).mul(float(1).sub(steep.mul(0.8)));

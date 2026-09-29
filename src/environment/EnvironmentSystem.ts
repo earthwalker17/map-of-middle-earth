@@ -65,7 +65,7 @@ export class EnvironmentSystem implements System {
     this.shadow = new KeyShadow(this.sun, quality.id === 'preview' ? 6 : quality.id === 'review' ? 12 : 16);
     // cloud shadows ride on the key light's colour (a custom colorNode replaces color × intensity)
     if (quality.clouds.shadows) {
-      (this.sun as unknown as { colorNode: unknown }).colorNode = env.keyColor.mul(env.keyIntensity).mul(this.clouds.lightFactor(positionWorld));
+      (this.sun as unknown as { colorNode: unknown }).colorNode = env.keyColor.mul(env.keyIntensity).mul(this.clouds.lightFactor(positionWorld, quality.id !== 'preview'));
     }
     scene.add(this.sun, this.sun.target, this.hemi);
 

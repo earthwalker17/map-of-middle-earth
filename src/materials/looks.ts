@@ -1,4 +1,4 @@
-import { Color } from 'three/webgpu';
+import { ClampToEdgeWrapping, Color, DataTexture, DataUtils, HalfFloatType, LinearFilter, NoColorSpace, RGBAFormat } from 'three/webgpu';
 import { tsl, type TslNode } from './tsl.ts';
 
 const { float, int, texture, uniformArray, vec3 } = tsl;
@@ -219,4 +219,60 @@ export function sampleRegionWeights(world: World, x: number, z: number, out: Flo
   }
   if (sum > 1e-6) for (let r = 0; r < n; r++) out[r] /= sum;
   return out;
+}
+
+/**
+ * A coarse ground-albedo map (region palette grass/dry mix, linear, ≈ 6.4 km per texel) built once
+ * on the CPU — for cheap secondary shading such as terrain seen in water reflections, where the
+ * full per-pixel palette blend is not worth its cost. One per world.
+ */
+const albedoCache = new WeakMap<World, DataTexture>();
+export function groundAlbedoTexture(world: World): DataTexture {
+  const hit = albedoCache.get(world);
+  if (hit) return hit;
+  const W = 256;
+  const H = 154;
+  const ids = world.lookRegions;
+  const grass = ids.map((id) => new Color(looksJson.regions[id].ground.grass));
+  const dry = ids.map((id) => new Color(looksJson.regions[id].ground.dry));
+  const w = new Float32Array(ids.length);
+  const data = new Uint16Array(W * H * 4);
+  const spec = world.spec;
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      sampleRegionWeights(world, spec.xMin + ((x + 0.5) / W) * spec.width, spec.zMin + ((y + 0.5) / H) * spec.depth, w);
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      let s = 0;
+      for (let k = 0; k < ids.length; k++) {
+        if (w[k] <= 0) continue;
+        r += w[k] * (grass[k].r * 0.55 + dry[k].r * 0.45);
+        g += w[k] * (grass[k].g * 0.55 + dry[k].g * 0.45);
+        b += w[k] * (grass[k].b * 0.55 + dry[k].b * 0.45);
+        s += w[k];
+      }
+      if (s <= 0) {
+        r = 0.16;
+        g = 0.15;
+        b = 0.1;
+        s = 1;
+      }
+      const o = (y * W + x) * 4;
+      data[o] = DataUtils.toHalfFloat(r / s);
+      data[o + 1] = DataUtils.toHalfFloat(g / s);
+      data[o + 2] = DataUtils.toHalfFloat(b / s);
+      data[o + 3] = DataUtils.toHalfFloat(1);
+    }
+  const t = new DataTexture(data, W, H, RGBAFormat, HalfFloatType);
+  t.wrapS = ClampToEdgeWrapping;
+  t.wrapT = ClampToEdgeWrapping;
+  t.minFilter = LinearFilter;
+  t.magFilter = LinearFilter;
+  t.generateMipmaps = false;
+  t.colorSpace = NoColorSpace;
+  t.name = 'ground-albedo';
+  t.needsUpdate = true;
+  albedoCache.set(world, t);
+  return t;
 }

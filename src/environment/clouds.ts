@@ -97,15 +97,17 @@ export class CloudField {
     this.texture.needsUpdate = true;
   }
 
-  /** 0..1 cloud cover over world point p (where its ray to the key light meets the deck). */
-  cover(p: N): N {
+  /**
+   * 0..1 cloud cover over world point p (where its ray to the key light meets the deck).
+   * detail = false (preview tier) skips the edge-detail fetch.
+   */
+  cover(p: N, detail = true): N {
     const L = env.keyDir;
     const t = max(env.cloudHeight.sub(p.y), 0).div(max(L.y, 0.1));
     const q = p.xz.add(L.xz.mul(t)).sub(env.wind.mul(env.tFx));
     const uv = vec2(q.x.div(PERIOD_X), q.y.div(PERIOD_Z));
     const m = texture(this.texture, uv);
-    const b = texture(this.texture, uv.mul(DETAIL).add(vec2(0.37, 0.61))).g;
-    const v = m.r.add(b.sub(0.5).mul(0.24));
+    const v = detail ? m.r.add(texture(this.texture, uv.mul(DETAIL).add(vec2(0.37, 0.61))).g.sub(0.5).mul(0.24)) : m.r;
     // local coverage: the weather-system field gathers the patches (mean stays ≈ cloudCoverage)
     const c = env.cloudCoverage;
     const cl = clamp(c.mul(m.b.mul(1.3).add(0.35)), 0, 1);
@@ -114,7 +116,7 @@ export class CloudField {
   }
 
   /** Multiplier on the key light at p. */
-  lightFactor(p: N): N {
-    return float(1).sub(this.cover(p).mul(env.cloudShadow));
+  lightFactor(p: N, detail = true): N {
+    return float(1).sub(this.cover(p, detail).mul(env.cloudShadow));
   }
 }

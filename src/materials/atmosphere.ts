@@ -43,8 +43,9 @@ const _c = new Color();
  *
  *  - τ integrates two exponential height layers analytically along the ray — a thin ground haze
  *    (hero height fog, thick in valleys, peaks stand clear) and a broad air layer (distance cue at
- *    regional range) — plus a trace of uniform "studio" air, all scaled by the regional density;
- *    the ray is clipped at y = 0, so the slab sides, plinth and the void are never fogged deeper.
+ *    regional range) scaled by the regional density, plus a trace of uniform "studio" air. The
+ *    layers are the diorama's own air: the ray is clipped to the slab footprint and to y ≥ 0, so
+ *    the cut faces, plinth and void stay crisp in clear studio air (the miniature's frame).
  *  - β_rgb is Rayleigh-like (blue extincts fastest), so dark distant land drifts to blue-grey and
  *    bright snow keeps its warmth.
  *  - C∞(dir) is the sky model's single-scattering radiance for the view direction (Preetham with
