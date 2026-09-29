@@ -2,8 +2,10 @@ import { DynamicDrawUsage, InstancedBufferAttribute, Mesh } from 'three/webgpu';
 import type { FrameContext, InitContext, System } from '../core/types.ts';
 import type { World } from '../world/World.ts';
 import { Cdlod } from './cdlod.ts';
+import { groundMaps } from './groundMaps.ts';
 import { createPatchGeometry } from './patchGeometry.ts';
 import { createTerrainMaterial } from './terrainMaterial.ts';
+import { loadTerrainDetail } from './terrainTextures.ts';
 
 const MAX_PATCHES = 4096;
 
@@ -18,13 +20,16 @@ export class TerrainSystem implements System {
 
   constructor(private readonly world: World) {}
 
-  init(ctx: InitContext): void {
+  async init(ctx: InitContext): Promise<void> {
     const q = ctx.quality.terrain;
     this.cdlod = new Cdlod(this.world.spec, this.world.heights, { rootSize: 320, levels: 8, rangeK: q.lodRangeK });
     this.patchAttr.setUsage(DynamicDrawUsage);
     const geometry = createPatchGeometry(q.patchGrid);
     geometry.setAttribute('patch', this.patchAttr);
-    const { material } = createTerrainMaterial(this.world, this.cdlod, this.patchAttr, q.patchGrid);
+    // the ground masks read the composited stamp layer (boot composites stamps before any system)
+    const maps = groundMaps(this.world);
+    const detail = await loadTerrainDetail(ctx.quality);
+    const material = createTerrainMaterial(this.world, this.cdlod, this.patchAttr, q.patchGrid, { quality: ctx.quality, maps, detail });
     this.mesh = new Mesh(geometry, material);
     this.mesh.name = 'terrain';
     this.mesh.frustumCulled = false;
