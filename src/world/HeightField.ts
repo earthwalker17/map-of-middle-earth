@@ -3,8 +3,9 @@ import type { WorldSpec } from './WorldSpec.ts';
 import { applyStamp, stampBounds, type Stamp } from './stamps.ts';
 
 const BLOCK = 16;
-/** beyond the water's edge the guard hands over to the bank clamp over this distance (km) */
-const GUARD_EDGE = 0.3;
+/** the channel core keeps its baked height out to this far beyond its half width (km; the baked
+ * channel mask is ≥ 0.5 inside the core, so the core itself is always restored) */
+const CORE_MARGIN = 0.1;
 /** the bank above/below the water level may reach this far above/below it at the edge (units) */
 const GUARD_EPS = 0.03;
 /** the bank clamp holds `slope` for this distance from the water's edge (km), then steepens by GUARD_RISE
@@ -15,16 +16,23 @@ const GUARD_RISE = 4.0;
 
 /**
  * Water the stamp layer must respect ("rivers win"), applied after the stamps are composited:
- *  - on the water (a river's ribbon, a lake and its graded shore) every cell keeps its baked height —
- *    a stamp may neither lift the channel (false cascades) nor sink the banks the ribbon edge hides in;
- *  - beside it a stamp keeps its shape, but the ground may rise above (or fall below) the local water
- *    level only as steeply as `slope` (units per km) from the water's edge: a hill beside a stream gets
- *    a natural bank down to it instead of being cut off, a flatten never digs a hole under the ribbon.
+ *  - in a river's channel core, on a lake and its graded shore every cell keeps its baked height — a
+ *    stamp may not lift the channel (false cascades) nor sink the lake;
+ *  - under the rest of the ribbon (core edge … ribbon edge) the ground stays between the baked bank and
+ *    the water level + a hair: a stamp may lower a baked wall there down to the water (never below it —
+ *    the ribbon edge never floats) or keep it, but never raise it above the bank;
+ *  - beyond the ribbon edge a stamp keeps its shape, but the ground may rise above (or fall below) the
+ *    local water level only as steeply as `slope` (units per km) from the water's edge: a hill beside a
+ *    stream gets a natural bank down to it instead of being cut off, a flatten never digs a hole under
+ *    the ribbon. The clamp is continuous (it opens from the water level at the ribbon edge) and never
+ *    blends back toward the baked height, so a baked valley wall is never restored as a thin wall or
+ *    pinnacle between the water and a stamped floor.
  * Allowlisted circles (landmarks on or over the water by design: places.json `onRiver`) are exempt.
  */
 export interface RiverGuard {
-  /** centreline, water level per point (null = the baked ground there), ribbon half width (km) */
-  lines: { points: [number, number][]; level: number[] | null; halfWidth: number }[];
+  /** centreline, water level per point (null = the baked ground there), ribbon half width and carved
+   * channel-core half width (km) */
+  lines: { points: [number, number][]; level: number[] | null; halfWidth: number; coreHalf: number }[];
   lakes: { ring: [number, number][]; level: number | null }[];
   exempt: { x: number; z: number; r: number }[];
   /** steepest bank a stamp may leave beside the water, units per km */
@@ -42,11 +50,6 @@ export interface StampLoss {
   /** largest single-cell correction, units */
   maxLost: number;
 }
-
-const smoothstep = (e0: number, e1: number, x: number): number => {
-  const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
-  return t * t * (3 - 2 * t);
-};
 
 /** lake cells within this distance (km) of the shore polygon are guarded too (rasterised coverage) */
 const LAKE_MARGIN = 0.4;
@@ -235,9 +238,9 @@ export class HeightField {
         }
       if (maxDelta === 0) continue;
       // per line, the segments whose clamp can bind anywhere in the bounds: [ax, az, bx, bz, la, lb, ends]
-      const groups: { segs: number[]; halfWidth: number }[] = [];
+      const groups: { segs: number[]; halfWidth: number; coreHalf: number }[] = [];
       for (const l of g.lines) {
-        const m = l.halfWidth + GUARD_EDGE + GUARD_NEAR + maxDelta / (S + GUARD_RISE) + this.texel;
+        const m = l.halfWidth + GUARD_NEAR + maxDelta / (S + GUARD_RISE) + this.texel;
         const p = l.points;
         const lv = l.level;
         const segs: number[] = [];
@@ -248,7 +251,7 @@ export class HeightField {
           const ends = (i === 1 ? 1 : 0) | (i === p.length - 1 ? 2 : 0);
           segs.push(ax, az, bx, bz, lv ? lv[i - 1] : 0, lv ? lv[i] : 0, ends);
         }
-        if (segs.length) groups.push({ segs, halfWidth: l.halfWidth });
+        if (segs.length) groups.push({ segs, halfWidth: l.halfWidth, coreHalf: Math.min(l.coreHalf, l.halfWidth) });
       }
       const rings = g.lakes.filter((lk) => {
         let a0 = Infinity, b0 = Infinity, a1 = -Infinity, b1 = -Infinity;
@@ -258,7 +261,7 @@ export class HeightField {
           b0 = Math.min(b0, z);
           b1 = Math.max(b1, z);
         }
-        const m = LAKE_MARGIN + GUARD_EDGE + GUARD_NEAR + maxDelta / (S + GUARD_RISE);
+        const m = LAKE_MARGIN + GUARD_NEAR + maxDelta / (S + GUARD_RISE);
         return a1 + m >= x0 && a0 - m <= x1 && b1 + m >= z0 && b0 - m <= z1;
       });
       if (!groups.length && !rings.length) continue;
@@ -275,19 +278,16 @@ export class HeightField {
           if (g.exempt.some((e) => Math.hypot(x - e.x, z - e.z) < e.r)) continue;
           let hi = Infinity;
           let lo = -Infinity;
-          let w = 0;
+          let keep = false;
+          // the bank envelope at `de` km beyond the water's edge (de ≤ 0: under the ribbon — between the
+          // baked bank and the water level)
           const bank = (level: number, de: number) => {
-            if (de <= 0) {
-              w = 1;
-              return;
-            }
-            const reach = S * de + GUARD_RISE * Math.max(0, de - GUARD_NEAR);
+            const reach = de > 0 ? S * de + GUARD_RISE * Math.max(0, de - GUARD_NEAR) : 0;
             hi = Math.min(hi, Math.max(b, level + GUARD_EPS + reach));
             lo = Math.max(lo, Math.min(b, level + GUARD_EPS - reach));
-            w = Math.max(w, 1 - smoothstep(0, GUARD_EDGE, de));
           };
           for (const gr of groups) {
-            if (w >= 1) break;
+            if (keep) break;
             // each line by its nearest point; cells beyond its source / end are left to what it joins
             const segs = gr.segs;
             let best = Infinity;
@@ -309,15 +309,18 @@ export class HeightField {
               }
             }
             // beyond an end only the water itself (the ribbon's round end) is kept
-            if (!beyond || best <= gr.halfWidth) bank(level, best - gr.halfWidth);
+            if (beyond && best > gr.halfWidth) continue;
+            if (best <= gr.coreHalf + CORE_MARGIN) keep = true;
+            else bank(level, best - gr.halfWidth);
           }
           for (const lk of rings) {
-            if (w >= 1) break;
+            if (keep) break;
             // lakes (and their graded shore, LAKE_MARGIN km beyond the polygon) stay as baked
-            bank(lk.level ?? b, inRing(lk.ring, x, z) ? 0 : ringDistance(lk.ring, x, z) - LAKE_MARGIN);
+            const de = inRing(lk.ring, x, z) ? 0 : ringDistance(lk.ring, x, z) - LAKE_MARGIN;
+            if (de <= 0) keep = true;
+            else bank(lk.level ?? b, de);
           }
-          const v0 = Math.min(hi, Math.max(lo, hs));
-          const v = v0 + (b - v0) * w;
+          const v = keep ? b : Math.min(hi, Math.max(lo, hs));
           if (Math.abs(v - hs) < 1e-6) continue;
           this.data[i] = v;
           n++;

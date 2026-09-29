@@ -149,6 +149,7 @@ export class World {
         points: r.points,
         level: r.level ?? r.points.map((p) => heights.sample(p[0], p[1], 'base')),
         halfWidth: Math.max((R.ribbonScale * r.widthKm) / 2, Math.max(r.widthKm / 2, 0.5) + R.ribbonMarginKm),
+        coreHalf: Math.max(r.widthKm / 2, 0.5),
       })),
       lakes: lakes.map((l) => ({ ring: l.ring, level: l.level })),
       exempt: [...places.values()].filter((p) => p.onRiver).map((p) => ({ x: p.x, z: p.z, r: p.footprintKm ?? 5 })),

@@ -17,6 +17,9 @@ export interface FlattenStamp extends StampBase {
   radius: number;
   falloff: number;
   height?: number | 'auto';
+  /** only cut ground above `height` down to it, never raise lower ground (a terrace cut into valley walls
+   * beside a river: the channel and the floodplain below the terrace stay as they are) */
+  lowerOnly?: boolean;
 }
 
 /** Add `amount` inside radius with a smooth dome profile (negative = depression). */
@@ -113,6 +116,7 @@ export function applyStamp(s: Stamp, x: number, z: number, h: number, ctx: { aut
       const d = Math.hypot(x - s.at[0], z - s.at[1]);
       const k = 1 - smooth(s.radius, s.radius + s.falloff, d);
       const target = s.height === undefined || s.height === 'auto' ? ctx.auto : s.height;
+      if (s.lowerOnly && target >= h) return h;
       return h + (target - h) * k * w;
     }
     case 'raise': {
