@@ -9,6 +9,7 @@ import {
   NoColorSpace,
   SRGBColorSpace,
   UnsignedByteType,
+  Vector3,
   type Texture,
   type WebGPURenderer,
 } from 'three/webgpu';
@@ -32,15 +33,23 @@ import {
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 
-/** Global grade parameters (driven by the RegionLook system; plain values here in S1). */
+/**
+ * Grade parameters. `exposure` is the user's (explorer GUI); everything else is written every
+ * frame by RegionLook (src/environment/regionLook.ts) from SceneState — the defaults are the
+ * neutral S1 look.
+ */
 export const gradeUniforms = {
   exposure: uniform(0.9),
+  /** region / night exposure bias (linear multiplier, 2^stops) */
+  exposureBias: uniform(1),
   saturation: uniform(1.12),
   contrast: uniform(1.08),
   /** multiplicative tint (white balance), linear */
-  tint: uniform(vec3(1, 1, 1)),
+  tint: uniform(new Vector3(1, 1, 1)),
   /** additive lift in linear space (shadows) */
-  lift: uniform(vec3(0, 0, 0)),
+  lift: uniform(new Vector3(0, 0, 0)),
+  /** 0..1 hue-selective saturation: reds/oranges (lava, fire, the Eye) keep their colour */
+  redKeep: uniform(0),
   vignette: uniform(0.35),
   bloomStrength: uniform(0.12),
   bloomRadius: uniform(0.55),
@@ -109,12 +118,17 @@ export class PostPipeline {
     const input = this.postInput;
     const bloomNode = useBloom ? bloom(input, g.bloomStrength, g.bloomRadius, g.bloomThreshold) : null;
     const graded = Fn(() => {
-      const c = input.rgb.mul(g.exposure).toVar();
-      if (bloomNode) c.addAssign(bloomNode.rgb.mul(g.exposure));
+      const ex = g.exposure.mul(g.exposureBias);
+      const c = input.rgb.mul(ex).toVar();
+      if (bloomNode) c.addAssign(bloomNode.rgb.mul(ex));
       c.assign(c.mul(g.tint).add(g.lift));
-      // saturation around luminance
+      // saturation around luminance; reds/oranges can be exempt (Lesnie's "desaturated, with
+      // strong reds providing colour separation" for Mordor and Doom)
       const luma = dot(c, vec3(0.2126, 0.7152, 0.0722));
-      c.assign(max(mix(vec3(luma), c, g.saturation), vec3(0))); // saturation > 1 extrapolates: clamp (pow of negatives = NaN)
+      // only strongly chromatic reds/oranges (lava, fire, embers), never brown earth or rock
+      const redness = smoothstep(0.5, 0.8, c.r.sub(max(c.g, c.b)).div(max(c.r, 1e-4)));
+      const sat = mix(g.saturation, max(g.saturation, 1.15), redness.mul(g.redKeep));
+      c.assign(max(mix(vec3(luma), c, sat), vec3(0))); // saturation > 1 extrapolates: clamp (pow of negatives = NaN)
       // contrast pivot at mid-grey (log-ish, gentle)
       const pivot = float(0.18);
       c.assign(c.div(pivot).pow(vec3(g.contrast)).mul(pivot));

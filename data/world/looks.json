@@ -4,98 +4,98 @@
   "regions": {
     "eriador": {
       "ground": {"grass": "#7d8f4e", "dry": "#a39866", "soil": "#6b5c45"},
-      "grade": {"tint": "#fff6ea", "saturation": 1},
-      "atmo": {}
+      "grade": {"tint": "#fff8ee", "saturation": 1, "contrast": 1, "spots": [{"place": "rivendell", "radiusKm": 32, "tint": "#fff0dc", "saturation": 1.04, "contrast": 0.95, "exposure": 0.05, "lift": [0.002, 0.0016, 0.0012], "bloom": 0.6}, {"place": "caradhras", "radiusKm": 24, "tint": "#eef5fb", "saturation": 0.86, "contrast": 1.03}]},
+      "atmo": {"tint": [1.0, 1.0, 0.98], "density": 1, "spots": [{"place": "rivendell", "radiusKm": 22, "tint": [1.28, 1.1, 0.96], "density": 1.7}, {"place": "caradhras", "radiusKm": 55, "tint": [0.9, 1.0, 1.12], "density": 0.65}, {"place": "weathertop", "radiusKm": 30, "tint": [0.9, 1.0, 1.0], "density": 1.1}]}
     },
     "lindon": {
       "ground": {"grass": "#6f9a58", "dry": "#a8a276", "soil": "#6a5e48"},
-      "grade": {"tint": "#fff2dc", "saturation": 1.05},
-      "atmo": {}
+      "grade": {"tint": "#fff4e2", "saturation": 1.02, "contrast": 0.98, "bloom": 0.2, "spots": [{"place": "grey-havens", "radiusKm": 45, "tint": "#fff0d6", "saturation": 1.02, "contrast": 0.96, "bloom": 0.4}]},
+      "atmo": {"tint": [1.08, 1.04, 0.95], "density": 1.05, "spots": [{"place": "grey-havens", "radiusKm": 40, "tint": [1.2, 1.08, 0.9], "density": 1.3}]}
     },
     "north": {
       "ground": {"grass": "#7a8468", "dry": "#9a9680", "soil": "#5f5a50"},
-      "grade": {"tint": "#eef2f8", "saturation": 0.85},
-      "atmo": {}
+      "grade": {"tint": "#f3f6fb", "saturation": 0.86, "contrast": 1.02},
+      "atmo": {"tint": [0.94, 1.0, 1.08], "density": 0.8, "sky": [0.96, 1.0, 1.06]}
     },
     "shire": {
       "ground": {"grass": "#6f9e3c", "dry": "#b0a95a", "soil": "#6e5a3a"},
-      "grade": {"tint": "#fff0d8", "saturation": 1.15},
-      "atmo": {}
+      "grade": {"tint": "#fff1da", "saturation": 0.95, "contrast": 0.97, "lift": [0.0015, 0.0012, 0.0004], "bloom": 0.12},
+      "atmo": {"tint": [1.07, 1.03, 0.92], "density": 0.85, "sky": [1.02, 1.0, 0.97]}
     },
     "enedwaith": {
       "ground": {"grass": "#7f8a52", "dry": "#a79b68", "soil": "#6d5d45"},
-      "grade": {"tint": "#fff6ea", "saturation": 0.95},
-      "atmo": {}
+      "grade": {"tint": "#fff6ea", "saturation": 0.95, "contrast": 1},
+      "atmo": {"tint": [1.0, 1.0, 0.98], "density": 1}
     },
     "rhovanion": {
       "ground": {"grass": "#74904a", "dry": "#a89e62", "soil": "#6a5a42"},
-      "grade": {"tint": "#fff6ea", "saturation": 1},
-      "atmo": {}
+      "grade": {"tint": "#fff7ec", "saturation": 1, "contrast": 1},
+      "atmo": {"tint": [1.0, 1.0, 0.98], "density": 1}
     },
     "mirkwood": {
       "ground": {"grass": "#4f5e38", "dry": "#6b6a45", "soil": "#3f3a2c"},
-      "grade": {"tint": "#eef4ea", "saturation": 0.8},
-      "atmo": {}
+      "grade": {"tint": "#f1f7ea", "saturation": 0.84, "contrast": 1.05, "exposure": -0.25},
+      "atmo": {"tint": [0.78, 0.88, 0.76], "density": 1.35, "sky": [0.9, 0.95, 0.88]}
     },
     "wilderland": {
       "ground": {"grass": "#7b8a55", "dry": "#a39a70", "soil": "#6a604e"},
-      "grade": {"tint": "#fff0e0", "saturation": 1},
-      "atmo": {}
+      "grade": {"tint": "#f7f6f0", "saturation": 0.95, "contrast": 1.04},
+      "atmo": {"tint": [0.96, 1.0, 1.02], "density": 1.05}
     },
     "brown-lands": {
       "ground": {"grass": "#8a7d55", "dry": "#9c8a5e", "soil": "#74624a"},
-      "grade": {"tint": "#fff0e0", "saturation": 0.85},
-      "atmo": {}
+      "grade": {"tint": "#fff2e4", "saturation": 0.86, "contrast": 1.02},
+      "atmo": {"tint": [1.04, 0.98, 0.9], "density": 1.15, "spots": [{"place": "dead-marshes", "radiusKm": 26, "tint": [0.86, 0.8, 0.86], "density": 2.2}]}
     },
     "lorien": {
       "ground": {"grass": "#8a9c50", "dry": "#c2ad5e", "soil": "#6f6040"},
-      "grade": {"tint": "#f1f0ff", "saturation": 0.95},
-      "atmo": {}
+      "grade": {"tint": "#fbf8e6", "saturation": 0.98, "contrast": 0.93, "lift": [0.002, 0.0022, 0.0018], "bloom": 0.65},
+      "atmo": {"tint": [1.16, 1.14, 1.0], "density": 1.35, "sky": [1.04, 1.04, 0.98]}
     },
     "fangorn": {
       "ground": {"grass": "#4f6436", "dry": "#6d6e44", "soil": "#433c2c"},
-      "grade": {"tint": "#f2f6ea", "saturation": 0.85},
-      "atmo": {}
+      "grade": {"tint": "#f3f7ec", "saturation": 0.85, "contrast": 1.03, "exposure": -0.15},
+      "atmo": {"tint": [0.84, 0.92, 0.86], "density": 1.25}
     },
     "rohan": {
       "ground": {"grass": "#9a9a55", "dry": "#b8a462", "soil": "#6b5a43"},
-      "grade": {"tint": "#fff2dc", "saturation": 0.95},
-      "atmo": {}
+      "grade": {"tint": "#fff5de", "saturation": 0.92, "contrast": 1.03},
+      "atmo": {"tint": [1.05, 1.03, 0.95], "density": 0.9, "sky": [1.02, 1.01, 0.98]}
     },
     "gondor": {
       "ground": {"grass": "#7a9150", "dry": "#a89f6c", "soil": "#6c604c"},
-      "grade": {"tint": "#f4f5f6", "saturation": 0.85},
-      "atmo": {}
+      "grade": {"tint": "#f3f6f9", "saturation": 0.82, "contrast": 1.06, "redKeep": 0.25},
+      "atmo": {"tint": [0.96, 1.0, 1.05], "density": 1.05, "sky": [0.98, 1.0, 1.02]}
     },
     "ithilien": {
       "ground": {"grass": "#6a8e45", "dry": "#9aa05e", "soil": "#5f563f"},
-      "grade": {"tint": "#fff4e4", "saturation": 1.05},
-      "atmo": {}
+      "grade": {"tint": "#fff5e6", "saturation": 1.04, "contrast": 1},
+      "atmo": {"tint": [1.0, 1.02, 0.96], "density": 1}
     },
     "dagorlad": {
       "ground": {"grass": "#6e6a4c", "dry": "#7f7456", "soil": "#4e4638"},
-      "grade": {"tint": "#f6eef4", "saturation": 0.75},
-      "atmo": {}
+      "grade": {"tint": "#f7f3f2", "saturation": 0.6, "contrast": 1.06, "exposure": -0.1, "lift": [0.0015, 0.0015, 0.0018], "redKeep": 0.5},
+      "atmo": {"tint": [0.56, 0.54, 0.52], "density": 2.1, "sky": [0.62, 0.62, 0.64]}
     },
     "mordor": {
       "ground": {"grass": "#4a443d", "dry": "#57504a", "soil": "#2e2b29"},
-      "grade": {"tint": "#fbe8dc", "saturation": 0.7},
-      "atmo": {}
+      "grade": {"tint": "#eff1f5", "saturation": 0.55, "contrast": 1.1, "exposure": -0.2, "redKeep": 0.9, "spots": [{"place": "minas-morgul", "radiusKm": 22, "tint": "#dcf5e2", "saturation": 0.62, "contrast": 1.08, "exposure": -0.25, "lift": [0.0006, 0.0014, 0.0009], "redKeep": 0.5}]},
+      "atmo": {"tint": [0.36, 0.36, 0.4], "density": 2.8, "sky": [0.36, 0.37, 0.42], "spots": [{"place": "mount-doom", "radiusKm": 32, "tint": [1.0, 0.38, 0.18], "density": 2.9}, {"place": "minas-morgul", "radiusKm": 14, "tint": [0.55, 0.78, 0.62], "density": 2.8}]}
     },
     "nurn": {
       "ground": {"grass": "#5d5a44", "dry": "#6e6650", "soil": "#3d3830"},
-      "grade": {"tint": "#f6ece4", "saturation": 0.8},
-      "atmo": {}
+      "grade": {"tint": "#f7f2ec", "saturation": 0.76, "contrast": 1.04, "redKeep": 0.4},
+      "atmo": {"tint": [0.7, 0.68, 0.66], "density": 1.55, "sky": [0.8, 0.8, 0.82]}
     },
     "rhun": {
       "ground": {"grass": "#8f8a5a", "dry": "#a8996a", "soil": "#75664c"},
-      "grade": {"tint": "#fff2e0", "saturation": 0.95},
-      "atmo": {}
+      "grade": {"tint": "#fff4e4", "saturation": 0.95, "contrast": 1},
+      "atmo": {"tint": [1.04, 1.0, 0.94], "density": 1.1}
     },
     "harad": {
       "ground": {"grass": "#a08f5e", "dry": "#c0a878", "soil": "#8a7556"},
-      "grade": {"tint": "#fff0d8", "saturation": 0.95},
-      "atmo": {}
+      "grade": {"tint": "#fff2dc", "saturation": 0.95, "contrast": 1},
+      "atmo": {"tint": [1.08, 1.0, 0.9], "density": 1.3, "sky": [1.03, 1.0, 0.96]}
     }
   }
 }

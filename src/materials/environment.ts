@@ -1,4 +1,4 @@
-import { Color, Vector2, Vector3 } from 'three/webgpu';
+import { Color, Vector2, Vector3, Vector4 } from 'three/webgpu';
 import { uniform } from 'three/tsl';
 
 /**
@@ -50,6 +50,23 @@ export const env = {
   horizonColor: uniform(new Color(0.62, 0.68, 0.78)),
   /** colour of the atmospheric void below the horizon around the floating slab */
   voidColor: uniform(new Color(0.02, 0.025, 0.035)),
+  // ---- added by atmosphere v2 (src/materials/atmosphere.ts) ----
+  /** broad air layer over the diorama: density at sea level and falloff per world unit of height */
+  airDensity: uniform(0.0012),
+  airFalloff: uniform(0.016),
+  /** relative extinction per channel (green = 1): distance shifts towards the blue-grey in-scatter */
+  extinction: uniform(new Vector3(0.8, 1, 1.22)),
+  /**
+   * Distance ramp of the aerial perspective (km from the camera): the air layers fade in from
+   * x (clear near field) to y (full haze); the regional excess (Mordor's fumes, elven luminous
+   * haze, marsh damp) — local features rather than a distance cue — fades in from z to w.
+   */
+  hazeRamp: uniform(new Vector4(60, 900, 2, 40)),
+  /** multiplier on the sky dome from the region the camera looks at (Mordor's charcoal sky) */
+  skyTint: uniform(new Color(1, 1, 1)),
+  /** cloud shadows: 0..1 darkening of the key light under a cloud, height of the cloud deck */
+  cloudShadow: uniform(0.5),
+  cloudHeight: uniform(58),
 };
 
 export type EnvUniforms = typeof env;
