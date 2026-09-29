@@ -7,6 +7,7 @@ import { createPatchGeometry } from './patchGeometry.ts';
 import { createTerrainMaterial } from './terrainMaterial.ts';
 import { loadTerrainDetail } from './terrainTextures.ts';
 import { atmosphere } from '../materials/atmosphere.ts';
+import { releaseLookField } from '../materials/looks.ts';
 
 const MAX_PATCHES = 4096;
 
@@ -33,6 +34,8 @@ export class TerrainSystem implements System {
     // the valley mist (fog over the terrain analysis' dales) is an offline-tier feature
     atmosphere.enableValleyMist(ctx.quality.id !== 'preview');
     const material = createTerrainMaterial(this.world, this.cdlod, this.patchAttr, q.patchGrid, { quality: ctx.quality, maps, detail });
+    // the region-weight field's consumers are built (regional haze, field mask, ground look)
+    releaseLookField(this.world);
     this.mesh = new Mesh(geometry, material);
     this.mesh.name = 'terrain';
     this.mesh.frustumCulled = false;

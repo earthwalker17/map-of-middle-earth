@@ -347,6 +347,14 @@ export function lookField(world: World): LookField {
   return f;
 }
 
+/**
+ * Drop the cached field (its ~12 MB widened mask copy) once the init-time consumers are built;
+ * a later lookField call rebuilds the identical field (a pure function of the world).
+ */
+export function releaseLookField(world: World): void {
+  fieldCache.delete(world);
+}
+
 // ------------------------------------------------------------------ ground look texture
 
 const groundCache = new WeakMap<World, DataArrayTexture>();
