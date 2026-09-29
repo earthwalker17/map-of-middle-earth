@@ -1,7 +1,7 @@
 import { ClampToEdgeWrapping, Color, DataTexture, LinearFilter, NoColorSpace, RGBAFormat, SRGBColorSpace, UnsignedByteType, Vector4 } from 'three/webgpu';
 import { hash32, rand } from '../core/rng.ts';
 import { fieldWeight, shireFieldGrid } from '../world/fields.ts';
-import { lookField, lookNoise } from '../materials/looks.ts';
+import { lookNoise } from '../materials/looks.ts';
 import type { World } from '../world/World.ts';
 
 /**
@@ -190,29 +190,16 @@ const CROPS: [string, number][] = [
 const FIELD_KM = 0.2;
 /** zero-weight texels around the patchwork, so the clamped sampler reads 0 outside it */
 const FIELD_PAD = 2;
+/** the patchwork's organic fringe: ring radius (km) of the "how much around is patchwork" measure */
+const FIELD_RING_KM = 16;
 
 /**
- * Organic fade of the patchwork towards its edge (0..1, ≤ the hedgerow rule): the Shire weight of
- * the shared look field (the ground look's own, slightly warped border) plus low-frequency noise
- * on the weight and on the Bree radius, and fields near the edge dropping out at random (gone
- * wild / fallow), so the quilt frays into the surrounding land instead of ending as a square.
+ * The hedgerow rule at world (x, z): the raw (bilinear, un-normalised) Shire look weight and the
+ * distance to Bree through fieldWeight — vegetation places hedges wherever it is > 0, and the field
+ * mask never extends past it.
  */
-export function fieldEdgeWeight(world: World, x: number, z: number, cellId: number): number {
-  const field = lookField(world);
-  const iShire = world.lookRegions.indexOf('shire' as never);
-  const bree = world.places.get('bree');
-  const seed = world.spec.json.seeds.world;
-  const w = iShire >= 0 ? field.weights(x, z, new Float32Array(field.n))[iShire] : 0;
-  const dn = lookNoise(x / 21, z / 21, seed + 311) * 0.7 + lookNoise(x / 8, z / 8, seed + 313) * 0.3;
-  const edge = fieldWeight(w + 0.24 * dn, bree ? Math.hypot(x - bree.x, z - bree.z) + 8 * dn : Infinity);
-  const keep = rand(seed, cellId, 4) < smooth(0.05, 0.6, edge) ? 1 : 0;
-  return edge * keep;
-}
-
-function buildFieldMask(world: World): { texture: DataTexture; frame: Vector4 } {
+function hedgerowRule(world: World): (x: number, z: number) => number {
   const spec = world.spec;
-  const seed = spec.json.seeds.world;
-  const grid = shireFieldGrid(spec, seed);
   const look = world.look.image as unknown as { data: Uint8Array; width: number; height: number };
   const iShire = world.lookRegions.indexOf('shire' as never);
   const bree = world.places.get('bree');
@@ -234,8 +221,34 @@ function buildFieldMask(world: World): { texture: DataTexture; frame: Vector4 } 
     const b = g(x0, y1) + (g(x1, y1) - g(x0, y1)) * tx;
     return a + (b - a) * ty;
   };
-  // the hedgerow rule (vegetation places hedges wherever it is > 0): fields never extend past it
-  const weightAt = (x: number, z: number) => fieldWeight(shireAt(x, z), bree ? Math.hypot(x - bree.x, z - bree.z) : Infinity);
+  return (x, z) => fieldWeight(shireAt(x, z), bree ? Math.hypot(x - bree.x, z - bree.z) : Infinity);
+}
+
+/**
+ * Organic fringe of the patchwork (0..1): how much of the ring FIELD_RING_KM around a point is
+ * patchwork (the hedgerow rule), shifted by low-frequency noise — 1 well inside, falling over a
+ * ~30 km band with lobes at the edge. The field mask drops fields there at random (gone wild),
+ * turns crops to pasture and fades the rest, so the quilt frays into the surrounding land instead
+ * of ending as a square; it never extends past the hedgerow rule.
+ */
+export function fieldEdgeWeight(world: World, x: number, z: number, rule = hedgerowRule(world)): number {
+  const seed = world.spec.json.seeds.world;
+  let s = rule(x, z);
+  const N = 8;
+  for (let k = 0; k < N; k++) {
+    const a = (k / N) * Math.PI * 2 + 0.3;
+    s += rule(x + Math.cos(a) * FIELD_RING_KM, z + Math.sin(a) * FIELD_RING_KM);
+  }
+  s /= N + 1;
+  const dn = lookNoise(x / 40, z / 40, seed + 311) * 0.65 + lookNoise(x / 13, z / 13, seed + 313) * 0.35;
+  return smooth(0.3, 0.85, s + 0.3 * dn);
+}
+
+function buildFieldMask(world: World): { texture: DataTexture; frame: Vector4 } {
+  const spec = world.spec;
+  const seed = spec.json.seeds.world;
+  const grid = shireFieldGrid(spec, seed);
+  const weightAt = hedgerowRule(world);
 
   // fields with any weight, and their bounds
   interface Cell {
@@ -259,9 +272,17 @@ function buildFieldMask(world: World): { texture: DataTexture; frame: Vector4 } 
       const cx = (q[0][0] + q[2][0]) / 2;
       const cz = (q[0][1] + q[2][1]) / 2;
       const id = hash32(i, j, 205);
-      const w = Math.min(weightAt(cx, cz), fieldEdgeWeight(world, cx, cz, id));
+      const rule = weightAt(cx, cz);
+      if (rule <= 0.02) continue;
+      const edge = fieldEdgeWeight(world, cx, cz, weightAt);
+      // fields near the edge go wild at random
+      if (rand(seed, id, 4) >= smooth(0.05, 0.7, edge)) continue;
+      // …and fade (the ramp is wider than the raw rule's)
+      const w = Math.min(rule, edge) * (0.55 + 0.45 * smooth(0.2, 0.9, edge));
       if (w <= 0.02) continue;
-      let pick = rand(seed, id, 1) * totalShare;
+      // towards the edge the crops give way to pasture (the first three entries)
+      const pasture = rand(seed, id, 5) < (1 - smooth(0.3, 0.95, edge)) * 0.85;
+      let pick = rand(seed, id, 1) * (pasture ? CROPS[0][1] + CROPS[1][1] + CROPS[2][1] : totalShare);
       let k = 0;
       while (k < CROPS.length - 1 && pick > CROPS[k][1]) pick -= CROPS[k++][1];
       const col = new Color(CROPS[k][0]);
