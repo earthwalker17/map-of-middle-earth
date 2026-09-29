@@ -65,17 +65,30 @@ function blur(a: Float32Array, w: number, h: number, radius: number, b: Float32A
   }
 }
 
-/** 3×3 max filter of `a` into `dst`. */
-function dilate(a: Float32Array, w: number, h: number, dst: Float32Array): void {
-  for (let y = 0; y < h; y++)
+/** 3×3 max filter of `a`, in place (separable: a row max into `tmp`, then a column max; edges clamped). */
+function dilate(a: Float32Array, w: number, h: number, tmp: Float32Array): void {
+  // rows: tmp = max over x−1..x+1
+  for (let y = 0; y < h; y++) {
+    const o = y * w;
     for (let x = 0; x < w; x++) {
-      let m = 0;
-      for (let dy = -1; dy <= 1; dy++) {
-        const yy = Math.min(h - 1, Math.max(0, y + dy)) * w;
-        for (let dx = -1; dx <= 1; dx++) m = Math.max(m, a[yy + Math.min(w - 1, Math.max(0, x + dx))]);
-      }
-      dst[y * w + x] = m;
+      const l = a[o + (x > 0 ? x - 1 : 0)];
+      const c = a[o + x];
+      const r = a[o + (x < w - 1 ? x + 1 : x)];
+      tmp[o + x] = l > c ? (l > r ? l : r) : c > r ? c : r;
     }
+  }
+  // columns: a = max over y−1..y+1 of the row maxima
+  for (let y = 0; y < h; y++) {
+    const u = (y > 0 ? y - 1 : 0) * w;
+    const o = y * w;
+    const d = (y < h - 1 ? y + 1 : y) * w;
+    for (let x = 0; x < w; x++) {
+      const p = tmp[u + x];
+      const c = tmp[o + x];
+      const q = tmp[d + x];
+      a[o + x] = p > c ? (p > q ? p : q) : c > q ? c : q;
+    }
+  }
 }
 
 /**
@@ -125,7 +138,6 @@ function buildStampMask(world: World): DataTexture {
       }
     // grow the mask one texel (a stamp's flanks are its steepest part), then soften
     dilate(a, W, H, b);
-    a.set(b);
     blur(a, W, H, 1, b);
   };
   stampField(true);
@@ -136,15 +148,23 @@ function buildStampMask(world: World): DataTexture {
   // B / A: shore bands just outside lakes / river channels (≈ 1–2 km)
   const wimg = world.water.image as unknown as { data: Uint8Array; width: number; height: number };
   const wd = wimg.data;
+  const WW = wimg.width;
+  const inside = new Uint8Array(W * H);
   const band = (ch: number, radius: number, gain: number) => {
-    for (let y = 0; y < H; y++)
+    // max of the 2×2 full-resolution texels (bytes), kept for the "outside only" factor
+    for (let y = 0; y < H; y++) {
+      const r0 = y * 2 * WW * 4 + ch;
+      const r1 = r0 + WW * 4;
       for (let x = 0; x < W; x++) {
-        let m = 0;
-        for (let dy = 0; dy < 2; dy++)
-          for (let dx = 0; dx < 2; dx++) m = Math.max(m, wd[((y * 2 + dy) * wimg.width + x * 2 + dx) * 4 + ch] / 255);
-        a[y * W + x] = m;
+        const o = x * 8;
+        let m = wd[r0 + o];
+        if (wd[r0 + o + 4] > m) m = wd[r0 + o + 4];
+        if (wd[r1 + o] > m) m = wd[r1 + o];
+        if (wd[r1 + o + 4] > m) m = wd[r1 + o + 4];
+        inside[y * W + x] = m;
+        a[y * W + x] = m / 255;
       }
-    const inside = Uint8Array.from(a, (v) => Math.round(v * 255));
+    }
     blur(a, W, H, radius, b);
     for (let i = 0; i < W * H; i++) a[i] = Math.min(1, a[i] * gain) * (1 - inside[i] / 255);
   };
