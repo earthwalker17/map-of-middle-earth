@@ -294,7 +294,7 @@ export class Atmosphere {
     const T = exp(beta.mul(tau).negate());
     const ray = to.sub(from);
     const dir = ray.div(max(length(ray), 1e-6));
-    const cInf = this.inScatter(dir, explicitLod).mul(reg.rgb);
+    const cInf = (inScatter ? this.inScatter(dir, explicitLod) : env.fogColor).mul(reg.rgb);
     return color.mul(T).add(cInf.mul(vec3(1).sub(T)));
   }
 
