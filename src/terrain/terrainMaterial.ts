@@ -184,6 +184,7 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     const rockBase = max(
       rockAt(slope.add(n2.mul(0.035)).add(crest.mul(0.06).add(pal.rockiness.mul(crest).mul(0.12))).sub(hollow.mul(0.03)), alpine, max(turf, bankTurf), pal.rockiness),
       smoothstep(0.1, 0.5, crest.add(n3.mul(0.15))).mul(subalpine).mul(0.85),
+      smoothstep(0.08, 0.4, crest.add(slope.mul(1.4)).add(n3.mul(0.12))).mul(pal.rockiness).mul(0.85),
     );
     // scree / talus: the concave, less steep parts of the rock ground (slope feet, gully fans)
     const scree = clamp(curv.mul(1.5).add(0.2).add(n3.mul(0.25)), 0, 1).mul(float(1).sub(smoothstep(0.3, 0.52, slope)));
@@ -285,12 +286,16 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     col.assign(mix(col, srgbNode(TS.beach).mul(float(0.95).add(n4.mul(0.08))).mul(lumSoft), beach.mul(0.85)));
     const shore = max(sm.b, sm.a.mul(fineFade).mul(0.2)).mul(flat).mul(float(1).sub(lc.r)).mul(float(1).sub(snow));
     col.assign(mix(col, srgbNode(TS.shore).mul(float(0.92).add(n4.mul(0.14))).mul(lumSoft), shore.mul(0.5)));
-    // wetland: sedge / reed mottle with open dark pools (pools get a wet sheen)
-    const poolN = n4.mul(0.7).add(n3.mul(0.25)).add(lc.g.sub(0.7).mul(0.5));
-    const pools = smoothstep(0.12, 0.38, poolN).mul(lc.g);
-    const reeds = mix(srgbNode(TS.wetSedge), srgbNode(TS.wetReed), n4.mul(0.5).add(0.5)).mul(lumSoft);
-    const wetCol = mix(reeds, srgbNode(TS.wetPool), pools.mul(0.85));
-    col.assign(mix(col, wetCol, lc.g.mul(0.88)));
+    // wetland: a sedge / reed mat broken by many small open pools (fine noise, resolved at mid
+    // distance; far off the pools average into a darker, wetter mat) — pools get a wet sheen
+    const wetW = smoothstep(0.15, 0.85, lc.g);
+    const poolFade = float(1).sub(smoothstep(0.03, 0.2, fp));
+    const n5 = mx_noise_float(p.xz.mul(1 / 0.32));
+    const poolN = n5.mul(0.55).add(n4.mul(0.35)).add(n3.mul(0.15)).add(wetW.sub(0.8).mul(0.5));
+    const pools = mix(float(0.22), smoothstep(0.16, 0.3, poolN), poolFade).mul(wetW);
+    const reeds = mix(srgbNode(TS.wetSedge), srgbNode(TS.wetReed), clamp(n3.mul(0.6).add(n5.mul(0.4)).add(0.5), 0, 1)).mul(lumSoft);
+    const wetCol = mix(reeds, srgbNode(TS.wetPool), pools.mul(0.8));
+    col.assign(mix(col, wetCol, wetW.mul(0.9)));
     col.assign(mix(col, srgbNode(TS.ash), lc.b.mul(0.9)));
     col.assign(mix(col, srgbNode(TS.road), lc.a.mul(0.45)));
     const channel = max(water.r, water.g);

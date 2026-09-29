@@ -43,7 +43,7 @@
       "atmo": {"tint": [0.96, 1.0, 1.02], "density": 1.05}
     },
     "brown-lands": {
-      "ground": {"grass": "#6f716a", "dry": "#7e7d74", "soil": "#5f5a50", "rock": "#6f6b65", "dryness": 0.72, "pattern": 0.6, "spots": [{"place": "emyn-muil", "radiusKm": 30, "grass": "#656a64", "dry": "#737770", "rock": "#5d6166", "dryness": 0.6, "rockiness": 1}, {"place": "argonath", "radiusKm": 8, "turf": 0}]},
+      "ground": {"grass": "#6a6f70", "dry": "#797d7c", "soil": "#5c5a55", "rock": "#6f6b65", "dryness": 0.72, "pattern": 0.6, "spots": [{"place": "emyn-muil", "radiusKm": 34, "grass": "#5c666a", "dry": "#6a7378", "rock": "#586069", "dryness": 0.6, "rockiness": 1}, {"atKm": [1080, 770], "radiusKm": 20, "grass": "#5e676a", "dry": "#6b7376", "rock": "#586069", "dryness": 0.6, "rockiness": 0.8}, {"atKm": [1076, 752], "radiusKm": 18, "grass": "#5f6a60", "dry": "#6d766f", "rock": "#586069", "dryness": 0.5, "rockiness": 0.7}, {"place": "argonath", "radiusKm": 8, "turf": 0}]},
       "grade": {"tint": "#fff2e4", "saturation": 0.86, "contrast": 1.02},
       "atmo": {"tint": [1.04, 0.98, 0.9], "density": 1.15, "spots": [{"place": "dead-marshes", "radiusKm": 26, "tint": [0.86, 0.8, 0.86], "density": 2.2}]}
     },
@@ -63,7 +63,7 @@
       "atmo": {"tint": [1.05, 1.03, 0.95], "density": 0.9, "sky": [1.02, 1.01, 0.98]}
     },
     "gondor": {
-      "ground": {"grass": "#56883f", "dry": "#9a9c5e", "soil": "#685a44", "rock": "#60646b", "dryness": 0.32, "pattern": 0.45, "snowline": -4, "spots": [{"atKm": [820, 690], "radiusKm": 90, "snowline": -5}, {"atKm": [930, 665], "radiusKm": 90, "snowline": -5}, {"atKm": [1040, 650], "radiusKm": 80, "snowline": -5}, {"atKm": [1128, 622], "radiusKm": 14, "grass": "#6a8d43", "dry": "#a19f60", "dryness": 0.42}, {"place": "minas-tirith", "radiusKm": 11, "turf": 1}, {"atKm": [1050, 560], "radiusKm": 60, "grass": "#5a8a3a", "dryness": 0.25}, {"atKm": [1060, 690], "radiusKm": 45, "grass": "#6f8c40", "dry": "#aea15a", "dryness": 0.42}]},
+      "ground": {"grass": "#56883f", "dry": "#9a9c5e", "soil": "#685a44", "rock": "#60646b", "dryness": 0.32, "pattern": 0.45, "snowline": -4, "spots": [{"atKm": [820, 690], "radiusKm": 90, "snowline": -5}, {"atKm": [930, 665], "radiusKm": 90, "snowline": -5}, {"atKm": [1040, 650], "radiusKm": 80, "snowline": -5}, {"atKm": [1128, 622], "radiusKm": 14, "grass": "#6a8d43", "dry": "#a19f60", "dryness": 0.42}, {"place": "minas-tirith", "radiusKm": 11, "turf": 1}, {"atKm": [1050, 560], "radiusKm": 60, "grass": "#528c3d", "dryness": 0.25}, {"atKm": [1055, 690], "radiusKm": 55, "grass": "#62903f", "dry": "#9a9e58", "dryness": 0.35}]},
       "grade": {"tint": "#f3f6f9", "saturation": 0.82, "contrast": 1.06, "redKeep": 0.25},
       "atmo": {"tint": [0.96, 1.0, 1.05], "density": 1.05, "sky": [0.98, 1.0, 1.02]}
     },
@@ -73,7 +73,7 @@
       "atmo": {"tint": [1.0, 1.02, 0.96], "density": 1}
     },
     "dagorlad": {
-      "ground": {"grass": "#5d625f", "dry": "#6b6f6b", "soil": "#4c4b45", "rock": "#565554", "dryness": 0.6, "pattern": 0.55, "volcanic": 0.5, "snowline": 8, "spots": [{"place": "dead-marshes", "radiusKm": 22, "grass": "#585d47", "dry": "#676a55", "dryness": 0.4, "volcanic": 0.1}]},
+      "ground": {"grass": "#5b6266", "dry": "#697074", "soil": "#4c4b45", "rock": "#565554", "dryness": 0.6, "pattern": 0.55, "volcanic": 0.5, "snowline": 8, "spots": [{"place": "dead-marshes", "radiusKm": 22, "grass": "#545d4a", "dry": "#626a58", "dryness": 0.4, "volcanic": 0.1}]},
       "grade": {"tint": "#f7f3f2", "saturation": 0.6, "contrast": 1.06, "exposure": -0.1, "lift": [0.0015, 0.0015, 0.0018], "redKeep": 0.5},
       "atmo": {"tint": [0.56, 0.54, 0.52], "density": 2.1, "sky": [0.62, 0.62, 0.64]}
     },

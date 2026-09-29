@@ -451,9 +451,9 @@ export const TERRAIN_SHADE = {
   beach: 0xb8aa88,
   shore: 0x86857c,
   /** wetland: open pools, reed / sedge mottle (sRGB) */
-  wetPool: 0x1d2924,
-  wetReed: 0x5b5a34,
-  wetSedge: 0x6e6b48,
+  wetPool: 0x1f2a28,
+  wetReed: 0x4f5438,
+  wetSedge: 0x5d6247,
   /** water channels under the water system's surfaces */
   channel: 0x1d3137,
   /** roads, ash fields */
