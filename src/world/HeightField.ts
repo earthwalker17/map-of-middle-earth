@@ -24,6 +24,21 @@ const smoothstep = (e0: number, e1: number, x: number): number => {
   return t * t * (3 - 2 * t);
 };
 
+/** lake cells within this distance (km) of the shore polygon are guarded too (rasterised coverage) */
+const LAKE_MARGIN = 0.4;
+
+function ringDistance(r: [number, number][], x: number, z: number): number {
+  let best = Infinity;
+  for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+    const [ax, az] = r[j];
+    const ex = r[i][0] - ax;
+    const ez = r[i][1] - az;
+    const t = Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / (ex * ex + ez * ez || 1)));
+    best = Math.min(best, Math.hypot(x - (ax + ex * t), z - (az + ez * t)));
+  }
+  return best;
+}
+
 function inRing(r: [number, number][], x: number, z: number): boolean {
   let c = false;
   for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
@@ -165,7 +180,8 @@ export class HeightField {
           b0 = Math.min(b0, z);
           b1 = Math.max(b1, z);
         }
-        return a1 >= x0 && a0 <= x1 && b1 >= z0 && b0 <= z1;
+        const m = LAKE_MARGIN + GUARD_FADE;
+        return a1 + m >= x0 && a0 - m <= x1 && b1 + m >= z0 && b0 - m <= z1;
       });
       if (!segs.length && !rings.length) continue;
       const [c0, c1, r0, r1] = this.cellRange(x0, z0, x1, z1);
@@ -190,7 +206,11 @@ export class HeightField {
             const d = Math.hypot(x - (ax + ex * t), z - (az + ez * t));
             w = Math.max(w, 1 - smoothstep(segs[k + 4], segs[k + 4] + GUARD_FADE, d));
           }
-          if (w < 1 && rings.some((ring) => inRing(ring, x, z))) w = 1;
+          for (const ring of rings) {
+            if (w >= 1) break;
+            // lakes (and their graded shore, LAKE_MARGIN km beyond the polygon) stay as baked
+            w = Math.max(w, inRing(ring, x, z) ? 1 : 1 - smoothstep(LAKE_MARGIN, LAKE_MARGIN + GUARD_FADE, ringDistance(ring, x, z)));
+          }
           if (w <= 0) continue;
           this.data[i] -= w * up;
           n++;

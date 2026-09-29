@@ -742,15 +742,19 @@ def carve(cfg: Config, h: np.ndarray, land: np.ndarray, lines: list[Line], lakes
         lvk = lv[k].astype(np.float32)
         bdk = bd[k].astype(np.float32)
         wet_lake = lake_any[idx_r, idx_c] > 0.5
-        # channel core: U section from the bed (centre) to the level (core edge); only lowers
+        # channel core: U section from the bed (centre) to the level (core edge) — on land it IS the
+        # section (DEM pits under the water are filled, so the thalweg is the carved centreline)
         m = (d < c) & ~wet_lake
         u = (d[m] / c) ** 2
         core_h = lvk[m] - (lvk[m] - bdk[m]) * (1 - u)
         cur = core_min[idx_r[m], idx_c[m]]
         core_min[idx_r[m], idx_c[m]] = np.minimum(cur, core_h)
-        # levee fill: the bank beside the water stays a little above the level (land only)
-        m2 = (d >= c) & (d < 1.6 * c + 0.3) & ~wet_lake & (land[idx_r, idx_c] >= 0.5)
-        req = lvk[m2] + eps + 0.08 * (d[m2] - c)
+        # levee fill: the bank beside the water stays a little above the level (land only), then
+        # tapers down at 1:2 to the natural ground instead of ending in a dike
+        d_lev = 1.6 * c + 0.3
+        m2 = (d >= c) & (d < R) & ~wet_lake & (land[idx_r, idx_c] >= 0.5)
+        dm = d[m2]
+        req = lvk[m2] + eps + 0.08 * (np.minimum(dm, d_lev) - c) - 0.5 * np.maximum(0.0, dm - d_lev)
         levee[idx_r[m2], idx_c[m2]] = np.maximum(levee[idx_r[m2], idx_c[m2]], req)
         # valley walls: ease anything steeper than bank_slope from the water's edge (soft cap)
         m3 = (d >= c) & ~wet_lake
@@ -773,7 +777,9 @@ def carve(cfg: Config, h: np.ndarray, land: np.ndarray, lines: list[Line], lakes
     in_core = np.isfinite(core_min)
     h -= bank_cut
     np.maximum(h, np.where(in_core, -np.inf, levee), out=h)
-    np.minimum(h, core_min, out=h)
+    on_land = in_core & (land >= 0.5)
+    h[on_land] = core_min[on_land]
+    np.minimum(h, core_min, out=h)  # at sea mouths the section only ever lowers
     return {"channel": channel, "dist": dist, "near_level": near_level, "lake_any": lake_any, "core": in_core}
 
 
