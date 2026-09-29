@@ -24,7 +24,9 @@ import { LandmarkSystem, landmarkExclusions, landmarkStamps } from '../landmarks
  */
 async function buildWorld(engine: Engine, quality: QualityTierId, shots: ShotSpecInput[], status: HTMLElement): Promise<World> {
   status.textContent = 'loading world…';
+  const mark = (k: string) => (engine.timings[k] = Math.round(performance.now()));
   const world = await World.load((m) => (status.textContent = `loading ${m}…`));
+  mark('worldLoaded');
   world.heights.setStamps(landmarkStamps(world, LANDMARKS));
   engine.heightAt = (x, z) => world.heights.sample(x, z);
   // landmark bookmarks join the shot list (explorer + capture)
@@ -39,7 +41,10 @@ async function buildWorld(engine: Engine, quality: QualityTierId, shots: ShotSpe
   vegetation.setExclusions(landmarkExclusions(world, LANDMARKS)); // before init → placed once
   const diorama = new DioramaSystem(world);
   const landmarks = new LandmarkSystem(world, LANDMARKS);
-  for (const s of [environment, terrain, water, vegetation, diorama, landmarks]) await engine.register(s);
+  for (const s of [environment, terrain, water, vegetation, diorama, landmarks]) {
+    await engine.register(s);
+    mark(`init:${s.id}`);
+  }
 
   // warm up: compile pipelines, then one throwaway frame realizes lazily-created GPU resources
   // (texture uploads, shadow maps, post targets) so the first captured frame is bit-identical to
@@ -48,8 +53,10 @@ async function buildWorld(engine: Engine, quality: QualityTierId, shots: ShotSpe
   const warmState = defaultSceneState({ camera: first.camera, tod: first.tod, quality });
   engine.applyState(warmState);
   await engine.renderer.compileAsync(engine.scene, engine.camera);
+  mark('compiled');
   engine.renderAccumulated(() => warmState, 1);
   await engine.post.readPixels();
+  mark('warm');
 
   // dev handle for diagnostics scripts (tools/capture/probe.ts)
   (window as unknown as { __app: unknown }).__app = { engine, world, terrain, environment, water, vegetation, diorama, landmarks };
@@ -60,6 +67,7 @@ export async function boot(canvas: HTMLCanvasElement, status: HTMLElement, param
   const capture = params.has('capture');
   const quality = (params.get('quality') as QualityTierId | null) ?? (capture ? 'review' : 'preview');
   const engine = await Engine.create({ canvas, width: innerWidth, height: innerHeight, quality, capture });
+  engine.timings.engineCreated = Math.round(performance.now());
   engine.assertHardwareGpu();
 
   const shots = [...(shotsJson.shots as unknown as ShotSpecInput[])];

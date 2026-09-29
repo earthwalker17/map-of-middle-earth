@@ -1,0 +1,60 @@
+{
+  "createdAt": "2026-09-29T11:57:36.471Z",
+  "label": "s1",
+  "quality": "preview",
+  "width": 1280,
+  "height": 720,
+  "gpu": "intel/gen-11",
+  "timings": {
+    "engineCreated": 1236,
+    "worldLoaded": 2456,
+    "init:environment": 2650,
+    "init:terrain": 2654,
+    "init:water": 3002,
+    "init:vegetation": 3336,
+    "init:diorama": 3345,
+    "init:landmarks": 3459,
+    "compiled": 21845,
+    "warm": 24758
+  },
+  "compileMs": 18386,
+  "bootMs": 24758,
+  "jsHeapMB": 258,
+  "footprint": {
+    "chromeMB": 1605,
+    "chromeProcs": 8,
+    "nodeMB": 207
+  },
+  "views": [
+    {
+      "name": "overview-day",
+      "width": 1280,
+      "height": 720,
+      "frames": 60,
+      "medianMs": 54.39999999990687,
+      "p95Ms": 74.5,
+      "meanMs": 56.556666666680634,
+      "maxMs": 83.39999999990687
+    },
+    {
+      "name": "shire",
+      "width": 1280,
+      "height": 720,
+      "frames": 60,
+      "medianMs": 50.10000000009313,
+      "p95Ms": 64.8000000002794,
+      "meanMs": 52.731666666649595,
+      "maxMs": 72.39999999990687
+    },
+    {
+      "name": "anduin-gondor",
+      "width": 1280,
+      "height": 720,
+      "frames": 60,
+      "medianMs": 49.5,
+      "p95Ms": 50.89999999990687,
+      "meanMs": 49.72999999998913,
+      "maxMs": 58.799999999813735
+    }
+  ]
+}

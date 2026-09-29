@@ -9,15 +9,16 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "node --import tsx tools/heavy.ts build -- vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "data:fetch": "node tools/refs/fetch-data.mjs",
     "refs:fetch": "node tools/refs/fetch.mjs",
-    "bake": "uv run --project tools/bake python tools/bake/run.py",
-    "shots": "tsx tools/capture/shots.ts",
-    "qa": "tsx tools/capture/qa.ts",
-    "check": "tsx tools/check/run.ts"
+    "bake": "node --import tsx tools/heavy.ts bake --min-free-mb 2500 -- uv run --project tools/bake python tools/bake/run.py",
+    "shots": "node --import tsx tools/capture/shots.ts",
+    "qa": "node --import tsx tools/capture/qa.ts",
+    "check": "node --import tsx tools/check/run.ts",
+    "perf": "node --import tsx tools/capture/perf.ts"
   },
   "dependencies": {
     "lil-gui": "0.21.0",

@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "notes": "Named QA shot sets for `pnpm qa --set <name>`. Ids are data/qa shots or landmark bookmarks (resolved in the page). 's1' is the milestone set: 10 overview/region shots + 14 landmark close-ups.",
+  "sets": {
+    "overview": ["overview-day", "overview-golden", "overview-night", "overview-low-west", "overview-top"],
+    "regions": ["shire", "misty-moria", "rohan-isengard", "anduin-gondor", "mordor", "erebor-long-lake"],
+    "landmarks": [
+      "minas-tirith-close", "barad-dur-close", "mount-doom-close", "black-gate-close", "minas-morgul-close",
+      "argonath-close", "isengard-close", "helms-deep-close", "moria-close", "rivendell-close",
+      "hobbiton-close", "erebor-close", "lake-town-close", "lothlorien-close"
+    ],
+    "s1": [
+      "overview-day", "overview-golden", "overview-night", "overview-low-west", "overview-top",
+      "shire", "misty-moria", "rohan-isengard", "anduin-gondor", "mordor", "erebor-long-lake",
+      "minas-tirith-close", "barad-dur-close", "mount-doom-close", "black-gate-close", "minas-morgul-close",
+      "argonath-close", "isengard-close", "helms-deep-close", "moria-close", "rivendell-close",
+      "hobbiton-close", "erebor-close", "lake-town-close", "lothlorien-close"
+    ],
+    "blind": [
+      "overview-day", "overview-top", "overview-low-west",
+      "shire", "misty-moria", "rohan-isengard", "anduin-gondor", "mordor", "erebor-long-lake"
+    ]
+  }
+}

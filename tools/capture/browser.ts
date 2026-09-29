@@ -1,5 +1,27 @@
 import { chromium, type BrowserContext, type Page } from 'playwright';
-import { join } from 'node:path';
+import { chromeProfileDir } from './host.ts';
+
+/**
+ * Chrome honours only the LAST --disable-features switch, and Playwright already passes its own
+ * list (playwright-core chromiumSwitches.ts). Ours must therefore be a superset of Playwright's or
+ * it silently re-enables Translate, OptimizationHints, MediaRouter, … (memory + background work).
+ */
+const PLAYWRIGHT_DISABLED_FEATURES = [
+  'AvoidUnnecessaryBeforeUnloadCheckSync',
+  'DestroyProfileOnBrowserClose',
+  'DialMediaRouteProvider',
+  'GlobalMediaControls',
+  'HttpsUpgrades',
+  'LensOverlay',
+  'MediaRouter',
+  'PaintHolding',
+  'ThirdPartyStoragePartitioning',
+  'BlockOriginHeaderModificationOnRedirect',
+  'Translate',
+  'AutoDeElevate',
+  'OptimizationHints',
+];
+const OUR_DISABLED_FEATURES = ['CalculateNativeWinOcclusion'];
 
 /**
  * Launch the installed Chrome (new headless) with a persistent profile so Dawn's shader/pipeline
@@ -7,8 +29,7 @@ import { join } from 'node:path';
  * go through the page's readback API instead.
  */
 export async function launchChrome(opts: { headed?: boolean } = {}): Promise<BrowserContext> {
-  const profile = join(process.cwd(), '.cache', 'chrome-profile');
-  return chromium.launchPersistentContext(profile, {
+  return chromium.launchPersistentContext(chromeProfileDir(), {
     channel: 'chrome',
     headless: !opts.headed,
     viewport: { width: 1280, height: 720 },
@@ -17,7 +38,7 @@ export async function launchChrome(opts: { headed?: boolean } = {}): Promise<Bro
       '--enable-unsafe-webgpu',
       '--ignore-gpu-blocklist',
       '--enable-webgpu-developer-features',
-      '--disable-features=CalculateNativeWinOcclusion',
+      `--disable-features=${[...PLAYWRIGHT_DISABLED_FEATURES, ...OUR_DISABLED_FEATURES].join(',')}`,
       '--disable-backgrounding-occluded-windows',
       '--disable-renderer-backgrounding',
       '--disable-background-timer-throttling',
@@ -40,4 +61,15 @@ export function collectConsole(page: Page): ConsoleLog[] {
 
 export async function browserVersion(ctx: BrowserContext): Promise<string> {
   return ctx.browser()?.version() ?? 'chrome (persistent)';
+}
+
+/** Ask V8 for a full GC (frees readback/upload ArrayBuffers between shots). */
+export async function collectGarbage(ctx: BrowserContext, page: Page): Promise<void> {
+  try {
+    const cdp = await ctx.newCDPSession(page);
+    await cdp.send('HeapProfiler.collectGarbage');
+    await cdp.detach();
+  } catch {
+    /* best effort */
+  }
 }

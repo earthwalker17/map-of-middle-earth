@@ -59,7 +59,8 @@ export async function startCaptureServer(port = 5199): Promise<CaptureServer> {
   const server = await createServer({
     configFile: resolve(process.cwd(), 'vite.config.ts'),
     plugins: [captureSink(() => handler)],
-    server: { port, strictPort: false, hmr: false },
+    // no HMR and no file watcher: a capture server serves one immutable checkout
+    server: { port, strictPort: false, hmr: false, watch: null },
     logLevel: 'warn',
     clearScreen: false,
   });

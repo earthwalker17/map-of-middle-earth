@@ -83,9 +83,16 @@ render loops — shared systems realize their declarations. Proxies (S1) → Ble
 ## Capture & QA (tools/capture)
 - The readback target stores bytes as-is (NoColorSpace): the post pass already encodes sRGB.
 - `window.__mm` (capture mode `?capture=1`): `ready`, `info()`, `render({name, shot|timelineId, t, width,
-  height, spp, shutter, fps})` → RGBA readback POSTed to `/__capture/frame`.
-- `pnpm shots --shot <id> | --all | --smoke [--spp n --w --h --tod --quality --determinism]` →
-  `renders/shots/<stamp>/` + `latest/`. Shots live in `data/qa/shots.json` (explicit camera or `orbit`).
-- GPU lock: one machine-wide lock file in the OS temp dir — every GPU tool takes it (parallel agents
-  code concurrently, render one at a time).
+  height, spp, shutter, fps})` → RGBA readback POSTed to `/__capture/frame`; `benchmark({shotId, frames,
+  orbitDeg})` → interactive-path frame latency (diagnostics only).
+- `pnpm shots --shot <id> | --all | --smoke [--spp n --w --h --tod --quality --determinism --batch k --no-latest]` →
+  `renders/shots/<stamp>/` + `latest/`. Shots live in `data/qa/shots.json` + `shots.d/` (explicit camera or
+  `orbit`); named sets in `data/qa/sets.json`.
+- `pnpm qa --set s1 --batch 8` renders a set in bounded batches (fresh Vite + Chrome each), then composes
+  contact / compare sheets (references paired from `reference/manifest.json` by subject) and an anonymised
+  `blind/` set for recognizability critics.
+- Heavy-job lock: one machine-wide lock (`%LOCALAPPDATA%\map-of-middle-earth\gpu.lock`, heartbeat) taken by
+  captures, `pnpm bake` and `pnpm build` (`tools/heavy.ts`) after a free-RAM guard (`tools/capture/host.ts`);
+  orphaned capture Chrome of the checkout is swept while the lock is held.
+- `pnpm perf [--gate]` — preview-tier boot/compile/frame-latency probe vs `data/qa/perf-baseline.json`.
 - `tools/capture/probe.ts "<expr>"` evaluates an expression against `window.__app` for diagnostics.

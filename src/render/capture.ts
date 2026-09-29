@@ -33,11 +33,41 @@ export interface CaptureResult {
   meanLuma: number;
 }
 
+export interface BenchRequest {
+  name: string;
+  shot?: ShotSpecInput;
+  shotId?: string;
+  width: number;
+  height: number;
+  /** timed frames (after warm-up) */
+  frames?: number;
+  warmup?: number;
+  /** total camera orbit around the shot target over the run, degrees (exercises per-camera culling/LOD) */
+  orbitDeg?: number;
+}
+
+export interface BenchResult {
+  name: string;
+  width: number;
+  height: number;
+  frames: number;
+  medianMs: number;
+  p95Ms: number;
+  meanMs: number;
+  maxMs: number;
+}
+
 export interface CaptureApi {
   version: 1;
   ready: Promise<void>;
-  info(): { gpu: GpuInfo; three: string; quality: string };
+  info(): { gpu: GpuInfo; three: string; quality: string; timings: Record<string, number>; jsHeapMB: number | null };
   render(req: CaptureRequest): Promise<CaptureResult>;
+  /**
+   * Interactive-path frame timing (single sample, presented). Every frame is awaited to GPU
+   * completion, so the numbers are latency (CPU + GPU, no pipelining) — a conservative budget.
+   * Diagnostics only: uses wall-clock time and never produces a captured frame.
+   */
+  benchmark(req: BenchRequest): Promise<BenchResult>;
   registerTimeline(t: Timeline): void;
 }
 
@@ -62,7 +92,15 @@ export function installCaptureApi(
   const api: CaptureApi = {
     version: 1,
     ready,
-    info: () => ({ gpu: engine.gpu, three: REVISION, quality: engine.quality.id }),
+    info: () => ({
+      gpu: engine.gpu,
+      three: REVISION,
+      quality: engine.quality.id,
+      timings: { ...engine.timings },
+      // Chrome-only heap counter (misses ArrayBuffers and GPU memory — indicative only)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      jsHeapMB: (performance as any).memory ? Math.round((performance as any).memory.usedJSHeapSize / 2 ** 20) : null,
+    }),
     registerTimeline: (t) => timelines.set(t.id, t),
     async render(req) {
       await ready;
@@ -87,13 +125,55 @@ export function installCaptureApi(
       for (let i = 0; i < pixels.length; i += 4 * 97) sum += 0.2126 * pixels[i] + 0.7152 * pixels[i + 1] + 0.0722 * pixels[i + 2];
       const meanLuma = sum / Math.ceil(pixels.length / (4 * 97));
       const sha256 = await sha256Hex(pixels);
+      // a Blob body keeps the frame out of the DevTools protocol's request events (Playwright keeps
+      // the last 100 requests' post data in the harness process)
       const res = await fetch(`/__capture/frame?name=${encodeURIComponent(req.name)}&w=${engine.post.width}&h=${engine.post.height}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/octet-stream' },
-        body: pixels as BodyInit,
+        body: new Blob([pixels as BlobPart]),
       });
       if (!res.ok) throw new Error(`capture sink rejected frame: ${res.status}`);
       return { name: req.name, width: engine.post.width, height: engine.post.height, spp, renderMs, sha256, meanLuma };
+    },
+    async benchmark(req) {
+      await ready;
+      const input = req.shot ?? (req.shotId ? findShot(req.shotId) : undefined);
+      if (!input) throw new Error(`benchmark: unknown shot ${req.shotId ?? req.name}`);
+      const base = resolveShot(input);
+      engine.setSize(req.width, req.height);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const device = (engine.renderer.backend as any).device as GPUDevice;
+      const frames = req.frames ?? 60;
+      const warm = req.warmup ?? 10;
+      const orbit = ((req.orbitDeg ?? 0) * Math.PI) / 180;
+      const [px, py, pz] = base.camera.position;
+      const [tx, , tz] = base.camera.target;
+      const dx = px - tx;
+      const dz = pz - tz;
+      const times: number[] = [];
+      for (let i = 0; i < warm + frames; i++) {
+        const a = (orbit * i) / (warm + frames);
+        const c = Math.cos(a);
+        const s = Math.sin(a);
+        const position: [number, number, number] = [tx + dx * c - dz * s, py, tz + dx * s + dz * c];
+        const state = new StaticTimeline({ ...base, camera: { ...base.camera, position } }).evaluate(i / 24);
+        const t0 = performance.now();
+        engine.renderInteractive(state);
+        await device.queue.onSubmittedWorkDone();
+        if (i >= warm) times.push(performance.now() - t0);
+      }
+      const sorted = [...times].sort((x, y) => x - y);
+      const q = (p: number) => sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))];
+      return {
+        name: req.name,
+        width: engine.post.width,
+        height: engine.post.height,
+        frames,
+        medianMs: q(0.5),
+        p95Ms: q(0.95),
+        meanMs: times.reduce((x, y) => x + y, 0) / times.length,
+        maxMs: sorted[sorted.length - 1],
+      };
     },
   };
   window.__mm = api;

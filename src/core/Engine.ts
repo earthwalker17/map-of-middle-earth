@@ -37,6 +37,8 @@ export class Engine {
   post!: PostPipeline;
   gpu!: GpuInfo;
   heightAt: HeightProvider | null = null;
+  /** boot milestones, ms since navigation start (diagnostics only — never feeds rendering) */
+  readonly timings: Record<string, number> = {};
   width: number;
   height: number;
 

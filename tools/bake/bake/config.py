@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,6 +10,8 @@ from pathlib import Path
 from affine import Affine
 
 ROOT = Path(__file__).resolve().parents[3]
+# worktrees have no (gitignored) data/source: point MOME_SOURCE_DIR at the main checkout's copy
+SOURCE_DIR = Path(os.environ["MOME_SOURCE_DIR"]).resolve() if os.environ.get("MOME_SOURCE_DIR") else ROOT / "data" / "source"
 
 
 @dataclass
@@ -47,6 +50,8 @@ class Config:
         return x_km - cx, cy - y_km
 
     def path(self, *parts: str) -> Path:
+        if len(parts) >= 2 and parts[0] == "data" and parts[1] == "source":
+            return SOURCE_DIR.joinpath(*parts[2:])
         return ROOT.joinpath(*parts)
 
 

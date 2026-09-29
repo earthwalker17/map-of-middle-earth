@@ -1,28 +1,20 @@
 /**
  * Diagnostics: load the app in capture mode and evaluate an expression against window.__app.
- *   pnpm tsx tools/capture/probe.ts "<js expression using app>"
+ *   node --import tsx tools/capture/probe.ts "<js expression using app>" [--quality preview]
  */
-import { acquireGpuLock } from './gpuLock.ts';
-import { startCaptureServer } from './server.ts';
-import { collectConsole, launchChrome } from './browser.ts';
+import { bootCapturePage, openCaptureSession } from './session.ts';
 
 const expr = process.argv[2] ?? 'Object.keys(app)';
-const release = await acquireGpuLock('probe');
-const srv = await startCaptureServer(5198);
-const ctx = await launchChrome();
-const page = ctx.pages()[0] ?? (await ctx.newPage());
-page.setDefaultTimeout(0);
-const logs = collectConsole(page);
+const qi = process.argv.indexOf('--quality');
+const quality = qi > 0 ? process.argv[qi + 1] : 'review';
+const session = await openCaptureSession({ label: 'probe', port: 5198 });
 try {
-  await page.goto(`${srv.url}/?capture=1&quality=review`);
-  await page.waitForFunction(() => Boolean((window as unknown as { __app?: unknown }).__app), undefined, { timeout: 120000 });
-  const out = await page.evaluate(`(async () => { const app = window.__app; return (${expr}); })()`);
+  await bootCapturePage(session, quality);
+  const out = await session.page.evaluate(`(async () => { const app = window.__app; return (${expr}); })()`);
   console.log(JSON.stringify(out, null, 2));
 } catch (e) {
   console.error(e);
 } finally {
-  for (const l of logs.filter((l) => l.type === 'error' || l.type === 'pageerror').slice(0, 10)) console.error('[console]', l.text);
-  await ctx.close();
-  await srv.close();
-  release();
+  for (const l of session.logs.filter((l) => l.type === 'error' || l.type === 'pageerror').slice(0, 10)) console.error('[console]', l.text);
+  await session.close();
 }

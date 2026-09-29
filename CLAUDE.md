@@ -27,8 +27,13 @@ title cards, original score).
 ## Workflow rules
 - Visual work is not done until it has been **rendered, inspected and compared with references**:
   `pnpm shots --shot <id>` / `pnpm qa` (render-target readback — page screenshots of WebGPU are black).
-- One GPU at a time: every capture tool takes `.cache/gpu.lock`. Max 3 parallel agents, each in its own
-  worktree and module folder; the main agent reviews and integrates — never accept subagent output unseen.
+- **One heavy job at a time** (7.6 GB RAM shared with the iGPU): captures, bake and build all take the
+  machine-wide lock (`%LOCALAPPDATA%\map-of-middle-earth\gpu.lock`) behind a free-RAM guard. Captures run in
+  bounded batches (`pnpm qa --batch 8`, fresh Chrome per batch), in the foreground; iterate at
+  1280×720 spp 2, milestone QA at 1600×900 spp 4. Agents never run `pnpm build` or long-lived dev servers.
+- Max **2** parallel implementation agents on this host, each in its own worktree and module files; the
+  main agent reviews and integrates — never accept subagent output unseen. `pnpm perf --gate` guards the
+  preview tier against `data/qa/perf-baseline.json`.
 - Commit at meaningful milestones; update `docs/PROJECT_STATE.md` at each milestone.
   **Push only at session end, after explicit user approval.**
 - `CLAUDE.md` changes only when stable rules change; session logs go to `PROJECT_STATE.md`.
@@ -39,7 +44,9 @@ title cards, original score).
   offset from canonical ones (validator-checked).
 - TypeScript strict, ES modules, pnpm. `three` pinned to 0.186.1 — upgrade deliberately.
 - Ids are kebab-case and shared across data, folders, references and bookmarks (`minas-tirith`).
-- Python bake lives in `tools/bake` (uv env). Blender 4.5 headless for landmark GLBs (from Session 4).
+- Python bake lives in `tools/bake` (uv env). Landmarks: upgraded TS procedural kit by default; Blender 4.5
+  headless GLBs only for close-up hero landmarks (S3). Worktrees point `MOME_WORLD_DIR` / `MOME_SOURCE_DIR`
+  at the main checkout's gitignored data instead of re-fetching or junctioning it.
 
 ## Licensing & IP (hard rules)
 - Never commit `data/source/`, `data/baked/`, reference images or fetched textures (public repo).
@@ -48,4 +55,5 @@ title cards, original score).
 - OFL fonts only; no Tengwar/Cirth, no film logos or film typography; no imitation of Howard Shore's music.
 
 ## Commands
-`pnpm dev` · `pnpm typecheck` · `pnpm build` · `pnpm data:fetch` · `pnpm bake` · `pnpm shots --smoke|--shot <id>|--all` · `pnpm qa` · `pnpm check`
+`pnpm dev` · `pnpm typecheck` · `pnpm build` · `pnpm data:fetch` · `pnpm bake` · `pnpm shots --smoke|--shot <id>` ·
+`pnpm qa [--set s1|overview|regions|landmarks] [--batch 8]` · `pnpm perf [--gate]` · `pnpm check`

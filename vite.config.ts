@@ -41,11 +41,15 @@ export default defineConfig({
   resolve: {
     dedupe: ['three'],
   },
+  // only crawl the app entry: the default **/*.html scan would walk agent worktrees (.claude/) and venvs
+  optimizeDeps: {
+    entries: ['index.html'],
+  },
   server: {
     port: Number(process.env.PORT ?? 5173),
     strictPort: true,
     watch: {
-      ignored: ['**/data/**', '**/reference/**', '**/renders/**', '**/tools/bake/**', '**/.venv/**', '**/.cache/**', '**/.git/**', '**/docs/**'],
+      ignored: ['**/data/**', '**/reference/**', '**/renders/**', '**/tools/bake/**', '**/.venv/**', '**/.cache/**', '**/.git/**', '**/docs/**', '**/.claude/**'],
     },
   },
   build: {
