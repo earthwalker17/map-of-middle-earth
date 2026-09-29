@@ -26,11 +26,11 @@ const SHADOW_MARGIN = 28;
  * modest; the far LOD keeps the seven sub-crowns (the canopy texture of regional shots) and a
  * three-sided trunk hint.
  */
-const LODS: { detail: number; trunkSides: number; minPx: number; cap: number }[] = [
-  { detail: 2, trunkSides: 6, minPx: 130, cap: 4000 },
-  { detail: 1, trunkSides: 6, minPx: 38, cap: 40000 },
-  { detail: 0, trunkSides: 4, minPx: 9, cap: Infinity },
-  { detail: -1, trunkSides: 3, minPx: 0, cap: Infinity },
+const LODS: { detail: number; trunkSides: number; relief: number; minPx: number; cap: number }[] = [
+  { detail: 2, trunkSides: 6, relief: 1, minPx: 130, cap: 4000 },
+  { detail: 1, trunkSides: 6, relief: 0, minPx: 38, cap: 40000 },
+  { detail: 0, trunkSides: 4, relief: 0, minPx: 9, cap: Infinity },
+  { detail: -1, trunkSides: 3, relief: 0, minPx: 0, cap: Infinity },
 ];
 
 /** spread from a record's packed shape field (spread + 2·gapQ) */
@@ -116,7 +116,7 @@ export class VegetationSystem implements System {
   init(ctx: InitContext): void {
     this.scene = ctx.scene;
     this.useMaterial(ctx.quality.id);
-    this.lodGeometries = LODS.map((l) => createClumpGeometry({ detail: l.detail, trunkSides: l.trunkSides }));
+    this.lodGeometries = LODS.map((l) => createClumpGeometry({ detail: l.detail, trunkSides: l.trunkSides, relief: l.relief }));
     this.place(ctx.quality.density);
   }
 

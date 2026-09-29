@@ -173,8 +173,10 @@ export function createFoliageMaterial(world: World, opts: FoliageOptions = {}): 
   const lp = attribute('position', 'vec3');
   const ln = attribute('normal', 'vec3');
   const sub = attribute('sub', 'vec4');
-  const part = attribute('part', 'float');
-  const cavity = attribute('cavity', 'float');
+  const meta = attribute('clumpMeta', 'vec3');
+  const part = meta.x;
+  const cavity = meta.y;
+  const relief = meta.z;
 
   const kind = floor(iB.y.div(8));
   const yaw = iB.y.sub(kind.mul(8));
@@ -263,7 +265,7 @@ export function createFoliageMaterial(world: World, opts: FoliageOptions = {}): 
     // silhouettes break up into clumps instead of smooth potatoes
     const grainV = grainOf(R.mul(hr), ik);
     const distV = length(vec3(iA.x, ground, iA.y).sub(env.cameraPos));
-    const fadeV = smoothstep(2.5, 7.0, grainV.mul(pxPerKm).div(distV)).mul(select(isTrunk, float(0), float(1)));
+    const fadeV = smoothstep(2.5, 7.0, grainV.mul(pxPerKm).div(distV)).mul(select(isTrunk, float(0), relief));
     const tV = texture3D(foam, basePos.div(grainV).add(foamOff(seed)).div(FOAM_PERIOD)).level(0);
     const nGeoW = vec3(nGeo.x.mul(cs).add(nGeo.z.mul(sn)), nGeo.y, nGeo.z.mul(cs).sub(nGeo.x.mul(sn)));
     worldPos = basePos.add(nGeoW.mul(tV.a.sub(0.55).mul(grainV).mul(0.9).mul(fadeV)));

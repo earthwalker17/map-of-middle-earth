@@ -18,8 +18,10 @@ import { rand } from '../core/rng.ts';
  * clustered tree still spans radius 1, then maps unit space to (hr, vr, hr·aspect) km.
  *
  * Attributes: position = sub-crown-local shape point (radius ≈ 1, centre at the origin),
- * normal, `sub` = (cx, cz, radius, index) of the sub-crown in unit space, `part` (0 crown,
- * 1 trunk), `cavity` (0 open … 1 deep crease within the sub-crown's own lumps).
+ * normal, `sub` = (cx, cz, radius, index) of the sub-crown in unit space, `clumpMeta` = (part: 0 crown,
+ * 1 trunk; cavity: 0 open … 1 deep crease within the sub-crown's own lumps; relief: how much clump
+ * displacement this tessellation can carry, 1 on the finest LOD, 0 on coarse ones) — packed, as
+ * WebGPU allows only eight vertex buffers including the three instance attributes.
  */
 
 /** sub-crowns per cluster (index 0 = centre crown) */
@@ -153,7 +155,8 @@ function subCrownShape(detail: number, seed: number): { pos: Float32Array; nrm: 
     const dx = ico.pos[i * 3];
     const dy = ico.pos[i * 3 + 1];
     const dz = ico.pos[i * 3 + 2];
-    const r = lumpy ? unionRadius(lobes, dx, dy, dz, 18) : 1;
+    // coarse tessellations keep only a hint of the lumps (sampled at 42 directions they facet)
+    const r = lumpy ? 1 + (unionRadius(lobes, dx, dy, dz, 18) - 1) * (detail >= 2 ? 1 : 0.45) : 1;
     pos[i * 3] = dx * r;
     pos[i * 3 + 1] = dy * r;
     pos[i * 3 + 2] = dz * r;
@@ -226,6 +229,8 @@ export interface ClumpGeometryOptions {
   detail: number;
   /** trunk prism sides (0 = none; 3 = a cheap far-LOD hint) */
   trunkSides: number;
+  /** clump-relief weight of this tessellation (0..1) */
+  relief?: number;
   seed?: number;
 }
 
@@ -281,8 +286,13 @@ export function createClumpGeometry(opts: ClumpGeometryOptions): InstancedBuffer
   g.setAttribute('position', new BufferAttribute(new Float32Array(P), 3));
   g.setAttribute('normal', new BufferAttribute(new Float32Array(N), 3));
   g.setAttribute('sub', new BufferAttribute(new Float32Array(S), 4));
-  g.setAttribute('part', new BufferAttribute(new Float32Array(part), 1));
-  g.setAttribute('cavity', new BufferAttribute(new Float32Array(cavity), 1));
+  const meta = new Float32Array(part.length * 3);
+  for (let i = 0; i < part.length; i++) {
+    meta[i * 3] = part[i];
+    meta[i * 3 + 1] = cavity[i];
+    meta[i * 3 + 2] = opts.relief ?? 0;
+  }
+  g.setAttribute('clumpMeta', new BufferAttribute(meta, 3));
   g.setIndex(idx);
   return g;
 }
