@@ -15,11 +15,9 @@ steps and whatever upstream step is stale):
 from __future__ import annotations
 
 import argparse
+import os
 import re
-import json
 import shutil
-
-import numpy as np
 
 from . import config
 from .cache import StepCache, code_stamp, digest, f8, file_stamp, q8
@@ -165,4 +163,30 @@ def main(argv: list[str]) -> None:
         for s in STEPS:
             if s in run and s != "dem":
                 b.get(s)
-    print(f"[bake] done → {cfg.out}")
+    peak = peak_rss_mb()
+    print(f"[bake] done → {cfg.out}" + (f" (peak memory {peak:.0f} MB)" if peak else ""))
+
+
+def peak_rss_mb() -> float | None:
+    """Peak working set of this process (Windows) / max RSS (POSIX), MB."""
+    try:
+        if os.name == "nt":
+            import ctypes
+            from ctypes import wintypes
+
+            class PMC(ctypes.Structure):
+                _fields_ = [("cb", wintypes.DWORD), ("PageFaultCount", wintypes.DWORD), ("PeakWorkingSetSize", ctypes.c_size_t), ("WorkingSetSize", ctypes.c_size_t), ("QuotaPeakPagedPoolUsage", ctypes.c_size_t), ("QuotaPagedPoolUsage", ctypes.c_size_t), ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t), ("QuotaNonPagedPoolUsage", ctypes.c_size_t), ("PagefileUsage", ctypes.c_size_t), ("PeakPagefileUsage", ctypes.c_size_t)]
+
+            pmc = PMC()
+            pmc.cb = ctypes.sizeof(PMC)
+            k32 = ctypes.windll.kernel32
+            k32.GetCurrentProcess.restype = wintypes.HANDLE
+            k32.K32GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(PMC), wintypes.DWORD]
+            if k32.K32GetProcessMemoryInfo(k32.GetCurrentProcess(), ctypes.byref(pmc), pmc.cb):
+                return pmc.PeakWorkingSetSize / 2**20
+            return None
+        import resource
+
+        return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
+    except Exception:  # pragma: no cover - diagnostics only
+        return None

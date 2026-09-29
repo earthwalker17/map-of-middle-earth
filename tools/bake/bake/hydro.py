@@ -583,7 +583,7 @@ def flow_widths(cfg: Config, lines: list[Line], lakes: dict[str, Lake], log: lis
         if ref <= 0:
             continue
         s = float(np.clip((lup(l.idx) / ref) ** k, lo, hi))
-        l.width = round(l.width * s / 0.05) * 0.05
+        l.width = round(round(l.width * s / 0.05) * 0.05, 2)
     big = sorted(lines, key=lambda l: -l.width)[:6]
     log.append("flow widths: " + ", ".join(f"{l.name or 'stream'} {l.width:.2f} km (upstream {lup(l.idx):.0f} km)" for l in big))
 

@@ -8,8 +8,8 @@ export default defineLandmark({
   // the cleft of Imladris: walls raised either side of the stream that runs ~1.7 km south of the house
   // (a carve along it would sink the banks below the baked water); the stream corridor stays as baked
   stamps: [
-    { kind: 'raise', at: [0, -2.8], radius: 3.2, amount: 2.5 },
-    { kind: 'raise', at: [0.5, 5], radius: 3.2, amount: 2.5 },
+    { kind: 'raise', at: [0, -2.8], radius: 3.6, amount: 2.2 },
+    { kind: 'raise', at: [0.5, 5.2], radius: 4, amount: 1.8 },
   ],
   proxy: (k) => {
     for (let i = 0; i < 16; i++) {
