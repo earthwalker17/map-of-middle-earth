@@ -55,6 +55,9 @@ function neutralMask(): DataTexture {
   return t;
 }
 
+/** 1 on flat ground, 0 on slopes steeper than ~0.2 (1 − n.y) */
+const flatGround = (slope: N): N => float(1).sub(smoothstep(0.08, 0.22, slope));
+
 /** tiling of the detail layers (km per tile): soft ground (planar) and hard ground (triplanar) */
 const SOFT_TILE = 1.7;
 /** domain warp of the regional ground look (km) */
@@ -276,12 +279,18 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     const floorCol = mix(pal.grass.mul(0.5), pal.soil.mul(0.62), float(0.45).add(n3.mul(0.2))).mul(float(0.8).add(n4.mul(0.18)));
     ground.assign(mix(ground, floorCol, lc.r.mul(0.9)));
 
+    // volcanic plains (Gorgoroth): a network of dark fissures where the 3 km noise crosses zero
+    // (lines ~150 m wide, faded once they would shrink below a pixel)
+    const crackFade = float(1).sub(smoothstep(0.12, 0.35, fp));
+    const cracks = float(1).sub(smoothstep(0.015, 0.05, abs(n3.add(n4.mul(0.25))))).mul(smoothstep(0.7, 0.95, pal.volcanic)).mul(flatGround(slope)).mul(crackFade);
+    ground.assign(ground.mul(float(1).sub(cracks.mul(0.55))));
+
     const col = mix(ground, rockCol, rock).toVar();
     const snowCol = srgbNode(TS.snow).mul(float(0.97).add(n4.mul(0.03))).mul(mix(float(1), lumHard, 0.6));
     col.assign(mix(col, snowCol, snow));
 
     // ---- coasts, shores, wetlands, ash, roads, channels
-    const flat = float(1).sub(smoothstep(0.08, 0.22, slope));
+    const flat = flatGround(slope);
     const beach = smoothstep(0.55, 0.12, hC).mul(water.b).mul(flat);
     col.assign(mix(col, srgbNode(TS.beach).mul(float(0.95).add(n4.mul(0.08))).mul(lumSoft), beach.mul(0.85)));
     const shore = max(sm.b, sm.a.mul(fineFade).mul(0.2)).mul(flat).mul(float(1).sub(lc.r)).mul(float(1).sub(snow));
