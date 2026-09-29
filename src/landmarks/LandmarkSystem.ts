@@ -38,7 +38,7 @@ export function landmarkStamps(world: World, defs: LandmarkDefinition[]): Stamp[
           out.push({ ...s, at: w(s.at) });
           break;
         case 'cone':
-          out.push({ ...s, at: w(s.at), summit: h0 + s.summit });
+          out.push({ ...s, at: w(s.at), summit: h0 + s.summit, base: h0 });
           break;
         case 'plateau':
           out.push({ ...s, at: w(s.at), height: h0 + s.height });
@@ -111,7 +111,9 @@ export class LandmarkSystem implements System {
     for (const def of this.defs) {
       const g = this.groups.get(def.id);
       if (!g) continue;
-      const boost = def.wideBoost ?? (def.tier === 'A' ? { refKm: 160, max: 2.6 } : { refKm: 160, max: 1.8 });
+      // interim (S2): gentler wide-shot growth — at 2.6× tall proxies outgrew the mountain ranges and
+      // boosted footprints spread over rivers. S3 replaces size with silhouette/emission readability.
+      const boost = def.wideBoost ?? (def.tier === 'A' ? { refKm: 160, max: 1.8 } : { refKm: 160, max: 1.5 });
       const d = cam.distanceTo(g.position);
       // smoothstep-shaped growth so the boost eases in rather than kinking at refKm
       const t = Math.min(1, Math.max(0, (d / boost.refKm - 1) / (boost.max - 1)));

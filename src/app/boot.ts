@@ -32,7 +32,12 @@ async function buildWorld(engine: Engine, quality: QualityTierId, shots: ShotSpe
   // landmark bookmarks join the shot list (explorer + capture)
   for (const def of LANDMARKS)
     for (const b of def.bookmarks ?? [])
-      shots.push({ id: b.id, tod: b.tod ?? 15, camera: { orbit: { place: def.placeId, distanceKm: b.distanceKm, elevationDeg: b.elevationDeg, azimuthDeg: b.azimuthDeg, fov: b.fov } } });
+      shots.push({
+        id: b.id,
+        tod: b.tod ?? 15,
+        lookOverride: def.lookOverride ?? null,
+        camera: { orbit: { place: def.placeId, distanceKm: b.distanceKm, elevationDeg: b.elevationDeg, azimuthDeg: b.azimuthDeg, fov: b.fov, lift: b.lift } },
+      });
 
   const environment = new EnvironmentSystem();
   const terrain = new TerrainSystem(world);

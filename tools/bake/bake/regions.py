@@ -28,8 +28,10 @@ def bake_regions(cfg: Config) -> tuple[list[str], np.ndarray]:
             m = features.rasterize([(shape(f["geometry"]), 1)], out_shape=(h, w), transform=t, fill=0, dtype="uint8").astype(np.float32)
             sigma = max(0.5, f["properties"].get("softKm", 30) / px_km / 2.0)
             layers[i] = cv2.GaussianBlur(m, (0, 0), sigma)
+        # whatever the soft masks leave uncovered belongs to the default region (index 0), so a lone
+        # region fades into the default instead of being renormalised to 100 % until its blur ends
+        # (that produced hard box edges and full-strength bleed); overlaps are normalised
         total = layers.sum(axis=0)
-        empty = total < 1e-3
-        layers[0][empty] = 1.0  # default region
-        layers /= np.maximum(layers.sum(axis=0), 1e-6)[None]
+        layers[0] += np.clip(1.0 - total, 0.0, 1.0)
+        layers /= np.maximum(layers.sum(axis=0), 1.0)[None]
     return ids, layers

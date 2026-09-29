@@ -25,5 +25,5 @@ export default defineLandmark({
   waterFeatures: [{ kind: 'waterfall', path: [[1.5, 2.5, -2.8], [1.4, 0, -2.4]], width: 0.25 }],
   night: { windows: 40, flicker: 0.05 },
   annotation: { title: 'Rivendell', subtitle: 'Imladris, the Last Homely House', blurb: 'The hidden refuge of Elrond Half-elven, where the Fellowship of the Ring was formed.' },
-  bookmarks: [{ id: 'rivendell-close', distanceKm: 20, elevationDeg: 24, azimuthDeg: 200, fov: 35, tod: 17.5 }],
+  bookmarks: [{ id: 'rivendell-close', distanceKm: 20, elevationDeg: 30, azimuthDeg: 200, fov: 35, lift: 0.9, tod: 17.5 }],
 });

@@ -23,5 +23,5 @@ export default defineLandmark({
   night: { windows: 50, flicker: 0.02 },
   lookOverride: 'lorien',
   annotation: { title: 'Lothlórien', subtitle: 'Caras Galadhon', blurb: 'The golden wood of the Lady Galadriel, where no shadow falls.' },
-  bookmarks: [{ id: 'lothlorien-close', distanceKm: 34, elevationDeg: 30, azimuthDeg: 240, fov: 35, tod: 17.8 }],
+  bookmarks: [{ id: 'lothlorien-close', distanceKm: 34, elevationDeg: 15, azimuthDeg: 240, fov: 35, lift: 2.7, tod: 17.3 }],
 });

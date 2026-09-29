@@ -5,6 +5,8 @@ export default defineLandmark({
   id: 'black-gate',
   placeId: 'black-gate',
   tier: 'A',
+  // tallest proxies: barely grow in wide shots (they already out-top the ranges)
+  wideBoost: { refKm: 160, max: 1.2 },
   stamps: [{ kind: 'flatten', at: [0, -1], radius: 5, falloff: 4, height: 0, strength: 0.5 }],
   proxy: (k) => {
     k.wall('darkStone', [-8, 0], [-1.3, 0], 4.2, 1.1);

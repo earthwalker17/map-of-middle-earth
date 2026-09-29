@@ -27,12 +27,17 @@ export interface RaiseStamp extends StampBase {
   amount: number;
 }
 
-/** Volcano-like cone to an absolute summit height, optional crater. */
+/**
+ * Volcano-like cone to an absolute summit height, optional crater. The profile is applied to the
+ * height ABOVE `base` (the ground the landmark stands on): base + (summit − base)·tᵉ.
+ */
 export interface ConeStamp extends StampBase {
   kind: 'cone';
   at: Vec2;
   radius: number;
   summit: number;
+  /** absolute height the profile starts from (defaults to 0 = sea level) */
+  base?: number;
   /** 1 = straight cone, >1 concave (steeper top) */
   exponent?: number;
   craterRadius?: number;
@@ -120,7 +125,8 @@ export function applyStamp(s: Stamp, x: number, z: number, h: number, ctx: { aut
       const d = Math.hypot(x - s.at[0], z - s.at[1]);
       if (d >= s.radius) return h;
       const t = 1 - d / s.radius;
-      let cone = s.summit * Math.pow(t, s.exponent ?? 1.3);
+      const base = s.base ?? 0;
+      let cone = base + (s.summit - base) * Math.pow(t, s.exponent ?? 1.3);
       if (s.craterRadius && d < s.craterRadius) {
         const c = 1 - d / s.craterRadius;
         cone -= (s.craterDepth ?? 0) * Math.sqrt(c);
