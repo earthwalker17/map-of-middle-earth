@@ -145,18 +145,22 @@ const KELVIN: [number, number][] = [
 const SUN_I: [number, number][] = [
   [-2.5, 0], [0, 0.55], [2, 1.9], [5, 3.1], [10, 3.7], [20, 3.7], [40, 3.5], [90, 3.4],
 ];
-/** hemisphere sky irradiance (colour × intensity) */
+/**
+ * Hemisphere sky irradiance (colour × intensity) — the shadow fill. A clear sky's diffuse light is
+ * ~20–25 % of the sun's on the ground and much less saturated than the zenith colour (the whole
+ * dome, haze and horizon included, ~10–12 kK): shadows read cool grey, never navy.
+ */
 const HEMI_SKY: [number, Rgb][] = [
-  [-18, [0.013, 0.021, 0.048]],
-  [-14, [0.020, 0.031, 0.070]],
-  [-10, [0.032, 0.046, 0.104]],
-  [-6, [0.062, 0.082, 0.190]],
-  [-3, [0.140, 0.170, 0.360]],
-  [0, [0.220, 0.270, 0.520]],
-  [5, [0.300, 0.390, 0.640]],
-  [12, [0.360, 0.450, 0.690]],
-  [35, [0.420, 0.510, 0.700]],
-  [90, [0.440, 0.520, 0.680]],
+  [-18, [0.013, 0.019, 0.040]],
+  [-14, [0.020, 0.028, 0.058]],
+  [-10, [0.034, 0.045, 0.090]],
+  [-6, [0.068, 0.084, 0.165]],
+  [-3, [0.150, 0.175, 0.320]],
+  [0, [0.250, 0.290, 0.470]],
+  [5, [0.360, 0.420, 0.600]],
+  [12, [0.460, 0.530, 0.670]],
+  [35, [0.560, 0.630, 0.740]],
+  [90, [0.600, 0.660, 0.760]],
 ];
 /** Preetham sky gain (the analytic model's radiance is far above our exposure range) */
 const SKY_GAIN: [number, number][] = [
@@ -208,9 +212,9 @@ const TWI_BELT: [number, Rgb][] = [
   [8, [0, 0, 0]],
 ];
 /**
- * The atmospheric void below the horizon, around and under the floating slab. Calibrated against
- * the S1 capture path, which lifts darks strongly (HDR 0.005 → ~38/255, 0.02 → ~88/255): if the
- * post pipeline's output transform changes, re-check these (and the night levels) first.
+ * Floor of the studio void below the horizon (absolute, linear HDR). The void itself is a fraction
+ * of the horizon haze (VOID_LEVEL); this floor keeps the night void a deep navy instead of black.
+ * Display reference (AgX, exposure 0.9): HDR 0.008 → 7/255, 0.015 → 20, 0.03 → 41, 0.05 → 61.
  */
 const VOID: [number, Rgb][] = [
   [-18, [0.00045, 0.0006, 0.0012]],
@@ -221,6 +225,10 @@ const VOID: [number, Rgb][] = [
   [5, [0.0042, 0.0037, 0.0044]],
   [15, [0.0036, 0.0042, 0.0056]],
   [90, [0.0034, 0.0042, 0.0058]],
+];
+/** studio void as a fraction of the horizon haze: a pale sweep by day, relatively lifted at night */
+const VOID_LEVEL: [number, number][] = [
+  [-18, 0.5], [-8, 0.36], [0, 0.22], [8, 0.16], [30, 0.14], [90, 0.14],
 ];
 
 export interface Daylight {
@@ -246,11 +254,20 @@ export interface Daylight {
   glowHeight: number;
   twiBelt: Color;
   voidColor: Color;
+  /** studio void level relative to the horizon haze */
+  voidLevel: number;
   stars: number;
   sunDisc: number;
+  /** aerial perspective (see materials/atmosphere.ts): uniform studio air per world unit */
   fogDensity: number;
+  /** thin ground haze: density at sea level, falloff per unit of height (scale height ~6 km) */
   fogHeightDensity: number;
   fogHeightFalloff: number;
+  /** broad air layer over the diorama (scale height ~60 km): the regional distance cue */
+  airDensity: number;
+  airFalloff: number;
+  /** 0..1 darkening of the key light under a cloud */
+  cloudShadow: number;
   turbidity: number;
 }
 
@@ -269,7 +286,7 @@ export function daylight(sunDir: Vector3): Daylight {
   const skyColor = curveRgb(el, HEMI_SKY).multiplyScalar(nightLift);
   // warm bounce off the land (dimmer than the sky; carries a little of the sun's colour)
   const skyLum = 0.2126 * skyColor.r + 0.7152 * skyColor.g + 0.0722 * skyColor.b;
-  const bounce = sunIntensity * Math.max(0, Math.sin(el * D2R)) * 0.028;
+  const bounce = sunIntensity * Math.max(0, Math.sin(el * D2R)) * 0.045;
   const groundColor = new Color(0.42, 0.34, 0.25)
     .multiplyScalar(skyLum * 0.55)
     .add(sunColor.clone().multiplyScalar(bounce));
@@ -280,16 +297,22 @@ export function daylight(sunDir: Vector3): Daylight {
   const twiHorizon = curveRgb(el, TWI_HORIZON).multiplyScalar(nightLift);
   const twiGlow = curveRgb(el, TWI_GLOW);
   const twiBelt = curveRgb(el, TWI_BELT);
-  const voidColor = curveRgb(el, VOID).multiplyScalar(2.2);
+  const voidColor = curveRgb(el, VOID);
+  const voidLevel = curve(el, VOID_LEVEL);
   const glowPower = curve(el, [[-12, 1.6], [-6, 2.2], [0, 3.2], [6, 5]]);
   const glowHeight = curve(el, [[-12, 0.07], [-6, 0.1], [0, 0.14], [6, 0.08]]);
   const stars = smooth(-5, -13, el);
   const sunDisc = curve(el, [[-1, 6], [2, 8], [6, 12], [12, 18], [25, 30], [90, 40]]);
 
-  // haze: a touch denser at golden hour / dawn (morning mist), clear at noon
-  const fogHeightDensity = 0.0017 + 0.0006 * golden + 0.0008 * twilight + 0.0004 * night;
-  const fogHeightFalloff = 0.18;
-  const fogDensity = 0.000008 + 0.000006 * golden;
+  // haze: a touch denser at golden hour / dawn (evening and morning mist in the valleys), clearest
+  // at noon. Calibrated for the miniature at 20–2000 km (tools: optical depth ≈ 0.12 at an overview,
+  // ≈ 0.13 at a regional target, ≈ 0.35 half a map away; peaks stand above the ground haze).
+  const fogHeightDensity = 0.0028 + 0.0016 * golden + 0.0012 * twilight + 0.0006 * night;
+  const fogHeightFalloff = 0.16;
+  const airDensity = 0.00085 + 0.00025 * golden + 0.0001 * twilight;
+  const airFalloff = 0.016;
+  const fogDensity = 0.000015;
+  const cloudShadow = 0.34 - 0.12 * night;
   const turbidity = 2.6 + 0.8 * golden;
 
   return {
@@ -311,11 +334,15 @@ export function daylight(sunDir: Vector3): Daylight {
     glowHeight,
     twiBelt,
     voidColor,
+    voidLevel,
     stars,
     sunDisc,
     fogDensity,
     fogHeightDensity,
     fogHeightFalloff,
+    airDensity,
+    airFalloff,
+    cloudShadow,
     turbidity,
   };
 }

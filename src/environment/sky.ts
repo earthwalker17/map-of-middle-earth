@@ -1,6 +1,7 @@
 import { BackSide, Color, Matrix3, Matrix4, Mesh, MeshBasicNodeMaterial, SphereGeometry, Vector3 } from 'three/webgpu';
 import { tsl, type TslNode } from '../materials/tsl.ts';
 import { env } from '../materials/environment.ts';
+import { atmosphere } from '../materials/atmosphere.ts';
 import { celestialPole, type Daylight } from './timeOfDay.ts';
 
 type N = TslNode;
@@ -48,6 +49,13 @@ const EE = 1000;
 const SUN_RADIUS = 0.0082;
 const MOON_RADIUS = 0.0118;
 
+/**
+ * Haze shoulder: the horizon / in-scatter colour keeps its value up to KNEE (luminance) and rolls
+ * off towards LMAX above it — haze towards a low sun glows but never whites out the land.
+ */
+const HAZE_KNEE = 0.35;
+const HAZE_LMAX = 0.85;
+
 const _pole = new Vector3();
 
 /** Reinhard-style shoulder on luminance, hue-preserving: c / (1 + L / lmax). */
@@ -55,12 +63,18 @@ function compress(c: N, lmax: number): N {
   return c.div(float(1).add(dot(c, vec3(0.2126, 0.7152, 0.0722)).div(lmax)));
 }
 const _m4 = new Matrix4();
+const lum = (r: number, g: number, b: number) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
+
 
 /**
  * Analytic sky: Preetham daylight (ported so it can be evaluated anywhere, e.g. for fog) + a
  * parametric twilight/night layer (blue hour, afterglow, Belt of Venus) + stars, moon and sun disc
- * on the dome, and a dark atmospheric void below the horizon for the floating diorama.
+ * on the dome, and a softly lit studio void below the horizon for the floating diorama.
  * Every input is a uniform written from SceneState — no wall-clock time anywhere.
+ *
+ * The horizon and everything below it come from the shared atmosphere's in-scatter LUT, which is
+ * this model's CPU mirror (`radianceCPU`): terrain hazed to infinity, the sky at the horizon and
+ * the top of the void are one colour, so there is no seam where land meets sky.
  */
 export class SkyModel {
   readonly u = {
@@ -79,7 +93,9 @@ export class SkyModel {
     /** moonlit sky brightening */
     moonSky: uniform(new Color()),
     /** depth (in −sin elevation) at which the haze band has fully become the void */
-    voidFalloff: uniform(0.34),
+    voidFalloff: uniform(0.3),
+    /** studio void level relative to the horizon haze (time of day) */
+    voidLevel: uniform(0.14),
     stars: uniform(0),
     starMatrix: uniform(new Matrix3()),
     sunDisc: uniform(30),
@@ -93,10 +109,13 @@ export class SkyModel {
   turbidity = 3;
   rayleigh = 1.25;
   mieCoefficient = 0.0045;
+  /** CPU mirror state of the last update (see radianceCPU) */
+  private readonly sunDir = new Vector3(0, 1, 0);
 
   /** Update the uniforms from the daylight model (CPU, once per evaluate). */
   update(dl: Daylight, sunDir: Vector3, siderealRad: number, moonSky: number): void {
     const u = this.u;
+    this.sunDir.copy(sunDir);
     const zen = Math.acos(Math.min(1, Math.max(-1, sunDir.y)));
     u.sunE.value = EE * Math.max(0, 1 - Math.exp(-(CUTOFF - zen) / STEEPNESS));
     this.turbidity = dl.turbidity;
@@ -117,69 +136,78 @@ export class SkyModel {
     u.sunGlow.value = (0.08 + 0.4 * dl.golden) * dl.dayWeight;
     u.moonDisc.value = 0.3 + 0.62 * dl.night;
     u.moonGlow.value = 0.15 + 0.85 * dl.night;
+    u.voidLevel.value = dl.voidLevel;
     // stars turn about the celestial pole once per sidereal day
     celestialPole(_pole);
     _m4.makeRotationAxis(_pole, -siderealRad);
     u.starMatrix.value.setFromMatrix4(_m4);
   }
 
+  /** Key of every input radianceCPU depends on (for the atmosphere's LUT cache). */
+  radianceKey(): string {
+    const u = this.u;
+    const s = this.sunDir;
+    const c = (x: Color) => `${x.r.toFixed(6)},${x.g.toFixed(6)},${x.b.toFixed(6)}`;
+    return [s.x.toFixed(6), s.y.toFixed(6), s.z.toFixed(6), u.gain.value, u.dayWeight.value, this.turbidity, c(u.twiZenith.value), c(u.twiHorizon.value), c(u.twiGlow.value), c(u.twiBelt.value), u.glowPower.value, u.glowHeight.value, c(u.moonSky.value)].join('|');
+  }
+
   /**
-   * CPU mirror of `horizon()` averaged over 16 azimuths — the one haze colour exported as
-   * env.fogColor / env.horizonColor for systems that need a single value (call after update()).
+   * CPU mirror of the sky's in-scatter for a view direction at or below the horizon: Preetham with
+   * the horizon's optical depth but the TRUE sun phase angle (a downward ray toward a low sun
+   * still sees the Mie forward lobe, one looking away sees the dimmer, bluer anti-solar air),
+   * + the twilight layer and moonlit sky at the horizon, with the haze shoulder. At dir.y = 0 this
+   * is exactly the dome's horizon (skyBase), so the LUT, the fog and the dome agree. Call after
+   * update().
    */
-  horizonAverage(sunDir: Vector3, out: Color): Color {
+  radianceCPU(dir: Vector3, out: Color): Color {
     const u = this.u;
     const bR = u.betaR.value;
     const bM = u.betaM.value;
     const g = u.mieG.value;
     const sunE = u.sunE.value;
-    const lum = (r: number, gg: number, b: number) => 0.2126 * r + 0.7152 * gg + 0.0722 * b;
+    const s = this.sunDir;
     // horizon optical length (zenith angle 90°)
     const inv = 1 / (Math.cos(Math.PI / 2) + 0.15 * Math.pow(93.885 - 90, -1.253));
-    const Fex = [0, 1, 2].map((i) => Math.exp(-([bR.x, bR.y, bR.z][i] * inv * 8400 + [bM.x, bM.y, bM.z][i] * inv * 1250)));
-    const sh = Math.hypot(sunDir.x, sunDir.z) || 1;
-    const shx = sunDir.x / sh;
-    const shz = sunDir.z / sh;
-    const mixF = Math.min(1, Math.max(0, Math.pow(Math.max(0, 1 - sunDir.y), 5)));
-    let ar = 0;
-    let ag = 0;
-    let ab = 0;
-    const N = 16;
-    for (let k = 0; k < N; k++) {
-      const a = (k / N) * Math.PI * 2;
-      const dx = Math.cos(a);
-      const dz = Math.sin(a);
-      const cosTheta = dx * sunDir.x + dz * sunDir.z;
-      const c = cosTheta * 0.5 + 0.5;
-      const rPhase = 0.05968310365946075 * (1 + c * c);
-      const mPhase = (0.07957747154594767 * (1 - g * g)) / Math.pow(1 - 2 * g * cosTheta + g * g, 1.5);
-      const day = [0, 1, 2].map((i) => {
-        const br = [bR.x, bR.y, bR.z][i];
-        const bm = [bM.x, bM.y, bM.z][i];
-        const ratio = (br * rPhase + bm * mPhase) / (br + bm);
-        let lin = Math.pow(Math.max(0, sunE * ratio * (1 - Fex[i])), 1.5);
-        lin *= 1 + (Math.sqrt(Math.max(0, sunE * ratio * Fex[i])) - 1) * mixF;
-        return ((lin + Fex[i] * 0.1) * 0.04 + [0, 0.0003, 0.00075][i]) * u.gain.value * u.dayWeight.value;
-      });
-      const cosAz = Math.max(-1, Math.min(1, dx * shx + dz * shz));
-      const anti = Math.max(0, -cosAz);
-      const beltW = Math.exp(-((0.075 / 0.055) ** 2)) * (anti * 0.7 + 0.3);
-      const shadow = 1 - anti * 0.35 * (u.twiBelt.value.r > 0.0001 ? 1 : 0);
-      const glowW = Math.pow(Math.max(0, Math.min(1, cosAz * 0.5 + 0.5)), u.glowPower.value);
-      const tw = (ch: 'r' | 'g' | 'b') => u.twiHorizon.value[ch] * shadow + u.twiBelt.value[ch] * beltW + u.twiGlow.value[ch] * glowW;
-      let r = day[0] + tw('r') + u.moonSky.value.r;
-      let gg = day[1] + tw('g') + u.moonSky.value.g;
-      let b = day[2] + tw('b') + u.moonSky.value.b;
-      let k1 = 1 / (1 + lum(r, gg, b) / 1.6);
-      r *= k1;
-      gg *= k1;
-      b *= k1;
-      k1 = 1 / (1 + lum(r, gg, b) / 0.7);
-      ar += r * k1;
-      ag += gg * k1;
-      ab += b * k1;
+    const br = [bR.x, bR.y, bR.z];
+    const bm = [bM.x, bM.y, bM.z];
+    const cosTheta = dir.x * s.x + dir.y * s.y + dir.z * s.z;
+    const c = cosTheta * 0.5 + 0.5;
+    const rPhase = 0.05968310365946075 * (1 + c * c);
+    const mPhase = (0.07957747154594767 * (1 - g * g)) / Math.pow(1 - 2 * g * cosTheta + g * g, 1.5);
+    const mixF = Math.min(1, Math.max(0, Math.pow(Math.min(2, Math.max(0, 1 - s.y)), 5)));
+    const day = [0, 1, 2].map((i) => {
+      const Fex = Math.exp(-(br[i] * inv * 8400 + bm[i] * inv * 1250));
+      const ratio = (br[i] * rPhase + bm[i] * mPhase) / (br[i] + bm[i]);
+      let lin = Math.pow(Math.max(0, sunE * ratio * (1 - Fex)), 1.5);
+      lin *= 1 + (Math.sqrt(Math.max(0, sunE * ratio * Fex)) - 1) * mixF;
+      return ((lin + Fex * 0.1) * 0.04 + [0, 0.0003, 0.00075][i]) * u.gain.value * u.dayWeight.value;
+    });
+    // twilight layer at h = 0 in the azimuth of dir
+    const dh = Math.hypot(dir.x, dir.z + 1e-5) || 1;
+    const sh = Math.hypot(s.x, s.z + 1e-5) || 1;
+    const cosAz = Math.max(-1, Math.min(1, (dir.x * s.x + (dir.z + 1e-5) * (s.z + 1e-5)) / (dh * sh)));
+    const anti = Math.max(0, -cosAz);
+    const beltW = Math.exp(-((0.075 / 0.055) ** 2)) * (anti * 0.7 + 0.3);
+    const shadow = 1 - anti * 0.35 * (u.twiBelt.value.r > 0.0001 ? 1 : 0);
+    const glowW = Math.pow(Math.max(0, Math.min(1, cosAz * 0.5 + 0.5)), u.glowPower.value);
+    const tw = (ch: 'r' | 'g' | 'b') => u.twiHorizon.value[ch] * shadow + u.twiBelt.value[ch] * beltW + u.twiGlow.value[ch] * glowW;
+    let r = day[0] + tw('r') + u.moonSky.value.r;
+    let gg = day[1] + tw('g') + u.moonSky.value.g;
+    let b = day[2] + tw('b') + u.moonSky.value.b;
+    const k1 = 1 / (1 + lum(r, gg, b) / 1.6);
+    r *= k1;
+    gg *= k1;
+    b *= k1;
+    // haze shoulder (identity below the knee)
+    const L = lum(r, gg, b);
+    if (L > HAZE_KNEE) {
+      const x = L - HAZE_KNEE;
+      const k = (HAZE_KNEE + x / (1 + x / (HAZE_LMAX - HAZE_KNEE))) / L;
+      r *= k;
+      gg *= k;
+      b *= k;
     }
-    return out.setRGB(ar / N, ag / N, ab / N);
+    return out.setRGB(r, gg, b);
   }
 
   // ---------------------------------------------------------------- shader functions
@@ -230,12 +258,6 @@ export class SkyModel {
     // the rest of the sky — keep it bright but inside the exposure range
     return compress(day.add(this.twilight(dir)).add(moonSky), 1.6);
   });
-
-  /**
-   * Horizon haze colour in the azimuth of `dir` — the fog colour, consistent with the sky (with a
-   * lower shoulder: haze towards a low sun glows, it must not white out the land).
-   */
-  readonly horizon = Fn(([dir]: [N]) => compress(this.skyBase(vec3(dir.x, 0, dir.z)), 0.7));
 
   private hash33 = Fn(([p]: [N]) => {
     const q = fract(p.mul(vec3(0.1031, 0.103, 0.0973))).toVar();
@@ -321,30 +343,40 @@ export class SkyModel {
     return sunCol.add(aureole).add(moonCol).add(mglow).add(stars);
   }
 
-  /** Full dome radiance: sky above, bodies, and the dark void below the horizon. */
+  /**
+   * Full dome radiance: sky above; the lowest few degrees fade into the atmosphere's in-scatter
+   * (the colour land at infinity takes), and below the horizon that haze falls off into the
+   * studio void — a soft backdrop lit like the sky of the moment (a pale blue-grey sweep by day,
+   * a warm glow under a low sun, deep navy at night), darkest straight down.
+   */
   readonly dome = Fn(() => {
     const u = this.u;
     const dir = normalize(positionWorld.sub(cameraPosition));
     const h = dir.y;
-    const base = this.skyBase(dir);
-    // void: dark, slightly lighter towards the horizon and on the sun side, darkest straight down
+    const tint = env.skyTint;
+    // the haze at infinity in this direction (at or below the horizon) and at the horizon
+    const hazeDir = atmosphere.inScatter(vec3(dir.x, min(h, 0), dir.z));
+    const hazeHor = atmosphere.inScatter(vec3(dir.x, 0, dir.z));
+    const sky = mix(hazeHor, this.skyBase(dir), smoothstep(0.0, 0.1, h));
+    const base = mix(hazeDir, sky, step(0, h)).mul(tint);
+    // studio void: a fraction of the horizon haze, lifted a little on the sun's side and just
+    // under a low sun, darkest straight down, plus a faint floor so the night void stays navy
     const dh = normalize(vec2(dir.x, dir.z.add(1e-5)));
     const sh = normalize(vec2(env.sunDir.x, env.sunDir.z.add(1e-5)));
     const az = clamp(dot(dh, sh).mul(0.5).add(0.5), 0, 1);
-    // the void is faintly lit on the sun's side, most of all just under a low sun
     const nearH = float(1).sub(smoothstep(0.0, 0.12, h.negate()));
-    const sunSide = pow(az, 3).mul(0.3).add(1).add(pow(az, 10).mul(nearH).mul(u.sunGlow.mul(6)));
-    const down = float(1).sub(smoothstep(0.15, 1.0, h.negate()).mul(0.55));
-    const voidCol = env.voidColor.mul(sunSide.mul(down));
-    // haze band just below the horizon, fully void by ~12° down (no residual haze in the void)
+    const sunSide = pow(az, 3).mul(0.25).add(1).add(pow(az, 10).mul(nearH).mul(u.sunGlow.mul(4)));
+    const down = float(1).sub(smoothstep(0.2, 1.0, h.negate()).mul(0.5));
+    const voidCol = hazeHor.mul(u.voidLevel).add(env.voidColor).mul(sunSide.mul(down));
+    // haze band just below the horizon, fully void by ~17° down
     const sd = clamp(h.negate().div(u.voidFalloff), 0, 1);
     const t = float(1).sub(pow(float(1).sub(sd), 3));
-    // blend in log space: an even, atmospheric falloff from bright haze into the dark void
+    // blend in log space: an even, atmospheric falloff from bright haze into the void
     const lb = tsl.log(max(base, vec3(1e-6)));
     const lv = tsl.log(max(voidCol, vec3(1e-6)));
     const col = tsl.exp(mix(lb, lv, t)).toVar();
     If(h.greaterThan(-0.02), () => {
-      col.addAssign(this.bodies(dir));
+      col.addAssign(this.bodies(dir).mul(tint));
     });
     return vec4(col, 1);
   });
@@ -369,4 +401,5 @@ export class SkyModel {
     return mesh;
   }
 }
+
 

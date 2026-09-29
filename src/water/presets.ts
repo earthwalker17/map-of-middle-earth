@@ -9,9 +9,11 @@ import type { WaterParams } from './waterMaterial.ts';
 /** Open sea: clear turquoise over the shelf, deep blue-green offshore, wind ripples + swell. */
 export const SEA: WaterParams = {
   kind: 'sea',
-  deep: [0.0008, 0.012, 0.028],
-  shallow: [0.004, 0.045, 0.045],
-  scatterDepth: 4.5,
+  // a deeper, more saturated blue than S1: the aerial perspective now lays a blue-grey veil over
+  // the open sea, and the turquoise is kept to the true shallows (not the whole 1–4 unit shelf)
+  deep: [0.0006, 0.011, 0.034],
+  shallow: [0.004, 0.042, 0.044],
+  scatterDepth: 2.2,
   absorb: [3.0, 1.2, 0.9],
   bedNear: [0.3, 0.28, 0.2],
   bedFar: [0.07, 0.085, 0.07],

@@ -1,24 +1,40 @@
 import { DirectionalLight, HemisphereLight, Vector3, type Mesh } from 'three/webgpu';
 import { tsl } from '../materials/tsl.ts';
 import type { FrameContext, InitContext, System } from '../core/types.ts';
+import type { World } from '../world/World.ts';
 import { env } from '../materials/environment.ts';
+import { atmosphere } from '../materials/atmosphere.ts';
+import { bindLookWorld, boundLookWorld } from '../materials/looks.ts';
 import { SLAB } from '../diorama/slabSpec.ts';
 import { daylight, moonDirection, moonIllumination, moonlight, moonPhase, siderealAngle, sunDirection } from './timeOfDay.ts';
 import { SkyModel } from './sky.ts';
 import { KeyShadow, type ShadowBounds } from './shadows.ts';
+import { CloudField } from './clouds.ts';
+import { RegionLook } from './regionLook.ts';
 
-const { Fn, abs, clamp, exp, float, fog, length, max, normalize, positionWorld, select } = tsl;
+const { positionWorld } = tsl;
 
 const _focus = new Vector3();
+const smooth = (e0: number, e1: number, x: number) => {
+  const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
+  return t * t * (3 - 2 * t);
+};
 
 /**
- * Sun / moon / sky / fog from SceneState (tod, dayOfYear, tFx, camera) — continuous, no preset
- * switching. Writes the shared `env` uniforms every material reads and drives the three.js lights:
- *  - one shadow-casting key light: the sun by day, the moon by night (it swaps while both are dark)
- *  - a hemisphere light carrying the sky/ground balance (cool shadows at golden hour)
- *  - the sky dome (Preetham day + twilight/night layer + stars/moon/sun disc + the dark void
- *    around the floating diorama) and an analytic height fog whose colour is the same sky model
- *    evaluated at the horizon, so haze always matches the sky behind it.
+ * Sun / moon / sky / atmosphere / grade from SceneState (tod, dayOfYear, tFx, camera, weather,
+ * lookOverride) — continuous, no preset switching. Writes the shared `env` uniforms every
+ * material reads and drives the three.js lights:
+ *  - one shadow-casting key light: the sun by day, the moon by night (it swaps while both are
+ *    dark), dimmed under drifting cloud shadows (quality.clouds.shadows)
+ *  - a hemisphere light carrying the sky/ground balance (cool grey shadow fill)
+ *  - the sky dome (Preetham day + twilight/night layer + stars/moon/sun disc + the studio void
+ *    around the floating diorama)
+ *  - aerial perspective on every surface (materials/atmosphere.ts) whose in-scatter is the same
+ *    sky model tabulated per frame, so haze always matches the sky behind it
+ *  - RegionLook: the per-shot colour grade blended from the regions around the camera focus.
+ *
+ * `world` (static data) feeds the regional grade and haze; without it they are bound when the
+ * terrain material builds its LookNodes (before the first frame).
  */
 export class EnvironmentSystem implements System {
   readonly id = 'environment';
@@ -26,19 +42,31 @@ export class EnvironmentSystem implements System {
   readonly sun = new DirectionalLight(0xffffff, 3);
   readonly hemi = new HemisphereLight(0x9ab8e0, 0x3a3226, 1);
   readonly skyModel = new SkyModel();
+  readonly clouds = new CloudField();
+  readonly atmosphere = atmosphere;
   sky!: Mesh;
   shadow!: KeyShadow;
   /** true when the key light is the moon */
   keyIsMoon = false;
   /** the shared uniforms (dev handle for diagnostics scripts) */
   readonly env = env;
+  regionLook: RegionLook | null = null;
   private bounds!: ShadowBounds;
+  private readonly radiance = this.skyModel.radianceCPU.bind(this.skyModel);
+
+  constructor(world?: World) {
+    if (world) bindLookWorld(world);
+  }
 
   init(ctx: InitContext): void {
     const { scene, quality } = ctx;
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(quality.shadowMapSize, quality.shadowMapSize);
     this.shadow = new KeyShadow(this.sun, quality.id === 'preview' ? 6 : quality.id === 'review' ? 12 : 16);
+    // cloud shadows ride on the key light's colour (a custom colorNode replaces color × intensity)
+    if (quality.clouds.shadows) {
+      (this.sun as unknown as { colorNode: unknown }).colorNode = env.keyColor.mul(env.keyIntensity).mul(this.clouds.lightFactor(positionWorld));
+    }
     scene.add(this.sun, this.sun.target, this.hemi);
 
     this.sky = this.skyModel.createDome();
@@ -52,41 +80,7 @@ export class EnvironmentSystem implements System {
       yMin: SLAB.plinthBottom - 1,
       yMax: 62,
     };
-    scene.fogNode = fog(this.fogColorNode(), this.fogFactorNode());
-  }
-
-  /**
-   * Analytic exponential height fog along the view ray + mild distance haze. Only the part of the
-   * ray above sea level is hazy: the slab sides and plinth hang in clear museum air, not in fog that
-   * would grow exponentially denser below y = 0.
-   */
-  private fogFactorNode() {
-    return Fn(() => {
-      const ray = positionWorld.sub(env.cameraPos);
-      const d = length(ray);
-      const yc = max(env.cameraPos.y, 0);
-      const yRaw = positionWorld.y;
-      // the haze lives above sea level: clip the ray where it dips below y = 0 (slab sides, plinth
-      // and sea floor get only the air in front of them, not an ever-denser fog)
-      const frac = select(yRaw.lessThan(0), clamp(yc.div(max(yc.sub(yRaw), 1e-4)), 0, 1), float(1));
-      const yp = max(yRaw, 0);
-      const dAir = d.mul(frac);
-      const k = env.fogHeightFalloff;
-      const dy = yp.sub(yc);
-      const ec = exp(k.mul(yc).negate());
-      const ep = exp(k.mul(yp).negate());
-      const integral = select(abs(dy).greaterThan(1e-3), dAir.mul(ec.sub(ep)).div(k.mul(dy)), dAir.mul(ec));
-      const total = env.fogHeightDensity.mul(integral).add(env.fogDensity.mul(d));
-      return clamp(float(1).sub(exp(total.negate())), 0, 1);
-    })();
-  }
-
-  /** Fog colour = the sky model's horizon haze in the view azimuth (sun glow, twilight, night). */
-  private fogColorNode() {
-    return Fn(() => {
-      const dir = normalize(positionWorld.sub(env.cameraPos));
-      return this.skyModel.horizon(dir);
-    })();
+    scene.fogNode = atmosphere.fogNode(quality.atmosphere.inScatter);
   }
 
   evaluate(frame: FrameContext): void {
@@ -125,6 +119,11 @@ export class EnvironmentSystem implements System {
     env.keyIntensity.value = this.keyIsMoon ? ml.key : dl.sunIntensity;
     this.sun.color.copy(env.keyColor.value);
     this.sun.intensity = env.keyIntensity.value;
+    // cloud shadows: full strength at regional range; wide views of the whole slab keep only a
+    // trace, so the map's geography stays clean (the same framing rule as the regional grade)
+    const [tx, ty, tz] = state.camera.target;
+    const focusDist = camera.position.distanceTo(_focus.set(tx, ty, tz));
+    env.cloudShadow.value = dl.cloudShadow * (1 - 0.7 * smooth(500, 1600, focusDist));
 
     // ---- hemisphere (moonlit sky adds a cool lift at night)
     const skyCol = dl.skyColor.clone();
@@ -137,22 +136,28 @@ export class EnvironmentSystem implements System {
     this.hemi.groundColor.copy(dl.groundColor);
     this.hemi.intensity = dl.hemiIntensity;
 
-    // ---- sky dome
+    // ---- sky dome + the atmosphere's in-scatter table (the same model, per frame)
     this.skyModel.update(dl, sunDir, siderealAngle(state.tod, state.dayOfYear), ml.sky);
+    atmosphere.updateInScatter(this.radiance, this.skyModel.radianceKey());
 
-    // ---- fog / haze / void (the exported haze colour is the sky model's horizon, averaged)
-    this.skyModel.horizonAverage(sunDir, env.fogColor.value);
+    // ---- haze / void (the exported haze colour is the horizon in-scatter, averaged)
+    atmosphere.horizonAverage(env.fogColor.value);
     env.horizonColor.value.copy(env.fogColor.value);
     env.voidColor.value.copy(dl.voidColor);
     env.fogDensity.value = dl.fogDensity;
     env.fogHeightDensity.value = dl.fogHeightDensity;
     env.fogHeightFalloff.value = dl.fogHeightFalloff;
+    env.airDensity.value = dl.airDensity;
+    env.airFalloff.value = dl.airFalloff;
     this.sky.position.copy(camera.position);
     this.sky.updateMatrixWorld();
 
+    // ---- region grade + sky tint around the camera focus
+    const world = boundLookWorld();
+    if (world && this.regionLook === null) this.regionLook = new RegionLook(world);
+    this.regionLook?.evaluate(state, camera.position, dl.night);
+
     // ---- key shadow fitted to the visible slab
-    const [tx, ty, tz] = state.camera.target;
-    const focusDist = camera.position.distanceTo(_focus.set(tx, ty, tz));
     const softKm = 0.22 + focusDist * 0.00055;
     this.shadow.fit(camera, focusDist, keyDir, this.bounds, softKm);
   }

@@ -16,6 +16,9 @@
     { "id": "env-ov-0800", "tod": 8.0, "camera": { "orbit": { "targetKm": [900, 900], "distanceKm": 1850, "elevationDeg": 52, "azimuthDeg": 180, "fov": 32 } } },
     { "id": "env-ov-1600", "tod": 16.0, "camera": { "orbit": { "targetKm": [900, 900], "distanceKm": 1850, "elevationDeg": 52, "azimuthDeg": 180, "fov": 32 } } },
     { "id": "env-ov-1920", "tod": 19.2, "camera": { "orbit": { "targetKm": [900, 900], "distanceKm": 1850, "elevationDeg": 52, "azimuthDeg": 180, "fov": 32 } } },
-    { "id": "env-ov-2100", "tod": 21.0, "camera": { "orbit": { "targetKm": [900, 900], "distanceKm": 1850, "elevationDeg": 52, "azimuthDeg": 180, "fov": 32 } } }
+    { "id": "env-ov-2100", "tod": 21.0, "camera": { "orbit": { "targetKm": [900, 900], "distanceKm": 1850, "elevationDeg": 52, "azimuthDeg": 180, "fov": 32 } } },
+    { "id": "env-moonpath", "tod": 23.0, "camera": { "orbit": { "targetKm": [905, 485], "distanceKm": 150, "elevationDeg": 15, "azimuthDeg": 0, "fov": 40 } }, "note": "night looking south over the Bay of Belfalas into the low summer moon (az 180°, el 17° at 23 h): moonlight specular path on the sea (the overview-night camera has the moon behind it, so no path is possible there)" },
+    { "id": "env-cloud-shadows", "tod": 14.0, "tFx": 437.5, "weather": { "cloudCoverage": 0.45, "wind": [0.9, 0.35] }, "camera": { "orbit": { "targetKm": [850, 760], "distanceKm": 260, "elevationDeg": 34, "azimuthDeg": 170, "fov": 35 } }, "note": "cloud shadows over Rohan at tFx 437.5 s (drifted ~420 km): determinism check at t != 0 (render twice / in any order)" },
+    { "id": "env-regional-haze", "tod": 16.5, "camera": { "orbit": { "targetKm": [1180, 690], "distanceKm": 420, "elevationDeg": 18, "azimuthDeg": 250, "fov": 38 } }, "note": "regional haze: from over Anorien across Ithilien and the Ephel Duath into Mordor's gloom; Dead Marshes / Dagorlad ash to the north" }
   ]
 }

@@ -1,6 +1,8 @@
 import { FrontSide, MeshStandardNodeMaterial, type DataTexture } from 'three/webgpu';
 import { tsl, type TslNode } from '../materials/tsl.ts';
 import { env } from '../materials/environment.ts';
+import { atmosphere } from '../materials/atmosphere.ts';
+import { LookNodes } from '../materials/looks.ts';
 import type { QualityTier } from '../core/quality.ts';
 import type { World } from '../world/World.ts';
 
@@ -203,6 +205,13 @@ export function createWaterMaterial(opts: WaterMaterialOptions): MeshStandardNod
   const layers = P.waves.filter((l) => !(preview && l.heavy));
   let sl: N = vec2(0, 0);
   let variance: N = float(0);
+  // seen from far away (pixel footprint ≫ 100 m) the largest resolved octaves are the only
+  // structure left and read as a repeating ripple pattern (the overview's tiled sea): there an
+  // octave whose tile spans only a few dozen pixels fades out and hands its slope energy to the
+  // roughness, so far water keeps the right sheen without the pattern. Up close every octave is
+  // kept (the sub-pixel ones are LEAN-filtered as before) and the glint keeps its sparkle.
+  const far = smoothstep(0.12, 0.4, footprint);
+  const tilePx = (scale: number): N => float(scale).div(footprint);
   layers.forEach((L, i) => {
     const a = (L.angle * Math.PI) / 180;
     const c = Math.cos(a);
@@ -217,9 +226,10 @@ export function createWaterMaterial(opts: WaterMaterialOptions): MeshStandardNod
     const sb = t.y;
     const lx = sa.mul(c).sub(sb.mul(s));
     const ly = sa.mul(s).add(sb.mul(c));
-    sl = sl.add(vec2(lx, ly).mul(L.slope));
-    const va = max(t.z.div(st * st).sub(sa.mul(sa)), 0);
-    const vb = max(t.w.sub(sb.mul(sb)), 0);
+    const keep = mix(float(1), smoothstep(18, 70, tilePx(L.scale)), far);
+    sl = sl.add(vec2(lx, ly).mul(L.slope).mul(keep));
+    const va = max(t.z.div(st * st).sub(sa.mul(sa).mul(keep.mul(keep))), 0);
+    const vb = max(t.w.sub(sb.mul(sb).mul(keep.mul(keep))), 0);
     variance = variance.add(va.add(vb).mul(0.5 * L.slope * L.slope));
   });
   // local slope → world gradient
@@ -276,10 +286,11 @@ export function createWaterMaterial(opts: WaterMaterialOptions): MeshStandardNod
   const Rv = reflect(V.negate(), nW);
   // unresolved ripples tilt part of the lobe up: reflected sky is sampled a little higher
   const Ry = abs(Rv.y).add(sigma.mul(0.6));
-  // the sky just above the horizon is bluer/darker than the far haze (fogColor) it fades into
+  // reflected sky: the atmosphere's horizon in-scatter in the reflected azimuth (the same colour
+  // the dome shows there) rising to a zenith tone; tinted like the dome (regional sky)
   const zenith = env.skyColor.mul(vec3(0.8, 0.95, 1.2));
-  const horizon = mix(env.fogColor, env.skyColor, 0.3);
-  const sky = mix(horizon, zenith, pow(saturate(Ry), 0.5));
+  const horizon = atmosphere.inScatter(vec3(Rv.x, 0, Rv.z));
+  const sky = mix(horizon, zenith, pow(saturate(Ry), 0.5)).mul(env.skyTint);
   const aureole = env.sunColor.mul(pow(saturate(dot(Rv, env.sunDir)), 10).mul(float(0.8).mul(float(1).sub(env.night))));
   const moonGlow = env.moonColor.mul(pow(saturate(dot(Rv, env.moonDir)), 40).mul(env.moonIntensity).mul(1.5));
   const skyRefl = sky.add(aureole).add(moonGlow);
@@ -287,6 +298,8 @@ export function createWaterMaterial(opts: WaterMaterialOptions): MeshStandardNod
   const steps = preview ? Math.min(P.traceSteps, 4) : P.traceSteps;
   let refl: N = skyRefl;
   if (steps > 0) {
+    const looks = new LookNodes(world);
+    const southness = (z: N): N => z.sub(spec.zMin).div(D);
     const R3 = normalize(vec3(Rv.x, Ry, Rv.z));
     // explicit-LOD fetches: legal inside the dynamic branch below
     const hAtL = (xz: N): N => texture(hTex, toUv(xz)).level(0).r;
@@ -310,23 +323,30 @@ export function createWaterMaterial(opts: WaterMaterialOptions): MeshStandardNod
           tPrev = tk;
           tk *= P.traceGrowth;
         }
-        // shade the reflected terrain at the hit: heightfield normal, a plausible albedo
-        // (grass/rock/snow) lit by sun + sky + moon, hazed with distance — mountains and shores
-        // mirror in lakes and calm bays
-        const huv = toUv(origin.add(dir.mul(hitT)).xz);
+        // shade the reflected terrain at the hit: heightfield normal, the region's ground palette
+        // (the terrain material's grass/dry mix, rock on steep faces, its snow line), lit by
+        // sun + sky + moon and seen through the same atmosphere as everything else (from the
+        // water surface to the hit) — mountains and shores mirror in lakes and calm bays
+        const hitP = origin.add(dir.mul(hitT));
+        const huv = toUv(hitP.xz);
         const hs = (o: N): N => texture(hTex, huv.add(o)).level(0).r;
         const hx = hs(vec2(du * 2, 0)).sub(hs(vec2(-du * 2, 0)));
         const hz = hs(vec2(0, dv * 2)).sub(hs(vec2(0, -dv * 2)));
         const nH = normalize(vec3(hx.negate(), float(4 * e), hz.negate()));
         const hh = hs(vec2(0, 0));
         const steep = smoothstep(0.12, 0.4, float(1).sub(nH.y));
-        const alb = mix(mix(vec3(0.3, 0.29, 0.2), vec3(0.3, 0.29, 0.27), steep), vec3(0.8, 0.82, 0.85), smoothstep(27, 31, hh).mul(float(1).sub(steep)));
+        const pal = looks.palette(looks.regionWeights(huv, 0));
+        const ground = mix(pal.grass, pal.dry, 0.45);
+        const rock = vec3(0.2, 0.19, 0.175);
+        const snowLine = float(24).add(southness(hitP.z).mul(13));
+        const snow = smoothstep(snowLine, snowLine.add(3.5), hh).mul(float(1).sub(steep.mul(0.8)));
+        const alb = mix(mix(ground, rock, steep), vec3(0.8, 0.82, 0.85), snow);
         const sunLit = env.sunColor.mul(env.sunIntensity).mul(max(dot(nH, env.sunDir), 0));
-        const skyLit = mix(env.groundColor, env.skyColor, nH.y.mul(0.5).add(0.5)).mul(0.6);
+        const skyLit = mix(env.groundColor, env.skyColor, nH.y.mul(0.5).add(0.5));
         const moonLit = env.moonColor.mul(env.moonIntensity).mul(max(dot(nH, env.moonDir), 0));
         const groundRad = alb.mul(sunLit.add(skyLit).add(moonLit)).mul(1 / Math.PI);
-        const haze = float(1).sub(exp(hitT.mul(-0.012)));
-        out.assign(mix(out, mix(groundRad, env.fogColor, haze), occ));
+        const hazed = atmosphere.apply(groundRad, origin, vec3(hitP.x, max(hitP.y, hh), hitP.z), quality.atmosphere.inScatter, true);
+        out.assign(mix(out, hazed, occ));
       });
       return out;
     })();
