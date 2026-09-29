@@ -37,9 +37,16 @@ export interface GroundJson {
    * faces on gentle ground)
    */
   turf?: number;
+  /**
+   * region only (not spots): 0..1 how far the region's border may wander (default 1). 1 = a vague
+   * ecotone (the full multi-scale domain warp + noise-dithered weights, 20–80 km mosaics); below
+   * ECOTONE_SHARP the border follows a real feature (Mordor's ranges, a forest edge, the Anduin) and
+   * keeps its authored place (a small warp only, never dithered). See LookField.
+   */
+  ecotone?: number;
   spots?: GroundSpotJson[];
 }
-export interface GroundSpotJson extends Partial<Omit<GroundJson, 'spots'>> {
+export interface GroundSpotJson extends Partial<Omit<GroundJson, 'spots' | 'ecotone'>> {
   place?: string;
   /** ME-GIS km [x, y] (instead of a place) */
   atKm?: [number, number];
@@ -58,11 +65,12 @@ function groundJson(id: string): GroundJson {
   return (looksJson.regions as unknown as Record<string, { ground: GroundJson }>)[id].ground;
 }
 
-const toSrgb8 = (v: number): number => {
-  const c = Math.min(1, Math.max(0, v));
-  const s = c <= 0.0031308 ? c * 12.92 : 1.055 * c ** (1 / 2.4) - 0.055;
-  return Math.round(s * 255);
-};
+/** linear 0..1 → sRGB byte through a 16k-entry table (well under half an LSB of error) */
+const SRGB_LUT = Uint8Array.from({ length: 16385 }, (_, i) => {
+  const c = i / 16384;
+  return Math.round((c <= 0.0031308 ? c * 12.92 : 1.055 * c ** (1 / 2.4) - 0.055) * 255);
+});
+const toSrgb8 = (v: number): number => SRGB_LUT[Math.round(Math.min(1, Math.max(0, v)) * 16384)];
 const to8 = (v: number): number => Math.round(Math.min(1, Math.max(0, v)) * 255);
 const smooth01 = (t: number): number => {
   const c = Math.min(1, Math.max(0, t));
@@ -94,51 +102,300 @@ function regionProps(g: Partial<GroundJson>, base?: Float32Array): Float32Array 
   return out;
 }
 
+// ------------------------------------------------------------------ region weight field (CPU)
+
+/** below this `ecotone` a region's border follows a real feature and stays put (see GroundJson.ecotone) */
+export const ECOTONE_SHARP = 0.35;
+/**
+ * Multi-scale domain warp of the region weights, [wavelength km, amplitude km] per octave (each
+ * octave rotated, so no octave lines up with the axis-aligned polygon edges; value noise rarely
+ * leaves ±0.5, so typical displacements are about half the amplitude). Scaled per region by its
+ * `ecotone`.
+ */
+const LOOK_WARP: readonly (readonly [number, number])[] = [
+  [420, 90],
+  [150, 34],
+  [50, 12],
+  [16, 4],
+];
+/** noise dithering of the vague regions' weights: [wavelength km, share] octaves and the log gain */
+const LOOK_DITHER: readonly (readonly [number, number])[] = [
+  [60, 1],
+  [20, 0.5],
+];
+const DITHER_GAIN = 2.4;
+/**
+ * extra softening of the vague regions' baked masks (box radius in look texels, 3 passes ≈ σ 20 km):
+ * the transition band the dither turns into a mosaic (sharp regions keep their baked masks)
+ */
+const ECOTONE_BLUR = 12;
+
+/** Stateless lattice hash → [0, 1) (init-time CPU fields only; the shader has its own noise). */
+function lat(i: number, j: number, seed: number): number {
+  let k = Math.imul(i, 0x27d4eb2d) ^ Math.imul(j, 0x165667b1) ^ Math.imul(seed, 0x9e3779b1);
+  k = Math.imul(k ^ (k >>> 15), 0x2c1b3c6d);
+  k = Math.imul(k ^ (k >>> 12), 0x297a2d39);
+  k ^= k >>> 15;
+  return (k >>> 0) / 4294967296;
+}
+
+/** Smooth 2D value noise in [−1, 1] (a pure function of its inputs). */
+export function lookNoise(x: number, z: number, seed: number): number {
+  const xi = Math.floor(x);
+  const zi = Math.floor(z);
+  const fx = x - xi;
+  const fz = z - zi;
+  const u = fx * fx * (3 - 2 * fx);
+  const v = fz * fz * (3 - 2 * fz);
+  const h00 = lat(xi, zi, seed);
+  const h10 = lat(xi + 1, zi, seed);
+  const h01 = lat(xi, zi + 1, seed);
+  const h11 = lat(xi + 1, zi + 1, seed);
+  const a = h00 + (h10 - h00) * u;
+  const b = h01 + (h11 - h01) * u;
+  return (a + (b - a) * v) * 2 - 1;
+}
+
+/** Octave table: each octave rotated by its own angle, pre-scaled by 1 / wavelength. */
+interface Octave {
+  c: number;
+  s: number;
+  amp: number;
+  seed: number;
+}
+function octaves(spec: readonly (readonly [number, number])[], seed: number): Octave[] {
+  return spec.map(([len, amp], o) => {
+    const a = 0.61 + o * 1.27;
+    return { c: Math.cos(a) / len, s: Math.sin(a) / len, amp, seed: seed + o * 101 };
+  });
+}
+/** Σ amp · noise(R(θ) · p / wavelength) */
+function fbm(x: number, z: number, oct: Octave[]): number {
+  let s = 0;
+  for (const o of oct) s += o.amp * lookNoise(x * o.c - z * o.s, x * o.s + z * o.c, o.seed);
+  return s;
+}
+
+/**
+ * The region weights as the ground look and the regional haze see them (built once per world):
+ * the baked soft region masks (World.look) re-sampled through a multi-scale domain warp and, for
+ * the vague regions, noise-dithered — so straight polygon edges become meandering, interfingering
+ * ecotones (20–80 km mosaics) at any polygon shape, while feature-bound regions (`ecotone` below
+ * ECOTONE_SHARP: Mordor, Ithilien, the forests, the Shire) keep their authored borders:
+ *   sharp r:  w_r = raw_r(x + e_r · warp(x))                     (their sum capped at 1)
+ *   vague r:  w_r ∝ raw_r(x + e_r · warp(x)) · exp(G · e_r · n_r(x)), normalised to 1 − Σ sharp
+ * Pure function of the bake + looks.json + the world seed (deterministic, no hidden state).
+ */
+export class LookField {
+  readonly n: number;
+  private readonly data: Uint8Array;
+  private readonly W: number;
+  private readonly H: number;
+  private readonly eco: Float32Array;
+  private readonly sharp: Uint8Array;
+  /** distinct ecotone values and each region's index into them (one bilinear setup per level) */
+  private readonly levels: number[];
+  private readonly levelOf: Uint8Array;
+  private readonly warpX: Octave[];
+  private readonly warpZ: Octave[];
+  private readonly dither: Octave[][];
+  private readonly x0: number;
+  private readonly z0: number;
+  private readonly sx: number;
+  private readonly sz: number;
+  // per-call scratch (bilinear setup per level)
+  private readonly i00: Int32Array;
+  private readonly i10: Int32Array;
+  private readonly i01: Int32Array;
+  private readonly i11: Int32Array;
+  private readonly tx: Float32Array;
+  private readonly ty: Float32Array;
+
+  constructor(world: World) {
+    const img = world.look.image as unknown as { data: Uint8Array; width: number; height: number };
+    this.data = img.data.slice();
+    this.W = img.width;
+    this.H = img.height;
+    this.n = world.lookRegions.length;
+    this.eco = Float32Array.from(world.lookRegions, (id) => Math.min(1, Math.max(0, groundJson(id).ecotone ?? 1)));
+    this.sharp = Uint8Array.from(this.eco, (e) => (e < ECOTONE_SHARP ? 1 : 0));
+    this.levels = [...new Set(this.eco)].sort((a, b) => a - b);
+    this.levelOf = Uint8Array.from(this.eco, (e) => this.levels.indexOf(e));
+    const seed = (world.spec.json.seeds.world ^ 0x5eed1) >>> 0;
+    this.warpX = octaves(LOOK_WARP, seed);
+    this.warpZ = octaves(LOOK_WARP, seed + 7919);
+    this.dither = world.lookRegions.map((_, r) => octaves(LOOK_DITHER, seed + 131 * (r + 1)));
+    this.x0 = world.spec.xMin;
+    this.z0 = world.spec.zMin;
+    this.sx = this.W / world.spec.width;
+    this.sz = this.H / world.spec.depth;
+    // vague regions: widen the transition band (per channel, quantised back to bytes)
+    const a = new Float32Array(this.W * this.H);
+    const tmp = new Float32Array(this.W * this.H);
+    for (let r = 0; r < this.n; r++) {
+      if (this.sharp[r]) continue;
+      const o = (r >> 2) * this.W * this.H * 4 + (r & 3);
+      for (let i = 0; i < a.length; i++) a[i] = this.data[o + i * 4];
+      blur1(a, this.W, this.H, ECOTONE_BLUR, tmp);
+      for (let i = 0; i < a.length; i++) this.data[o + i * 4] = Math.round(a[i]);
+    }
+    const L = this.levels.length + 1; // + the unwarped position
+    this.i00 = new Int32Array(L);
+    this.i10 = new Int32Array(L);
+    this.i01 = new Int32Array(L);
+    this.i11 = new Int32Array(L);
+    this.tx = new Float32Array(L);
+    this.ty = new Float32Array(L);
+  }
+
+  /** bilinear setup of level L at world (x, z) */
+  private setup(L: number, x: number, z: number): void {
+    const W = this.W;
+    const fx = Math.min(W - 1, Math.max(0, (x - this.x0) * this.sx - 0.5));
+    const fy = Math.min(this.H - 1, Math.max(0, (z - this.z0) * this.sz - 0.5));
+    const xa = Math.floor(fx);
+    const ya = Math.floor(fy);
+    const dx = xa + 1 < W ? 1 : 0;
+    const dy = ya + 1 < this.H ? W : 0;
+    this.i00[L] = ya * W + xa;
+    this.i10[L] = ya * W + xa + dx;
+    this.i01[L] = ya * W + xa + dy;
+    this.i11[L] = ya * W + xa + dx + dy;
+    this.tx[L] = fx - xa;
+    this.ty[L] = fy - ya;
+  }
+
+  /** raw weight of region r at the position set up for its level */
+  private rawAt(r: number, L: number): number {
+    const d = this.data;
+    const o = (r >> 2) * this.W * this.H;
+    const c = r & 3;
+    const tx = this.tx[L];
+    const a0 = d[(o + this.i00[L]) * 4 + c];
+    const a1 = d[(o + this.i10[L]) * 4 + c];
+    const b0 = d[(o + this.i01[L]) * 4 + c];
+    const b1 = d[(o + this.i11[L]) * 4 + c];
+    const a = a0 + (a1 - a0) * tx;
+    const b = b0 + (b1 - b0) * tx;
+    return (a + (b - a) * this.ty[L]) / 255;
+  }
+
+  /**
+   * Region weights at world (x, z) into `out` (sum 1). `groundLook`: the default region (index 0,
+   * which also fills what the baked masks leave uncovered) only counts where it dominates, so the
+   * gap between two regions is bridged by the neighbours instead of a band of the default ground.
+   */
+  weights(x: number, z: number, out: Float32Array, groundLook = false): Float32Array {
+    const n = this.n;
+    const wx = fbm(x, z, this.warpX);
+    const wz = fbm(x, z, this.warpZ);
+    const U = this.levels.length; // the unwarped position
+    for (let L = 0; L < U; L++) this.setup(L, x + wx * this.levels[L], z + wz * this.levels[L]);
+    this.setup(U, x, z);
+    let sharpSum = 0;
+    for (let r = 0; r < n; r++) if (this.sharp[r]) sharpSum += out[r] = this.rawAt(r, this.levelOf[r]);
+    // near feature-bound ground a vague region only reaches as far as its own widened mask: the
+    // warp moves borders between neighbours, never a region across a feature-bound one (Gondor
+    // over Ithilien and the Ephel Dúath into Mordor); elsewhere the borders meander freely
+    const strict = smooth01(sharpSum / 0.3);
+    let vagueSum = 0;
+    for (let r = 0; r < n; r++) {
+      if (this.sharp[r]) continue;
+      let w = this.rawAt(r, this.levelOf[r]);
+      if (groundLook && r === 0) w *= smooth01((w - 0.55) / 0.4);
+      if (strict > 0) w *= 1 - strict + strict * smooth01((this.rawAt(r, U) - 0.02) / 0.25);
+      vagueSum += w;
+      out[r] = w;
+    }
+    if (sharpSum > 1) {
+      for (let r = 0; r < n; r++) if (this.sharp[r]) out[r] /= sharpSum;
+      sharpSum = 1;
+    }
+    const rest = 1 - sharpSum;
+    if (vagueSum <= 1e-6) {
+      // every vague sample was warped into feature-bound ground (or the default was suppressed):
+      // the unwarped weights decide, then the default region
+      vagueSum = 0;
+      for (let r = 0; r < n; r++)
+        if (!this.sharp[r]) {
+          out[r] = this.rawAt(r, U);
+          vagueSum += out[r];
+        }
+      if (vagueSum <= 1e-6 && !this.sharp[0]) out[0] = 1;
+    }
+    // noise-dithered vague weights: the ecotone becomes a mosaic of patches instead of a gradient
+    let s = 0;
+    for (let r = 0; r < n; r++) {
+      if (this.sharp[r] || out[r] <= 0) continue;
+      out[r] *= Math.exp(DITHER_GAIN * this.eco[r] * fbm(x, z, this.dither[r]));
+      s += out[r];
+    }
+    if (s > 1e-9) {
+      const k = rest / s;
+      for (let r = 0; r < n; r++) if (!this.sharp[r]) out[r] *= k;
+    }
+    return out;
+  }
+}
+
+const fieldCache = new WeakMap<World, LookField>();
+
+/** The world's shared region-weight field (ground look, regional haze, field patchwork). */
+export function lookField(world: World): LookField {
+  let f = fieldCache.get(world);
+  if (!f) fieldCache.set(world, (f = new LookField(world)));
+  return f;
+}
+
+// ------------------------------------------------------------------ ground look texture
+
 const groundCache = new WeakMap<World, DataArrayTexture>();
+
+interface SpotBake {
+  target: Float32Array;
+  keys: number[];
+  strength: number;
+  snowline: number;
+  cx: number;
+  cz: number;
+  r: number;
+  x0: number;
+  x1: number;
+  y0: number;
+  y1: number;
+}
 
 /**
  * The regional ground look, baked once on the CPU at the look-layer resolution (≈ 1.6 km/texel):
- * region weights × looks.json `ground` + the local spots, as an sRGB RGBA8 array texture —
+ * region weights (LookField: domain-warped, noise-dithered ecotones) × looks.json `ground` + the
+ * local spots, as an sRGB RGBA8 array texture —
  *   layer 0: grass.rgb, a = dryness
  *   layer 1: dry.rgb,   a = pattern
  *   layer 2: soil.rgb,  a = snowline offset (blurred; decoded by groundPalette)
  *   layer 3: rock.rgb,  a = volcanic
- *   layer 4: r = rockiness, g = landmark turf value, b = its weight (sRGB-encoded scalars), a spare
- * Five low-resolution fetches replace the per-pixel region-weight blend (5 fetches + 19 × N multiply-adds), and every
- * system that approximates the terrain (the water's reflected terrain) reads the same texture.
+ *   layer 4: r = rockiness, g = landmark turf value, b = its weight (sRGB-encoded scalars),
+ *            a = soft wetland cover (World.landcover G averaged + blurred, σ ≈ 2.5 km: the marsh
+ *            edge the terrain frays with noise instead of the binary landcover outline)
+ * Five low-resolution fetches replace the per-pixel region-weight blend, and every system that
+ * approximates the terrain (the water's reflected terrain) reads the same texture — region
+ * borders therefore match wherever it is sampled (the warp is baked in, not applied per shader).
+ * Built texel by texel (blend + spots in order into one scratch vector): the only full-size float
+ * buffers are the snowline channel and its blur scratch.
  */
 export function groundLookTexture(world: World): DataArrayTexture {
   const hit = groundCache.get(world);
   if (hit) return hit;
-  const img = world.look.image as unknown as { data: Uint8Array; width: number; height: number };
-  const W = img.width;
-  const H = img.height;
+  const field = lookField(world);
+  const W = (world.look.image as unknown as { width: number }).width;
+  const H = (world.look.image as unknown as { height: number }).height;
   const ids = world.lookRegions;
   const n = ids.length;
   const regions = ids.map((id) => regionProps(groundJson(id)));
   const spec = world.spec;
-  const px = new Float32Array(W * H * P);
-  const d = img.data;
-  for (let y = 0; y < H; y++)
-    for (let x = 0; x < W; x++) {
-      let sum = 0;
-      const o = (y * W + x) * P;
-      for (let r = 0; r < n; r++) {
-        let w = d[(((r >> 2) * H + y) * W + x) * 4 + (r & 3)] / 255;
-        // the default region (index 0) also fills what the soft region masks leave uncovered; in the
-        // gaps between two regions that fill would paint a band of the default ground, so for the
-        // ground look it only counts where it dominates (the neighbours are renormalised instead)
-        if (r === 0) w *= smooth01((w - 0.55) / 0.4);
-        if (w <= 0) continue;
-        sum += w;
-        const R = regions[r];
-        for (let k = 0; k < P; k++) px[o + k] += w * R[k];
-      }
-      if (sum > 1e-6) for (let k = 0; k < P; k++) px[o + k] /= sum;
-      else px.set(regions[0], o);
-    }
-  // local spots (Gaussian, applied after the region blend)
   const texelKm = spec.width / W;
+
+  // local spots (Gaussian, applied after the region blend, in authoring order)
+  const spots: SpotBake[] = [];
   for (const id of ids) {
     for (const s of groundJson(id).spots ?? []) {
       let cx: number;
@@ -150,48 +407,117 @@ export function groundLookTexture(world: World): DataArrayTexture {
         cz = p.z;
       } else if (s.atKm) [cx, cz] = spec.kmToWorld(s.atKm[0], s.atKm[1]);
       else throw new Error(`looks.json ground spot in '${id}' needs a place or atKm`);
-      const target = regionProps(s, new Float32Array(P));
       const has = (k: number) =>
         k < 3 ? !!s.grass : k < 6 ? !!s.dry : k < 9 ? !!s.soil : k < 12 ? !!s.rock : k === 12 ? s.dryness !== undefined : k === 13 ? s.pattern !== undefined : k === 15 ? s.volcanic !== undefined : k === 16 ? s.rockiness !== undefined : k === 17 || k === 18 ? s.turf !== undefined : false;
-      const keys = [...Array(P).keys()].filter(has);
-      const strength = s.strength ?? 1;
       const reach = Math.ceil((s.radiusKm * 2.6) / texelKm);
       const gx = Math.round((cx - spec.xMin) / texelKm - 0.5);
       const gz = Math.round((cz - spec.zMin) / texelKm - 0.5);
-      for (let y = Math.max(0, gz - reach); y <= Math.min(H - 1, gz + reach); y++)
-        for (let x = Math.max(0, gx - reach); x <= Math.min(W - 1, gx + reach); x++) {
-          const wx = spec.xMin + (x + 0.5) * texelKm;
-          const wz = spec.zMin + (y + 0.5) * texelKm;
-          const q = Math.hypot(wx - cx, wz - cz) / s.radiusKm;
-          const wgt = Math.exp(-q * q) * strength;
-          if (wgt < 1e-3) continue;
-          const o = (y * W + x) * P;
-          for (const k of keys) px[o + k] += (target[k] - px[o + k]) * wgt;
-          if (s.snowline) px[o + 14] += s.snowline * wgt;
-        }
+      spots.push({
+        target: regionProps(s, new Float32Array(P)),
+        keys: [...Array(P).keys()].filter(has),
+        strength: s.strength ?? 1,
+        snowline: s.snowline ?? 0,
+        cx,
+        cz,
+        r: s.radiusKm,
+        x0: Math.max(0, gx - reach),
+        x1: Math.min(W - 1, gx + reach),
+        y0: Math.max(0, gz - reach),
+        y1: Math.min(H - 1, gz + reach),
+      });
     }
   }
-  blurChannel(px, W, H, P, 14, 5);
+
   const data = new Uint8Array(W * H * 4 * GROUND_LAYERS);
   const layer = W * H * 4;
-  for (let i = 0; i < W * H; i++) {
-    const o = i * P;
-    for (let L = 0; L < 4; L++) {
-      const t = L * layer + i * 4;
-      data[t] = toSrgb8(px[o + L * 3]);
-      data[t + 1] = toSrgb8(px[o + L * 3 + 1]);
-      data[t + 2] = toSrgb8(px[o + L * 3 + 2]);
+  const snow = new Float32Array(W * H);
+  const wts = new Float32Array(n);
+  // the region blend runs on a half-resolution node grid (every other texel centre; the ecotone
+  // mosaic's finest scale is ~12 km = 7 texels), two node rows at a time, bilinearly upsampled;
+  // the spots stay full-resolution (landmark turf spots are a few km wide)
+  const NW = (W >> 1) + 1;
+  let rowA = new Float32Array(NW * P);
+  let rowB = new Float32Array(NW * P);
+  const nodeRow = (j: number, dst: Float32Array) => {
+    const wz = spec.zMin + (Math.min(H - 1, 2 * j) + 0.5) * texelKm;
+    dst.fill(0);
+    for (let i = 0; i < NW; i++) {
+      field.weights(spec.xMin + (Math.min(W - 1, 2 * i) + 0.5) * texelKm, wz, wts, true);
+      const o = i * P;
+      for (let r = 0; r < n; r++) {
+        const w = wts[r];
+        if (w <= 0) continue;
+        const R = regions[r];
+        for (let k = 0; k < P; k++) dst[o + k] += w * R[k];
+      }
     }
-    data[i * 4 + 3] = to8(px[o + 12]);
-    data[layer + i * 4 + 3] = to8(px[o + 13]);
-    data[2 * layer + i * 4 + 3] = to8((px[o + 14] + SNOW_RANGE) / (2 * SNOW_RANGE));
-    data[3 * layer + i * 4 + 3] = to8(px[o + 15]);
-    // scalars in an sRGB layer: encoded so the hardware decode returns the value
-    data[4 * layer + i * 4] = toSrgb8(px[o + 16]);
-    data[4 * layer + i * 4 + 1] = toSrgb8(px[o + 17]);
-    data[4 * layer + i * 4 + 2] = toSrgb8(px[o + 18]);
-    data[4 * layer + i * 4 + 3] = 255;
+  };
+  nodeRow(0, rowA);
+  nodeRow(1, rowB);
+  const v = new Float32Array(P);
+  for (let y = 0; y < H; y++) {
+    const j = y >> 1;
+    if (y > 1 && (y & 1) === 0) {
+      [rowA, rowB] = [rowB, rowA];
+      nodeRow(j + 1, rowB);
+    }
+    const ty = (y & 1) * 0.5;
+    const wz = spec.zMin + (y + 0.5) * texelKm;
+    const rowSpots = spots.filter((s) => y >= s.y0 && y <= s.y1);
+    for (let x = 0; x < W; x++) {
+      const i0 = (x >> 1) * P;
+      const i1 = i0 + (x & 1) * P;
+      for (let k = 0; k < P; k++) {
+        const a = (rowA[i0 + k] + rowA[i1 + k]) * 0.5;
+        const b = (rowB[i0 + k] + rowB[i1 + k]) * 0.5;
+        v[k] = a + (b - a) * ty;
+      }
+      const wx = spec.xMin + (x + 0.5) * texelKm;
+      for (const s of rowSpots) {
+        if (x < s.x0 || x > s.x1) continue;
+        const q = Math.hypot(wx - s.cx, wz - s.cz) / s.r;
+        const wgt = Math.exp(-q * q) * s.strength;
+        if (wgt < 1e-3) continue;
+        for (const k of s.keys) v[k] += (s.target[k] - v[k]) * wgt;
+        if (s.snowline) v[14] += s.snowline * wgt;
+      }
+      const i = y * W + x;
+      for (let L = 0; L < 4; L++) {
+        const t = L * layer + i * 4;
+        data[t] = toSrgb8(v[L * 3]);
+        data[t + 1] = toSrgb8(v[L * 3 + 1]);
+        data[t + 2] = toSrgb8(v[L * 3 + 2]);
+      }
+      data[i * 4 + 3] = to8(v[12]);
+      data[layer + i * 4 + 3] = to8(v[13]);
+      snow[i] = v[14];
+      data[3 * layer + i * 4 + 3] = to8(v[15]);
+      // scalars in an sRGB layer: encoded so the hardware decode returns the value
+      data[4 * layer + i * 4] = toSrgb8(v[16]);
+      data[4 * layer + i * 4 + 1] = toSrgb8(v[17]);
+      data[4 * layer + i * 4 + 2] = toSrgb8(v[18]);
+    }
   }
+  blur1(snow, W, H, 5);
+  for (let i = 0; i < W * H; i++) data[2 * layer + i * 4 + 3] = to8((snow[i] + SNOW_RANGE) / (2 * SNOW_RANGE));
+  // soft wetland cover: landcover G box-averaged onto the look grid, then blurred (reuses `snow`)
+  const lc = world.landcover.image as unknown as { data: Uint8Array; width: number; height: number };
+  const fx = lc.width / W;
+  const fy = lc.height / H;
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      let acc = 0;
+      let cnt = 0;
+      for (let yy = Math.floor(y * fy); yy < Math.floor((y + 1) * fy); yy++)
+        for (let xx = Math.floor(x * fx); xx < Math.floor((x + 1) * fx); xx++) {
+          acc += lc.data[(yy * lc.width + xx) * 4 + 1];
+          cnt++;
+        }
+      snow[y * W + x] = cnt ? acc / (cnt * 255) : 0;
+    }
+  blur1(snow, W, H, 1);
+  for (let i = 0; i < W * H; i++) data[4 * layer + i * 4 + 3] = to8(snow[i]);
+
   const t = new DataArrayTexture(data, W, H, GROUND_LAYERS);
   t.format = RGBAFormat;
   t.type = UnsignedByteType;
@@ -208,29 +534,28 @@ export function groundLookTexture(world: World): DataArrayTexture {
   return t;
 }
 
-/** Separable 3-pass box blur of one channel of an interleaved float image. */
-function blurChannel(px: Float32Array, w: number, h: number, stride: number, ch: number, radius: number): void {
-  const a = new Float32Array(w * h);
-  const b = new Float32Array(w * h);
-  for (let i = 0; i < w * h; i++) a[i] = px[i * stride + ch];
-  const pass = (src: Float32Array, dst: Float32Array, horizontal: boolean) => {
-    const len = horizontal ? w : h;
-    const lines = horizontal ? h : w;
+/** Separable 3-pass box blur (≈ Gaussian) of a single-channel float image, in place (`b`: scratch). */
+function blur1(a: Float32Array, w: number, h: number, radius: number, b = new Float32Array(w * h)): void {
+  const inv = 1 / (2 * radius + 1);
+  // one running-sum pass along lines of `len` samples `step` apart (edges clamped)
+  const pass = (src: Float32Array, dst: Float32Array, lines: number, lineStep: number, len: number, step: number) => {
     for (let l = 0; l < lines; l++) {
+      const o = l * lineStep;
+      const last = o + (len - 1) * step;
       let acc = 0;
-      const at = (i: number) => src[horizontal ? l * w + Math.min(len - 1, Math.max(0, i)) : Math.min(len - 1, Math.max(0, i)) * w + l];
-      for (let k = -radius; k <= radius; k++) acc += at(k);
+      for (let k = -radius; k <= radius; k++) acc += src[o + Math.min(len - 1, Math.max(0, k)) * step];
       for (let i = 0; i < len; i++) {
-        dst[horizontal ? l * w + i : i * w + l] = acc / (2 * radius + 1);
-        acc += at(i + radius + 1) - at(i - radius);
+        dst[o + i * step] = acc * inv;
+        const add = i + radius + 1;
+        const sub = i - radius;
+        acc += (add < len ? src[o + add * step] : src[last]) - (sub > 0 ? src[o + sub * step] : src[o]);
       }
     }
   };
   for (let it = 0; it < 3; it++) {
-    pass(a, b, true);
-    pass(b, a, false);
+    pass(a, b, h, w, w, 1);
+    pass(b, a, w, 1, h, w);
   }
-  for (let i = 0; i < w * h; i++) px[i * stride + ch] = a[i];
 }
 
 /** The ground look at a map position (TSL). */
@@ -248,17 +573,18 @@ export interface GroundPalette {
   /** landmark turf override (value, weight; applies where stamps reshaped the ground) */
   turf: N;
   turfWeight: N;
+  /** soft wetland cover 0..1 (≈ 2.5 km blur of the landcover wetland mask) */
+  wetland: N;
 }
 
 /**
- * Sample the ground look at map uv (five fetches). `warpedUv` (optional) is used for the colour and
- * scalar layers — the terrain domain-warps them so region borders are never straight lines — while
- * the landmark layer (turf, rockiness) stays at `uv`. `explicitLod` makes the fetches legal in
- * non-uniform control flow.
+ * Sample the ground look at map uv (five fetches). The region borders' domain warp is baked into
+ * the texture (LookField), so every system that samples it at the same uv sees the same borders.
+ * `explicitLod` makes the fetches legal in non-uniform control flow.
  */
-export function groundPalette(tex: DataArrayTexture, uv: N, explicitLod = false, warpedUv: N = uv): GroundPalette {
+export function groundPalette(tex: DataArrayTexture, uv: N, explicitLod = false): GroundPalette {
   const f = (L: number): N => {
-    const t = texture(tex, L < 4 ? warpedUv : uv).depth(int(L));
+    const t = texture(tex, uv).depth(int(L));
     return explicitLod ? t.level(0) : t;
   };
   const a = f(0);
@@ -278,6 +604,7 @@ export function groundPalette(tex: DataArrayTexture, uv: N, explicitLod = false,
     rockiness: q.r,
     turf: q.g,
     turfWeight: q.b,
+    wetland: q.a,
   };
 }
 
@@ -432,8 +759,11 @@ export const TERRAIN_SHADE = {
   /** snow line: base + south · southness (0 north edge … 1 south edge) + the ground look's regional offset */
   snowLineBase: 32,
   snowLineSouth: 2,
-  /** amplitude of the 60 km / 12 km / 3 km noise on the snow line (mean 0; the water uses none) */
-  snowLineNoise: [2.4, 1.1, 0.45] as const,
+  /**
+   * amplitude of the 60 km / 12 km / 3 km noise on the snow line (mean 0; the water uses none) —
+   * the 12 / 3 km terms break a long even crest (the Grey Mountains) into snowy and bare reaches
+   */
+  snowLineNoise: [2.4, 1.7, 0.75] as const,
   /** snow fades in over this many units above the line */
   snowFade: 2.2,
   /** north-facing faces hold snow lower: effective height + northness (−n.z) · this */
@@ -458,10 +788,11 @@ export const TERRAIN_SHADE = {
   /** beaches (sRGB) and lake / river shore gravel */
   beach: 0xb8aa88,
   shore: 0x86857c,
-  /** wetland: open pools, reed / sedge mottle (sRGB) */
-  wetPool: 0x1f2a28,
-  wetReed: 0x4f5438,
-  wetSedge: 0x5d6247,
+  /** wetland: dark peat pools, and the bog mat of olive sedge, darker reed and red tussock (sRGB) */
+  wetPool: 0x1b2325,
+  wetReed: 0x4c5036,
+  wetSedge: 0x5f6246,
+  wetRust: 0x67503d,
   /** water channels under the water system's surfaces */
   channel: 0x1d3137,
   /** roads, ash fields */

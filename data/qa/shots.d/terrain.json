@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "notes": "Terrain look review shots (ground look, wetlands, rock/snow, volcanic plains) at regional / mid range. Owned by the terrain module.",
+  "shots": [
+    { "id": "t2-dead-marshes", "tod": 15.0, "camera": { "orbit": { "targetKm": [1142, 754], "distanceKm": 60, "elevationDeg": 25, "azimuthDeg": 200, "fov": 35 } }, "compare": ["reference/photos/dead-marshes"] },
+    { "id": "t2-emyn-muil", "tod": 15.0, "camera": { "orbit": { "targetKm": [1105, 780], "distanceKm": 90, "elevationDeg": 28, "azimuthDeg": 220, "fov": 35 } } },
+    { "id": "t2-caradhras", "tod": 14.0, "camera": { "orbit": { "targetKm": [872, 934], "distanceKm": 70, "elevationDeg": 18, "azimuthDeg": 250, "fov": 35 } } },
+    { "id": "t2-gorgoroth", "tod": 13.0, "camera": { "orbit": { "targetKm": [1240, 660], "distanceKm": 120, "elevationDeg": 25, "azimuthDeg": 200, "fov": 35 } } }
+  ]
+}

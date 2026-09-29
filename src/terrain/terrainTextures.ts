@@ -32,32 +32,58 @@ interface DetailManifest {
 }
 
 /**
- * Load the tier's detail layers (size ≤ tier size, first `layers` layers). Returns null (and the
- * terrain falls back to procedural micro-detail) when the derived files are missing or the tier
- * disables them (layers 0).
+ * What the terrain detail load did (static data of the page, set once at init): the capture API
+ * asserts on it (render/capture.ts), so a capture never silently renders the procedural fallback.
+ */
+export const terrainDetailStatus: { wanted: boolean; loaded: boolean; error: string } = { wanted: false, loaded: false, error: '' };
+
+/** A missing / failed terrain detail set where the tier needs it. */
+export function terrainDetailError(): string | null {
+  const s = terrainDetailStatus;
+  return s.wanted && !s.loaded ? `terrain detail textures failed to load (${s.error || 'unknown'}) — run \`node tools/textures/prep.mjs\` (public/textures/terrain)` : null;
+}
+
+/**
+ * Load the tier's detail layers (size ≤ tier size, first `layers` layers). Returns null when the
+ * tier disables them (layers 0). Missing or failed files: review / final tiers throw (the offline
+ * look must never degrade silently); preview falls back to procedural micro-detail with a warning,
+ * and the capture API refuses to render it (terrainDetailError).
  */
 export async function loadTerrainDetail(quality: QualityTier): Promise<TerrainDetail | null> {
   const want = quality.terrainDetail;
-  if (!want.layers || !want.size) return null;
+  terrainDetailStatus.wanted = !!(want.layers && want.size);
+  terrainDetailStatus.loaded = false;
+  terrainDetailStatus.error = '';
+  if (!terrainDetailStatus.wanted) return null;
+  const fail = (why: string): null => {
+    terrainDetailStatus.error = why;
+    const msg = terrainDetailError()!;
+    if (quality.id !== 'preview') throw new Error(`[terrain] ${msg}`);
+    console.warn(`[terrain] ${msg}; using procedural detail`);
+    return null;
+  };
   let man: DetailManifest;
   try {
     const res = await fetch('/textures/terrain/detail.json');
-    if (!res.ok) throw new Error(String(res.status));
+    if (!res.ok) throw new Error(`detail.json ${res.status}`);
     man = (await res.json()) as DetailManifest;
-  } catch {
-    console.warn('[terrain] no ground-detail textures (public/textures/terrain) — run `node tools/textures/prep.mjs`; using procedural detail');
-    return null;
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : String(e));
   }
   const sizes = [...man.sizes].sort((a, b) => a - b);
   const size = sizes.filter((s) => s <= want.size).pop() ?? sizes[0];
-  const res = await fetch(`/textures/terrain/detail-${size}.bin`);
-  if (!res.ok) {
-    console.warn(`[terrain] missing detail-${size}.bin; using procedural detail`);
-    return null;
+  let res: Response;
+  try {
+    res = await fetch(`/textures/terrain/detail-${size}.bin`);
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : String(e));
   }
+  if (!res.ok) return fail(`detail-${size}.bin ${res.status}`);
   const all = new Uint8Array(await res.arrayBuffer());
   const per = size * size * 4;
   const count = Math.min(want.layers, man.layers.length, Math.floor(all.length / per));
+  // a dev server answers a missing file with its HTML fallback (200): too short to hold a layer
+  if (count < 1) return fail(`detail-${size}.bin holds no ${size}² layer (${all.length} bytes)`);
   const ids = man.layers.slice(0, count).map((l) => l.id);
   const data = count * per === all.length ? all : all.slice(0, count * per);
   const tex = new DataArrayTexture(data, size, size, count);
@@ -78,5 +104,6 @@ export async function loadTerrainDetail(quality: QualityTier): Promise<TerrainDe
     const i = ids.indexOf(l);
     return i >= 0 ? i : 0;
   };
+  terrainDetailStatus.loaded = true;
   return { texture: tex, size, layers: count, index };
 }

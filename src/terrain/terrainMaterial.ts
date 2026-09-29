@@ -4,6 +4,7 @@ import type { World } from '../world/World.ts';
 import type { QualityTier } from '../core/quality.ts';
 import type { Cdlod } from './cdlod.ts';
 import { env } from '../materials/environment.ts';
+import { atmosphere, valleyMistInput } from '../materials/atmosphere.ts';
 import { TERRAIN_SHADE as TS, alpineAt, groundLookTexture, groundPalette, rockAt, snowAt, snowLineAt, srgbNode } from '../materials/looks.ts';
 import type { GroundMaps } from './groundMaps.ts';
 import type { TerrainDetail } from './terrainTextures.ts';
@@ -57,11 +58,15 @@ function neutralMask(): DataTexture {
 /** 1 on flat ground, 0 on slopes steeper than ~0.2 (1 − n.y) */
 const flatGround = (slope: N): N => float(1).sub(smoothstep(0.08, 0.22, slope));
 
-/** tiling of the detail layers (km per tile): soft ground (planar) and hard ground (triplanar) */
+/** tiling of the detail layers (km per tile): soft ground and hard ground */
 const SOFT_TILE = 1.7;
 const HARD_TILE = 4.2;
-/** domain warp of the regional ground look (km): region borders meander instead of running straight */
-const PAL_WARP = 20;
+/** preview (soft grain projected from above only): fade it out over this slope range (1 − n.y) */
+const SOFT_STEEP = [0.22, 0.45] as const;
+/** the lowland / river-bank turf rule holds on moderate slopes only (steep scarps stay rock) */
+const BANK_TURF_SLOPE = [0.3, 0.5] as const;
+/** wetland only on flat ground (marsh fills, river flats), gone on this slope range */
+const WET_SLOPE = [0.06, 0.2] as const;
 
 /**
  * Terrain material family (the only terrain material in the project).
@@ -159,9 +164,8 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     const n2 = mx_noise_float(p.xz.mul(1 / 12));
     const n3 = mx_noise_float(p.mul(1 / 3));
 
-    // regional ground look, domain-warped (± PAL_WARP km) so region borders meander like real ones
-    const warp = vec2(n1.mul(0.7).add(n2.mul(0.3)), n2.mul(0.7).sub(n1.mul(0.3))).mul(PAL_WARP);
-    const pal = groundPalette(groundTex, uv, false, toUv(p.xz.add(warp)));
+    // regional ground look (its ecotones are domain-warped and dithered in the texture itself)
+    const pal = groundPalette(groundTex, uv);
     // stamp turf: automatic (a stamp on gentle ground) unless the ground look overrides it
     const turf = mix(sm.r, pal.turf.mul(stamped), pal.turfWeight);
     const fp = length(fwidth(p.xz));
@@ -178,11 +182,15 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     const snowBase = snowAt(hEff, slope.add(n3.mul(0.04)).add(crest.mul(0.12)), line, pal.volcanic, max(curv, 0));
 
     // ---- rock / scree
-    // lowland river valleys: the carved banks are earth and turf, not rock (unless the ground is rocky)
+    // lowland river valleys: the carved banks are earth and turf, not rock (unless the ground is
+    // rocky) — on moderate slopes only: a steep scarp (the Gladden bluffs) stays rock
     const lowland = float(1).sub(smoothstep(9, 18, hC)).mul(float(1).sub(pal.rockiness));
     // crests below the alpine zone turn to rock too (no grass rims on mountain ridges)
     const subalpine = smoothstep(line.sub(17), line.sub(9), hEff).mul(float(1).sub(turf));
-    const bankTurf = max(water.a.mul(0.85), lowland.mul(0.6)).mul(float(1).sub(pal.rockiness)).mul(float(1).sub(alpineRaw));
+    const bankTurf = max(water.a.mul(0.85), lowland.mul(0.6))
+      .mul(float(1).sub(pal.rockiness))
+      .mul(float(1).sub(alpineRaw))
+      .mul(float(1).sub(smoothstep(BANK_TURF_SLOPE[0], BANK_TURF_SLOPE[1], slope)));
     const rockBase = max(
       rockAt(slope.add(n2.mul(0.035)).add(crest.mul(0.06).add(pal.rockiness.mul(crest).mul(0.12))).sub(hollow.mul(0.03)), alpine, max(turf, bankTurf), pal.rockiness),
       smoothstep(0.1, 0.5, crest.add(n3.mul(0.15))).mul(subalpine).mul(0.85),
@@ -198,7 +206,8 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
       1,
     );
 
-    // ---- CC0 detail layers: soft ground planar (two layers), hard ground triplanar (one layer)
+    // ---- CC0 detail layers: soft ground (two layers) and hard ground (one layer), triplanar in
+    // review/final; preview projects both from above and fades the soft grain on steep faces
     let lumSoft: N = float(1);
     let lumHard: N = float(1);
     let dN: N = vec3(0);
@@ -209,38 +218,45 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
       const idx = (v: N): N => int(v).toVar();
       const volc = pal.volcanic;
       const warp = vec2(n1, n2).mul(0.45);
-      const uvS = p.xz.mul(1 / SOFT_TILE).add(warp);
       const iA = idx(select(volc.greaterThan(0.5), float(detail.index('ash')), float(detail.index('meadow'))));
       const iB = idx(select(volc.greaterThan(0.75), float(detail.index('ash')), float(detail.index('dry'))));
-      const sA = texture(T, uvS).depth(iA);
-      const sB = texture(T, uvS).depth(iB);
-      const soft = mix(sA, sB, dryness);
       const iH = idx(select(snowBase.greaterThan(0.5), float(detail.index('snow')), select(scree.mul(rockBase).greaterThan(0.45), float(detail.index('scree')), float(detail.index('rock')))));
-      const aH = abs(nM);
+      // the two soft layers at one projection, blended by dryness
+      const softAt = (uv: N): N => mix(texture(T, uv).depth(iA), texture(T, uv).depth(iB), dryness);
+      // tangent-space detail normal (0.5 = flat) → world perturbation for each projection
+      const nx = (t: N): N => t.r.mul(2).sub(1);
+      const ny = (t: N): N => t.g.mul(2).sub(1).negate();
+      const topN = (t: N): N => vec3(nx(t), 0, ny(t));
+      let soft: N;
+      let softN: N;
       let hard: N;
       let hardN: N;
+      // steep-face fade of the soft grain where it is projected from above only (preview)
+      let softSteep: N = float(1);
       if (preview) {
-        const t = texture(T, p.xz.mul(1 / HARD_TILE)).depth(iH);
-        hard = t;
-        hardN = vec3(t.r.mul(2).sub(1), 0, t.g.mul(2).sub(1).negate());
+        soft = softAt(p.xz.mul(1 / SOFT_TILE).add(warp));
+        softN = topN(soft);
+        softSteep = float(1).sub(smoothstep(SOFT_STEEP[0], SOFT_STEEP[1], slope));
+        hard = texture(T, p.xz.mul(1 / HARD_TILE)).depth(iH);
+        hardN = topN(hard);
       } else {
-        // triplanar weights (sharpened): top xz, side faces zy / xy
-        const bw0 = pow(aH, vec3(4));
+        // triplanar weights (sharpened): top xz, side faces zy / xy — turf on steep stamp flanks
+        // and banks (the Minas Tirith cone) keeps an unstretched grain like the rock does
+        const bw0 = pow(abs(nM), vec3(4));
         const bw = bw0.div(bw0.x.add(bw0.y).add(bw0.z));
-        const tTop = texture(T, p.xz.mul(1 / HARD_TILE)).depth(iH);
-        const tX = texture(T, p.zy.mul(1 / HARD_TILE)).depth(iH);
-        const tZ = texture(T, p.xy.mul(1 / HARD_TILE)).depth(iH);
-        hard = tTop.mul(bw.y).add(tX.mul(bw.x)).add(tZ.mul(bw.z));
-        const nx = (t: N): N => t.r.mul(2).sub(1);
-        const ny = (t: N): N => t.g.mul(2).sub(1).negate();
-        hardN = vec3(nx(tTop), 0, ny(tTop))
-          .mul(bw.y)
-          .add(vec3(0, ny(tX), nx(tX)).mul(bw.x))
-          .add(vec3(nx(tZ), ny(tZ), 0).mul(bw.z));
+        const tri = (top: N, sx: N, sz: N): [N, N] => [
+          top.mul(bw.y).add(sx.mul(bw.x)).add(sz.mul(bw.z)),
+          topN(top)
+            .mul(bw.y)
+            .add(vec3(0, ny(sx), nx(sx)).mul(bw.x))
+            .add(vec3(nx(sz), ny(sz), 0).mul(bw.z)),
+        ];
+        [soft, softN] = tri(softAt(p.xz.mul(1 / SOFT_TILE).add(warp)), softAt(p.zy.mul(1 / SOFT_TILE).add(warp)), softAt(p.xy.mul(1 / SOFT_TILE).add(warp)));
+        [hard, hardN] = tri(texture(T, p.xz.mul(1 / HARD_TILE)).depth(iH), texture(T, p.zy.mul(1 / HARD_TILE)).depth(iH), texture(T, p.xy.mul(1 / HARD_TILE)).depth(iH));
       }
       // fade by texel footprint: the grain resolves at mid distance; far off (tile < ~10 px) the
       // regional palette alone carries the ground and no tile can repeat visibly
-      const ampS = float(1).sub(smoothstep(SOFT_TILE / 64, SOFT_TILE / 10, fp));
+      const ampS = float(1).sub(smoothstep(SOFT_TILE / 64, SOFT_TILE / 10, fp)).mul(softSteep);
       const ampH = float(1).sub(smoothstep(HARD_TILE / 64, HARD_TILE / 9, fp));
       lumSoft = mix(float(1), soft.b.mul(2), ampS.mul(pal.pattern.mul(0.5).add(0.6)));
       lumHard = mix(float(1), hard.b.mul(2), ampH);
@@ -248,7 +264,6 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
       const tr = (w: N): N => w.mul(float(1).sub(w)).mul(4);
       rock.assign(clamp(rockBase.add(hard.a.sub(soft.a).mul(0.7).mul(tr(rockBase)).mul(ampH)), 0, 1));
       snow.assign(clamp(snowBase.add(float(0.5).sub(hard.a).mul(0.8).mul(tr(snowBase)).mul(ampH)), 0, 1));
-      const softN = vec3(soft.r.mul(2).sub(1), 0, soft.g.mul(2).sub(1).negate());
       dN = mix(softN.mul(ampS.mul(0.45)), hardN.mul(ampH.mul(0.9)), max(rock, snow));
     }
 
@@ -278,11 +293,20 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     const floorCol = mix(pal.grass.mul(0.5), pal.soil.mul(0.62), float(0.45).add(n3.mul(0.2))).mul(float(0.8).add(n4.mul(0.18)));
     ground.assign(mix(ground, floorCol, lc.r.mul(0.9)));
 
-    // volcanic plains (Gorgoroth): a network of dark fissures where the 3 km noise crosses zero
-    // (lines ~150 m wide, faded once they would shrink below a pixel)
+    // volcanic plains (Gorgoroth): a cracked ash plain — fissures along the zero set of the 3 km
+    // noise, broken into segments that taper to nothing (the 0.9 km noise sets both the width and
+    // the gaps, so no loop closes), wider and darker in places (12 km); faded once they would
+    // shrink below a pixel, so the plain stays quiet at regional range
     const crackFade = float(1).sub(smoothstep(0.12, 0.35, fp));
-    const cracks = float(1).sub(smoothstep(0.015, 0.05, abs(n3.add(n4.mul(0.25))))).mul(smoothstep(0.7, 0.95, pal.volcanic)).mul(flatGround(slope)).mul(crackFade);
-    ground.assign(ground.mul(float(1).sub(cracks.mul(0.55))));
+    const crackOpen = clamp(n4.mul(1.7).add(n2.mul(0.5)).add(0.25), 0, 1);
+    const crackW = crackOpen.mul(0.05).add(0.002);
+    const cracks = float(1)
+      .sub(smoothstep(crackW.mul(0.3), crackW, abs(n3)))
+      .mul(smoothstep(0.05, 0.3, crackOpen))
+      .mul(smoothstep(0.7, 0.95, pal.volcanic))
+      .mul(flatGround(slope))
+      .mul(crackFade);
+    ground.assign(ground.mul(float(1).sub(cracks.mul(float(0.42).add(n2.mul(0.15))))));
 
     const col = mix(ground, rockCol, rock).toVar();
     const snowCol = srgbNode(TS.snow).mul(float(0.97).add(n4.mul(0.03))).mul(mix(float(1), lumHard, 0.6));
@@ -294,16 +318,27 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     col.assign(mix(col, srgbNode(TS.beach).mul(float(0.95).add(n4.mul(0.08))).mul(lumSoft), beach.mul(0.85)));
     const shore = max(sm.b, sm.a.mul(fineFade).mul(0.2)).mul(flat).mul(float(1).sub(lc.r)).mul(float(1).sub(snow));
     col.assign(mix(col, srgbNode(TS.shore).mul(float(0.92).add(n4.mul(0.14))).mul(lumSoft), shore.mul(0.5)));
-    // wetland: a sedge / reed mat broken by many small open pools (fine noise, resolved at mid
-    // distance; far off the pools average into a darker, wetter mat) — pools get a wet sheen
-    const wetW = smoothstep(0.15, 0.85, lc.g);
+    // wetland (flat ground only): a reddish-olive bog mat (red tussock, sedge, moss) with sparse
+    // dark pools of varying size and density. The edge frays out of the soft wetland cover
+    // (ground look layer 4, noise-dithered) instead of following the binary landcover outline;
+    // far off the pools average into a slightly darker, wetter mat. Pools carry a low roughness
+    // (a subtle sheen under the key light).
+    const wetEdge = max(pal.wetland.mul(1.25), lc.g.mul(0.55)).add(n2.mul(0.2)).add(n3.mul(0.16)).add(n4.mul(0.08));
+    const wetW = smoothstep(0.35, 0.7, wetEdge).mul(float(1).sub(smoothstep(WET_SLOPE[0], WET_SLOPE[1], slope)));
     const poolFade = float(1).sub(smoothstep(0.03, 0.2, fp));
     const n5 = preview ? n4 : mx_noise_float(p.xz.mul(1 / 0.32));
-    const poolN = n5.mul(0.55).add(n4.mul(0.35)).add(n3.mul(0.15)).add(wetW.sub(0.8).mul(0.5));
-    const pools = mix(float(0.22), smoothstep(0.16, 0.3, poolN), poolFade).mul(wetW);
-    const reeds = mix(srgbNode(TS.wetSedge), srgbNode(TS.wetReed), clamp(n3.mul(0.6).add(n5.mul(0.4)).add(0.5), 0, 1)).mul(lumSoft);
-    const wetCol = mix(reeds, srgbNode(TS.wetPool), pools.mul(0.8));
-    col.assign(mix(col, wetCol, wetW.mul(0.9)));
+    // pool density: open, water-logged reaches in clusters (12 and 3 km noise, the wetter core)
+    // between stretches of closed mat
+    const poolDens = clamp(n2.mul(0.8).add(n3.mul(1.6)).add(wetW.sub(0.6)).add(0.12), 0, 1);
+    const tS = mix(float(0.52), float(0.2), poolDens);
+    const tL = mix(float(0.75), float(0.45), poolDens);
+    const poolS = smoothstep(tS, tS.add(0.07), n5.add(n4.mul(0.3)));
+    const poolL = smoothstep(tL, tL.add(0.1), n4.add(n3.mul(0.35)));
+    const pools = mix(poolDens.mul(0.16).add(0.04), max(poolS, poolL), poolFade).mul(wetW);
+    const matN = clamp(n3.mul(0.7).add(n2.mul(0.5)).add(n5.mul(0.25)).add(0.42), 0, 1);
+    const mat = mix(mix(srgbNode(TS.wetSedge), srgbNode(TS.wetRust), matN), srgbNode(TS.wetReed), smoothstep(0, 0.5, n4.add(n5.mul(0.5))).mul(0.4)).mul(lumSoft);
+    const wetCol = mix(mat, srgbNode(TS.wetPool), pools.mul(0.85));
+    col.assign(mix(col, wetCol, wetW.mul(0.92)));
     col.assign(mix(col, srgbNode(TS.ash), lc.b.mul(0.9)));
     col.assign(mix(col, srgbNode(TS.road), lc.a.mul(0.45)));
     const channel = max(water.r, water.g);
@@ -327,7 +362,10 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     outNormal.assign(nW);
     outAO.assign(mix(float(1), occl, 0.85));
     const rough = mix(mix(float(0.92), float(0.82), rock), float(0.55), snow);
-    outRough.assign(mix(mix(rough, float(0.3), pools.mul(0.8)), float(0.12), channel));
+    outRough.assign(mix(mix(rough, float(0.24), pools.mul(0.85)), float(0.12), channel));
+    // valley mist for the shared fog (review/final): the stamp-corrected valley index of the mask
+    // fetched above, so the fog itself needs no texture tap
+    if (!preview) valleyMistInput.assign(atmosphere.valleyMistFrom(tpi));
     return col;
   });
 

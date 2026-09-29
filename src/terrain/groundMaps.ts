@@ -1,6 +1,7 @@
 import { ClampToEdgeWrapping, Color, DataTexture, LinearFilter, NoColorSpace, RGBAFormat, SRGBColorSpace, UnsignedByteType, Vector4 } from 'three/webgpu';
 import { hash32, rand } from '../core/rng.ts';
 import { fieldWeight, shireFieldGrid } from '../world/fields.ts';
+import { lookField, lookNoise } from '../materials/looks.ts';
 import type { World } from '../world/World.ts';
 
 /**
@@ -10,8 +11,10 @@ import type { World } from '../world/World.ts';
  *    or levelled ground that was gentle before: its new faces are turf / soil, not slope rock),
  *    G = stamp presence (the baked terrain analysis — AO, valley index — is stale there),
  *    B = lake shore band, A = river bank band;
- *  - Shire field mask (sRGB RGBA8, 0.2 km over the field lattice): rgb = crop colour of the field,
- *    a = patchwork weight (the same rule and lattice as the hedgerows, src/world/fields.ts).
+ *  - Shire field mask (sRGB RGBA8, 0.2 km over the field lattice, a zero-weight border so the
+ *    clamped sampler reads 0 outside it): rgb = crop colour of the field, a = patchwork weight —
+ *    the lattice and hedgerow rule of src/world/fields.ts, faded organically towards its edge
+ *    (fieldEdgeWeight: never beyond the hedgerow rule).
  */
 export interface GroundMaps {
   stamp: DataTexture;
@@ -38,46 +41,48 @@ function makeTexture(data: Uint8Array, w: number, h: number, srgb: boolean, name
   return t;
 }
 
-/** Separable 3-pass box blur (≈ Gaussian) of a float image, in place. */
-function blur(a: Float32Array, w: number, h: number, radius: number): void {
+/** Separable 3-pass box blur (≈ Gaussian) of a float image, in place (`b`: scratch of the same size). */
+function blur(a: Float32Array, w: number, h: number, radius: number, b: Float32Array): void {
   if (radius <= 0) return;
-  const b = new Float32Array(a.length);
-  const pass = (src: Float32Array, dst: Float32Array, horizontal: boolean) => {
-    const len = horizontal ? w : h;
-    const lines = horizontal ? h : w;
+  const inv = 1 / (2 * radius + 1);
+  const pass = (src: Float32Array, dst: Float32Array, lines: number, lineStep: number, len: number, step: number) => {
     for (let l = 0; l < lines; l++) {
-      const at = (i: number) => src[horizontal ? l * w + Math.min(len - 1, Math.max(0, i)) : Math.min(len - 1, Math.max(0, i)) * w + l];
+      const o = l * lineStep;
+      const last = o + (len - 1) * step;
       let acc = 0;
-      for (let k = -radius; k <= radius; k++) acc += at(k);
+      for (let k = -radius; k <= radius; k++) acc += src[o + Math.min(len - 1, Math.max(0, k)) * step];
       for (let i = 0; i < len; i++) {
-        dst[horizontal ? l * w + i : i * w + l] = acc / (2 * radius + 1);
-        acc += at(i + radius + 1) - at(i - radius);
+        dst[o + i * step] = acc * inv;
+        const add = i + radius + 1;
+        const sub = i - radius;
+        acc += (add < len ? src[o + add * step] : src[last]) - (sub > 0 ? src[o + sub * step] : src[o]);
       }
     }
   };
   for (let it = 0; it < 3; it++) {
-    pass(a, b, true);
-    pass(b, a, false);
+    pass(a, b, h, w, w, 1);
+    pass(b, a, w, 1, h, w);
   }
 }
 
-/** 3×3 max filter, in place. */
-function dilate(a: Float32Array, w: number, h: number): void {
-  const src = a.slice();
+/** 3×3 max filter of `a` into `dst`. */
+function dilate(a: Float32Array, w: number, h: number, dst: Float32Array): void {
   for (let y = 0; y < h; y++)
     for (let x = 0; x < w; x++) {
       let m = 0;
-      for (let dy = -1; dy <= 1; dy++)
-        for (let dx = -1; dx <= 1; dx++) {
-          const xx = Math.min(w - 1, Math.max(0, x + dx));
-          const yy = Math.min(h - 1, Math.max(0, y + dy));
-          m = Math.max(m, src[yy * w + xx]);
-        }
-      a[y * w + x] = m;
+      for (let dy = -1; dy <= 1; dy++) {
+        const yy = Math.min(h - 1, Math.max(0, y + dy)) * w;
+        for (let dx = -1; dx <= 1; dx++) m = Math.max(m, a[yy + Math.min(w - 1, Math.max(0, x + dx))]);
+      }
+      dst[y * w + x] = m;
     }
 }
 
-/** Stamp turf / presence + shore bands (see GroundMaps). Call after the stamps are composited. */
+/**
+ * Stamp turf / presence + shore bands (see GroundMaps). Call after the stamps are composited.
+ * One channel at a time through two reused float buffers (≈ 2 × 9.6 MB transient instead of six
+ * full-size fields plus copies), each written to the RGBA8 output as soon as it is done.
+ */
 function buildStampMask(world: World): DataTexture {
   const hf = world.heights;
   const FW = hf.width;
@@ -85,64 +90,68 @@ function buildStampMask(world: World): DataTexture {
   const W = FW >> 1;
   const H = FH >> 1;
   const e = hf.texel;
-  const turf = new Float32Array(W * H);
-  const pres = new Float32Array(W * H);
   const base = hf.base;
   const comp = hf.data;
   const at = (a: Float32Array, c: number, r: number) => a[Math.min(FH - 1, Math.max(0, r)) * FW + Math.min(FW - 1, Math.max(0, c))];
-  for (let y = 0; y < H; y++)
-    for (let x = 0; x < W; x++) {
-      const c = x * 2;
-      const r = y * 2;
-      let delta = 0;
-      for (let dy = 0; dy < 2; dy++)
-        for (let dx = 0; dx < 2; dx++) delta = Math.max(delta, Math.abs(comp[(r + dy) * FW + c + dx] - base[(r + dy) * FW + c + dx]));
-      if (delta < 1e-4) continue;
-      // slope of the ground BEFORE the stamp (1 − n.y), central differences over 2 texels
-      const gx = (at(base, c + 2, r) - at(base, c - 1, r)) / (3 * e);
-      const gz = (at(base, c, r + 2) - at(base, c, r - 1)) / (3 * e);
-      const baseSlope = 1 - 1 / Math.sqrt(1 + gx * gx + gz * gz);
-      pres[y * W + x] = smooth(0.02, 0.3, delta);
-      // turf where a moderate stamp built new faces on gentle ground; tall cones (Doom, Erebor) and
-      // stamps on rocky ground (Helm's Deep, Moria, the Argonath) keep their rock
-      turf[y * W + x] = smooth(0.03, 0.25, delta) * (1 - smooth(0.16, 0.34, baseSlope)) * (1 - smooth(5, 9, delta));
-    }
-  // grow the masks one texel (a stamp's flanks are its steepest part), then soften
-  dilate(turf, W, H);
-  dilate(pres, W, H);
-  blur(turf, W, H, 1);
-  blur(pres, W, H, 1);
-
-  // shore bands just outside lakes / river channels (≈ 1–2 km)
-  const wimg = world.water.image as unknown as { data: Uint8Array; width: number; height: number };
-  const lake = new Float32Array(W * H);
-  const river = new Float32Array(W * H);
-  const wd = wimg.data;
-  for (let y = 0; y < H; y++)
-    for (let x = 0; x < W; x++) {
-      let l = 0;
-      let rv = 0;
-      for (let dy = 0; dy < 2; dy++)
-        for (let dx = 0; dx < 2; dx++) {
-          const o = ((y * 2 + dy) * wimg.width + x * 2 + dx) * 4;
-          rv = Math.max(rv, wd[o] / 255);
-          l = Math.max(l, wd[o + 1] / 255);
-        }
-      lake[y * W + x] = l;
-      river[y * W + x] = rv;
-    }
-  const lakeBand = lake.slice();
-  blur(lakeBand, W, H, 2);
-  const riverBand = river.slice();
-  blur(riverBand, W, H, 1);
-
   const data = new Uint8Array(W * H * 4);
-  for (let i = 0; i < W * H; i++) {
-    data[i * 4] = Math.round(Math.min(1, turf[i]) * 255);
-    data[i * 4 + 1] = Math.round(Math.min(1, pres[i]) * 255);
-    data[i * 4 + 2] = Math.round(Math.min(1, lakeBand[i] * 2.2) * (1 - lake[i]) * 255);
-    data[i * 4 + 3] = Math.round(Math.min(1, riverBand[i] * 2.5) * (1 - river[i]) * 255);
-  }
+  const a = new Float32Array(W * H);
+  const b = new Float32Array(W * H);
+  const put = (src: Float32Array, ch: number, k = 1) => {
+    for (let i = 0; i < W * H; i++) data[i * 4 + ch] = Math.round(Math.min(1, src[i] * k) * 255);
+  };
+
+  // R = turf, G = presence: where a stamp changed the ground (the same per-texel rule for both)
+  const stampField = (turf: boolean) => {
+    a.fill(0);
+    for (let y = 0; y < H; y++)
+      for (let x = 0; x < W; x++) {
+        const c = x * 2;
+        const r = y * 2;
+        let delta = 0;
+        for (let dy = 0; dy < 2; dy++)
+          for (let dx = 0; dx < 2; dx++) delta = Math.max(delta, Math.abs(comp[(r + dy) * FW + c + dx] - base[(r + dy) * FW + c + dx]));
+        if (delta < 1e-4) continue;
+        if (!turf) {
+          a[y * W + x] = smooth(0.02, 0.3, delta);
+          continue;
+        }
+        // slope of the ground BEFORE the stamp (1 − n.y), central differences over 2 texels
+        const gx = (at(base, c + 2, r) - at(base, c - 1, r)) / (3 * e);
+        const gz = (at(base, c, r + 2) - at(base, c, r - 1)) / (3 * e);
+        const baseSlope = 1 - 1 / Math.sqrt(1 + gx * gx + gz * gz);
+        // turf where a moderate stamp built new faces on gentle ground; tall cones (Doom, Erebor) and
+        // stamps on rocky ground (Helm's Deep, Moria, the Argonath) keep their rock
+        a[y * W + x] = smooth(0.03, 0.25, delta) * (1 - smooth(0.16, 0.34, baseSlope)) * (1 - smooth(5, 9, delta));
+      }
+    // grow the mask one texel (a stamp's flanks are its steepest part), then soften
+    dilate(a, W, H, b);
+    a.set(b);
+    blur(a, W, H, 1, b);
+  };
+  stampField(true);
+  put(a, 0);
+  stampField(false);
+  put(a, 1);
+
+  // B / A: shore bands just outside lakes / river channels (≈ 1–2 km)
+  const wimg = world.water.image as unknown as { data: Uint8Array; width: number; height: number };
+  const wd = wimg.data;
+  const band = (ch: number, radius: number, gain: number) => {
+    for (let y = 0; y < H; y++)
+      for (let x = 0; x < W; x++) {
+        let m = 0;
+        for (let dy = 0; dy < 2; dy++)
+          for (let dx = 0; dx < 2; dx++) m = Math.max(m, wd[((y * 2 + dy) * wimg.width + x * 2 + dx) * 4 + ch] / 255);
+        a[y * W + x] = m;
+      }
+    const inside = Uint8Array.from(a, (v) => Math.round(v * 255));
+    blur(a, W, H, radius, b);
+    for (let i = 0; i < W * H; i++) a[i] = Math.min(1, a[i] * gain) * (1 - inside[i] / 255);
+  };
+  band(1, 2, 2.2);
+  put(a, 2);
+  band(0, 1, 2.5);
+  put(a, 3);
   return makeTexture(data, W, H, false, 'terrain-stamp-mask');
 }
 
@@ -159,6 +168,26 @@ const CROPS: [string, number][] = [
   ['#7b8246', 0.05], // fallow
 ];
 const FIELD_KM = 0.2;
+/** zero-weight texels around the patchwork, so the clamped sampler reads 0 outside it */
+const FIELD_PAD = 2;
+
+/**
+ * Organic fade of the patchwork towards its edge (0..1, ≤ the hedgerow rule): the Shire weight of
+ * the shared look field (the ground look's own, slightly warped border) plus low-frequency noise
+ * on the weight and on the Bree radius, and fields near the edge dropping out at random (gone
+ * wild / fallow), so the quilt frays into the surrounding land instead of ending as a square.
+ */
+export function fieldEdgeWeight(world: World, x: number, z: number, cellId: number): number {
+  const field = lookField(world);
+  const iShire = world.lookRegions.indexOf('shire' as never);
+  const bree = world.places.get('bree');
+  const seed = world.spec.json.seeds.world;
+  const w = iShire >= 0 ? field.weights(x, z, new Float32Array(field.n))[iShire] : 0;
+  const dn = lookNoise(x / 21, z / 21, seed + 311) * 0.7 + lookNoise(x / 8, z / 8, seed + 313) * 0.3;
+  const edge = fieldWeight(w + 0.24 * dn, bree ? Math.hypot(x - bree.x, z - bree.z) + 8 * dn : Infinity);
+  const keep = rand(seed, cellId, 4) < smooth(0.05, 0.6, edge) ? 1 : 0;
+  return edge * keep;
+}
 
 function buildFieldMask(world: World): { texture: DataTexture; frame: Vector4 } {
   const spec = world.spec;
@@ -185,12 +214,13 @@ function buildFieldMask(world: World): { texture: DataTexture; frame: Vector4 } 
     const b = g(x0, y1) + (g(x1, y1) - g(x0, y1)) * tx;
     return a + (b - a) * ty;
   };
+  // the hedgerow rule (vegetation places hedges wherever it is > 0): fields never extend past it
   const weightAt = (x: number, z: number) => fieldWeight(shireAt(x, z), bree ? Math.hypot(x - bree.x, z - bree.z) : Infinity);
 
   // fields with any weight, and their bounds
   interface Cell {
     q: [number, number][];
-    col: Color;
+    col: [number, number, number];
     w: number;
   }
   const cells: Cell[] = [];
@@ -199,21 +229,25 @@ function buildFieldMask(world: World): { texture: DataTexture; frame: Vector4 } 
   let x1 = -Infinity;
   let z1 = -Infinity;
   const totalShare = CROPS.reduce((s, c) => s + c[1], 0);
+  const toS = (v: number) => {
+    const c = Math.min(1, Math.max(0, v));
+    return Math.round((c <= 0.0031308 ? c * 12.92 : 1.055 * c ** (1 / 2.4) - 0.055) * 255);
+  };
   for (let j = 0; j <= grid.n; j++)
     for (let i = 0; i <= grid.n; i++) {
       const q = [grid.vert(i, j), grid.vert(i + 1, j), grid.vert(i + 1, j + 1), grid.vert(i, j + 1)];
       const cx = (q[0][0] + q[2][0]) / 2;
       const cz = (q[0][1] + q[2][1]) / 2;
-      const w = weightAt(cx, cz);
-      if (w <= 0.02) continue;
       const id = hash32(i, j, 205);
+      const w = Math.min(weightAt(cx, cz), fieldEdgeWeight(world, cx, cz, id));
+      if (w <= 0.02) continue;
       let pick = rand(seed, id, 1) * totalShare;
       let k = 0;
       while (k < CROPS.length - 1 && pick > CROPS[k][1]) pick -= CROPS[k++][1];
       const col = new Color(CROPS[k][0]);
       // per-field tone jitter (the same crop is never quite the same colour twice)
       col.multiplyScalar(0.93 + 0.14 * rand(seed, id, 2));
-      cells.push({ q, col, w: w * (0.75 + 0.25 * rand(seed, id, 3)) });
+      cells.push({ q, col: [toS(col.r), toS(col.g), toS(col.b)], w: w * (0.75 + 0.25 * rand(seed, id, 3)) });
       for (const [x, z] of q) {
         x0 = Math.min(x0, x);
         z0 = Math.min(z0, z);
@@ -224,16 +258,20 @@ function buildFieldMask(world: World): { texture: DataTexture; frame: Vector4 } 
   if (!cells.length) {
     return { texture: makeTexture(new Uint8Array(4), 1, 1, true, 'terrain-fields'), frame: new Vector4(0, 0, 1, 1) };
   }
-  const W = Math.ceil((x1 - x0) / FIELD_KM) + 1;
-  const H = Math.ceil((z1 - z0) / FIELD_KM) + 1;
-  const acc = new Float32Array(W * H * 4);
+  x0 -= FIELD_PAD * FIELD_KM;
+  z0 -= FIELD_PAD * FIELD_KM;
+  const W = Math.ceil((x1 - x0) / FIELD_KM) + 1 + FIELD_PAD;
+  const H = Math.ceil((z1 - z0) / FIELD_KM) + 1 + FIELD_PAD;
+  // sRGB crop colour + weight, rasterised straight into the texture bytes
+  const data = new Uint8Array(W * H * 4);
   const tri = (a: [number, number], b: [number, number], c: [number, number], cell: Cell) => {
-    const minX = Math.max(0, Math.floor((Math.min(a[0], b[0], c[0]) - x0) / FIELD_KM));
-    const maxX = Math.min(W - 1, Math.ceil((Math.max(a[0], b[0], c[0]) - x0) / FIELD_KM));
-    const minZ = Math.max(0, Math.floor((Math.min(a[1], b[1], c[1]) - z0) / FIELD_KM));
-    const maxZ = Math.min(H - 1, Math.ceil((Math.max(a[1], b[1], c[1]) - z0) / FIELD_KM));
+    const minX = Math.max(FIELD_PAD, Math.floor((Math.min(a[0], b[0], c[0]) - x0) / FIELD_KM));
+    const maxX = Math.min(W - 1 - FIELD_PAD, Math.ceil((Math.max(a[0], b[0], c[0]) - x0) / FIELD_KM));
+    const minZ = Math.max(FIELD_PAD, Math.floor((Math.min(a[1], b[1], c[1]) - z0) / FIELD_KM));
+    const maxZ = Math.min(H - 1 - FIELD_PAD, Math.ceil((Math.max(a[1], b[1], c[1]) - z0) / FIELD_KM));
     const area = (b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1]);
     if (Math.abs(area) < 1e-9) return;
+    const wa = Math.max(1, Math.round(Math.min(1, cell.w) * 255));
     for (let y = minZ; y <= maxZ; y++)
       for (let x = minX; x <= maxX; x++) {
         const px = x0 + (x + 0.5) * FIELD_KM;
@@ -243,24 +281,24 @@ function buildFieldMask(world: World): { texture: DataTexture; frame: Vector4 } 
         const w2 = 1 - w0 - w1;
         if (w0 < 0 || w1 < 0 || w2 < 0) continue;
         const o = (y * W + x) * 4;
-        if (acc[o + 3] > 0) continue; // first field wins on shared edges
-        acc[o] = cell.col.r;
-        acc[o + 1] = cell.col.g;
-        acc[o + 2] = cell.col.b;
-        acc[o + 3] = cell.w;
+        if (data[o + 3] > 0) continue; // first field wins on shared edges
+        data[o] = cell.col[0];
+        data[o + 1] = cell.col[1];
+        data[o + 2] = cell.col[2];
+        data[o + 3] = wa;
       }
   };
   for (const cell of cells) {
     tri(cell.q[0], cell.q[1], cell.q[2], cell);
     tri(cell.q[0], cell.q[2], cell.q[3], cell);
   }
-  // outside the patchwork: carry the nearest field colour (weight 0), so bilinear filtering fades
-  // the weight at the edge without darkening the colour
-  for (let pass = 0; pass < 2; pass++)
+  // outside the patchwork (and in the zero border): carry the nearest field colour (weight 0), so
+  // bilinear filtering fades the weight at the edge without darkening the colour
+  for (let pass = 0; pass < 2 + FIELD_PAD; pass++)
     for (let y = 0; y < H; y++)
       for (let x = 0; x < W; x++) {
         const o = (y * W + x) * 4;
-        if (acc[o + 3] > 0 || acc[o] + acc[o + 1] + acc[o + 2] > 0) continue;
+        if (data[o + 3] > 0 || data[o] + data[o + 1] + data[o + 2] > 0) continue;
         for (const [dx, dy] of [
           [1, 0],
           [-1, 0],
@@ -271,24 +309,13 @@ function buildFieldMask(world: World): { texture: DataTexture; frame: Vector4 } 
           const yy = y + dy;
           if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
           const q = (yy * W + xx) * 4;
-          if (acc[q] + acc[q + 1] + acc[q + 2] <= 0) continue;
-          acc[o] = acc[q];
-          acc[o + 1] = acc[q + 1];
-          acc[o + 2] = acc[q + 2];
+          if (data[q] + data[q + 1] + data[q + 2] <= 0) continue;
+          data[o] = data[q];
+          data[o + 1] = data[q + 1];
+          data[o + 2] = data[q + 2];
           break;
         }
       }
-  const data = new Uint8Array(W * H * 4);
-  const toS = (v: number) => {
-    const c = Math.min(1, Math.max(0, v));
-    return Math.round((c <= 0.0031308 ? c * 12.92 : 1.055 * c ** (1 / 2.4) - 0.055) * 255);
-  };
-  for (let i = 0; i < W * H; i++) {
-    data[i * 4] = toS(acc[i * 4]);
-    data[i * 4 + 1] = toS(acc[i * 4 + 1]);
-    data[i * 4 + 2] = toS(acc[i * 4 + 2]);
-    data[i * 4 + 3] = Math.round(Math.min(1, acc[i * 4 + 3]) * 255);
-  }
   const frame = new Vector4(x0, z0, 1 / (W * FIELD_KM), 1 / (H * FIELD_KM));
   return { texture: makeTexture(data, W, H, true, 'terrain-fields'), frame };
 }
