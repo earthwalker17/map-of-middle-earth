@@ -16,6 +16,7 @@ data/source/*
 !data/source/README.md
 !data/source/manifest.json
 data/baked/
+data/baked-*/
 
 # reference material is dev-only (binaries never pushed; README + manifest are committed)
 reference/**

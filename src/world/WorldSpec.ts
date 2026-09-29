@@ -21,6 +21,13 @@ export interface BakedManifest {
     water: MaskFile;
     landcover: MaskFile;
     forests: MaskFile;
+    /**
+     * Bake v2 (optional): terrain analysis mask, RGBA8, typically half resolution (2000×1200).
+     * R = large-scale ambient occlusion (1 = open), G = valley index / TPI (0.5 = flat, <0.5 valley,
+     * >0.5 ridge), B = wetness (proximity to rivers/lakes), A = reserved (flow accumulation).
+     * Curvature at landmark stamps is computed at runtime from the heightfield instead.
+     */
+    terrain?: MaskFile;
     look: { file: string; format: 'rgba8'; layers: number; tileWidth: number; tileHeight: number; regions: string[] };
     rivers: { file: string; count: number };
     lakes: { file: string; count: number };

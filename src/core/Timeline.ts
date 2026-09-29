@@ -1,4 +1,4 @@
-import { defaultSceneState, type CameraState, type SceneState } from './types.ts';
+import { defaultSceneState, type CameraState, type SceneState, type WeatherState } from './types.ts';
 import type { QualityTierId } from './quality.ts';
 
 /**
@@ -21,6 +21,7 @@ export interface ShotSpec {
   fStop?: number;
   quality?: QualityTierId;
   lookOverride?: string | null;
+  weather?: Partial<WeatherState>;
   /** reference images (paths relative to project root) to compare against in QA sheets */
   compare?: string[];
   note?: string;
@@ -34,6 +35,7 @@ export class StaticTimeline implements Timeline {
     return this.spec.id;
   }
   evaluate(t: number): SceneState {
+    const base = defaultSceneState();
     return defaultSceneState({
       t,
       tFx: (this.spec.tFx ?? 0) + t,
@@ -42,6 +44,7 @@ export class StaticTimeline implements Timeline {
       camera: this.spec.camera,
       lens: { fStop: this.spec.fStop ?? 11 },
       lookOverride: this.spec.lookOverride ?? null,
+      weather: { ...base.weather, ...this.spec.weather },
       quality: this.spec.quality ?? 'review',
     });
   }

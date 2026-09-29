@@ -34,11 +34,30 @@ export interface Place extends PlaceDef {
   cz: number;
 }
 
+export interface RiverFall {
+  /** index into `points` where the drop starts */
+  index: number;
+  /** drop of the water surface, world units */
+  drop: number;
+  name?: string;
+}
+
 export interface RiverLine {
   name: string | null;
   cls: 'great' | 'major' | 'minor' | 'stream';
   widthKm: number;
   points: [number, number][];
+  // ---- bake v2 (optional; absent in v1 bakes → runtime falls back to its own level estimate)
+  /** stable id (unique per line) */
+  id?: string;
+  /** water surface level per point (world units), monotone non-increasing downstream except at `falls` */
+  level?: number[];
+  /** carved bed height per point (world units) */
+  bed?: number[];
+  /** explicit knickpoints (e.g. Rauros) — the only places the surface may drop steeply */
+  falls?: RiverFall[];
+  /** id of the river line or lake key this line drains into; null = sea / frame edge */
+  into?: string | null;
 }
 
 export interface LakePoly {
@@ -84,6 +103,8 @@ export class World {
     readonly places: Map<string, Place>,
     readonly rivers: RiverLine[],
     readonly lakes: LakePoly[],
+    /** bake v2 terrain analysis mask (see BakedManifest.files.terrain), null for v1 bakes */
+    readonly terrainMask: DataTexture | null = null,
   ) {}
 
   static async load(onProgress?: (msg: string) => void): Promise<World> {
@@ -91,7 +112,7 @@ export class World {
     const spec = await WorldSpec.load();
     const m = spec.manifest.files;
     onProgress?.('heightfield');
-    const [heights, water, landcover, forests, look, rivers, lakes] = await Promise.all([
+    const [heights, water, landcover, forests, look, rivers, lakes, terrain] = await Promise.all([
       HeightField.load(spec),
       fetchBin(m.water.file),
       fetchBin(m.landcover.file),
@@ -99,6 +120,7 @@ export class World {
       fetchBin(m.look.file),
       fetch(`/world/${m.rivers.file}`).then((r) => r.json() as Promise<RiverLine[]>),
       fetch(`/world/${m.lakes.file}`).then((r) => r.json() as Promise<LakePoly[]>),
+      m.terrain ? fetchBin(m.terrain.file) : Promise.resolve(null),
     ]);
     const mk = (f: MaskFile, buf: ArrayBuffer) => maskTexture(buf, f.width, f.height);
     const lookTex = new DataArrayTexture(new Uint8Array(look), m.look.tileWidth, m.look.tileHeight, m.look.layers);
@@ -119,7 +141,8 @@ export class World {
     }
     const regions = m.look.regions as LookRegion[];
     for (const r of regions) if (!(r in looksJson.regions)) throw new Error(`looks.json has no preset for region '${r}'`);
-    return new World(spec, heights, mk(m.water, water), mk(m.landcover, landcover), mk(m.forests, forests), lookTex, regions, places, rivers, lakes);
+    const terrainMask = m.terrain && terrain ? mk(m.terrain, terrain) : null;
+    return new World(spec, heights, mk(m.water, water), mk(m.landcover, landcover), mk(m.forests, forests), lookTex, regions, places, rivers, lakes, terrainMask);
   }
 
   place(id: string): Place {

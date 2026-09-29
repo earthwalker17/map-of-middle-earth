@@ -93,6 +93,8 @@ export class EnvironmentSystem implements System {
     const { state, camera } = frame;
     env.t.value = state.t;
     env.tFx.value = state.tFx;
+    env.cloudCoverage.value = state.weather.cloudCoverage;
+    env.wind.value.set(state.weather.wind[0], state.weather.wind[1]);
     env.tod.value = state.tod;
     env.cameraPos.value.copy(camera.position);
 

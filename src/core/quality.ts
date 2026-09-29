@@ -22,6 +22,12 @@ export interface QualityTier {
   bloom: boolean;
   /** 0..1 scale on particle counts / instance densities */
   density: number;
+  /** terrain ground-detail texture arrays (CC0 layers): texel size per layer and layer budget */
+  terrainDetail: { size: number; layers: number };
+  /** aerial perspective: per-channel extinction + sun in-scatter (false = plain height fog) */
+  atmosphere: { inScatter: boolean };
+  /** cloud shadows on the landscape; visible cloud layer in the sky/above the slab */
+  clouds: { shadows: boolean; layer: boolean };
 }
 
 export const QUALITY: Record<QualityTierId, QualityTier> = {
@@ -34,6 +40,9 @@ export const QUALITY: Record<QualityTierId, QualityTier> = {
     shadowMapSize: 2048,
     bloom: true,
     density: 0.35,
+    terrainDetail: { size: 512, layers: 4 },
+    atmosphere: { inScatter: true },
+    clouds: { shadows: true, layer: false },
   },
   review: {
     id: 'review',
@@ -44,6 +53,9 @@ export const QUALITY: Record<QualityTierId, QualityTier> = {
     shadowMapSize: 4096,
     bloom: true,
     density: 0.75,
+    terrainDetail: { size: 512, layers: 6 },
+    atmosphere: { inScatter: true },
+    clouds: { shadows: true, layer: true },
   },
   final: {
     id: 'final',
@@ -54,5 +66,8 @@ export const QUALITY: Record<QualityTierId, QualityTier> = {
     shadowMapSize: 4096,
     bloom: true,
     density: 1,
+    terrainDetail: { size: 1024, layers: 6 },
+    atmosphere: { inScatter: true },
+    clouds: { shadows: true, layer: true },
   },
 };

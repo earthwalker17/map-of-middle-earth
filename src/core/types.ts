@@ -18,6 +18,14 @@ export interface LensState {
   focusDistance?: number;
 }
 
+/** Weather that shaders read through the env uniforms (clouds, wind) — part of the frame's state. */
+export interface WeatherState {
+  /** 0..1 fraction of sky covered by clouds (drives cloud shadows / cloud layer) */
+  cloudCoverage: number;
+  /** wind vector in world XZ, km per effect-second (cloud drift, foliage sway, waves) */
+  wind: [number, number];
+}
+
 export interface AnnotationState {
   id: string;
   /** 0..1 reveal amount */
@@ -44,6 +52,7 @@ export interface SceneState {
   annotations: AnnotationState[];
   /** force a region look (id from looks.json) instead of the spatial blend */
   lookOverride: string | null;
+  weather: WeatherState;
   quality: QualityTierId;
 }
 
@@ -85,6 +94,7 @@ export function defaultSceneState(partial: Partial<SceneState> = {}): SceneState
     routeProgress: 0,
     annotations: [],
     lookOverride: null,
+    weather: { cloudCoverage: 0.35, wind: [0.8, 0.3] },
     quality: 'review',
     ...partial,
   };
