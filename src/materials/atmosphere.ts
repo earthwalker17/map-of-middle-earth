@@ -61,6 +61,9 @@ const _c = new Color();
  *    pixel. Density below 1 thins the air; the EXCESS above 1 is a local feature (Mordor's fumes,
  *    Dagorlad ash, marsh damp, elven luminous haze) and fades in over a much shorter range
  *    (env.hazeRamp.zw), so Mordor keeps its gloom beyond a clear Ithilien at any shot scale.
+ *  - Valley mist: at low sun (env.golden / twilight) the ground layer thickens over the valleys of
+ *    the baked terrain analysis (World.terrainMask G < 0.5), sampled at the ray endpoint and faded in
+ *    like the local haze — mist lies in the dales at golden hour and dawn, the heights stay clear.
  *  - β_rgb is gently Rayleigh-like (blue extincts fastest), so distant land drifts to blue-grey;
  *    the spread is kept small so dark albedos (forests) do not turn teal.
  *  - C∞(dir) is the sky model's single-scattering radiance for the view direction (Preetham with
