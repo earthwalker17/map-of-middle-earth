@@ -37,6 +37,59 @@ class FitParams:
     smooth_raise: float = 1e9  # ...and raise it at most this much (no water hanging over a cascade's foot)
 
 
+def close_pits(t: np.ndarray, pk: int, cut_cost: float = 0.0, max_notch: float = 0.0) -> np.ndarray:
+    """Targets with the short pits pooled over: a DEM hollow narrower than `pk` samples along the line is
+    filled toward the rim that holds it (grey closing), so the river pools over it instead of cutting the
+    long reach around it down to its floor. Each pool then takes the level that moves the least terrain
+    ("cut where cheap"): lowering the pool by d saves the fill of every pit sample below the rim and costs
+    `cut_cost` × the cut of every sill sample downstream that stands above the lowered pool (until the
+    terrain drops below it again) — a short, narrow sill is notched (at most `max_notch` deep), a long
+    one keeps the full pool. Samples within half a window of the line's ends are left alone (a lake or a
+    parent lies beyond them)."""
+    n = len(t)
+    if pk <= 2 or n <= pk:
+        return t.copy()
+    from scipy import ndimage
+
+    k2 = pk // 2
+    cl = t.copy()
+    cl[k2:-k2] = ndimage.grey_closing(t, size=pk, mode="nearest")[k2:-k2]
+    if cut_cost <= 0.0 or max_notch <= 0.0:
+        return cl
+    out = cl.copy()
+    pit = cl - t > 1e-3
+    i = 0
+    while i < n:
+        if not pit[i]:
+            i += 1
+            continue
+        a = i
+        while i < n and pit[i]:
+            i += 1
+        b = i - 1
+        rim = float(cl[b])
+        depth = float((cl[a : b + 1] - t[a : b + 1]).max())
+        j0 = b + 1
+        while j0 < n and t[j0] > rim:
+            j0 += 1
+        base = cut_cost * float((t[b + 1 : j0] - rim).sum())  # a sill above the rim is cut anyway
+        best_d, best_cost = 0.0, 0.0
+        for d in np.round(np.arange(0.1, min(max_notch, depth) + 1e-9, 0.1), 3):
+            lvl = rim - float(d)
+            j = b + 1
+            while j < n and t[j] > lvl:
+                j += 1
+            if j >= n:
+                break  # the terrain never drops below that pool again on this line: no notch drains it
+            saved = float(np.minimum(cl[a : b + 1] - t[a : b + 1], d).sum())
+            cost = cut_cost * float((t[b + 1 : j] - lvl).sum()) - base - saved
+            if cost < best_cost - 1e-9:
+                best_d, best_cost = float(d), cost
+        if best_d > 0:
+            out[a : b + 1] = np.maximum(t[a : b + 1], cl[a : b + 1] - best_d)
+    return out
+
+
 def rev_cummax(x: np.ndarray) -> np.ndarray:
     return np.maximum.accumulate(x[::-1])[::-1]
 

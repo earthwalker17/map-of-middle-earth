@@ -99,6 +99,7 @@ def snap_lines(cfg: Config, lines: list[Line], h_pre: np.ndarray, land: np.ndarr
     taper_k = float(S.get("pinTaper", 2.0))
     margin = float(S.get("otherMarginKm", 0.3))
     join_zone = float(S.get("joinZoneKm", 3.0))
+    joint_km = float(S.get("jointFrameKm", 1.5))
     sig = float(R.get("smoothKm", 0.6))
     hs = ndimage.gaussian_filter(h_pre, 1.0).astype(np.float32)  # 0.4 km: DEM pixel noise
     lake_any = lake_raster(cfg, lakes)
@@ -133,6 +134,11 @@ def snap_lines(cfg: Config, lines: list[Line], h_pre: np.ndarray, land: np.ndarr
         bounds = np.cumsum([0] + [len(p) for p in segs])
         P = np.concatenate(segs)
         n = len(P)
+        # a continuation node is one place: the feeder's last sample and the continuation's first sample
+        # (ME-GIS ends clustered within the node tolerance) start from their common midpoint
+        for k in range(1, len(ch)):
+            b = int(bounds[k])
+            P[b - 1] = P[b] = 0.5 * (P[b - 1] + P[b])
         head, tail = lines[ch[0]], lines[ch[-1]]
         up_end, dn_end = oriented_ends(head)[0], oriented_ends(tail)[1]
         s = arclen(P)
@@ -170,6 +176,19 @@ def snap_lines(cfg: Config, lines: list[Line], h_pre: np.ndarray, land: np.ndarr
             KP.append(ndimage.maximum_filter1d(np.maximum(kap, 0), size, mode="nearest"))
             KN.append(ndimage.maximum_filter1d(np.maximum(-kap, 0), size, mode="nearest"))
         N, kp, kn = np.concatenate(Ns), np.concatenate(KP), np.concatenate(KN)
+        # continuation nodes: the junction sample is the last point of one line AND the first of the next
+        # (two samples, one place). Both lines' frames ease into one shared normal over joinFrameKm on
+        # either side, and the node takes one shared offset below — so the node moves as ONE point and
+        # the feeder still ends exactly where its continuation starts
+        joints = [int(bounds[k]) for k in range(1, len(ch))]
+        for b in joints:
+            nj = N[b - 1] + N[b]
+            ln = float(np.hypot(*nj))
+            nj = nj / ln if ln > 1e-6 else N[b]
+            wj = _smoothstep(1.0 - np.abs(s - s[b]) / joint_km)[:, None]
+            N = N * (1 - wj) + nj[None] * wj
+            N /= np.maximum(np.hypot(*N.T), 1e-9)[:, None]
+            N[b - 1] = N[b] = nj
         hi = np.minimum(W, 0.7 / np.maximum(kp, 1e-9))
         lo = -np.minimum(W, 0.7 / np.maximum(kn, 1e-9))
         J = int(np.ceil(Wmax / dstep))
@@ -231,6 +250,8 @@ def snap_lines(cfg: Config, lines: list[Line], h_pre: np.ndarray, land: np.ndarr
         o = offs[path]
         o = ndimage.gaussian_filter1d(o, post / ds, mode="nearest")
         o = np.clip(o, lo, hi)
+        for b in joints:
+            o[b - 1] = o[b] = 0.5 * (o[b - 1] + o[b])
         P2 = P + N * o[:, None]
         for k, i in enumerate(ch):
             l = lines[i]

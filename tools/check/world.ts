@@ -61,6 +61,43 @@ export function checkRiverLevels(rivers: RiverLine[], lakes: LakePoly[]): CheckR
 }
 
 /**
+ * Continuation nodes (a line carried on by the next one: Langwell → Anduin, Ciril-1 → Ciril-2): the main
+ * feeder must end exactly where its continuation starts (≤ CONT_GAP_KM) and at its first level — one node,
+ * never a stub of the continuation upstream of the junction. The topology comes from report.json
+ * `continuations`; the gap and the level step are measured on rivers.json itself.
+ */
+export const CONT_GAP_KM = 0.05;
+
+export function checkContinuations(dir: string, rivers: RiverLine[]): CheckResult {
+  const r: CheckResult = { errors: [], warnings: [], info: [] };
+  const m = readManifest(dir) as BakedManifest & { files: { report?: { file: string } } };
+  const rep = m.files.report ? (JSON.parse(readFileSync(join(dir, m.files.report.file), 'utf8')) as { continuations?: { id: string; into: string }[] }) : {};
+  if (!rep.continuations) {
+    r.warnings.push('bake report has no continuations (continuation continuity unchecked — re-bake)');
+    return r;
+  }
+  const byId = new Map(rivers.filter((l) => l.id).map((l) => [l.id!, l]));
+  let worst = 0;
+  for (const c of rep.continuations) {
+    const a = byId.get(c.id);
+    const b = byId.get(c.into);
+    if (!a || !b) {
+      r.errors.push(`rivers: continuation ${c.id} → ${c.into} not in rivers.json`);
+      continue;
+    }
+    const pa = a.points[a.points.length - 1];
+    const pb = b.points[0];
+    const gap = Math.hypot(pa[0] - pb[0], pa[1] - pb[1]);
+    const dl = a.level && b.level ? a.level[a.level.length - 1] - b.level[0] : 0;
+    worst = Math.max(worst, gap);
+    if (gap > CONT_GAP_KM) r.errors.push(`rivers: ${c.id} ends ${gap.toFixed(2)} km from the start of its continuation ${c.into} (gate ${CONT_GAP_KM} km)`);
+    if (Math.abs(dl) > LEVEL_TOL) r.errors.push(`rivers: ${c.id} → ${c.into}: level steps ${dl.toFixed(4)} at the continuation node`);
+  }
+  r.info.push(`rivers: ${rep.continuations.length} continuation nodes, largest gap ${worst.toFixed(3)} km (gate ${CONT_GAP_KM})`);
+  return r;
+}
+
+/**
  * Per landmark: how much of its stamp volume the river guard takes back (composited alone). Beside
  * the water the guard only clamps a stamp to a natural bank, so a landmark losing a large share of its
  * shape sits on / over the water — move it (display offset), reshape its stamps, or allowlist it
@@ -214,7 +251,7 @@ export async function checkBakedWorld(dir: string): Promise<CheckResult> {
   const rivers = JSON.parse(readFileSync(join(dir, m.files.rivers.file), 'utf8')) as RiverLine[];
   const lakes = JSON.parse(readFileSync(join(dir, m.files.lakes.file), 'utf8')) as LakePoly[];
   const { world, landmarks } = await loadWorld(dir);
-  for (const part of [checkRiverLevels(rivers, lakes), await checkRiversWin(dir, world), await checkStampLoss(world, landmarks), checkHydroReport(dir)]) {
+  for (const part of [checkRiverLevels(rivers, lakes), checkContinuations(dir, rivers), await checkRiversWin(dir, world), await checkStampLoss(world, landmarks), checkHydroReport(dir)]) {
     out.errors.push(...part.errors);
     out.warnings.push(...part.warnings);
     out.info.push(...part.info);

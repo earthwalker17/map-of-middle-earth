@@ -156,6 +156,7 @@
       },
       "smoothLower": 0.5,
       "smoothRaise": 0.3,
+      "pitCutCost": 1.0,
       "pitKmByClass": {
         "great": 12.0,
         "major": 12.0,
@@ -165,7 +166,9 @@
       "minGrade": 0.002,
       "rampKm": 3.0,
       "rampGrade": 0.4,
-      "trimSourceKm": 25.0,
+      "trimSourceKm": 5.0,
+      "trimSourceMaxKm": 25.0,
+      "trimHollowCut": 4.0,
       "bankFreeboard": 0.05,
       "fillCap": 0.4,
       "conflictTol": 0.3

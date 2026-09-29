@@ -56,7 +56,7 @@ from shapely.geometry import LineString, MultiLineString, Point, box
 
 from .cache import q8
 from .config import Config, Timer
-from .profiles import FitParams, fit_profile
+from .profiles import FitParams, close_pits, fit_profile
 from .vectors import canon_lakes, canon_rivers, norm, raster_mask_window, smooth_band
 
 TOL_KM = 0.3
@@ -104,6 +104,13 @@ class Line:
     absorbed: bool = False
     # thalweg snap: (max, mean) distance of the processed centreline from the raw ME-GIS line (km)
     snap: tuple = (0.0, 0.0)
+    # length bookkeeping (report.json lengths): km removed at the source (trims), at a junction (clipped
+    # at the parent's core edge) and at the mouth (a side feeder ending at its valley bottom)
+    trim_km: float = 0.0
+    clip_km: float = 0.0
+    short_km: float = 0.0
+    # the main feeder of its continuation (it ends exactly where the continuation starts)
+    cont_main: bool = False
 
     @property
     def core(self) -> float:
@@ -469,8 +476,10 @@ def clip_side_feeders(lines: list[Line], main_feeder: dict[int, int], log: list)
         return False
 
     def cut(l: Line, sl: slice) -> None:
+        L0 = float(l.s[-1])
         l.pts, l.thal, l.bank = l.pts[sl], l.thal[sl], l.bank[sl]
         l.s = arclen(l.pts)
+        l.clip_km += L0 - float(l.s[-1])
 
     for l in lines:
         if l.down[0] == "line" and main_feeder.get(l.down[1]) != l.idx:
@@ -588,16 +597,25 @@ def solve(cfg: Config, h_pre: np.ndarray, land: np.ndarray, lakes: dict[str, Lak
         # thalweg snap: every centreline onto the DEM valley floor within its class window (snap.py)
         from .snap import snap_lines
 
-        snap_stats = snap_lines(cfg, lines, h_pre, land, lakes, main_feeders(lines, rank), rank, log)
-        # re-attach junction ends onto the processed parent (T-junctions) / the parent's start
-        # (continuations); the shift eases in over max(2 km, 3 × its length) so it never kinks the line
+        # the main feeder of a continuation node carries the stem on; the others join it like tributaries
+        # (one choice for the snap chains, the re-attach and the stems)
+        main_feeder = main_feeders(lines, rank)
+        for j, f in main_feeder.items():
+            lines[f].cont_main = True
+        snap_stats = snap_lines(cfg, lines, h_pre, land, lakes, main_feeder, rank, log)
+        # re-attach junction ends onto the processed parent (T-junctions, side feeders) / exactly onto the
+        # continuation's first point (its main feeder: one node, never a stub upstream of the junction);
+        # the shift eases in over max(2 km, 3 × its length) so it never kinks the line
         for l in lines:
             for which, ref in ((-1, l.down), (0, l.up)):
                 if ref[0] != "line":
                     continue
                 par = lines[ref[1]]
-                s_par = arclen(par.pts)
-                _, q = project(par.pts, s_par, l.pts[which])
+                if which == -1 and ref[2] == "cont" and main_feeder.get(par.idx) == l.idx:
+                    q = par.pts[0]
+                else:
+                    s_par = arclen(par.pts)
+                    _, q = project(par.pts, s_par, l.pts[which])
                 off = q - l.pts[which]
                 s = arclen(l.pts)
                 dist = (s[-1] - s) if which == -1 else s
@@ -614,8 +632,6 @@ def solve(cfg: Config, h_pre: np.ndarray, land: np.ndarray, lakes: dict[str, Lak
         spill = spill_levels(cfg, h_pre, land, lakes)
         bank_heights(cfg, lines, spill, land, lakes)
         del spill
-        # the main feeder of a continuation node carries the stem on; the others join it like tributaries
-        main_feeder = main_feeders(lines, rank)
         clip_side_feeders(lines, main_feeder, log)
         for lk in lakes.values():
             lk.inlets = [i for i in lk.inlets if not lines[i].absorbed]
@@ -623,35 +639,53 @@ def solve(cfg: Config, h_pre: np.ndarray, land: np.ndarray, lakes: dict[str, Lak
 
     with Timer("hydro: profiles"):
         # a free source sitting in a hollow below a sill (vector/DEM mismatch) starts at the sill instead;
-        # continuation starts ('cont', fed by the lines ending there) are never trimmed
-        trim_km = float(P.get("trimSourceKm", 25.0))
+        # continuation starts ('cont', fed by the lines ending there) are never trimmed. Canon length is
+        # kept: a trim moves the source at most trimSourceKm (the rest of the hollow is pooled or its sill
+        # cut, within the usual caps) — unless the source reach runs down into a hollow more than
+        # trimHollowCut below the sill it must cross (the cut would be an excavation; the pool a lake the
+        # map does not have), which may move it up to trimSourceMaxKm
+        trim_km = float(P.get("trimSourceKm", 5.0))
+        trim_max = float(P.get("trimSourceMaxKm", 25.0))
+        trim_hollow = float(P.get("trimHollowCut", 4.0))
         PR_fb = float(P.get("bankFreeboard", 0.05))
+
+        def trim_point(l: Line, km: float) -> tuple[int, str, float]:
+            """(sample index of the new source or 0, why, depth of the hollow when that is the reason)."""
+            n = int(np.searchsorted(l.s, min(km, 0.3 * l.s[-1])))
+            m = int(np.argmax(l.thal[: n + 1]))
+            if m > 0 and l.thal[m] - l.thal[0] > fp.max_pool:
+                return m, f"{l.thal[m] - l.thal[0]:.2f} above the old source", 0.0
+            # ...or its first reach runs down into a hollow deeper than maxCut below a sill that is still
+            # lower than the source (the vector crosses a DEM ridge soon after it rises)
+            seg = l.thal[: n + 1]
+            dep = seg - np.minimum.accumulate(seg)
+            m = int(np.argmax(dep))
+            if m > 0 and dep[m] > fp.max_cut:
+                return m, f"{dep[m]:.2f} above the hollow before it", float(dep[m])
+            # ...or it starts on a hillside: its lower bank lies far below its thalweg (the valley it runs
+            # down into lies beside the vector) — start where it meets it
+            gap = seg + l.depth - (l.bank[: n + 1] - float(PR_fb))
+            ok = np.nonzero(gap <= 0.5 * fp.max_cut)[0]
+            m = int(ok[0]) if ok.size else 0
+            if m > 0 and gap[0] > fp.max_cut:
+                return m, f"its bank {gap[0]:.2f} below its thalweg", 0.0
+            return 0, "", 0.0
+
         for l in lines:
             moved = 0.0
             for _ in range(4):
-                if l.up[0] != "free" or l.absorbed or len(l.s) < 8 or moved >= trim_km:
+                if l.up[0] != "free" or l.absorbed or len(l.s) < 8 or moved >= trim_max:
                     break
-                n = int(np.searchsorted(l.s, min(trim_km - moved, 0.3 * l.s[-1])))
-                m = int(np.argmax(l.thal[: n + 1]))
-                why = f"{l.thal[m] - l.thal[0]:.2f} above the old source"
-                if not (m > 0 and l.thal[m] - l.thal[0] > fp.max_pool):
-                    # ...or its first reach runs down into a hollow deeper than maxCut below a sill that
-                    # is still lower than the source (the vector crosses a DEM ridge soon after it rises)
-                    seg = l.thal[: n + 1]
-                    dep = seg - np.minimum.accumulate(seg)
-                    m = int(np.argmax(dep))
-                    why = f"{dep[m]:.2f} above the hollow before it"
-                    if not (m > 0 and dep[m] > fp.max_cut):
-                        # ...or it starts on a hillside: its lower bank lies far below its thalweg (the
-                        # valley it runs down into lies beside the vector) — start where it meets it
-                        gap = seg + l.depth - (l.bank[: n + 1] - float(PR_fb))
-                        ok = np.nonzero(gap <= 0.5 * fp.max_cut)[0]
-                        m = int(ok[0]) if ok.size else 0
-                        why = f"its bank {gap[0]:.2f} below its thalweg"
-                        if not (m > 0 and gap[0] > fp.max_cut):
-                            break
+                m, why, hollow = trim_point(l, trim_max - moved)
+                if m > 0 and moved + float(l.s[m]) > trim_km + 1e-6 and hollow <= trim_hollow:
+                    if moved >= trim_km:
+                        break
+                    m, why, hollow = trim_point(l, trim_km - moved)
+                if m <= 0:
+                    break
                 log.append(f"trim {l.id}: source moved {l.s[m]:.1f} km downstream to the sill ({why})")
                 moved += float(l.s[m])
+                l.trim_km += float(l.s[m])
                 l.pts, l.thal, l.bank = l.pts[m:], l.thal[m:], l.bank[m:]
                 l.s = l.s[m:] - l.s[m]
 
@@ -814,6 +848,7 @@ def solve_stem(cfg, st: list[tuple], lines, lakes, fp: FitParams, ds: float, fal
     fill_cap = float(PR.get("fillCap", 0.4))
     tol = float(PR.get("conflictTol", 0.3))
     pit_by = PR.get("pitKmByClass", {})
+    pit_cut = float(PR.get("pitCutCost", 0.0))
     t_parts, c_parts, bw_parts, fw_parts, u_parts, w_parts = [], [], [], [], [], []
     offs: dict[int, int] = {}
     lake_at: dict[str, int] = {}
@@ -841,12 +876,9 @@ def solve_stem(cfg, st: list[tuple], lines, lakes, fp: FitParams, ds: float, fal
         # short pits in the thalweg (DEM hollows narrower than pitKm along the line) are closed first: a
         # river pools over a pit (a marsh) instead of cutting the long reach around it down to its floor;
         # sills are left to the fit (cut, or held back as a pool)
-        tl = l.thal + l.depth
+        # — except behind a short sill, which is notched instead (profiles.close_pits: cut where cheap)
         pk = int(round(float(pit_by.get(l.cls, 0.0)) / ds)) | 1
-        if pk > 2 and len(tl) > pk:
-            # (not within half a window of the line's ends: a lake or a parent lies beyond them)
-            k2 = pk // 2
-            tl = np.concatenate([tl[:k2], ndimage.grey_closing(tl, size=pk, mode="nearest")[k2:-k2], tl[-k2:]])
+        tl = close_pits(l.thal + l.depth, pk, pit_cut, fp.max_cut)
         t_parts.append(np.minimum(tl, l.bank - fb)[a:])
         c_parts.append(cap_for(l)[a:])
         bw_parts.append(np.ones(len(l.s) - a))
@@ -903,6 +935,7 @@ def solve_stem(cfg, st: list[tuple], lines, lakes, fp: FitParams, ds: float, fal
             m = k0 + int(np.argmin(ll.thal[k0:]))
             if 4 <= m < len(ll.s) - 2:
                 log.append(f"end {ll.id}: its valley lies {float(ex.max()):.2f} below the level of {ll.into} (a DEM divide at {ll.pts[m][0]:.1f},{ll.pts[m][1]:.1f} km); it ends at the valley bottom, {ll.s[-1] - ll.s[m]:.1f} km short")
+                ll.short_km += float(ll.s[-1] - ll.s[m])
                 ll.pts, ll.thal, ll.bank = ll.pts[: m + 1], ll.thal[: m + 1], ll.bank[: m + 1]
                 ll.s = ll.s[: m + 1]
                 if ll.down[0] == "lake":
@@ -1306,13 +1339,36 @@ def geometry_report(cfg: Config, h_pre: np.ndarray, h_lakes: np.ndarray, h_carve
         order = np.lexsort((ids, -cnt))[:k]
         return [{"id": by_idx[int(ids[i])].id, "km2": round(float(cnt[i] * px2), 1)} for i in order]
 
+    def clusters(a: np.ndarray, thr: float, k: int = 8) -> list[dict]:
+        """The largest connected patches where a > thr: area, max, where, nearest line."""
+        lab, n = ndimage.label(a > thr, structure=np.ones((3, 3), bool))
+        if not n:
+            return []
+        idx = np.arange(1, n + 1)
+        sizes = ndimage.sum(np.ones_like(a), lab, idx)
+        peaks = ndimage.maximum_position(a, lab, idx)
+        out = []
+        for j in np.lexsort((idx, -sizes))[:k]:
+            r, c = peaks[j]
+            own = int(m["near_line"][r, c])
+            out.append({"km2": round(float(sizes[j] * px2), 1), "max": round(float(a[r, c]), 2), "at": [round(float(cfg.x0_km + (c + 0.5) * cfg.px_km), 1), round(float(cfg.y1_km - (r + 0.5) * cfg.px_km), 1)], "id": by_idx[own].id if own >= 0 else None})
+        return out
+
     rep: dict = {}
     # 1. the river carve outside the cores: ground raised (levees) and lowered (eased walls)
     dc = np.where(out, h_carve - h_lakes, 0.0)
     rep["riverRaise"] = {"over05Km2": area(dc > 0.5), "over1Km2": area(dc > 1), "max": round(float(dc.max()), 3), "at": where(dc)}
     near = m["dist"] <= 1.0
     far = m["dist"] > 2.0
-    rep["riverLower"] = {"over2Km2": area(dc < -2), "over2NearKm2": area((dc < -2) & near), "over2FarKm2": area((dc < -2) & far), "over4Km2": area(dc < -4), "over6Km2": area(dc < -6), "max": round(float(-dc.min()), 3), "at": where(-dc), "worst": worst_lines(dc < -2), "worstFar": worst_lines((dc < -2) & far)}
+    band = ~near & ~far
+    rep["riverLower"] = {"over2Km2": area(dc < -2), "over2NearKm2": area((dc < -2) & near), "over2BandKm2": area((dc < -2) & band), "over2FarKm2": area((dc < -2) & far), "over4Km2": area(dc < -4), "over6Km2": area(dc < -6), "max": round(float(-dc.min()), 3), "at": where(-dc), "worst": worst_lines(dc < -2), "worstFar": worst_lines((dc < -2) & far)}
+    # 1b. inside the channel cores (on land, off the lakes): the bed raised above the relief — pits the
+    # profile pools over (pit closing, held levels) instead of cutting; the water surface there stands
+    # above the natural valley floor, so the banks around it are raised too (levees, marsh fills)
+    cm = core & onland & ~wet
+    dcore = np.where(cm, h - h_pre, 0.0)
+    rep["coreRaise"] = {"coreKm2": area(cm), "over05Km2": area(dcore > 0.5), "over1Km2": area(dcore > 1), "over2Km2": area(dcore > 2), "over3Km2": area(dcore > 3), "max": round(float(dcore.max()), 3), "at": where(dcore), "worst": worst_lines(dcore > 1), "worst2": worst_lines(dcore > 2), "pools": clusters(dcore, 2.0)}
+    del dcore
     # 2. marsh fills of closed hollows beside a river (an allowance, bounded per hollow by the bake)
     mf = h - h_carve
     rep["marshFill"] = {"over05Km2": area(mf > 0.5), "filledKm2": area(mf > 0.01), "max": round(float(mf.max()), 3), "fills": fills}
@@ -1423,6 +1479,19 @@ def geometry_report(cfg: Config, h_pre: np.ndarray, h_lakes: np.ndarray, h_carve
         k = int(np.argmax(cut))
         cuts.append({"id": l.id, "max": round(float(cut[k]), 2), "at": [round(float(l.pts[k][0]), 1), round(float(l.pts[k][1]), 1)], "over2Km": round(float((cut > 2).sum() * (l.s[1] - l.s[0] if len(l.s) > 1 else 0)), 1)})
     rep["cuts"] = sorted(cuts, key=lambda c: -c["max"])
+    # 9. continuation nodes: the main feeder ends exactly where its continuation starts, at its level
+    conts = []
+    for l in lines:
+        if l.absorbed or not l.cont_main or l.down[0] != "line":
+            continue
+        C = lines[l.down[1]]
+        conts.append({"id": l.id, "into": C.id, "gapKm": round(float(np.hypot(*(l.pts[-1] - C.pts[0]))), 4), "dLevel": round(float(l.level[-1] - C.level[0]), 4)})
+    rep["continuations"] = conts
+    # 10. lengths: raw ME-GIS (clipped to the frame) → processed, and where the difference went
+    lens = []
+    for l in lines:
+        lens.append({"id": l.id, "rawKm": round(float(l.geom.length), 2), "km": 0.0 if l.absorbed else round(float(l.s[-1]), 2), "trimKm": round(l.trim_km, 2), "clipKm": round(l.clip_km, 2), "shortKm": round(l.short_km, 2), "absorbed": l.absorbed})
+    rep["lengths"] = {"rawKm": round(sum(x["rawKm"] for x in lens), 1), "km": round(sum(x["km"] for x in lens), 1), "trimKm": round(sum(x["trimKm"] for x in lens), 1), "maxTrimKm": max((x["trimKm"] for x in lens), default=0.0), "lines": lens}
     return rep
 
 
@@ -1456,6 +1525,12 @@ def run_hydro(cfg: Config, h_pre: np.ndarray, land: np.ndarray) -> tuple[np.ndar
     print("[bake]   report: deepest cuts " + ", ".join(f"{c['id']} {c['max']} ({c['over2Km']} km > 2)" for c in report["cuts"][:6]))
     mf = report["marshFill"]
     print(f"[bake]   report: marsh fills {mf['filledKm2']} km² (> 0.5: {mf['over05Km2']} km², max {mf['max']}): " + ", ".join(f"{f['km2']} km² at {f['at']}" + (" skipped" if f.get("skipped") else "") for f in mf["fills"][:6]))
+    cr = report["coreRaise"]
+    print(f"[bake]   report: channel cores raised above the relief: > 0.5 {cr['over05Km2']} km², > 1 {cr['over1Km2']}, > 2 {cr['over2Km2']}, > 3 {cr['over3Km2']} (of {cr['coreKm2']} km² of core), max {cr['max']} at {cr['at']}; worst > 1 " + ", ".join(f"{w['id']} {w['km2']}" for w in cr["worst"]) + "; > 2 " + ", ".join(f"{w['id']} {w['km2']}" for w in cr["worst2"]))
+    gaps = sorted(report["continuations"], key=lambda c: -c["gapKm"])
+    print(f"[bake]   report: continuations {len(gaps)}, largest gaps " + ", ".join(f"{c['id']}→{c['into']} {c['gapKm']} km (Δlevel {c['dLevel']})" for c in gaps[:4]))
+    ln = report["lengths"]
+    print(f"[bake]   report: river length raw {ln['rawKm']} km → {ln['km']} km; source trims {ln['trimKm']} km (max {ln['maxTrimKm']}): " + ", ".join(f"{x['id']} {x['trimKm']}" for x in sorted(ln["lines"], key=lambda x: -x["trimKm"])[:8] if x["trimKm"] > 0))
     ef = report["edgeFloat"]
     print(f"[bake]   report: ribbon edges > 0.15 above the ground on {ef['totalKm']} of {ef['lengthKm']} km ({100 * ef['share']:.2f} %): " + ", ".join(f"{e['id']} {e['km']} km (max {e['max']})" for e in ef["lines"][:6]))
     rivers = []
