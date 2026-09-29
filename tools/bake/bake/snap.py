@@ -199,8 +199,9 @@ def snap_lines(cfg: Config, lines: list[Line], h_pre: np.ndarray, land: np.ndarr
                 keep &= so > zone
             if joins_dn:
                 keep &= so < so[-1] - zone
-            pts_o.append(p[keep][::2])
-            own_o.append(np.full(int(keep[::2].sum()), l.idx))
+            sel = p[keep][::2]
+            pts_o.append(sel)
+            own_o.append(np.full(len(sel), l.idx))
         if pts_o and sum(len(p) for p in pts_o):
             PO = np.concatenate(pts_o)
             OW = np.concatenate(own_o)
