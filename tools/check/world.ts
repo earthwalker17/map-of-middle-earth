@@ -6,8 +6,9 @@
  *    allowlisted landmark's footprint (places.json)
  *  - stamp loss: per landmark, the share of its stamp volume the river guard takes back (error above
  *    LOSS_SHARE / LOSS_MIN: the landmark sits on the water — move it, reshape it or allowlist it)
- *  - hydro report (report.json from the bake): ground raised outside the channel cores, confluence joins
- *    (end on the parent's core edge, at its level, not floating), new cliffs (warning)
+ *  - hydro report (report.json from the bake): ground raised / lowered against the relief outside the
+ *    channel cores (with the declared marsh / lake allowances), ribbon edges above the ground, new
+ *    cliffs outside declared gorges / falls, confluence joins (see checkHydroReport)
  *  - onRiver only on landmark places
  */
 import { readFileSync } from 'node:fs';
@@ -86,8 +87,29 @@ export async function checkStampLoss(world: World, landmarks: LandmarkDefinition
   return { ...r, rows };
 }
 
-/** Hydro gates from the bake's report.json (tools/bake/bake/hydro.py geometry_report). */
+/**
+ * Hydro gates from the bake's report.json (tools/bake/bake/hydro.py geometry_report). Everything is measured
+ * against the relief before rivers and lakes (h_pre), outside the channel cores:
+ *  - raised > 0.5 that is not a declared allowance (marsh fills, lake rims / deltas) ≤ RAISE_KM2, and the
+ *    carve's own levee raise ≤ RAISE_KM2;
+ *  - the allowances themselves within their declared bounds (MARSH_KM2: closed hollows beside a river filled
+ *    to its water, marshMaxDepth deep at most; LAKE_RIM_KM2 / LAKE_RIM_MAX: lake deltas and edge lips);
+ *  - carve lowered > 4 ≤ LOWER4_KM2 and > 6 ≤ LOWER6_KM2 (excavations), lowered > 2 more than 2 km beyond
+ *    a core ≤ LOWER2_FAR_KM2 (troughs); lowered > 2 at the channel's own banks is reported, not gated
+ *    (the exaggerated channel widths need their floor);
+ *  - ribbon edges more than 0.15 above the ground on ≤ EDGE_SHARE of the ribbon length;
+ *  - new > 3-unit neighbour steps outside declared gorges / falls ≤ STEP_CELLS cells;
+ *  - confluence joins (end on the parent's core edge, at its level, not floating).
+ */
 export const RAISE_KM2 = 5;
+export const MARSH_KM2 = 650;
+export const LAKE_RIM_KM2 = 250;
+export const LAKE_RIM_MAX = 5;
+export const LOWER4_KM2 = 150;
+export const LOWER6_KM2 = 10;
+export const LOWER2_FAR_KM2 = 60;
+export const EDGE_SHARE = 0.01;
+export const STEP_CELLS = 100;
 export const JOIN_OFF_KM = 0.5;
 export const JOIN_LEVEL = 0.1;
 export const JOIN_FLOAT = 0.15;
@@ -108,19 +130,51 @@ export function checkHydroReport(dir: string): CheckResult {
   }
   const rep = JSON.parse(readFileSync(join(dir, m.files.report.file), 'utf8')) as {
     riverRaise: { over05Km2: number; over1Km2: number; max: number; at: number[] };
-    newSteps: { over3: number; at: number[][] };
+    riverLower?: { over2Km2: number; over2NearKm2: number; over2FarKm2: number; over4Km2: number; over6Km2: number; max: number; at: number[]; worst: { id: string; km2: number }[] };
+    marshFill: { over05Km2: number; filledKm2: number; max: number };
+    terrain?: { raised05Km2: number; lowered2Km2: number; otherRaised05Km2: number; otherLowered2Km2: number; otherLowered4Km2: number; allowances: { marshRaised05Km2: number; lakeRaised05Km2: number; lakeLowered2Km2: number } };
+    newSteps: { over3: number; cells?: number; undeclaredCells?: number; clusters?: number; at: number[][]; worst?: { id: string; km2: number }[] };
     joins: Join[];
-    edgeFloat: { totalKm: number };
+    edgeFloat: { totalKm: number; lengthKm?: number; share?: number; lines: { id: string; km: number; max: number }[] };
     cuts: { id: string; max: number; over2Km: number }[];
-    lakeRims: { key: string; over05Km2: number; max: number }[];
+    lakeRims: { key: string; over05Km2: number; max: number; lowered2Km2?: number }[];
+    snap?: { byClass: Record<string, { lines: number; maxKm: number; meanKm: number }> };
   };
   const rr = rep.riverRaise;
-  if (rr.over05Km2 > RAISE_KM2) r.errors.push(`hydro: ground raised > 0.5 outside the channel cores on ${rr.over05Km2} km² (gate ${RAISE_KM2}; max ${rr.max} at ${rr.at.join(',')} km)`);
+  if (rr.over05Km2 > RAISE_KM2) r.errors.push(`hydro: the carve raised ground > 0.5 outside the channel cores on ${rr.over05Km2} km² (gate ${RAISE_KM2}; max ${rr.max} at ${rr.at.join(',')} km)`);
+  const t = rep.terrain;
+  if (!t || !rep.riverLower) r.errors.push('hydro: report.json predates the terrain / riverLower gates — re-bake');
+  else {
+    if (t.otherRaised05Km2 > RAISE_KM2) r.errors.push(`hydro: ground raised > 0.5 above the relief outside the cores and outside the declared allowances on ${t.otherRaised05Km2} km² (gate ${RAISE_KM2})`);
+    const rl = rep.riverLower;
+    if (rl.over4Km2 > LOWER4_KM2) r.errors.push(`hydro: the carve lowered ground > 4 outside the cores on ${rl.over4Km2} km² (gate ${LOWER4_KM2}; max ${rl.max} at ${rl.at.join(',')} km)`);
+    if (rl.over6Km2 > LOWER6_KM2) r.errors.push(`hydro: the carve lowered ground > 6 outside the cores on ${rl.over6Km2} km² (gate ${LOWER6_KM2})`);
+    if (rl.over2FarKm2 > LOWER2_FAR_KM2) r.errors.push(`hydro: the carve lowered ground > 2 more than 2 km beyond a channel core on ${rl.over2FarKm2} km² (gate ${LOWER2_FAR_KM2}: a trough, not a bank)`);
+  }
+  // declared allowances
+  const marshKm2 = t?.allowances.marshRaised05Km2 ?? rep.marshFill.over05Km2;
+  if (marshKm2 > MARSH_KM2) r.errors.push(`hydro: marsh fills raise ground > 0.5 above the relief on ${marshKm2} km² (allowance ${MARSH_KM2})`);
+  const marshDepth = (JSON.parse(readFileSync(join(ROOT, 'data/world/world.json'), 'utf8')) as { rivers: { marshMaxDepth?: number } }).rivers.marshMaxDepth ?? 3;
+  if (rep.marshFill.max > marshDepth + 0.05) r.errors.push(`hydro: a marsh fill is ${rep.marshFill.max} deep (bound world.json rivers.marshMaxDepth ${marshDepth})`);
+  const rimKm2 = rep.lakeRims.reduce((a, l) => a + l.over05Km2, 0);
+  if (rimKm2 > LAKE_RIM_KM2) r.errors.push(`hydro: lake rims / deltas raise > 0.5 on ${rimKm2.toFixed(0)} km² (allowance ${LAKE_RIM_KM2})`);
+  for (const l of rep.lakeRims) if (l.max > LAKE_RIM_MAX) r.errors.push(`hydro: lake ${l.key} shore raised up to ${l.max} (allowance ${LAKE_RIM_MAX})`);
+  // ribbon edges
+  const share = rep.edgeFloat.share ?? rep.edgeFloat.totalKm / Math.max(1, rep.edgeFloat.lengthKm ?? 1);
+  if (share > EDGE_SHARE) r.errors.push(`hydro: ribbon edges > 0.15 above the ground on ${rep.edgeFloat.totalKm} km = ${(100 * share).toFixed(2)} % of the ribbons (gate ${(100 * EDGE_SHARE).toFixed(0)} %)`);
+  // new cliffs
+  const cells = rep.newSteps.undeclaredCells ?? rep.newSteps.over3;
+  const steps = `${rep.newSteps.over3} neighbour pairs, ${cells} cells outside declared gorges / falls in ${rep.newSteps.clusters ?? '?'} clusters (worst ${(rep.newSteps.worst ?? []).slice(0, 3).map((w) => `${w.id} ${w.km2} km²`).join(', ')}; first at ${rep.newSteps.at.slice(0, 3).map((p) => p.join(',')).join('; ')} km)`;
+  if (cells > STEP_CELLS) r.errors.push(`hydro: new > 3-unit steps: ${steps} (gate ${STEP_CELLS} cells)`);
+  else if (cells) r.warnings.push(`hydro: new > 3-unit steps (mountain torrents): ${steps}`);
+  // joins
   const bad = rep.joins.filter((j) => j.offKm > JOIN_OFF_KM || Math.abs(j.dLevel) > JOIN_LEVEL || j.float > JOIN_FLOAT);
   for (const j of bad.slice(0, 8)) r.errors.push(`hydro: ${j.id} → ${j.into}: end ${j.offKm.toFixed(2)} km off the parent's core edge, Δlevel ${j.dLevel.toFixed(3)}, floats ${j.float.toFixed(2)} above its bed`);
-  if (rep.newSteps.over3) r.warnings.push(`hydro: ${rep.newSteps.over3} new > 3-unit neighbour steps (mountain torrents), first at ${rep.newSteps.at.map((p) => p.join(',')).join('; ')} km`);
   const worstCut = rep.cuts[0];
-  r.info.push(`hydro: raised > 0.5 outside cores ${rr.over05Km2} km² (> 1: ${rr.over1Km2}), ${rep.joins.length - bad.length}/${rep.joins.length} joins OK, ribbon edges > 0.15 above the ground on ${rep.edgeFloat.totalKm} km, deepest cut ${worstCut ? `${worstCut.id} ${worstCut.max}` : '—'}, lake rims > 0.5 on ${rep.lakeRims.reduce((a, l) => a + l.over05Km2, 0).toFixed(0)} km²`);
+  const rl = rep.riverLower;
+  r.info.push(`hydro: vs the relief outside the cores — raised > 0.5 ${t?.raised05Km2 ?? '?'} km² (marsh ${t?.allowances.marshRaised05Km2 ?? '?'}, lakes ${t?.allowances.lakeRaised05Km2 ?? '?'}, other ${t?.otherRaised05Km2 ?? '?'}); carve lowered > 2 ${rl?.over2Km2 ?? '?'} km² (${rl?.over2NearKm2 ?? '?'} within 1 km of a core, ${rl?.over2FarKm2 ?? '?'} beyond 2 km), > 4 ${rl?.over4Km2 ?? '?'}, > 6 ${rl?.over6Km2 ?? '?'}; lake shores graded > 2 ${t?.allowances.lakeLowered2Km2 ?? '?'} km²`);
+  r.info.push(`hydro: ${rep.joins.length - bad.length}/${rep.joins.length} joins OK, ribbon edges > 0.15 above the ground on ${rep.edgeFloat.totalKm} km (${(100 * share).toFixed(2)} %), deepest cut ${worstCut ? `${worstCut.id} ${worstCut.max}` : '—'}, marsh fills > 0.5 ${rep.marshFill.over05Km2} km², lake rims > 0.5 ${rimKm2.toFixed(0)} km² (max ${Math.max(0, ...rep.lakeRims.map((l) => l.max)).toFixed(2)})`);
+  if (rep.snap) r.info.push(`hydro: thalweg snap — ${Object.entries(rep.snap.byClass).map(([c, v]) => `${c} max ${v.maxKm} / mean ${v.meanKm} km`).join(', ')}`);
   return r;
 }
 
