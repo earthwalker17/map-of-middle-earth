@@ -5,8 +5,9 @@ export default defineLandmark({
   id: 'minas-tirith',
   placeId: 'minas-tirith',
   tier: 'A',
-  // the display position (places.json) sits on Mindolluin's eastern foot with the Anduin bend >= 12 km
-  // to the south and east: the Pelennor level and the plateau rim end >= 1 km short of the river ribbon
+  // the display position (places.json, offset (-4, 9.5)) sits on Mindolluin's eastern foot with the
+  // snapped Anduin bend >= 14 km to the south and east: the plateau rim ends >= 2 km short of the river
+  // ribbon (the guard's bank envelope never clips it) and the floodplain bench stays between the two
   stamps: [
     { kind: 'flatten', at: [5, 1], radius: 5, falloff: 3, height: 0, strength: 0.5 },
     { kind: 'plateau', at: [0, 0], radius: 7.4, rim: 2, height: 0.6 },
