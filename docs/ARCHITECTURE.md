@@ -61,8 +61,11 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
   region), `terrainMask` (2000×1200: ao, valley/TPI (0.5 flat), wetness, log flow accumulation).
 - `World.rivers` — `rivers.json` v2: processed centrelines (0.25 km) with per-point `level[]`/`bed[]`
   (monotone downstream except at declared `falls`), `id`, `into` (parent line or lake), per-line flow width.
-  Built by the bake's river DAG (hydro.py/profiles.py: topology from sinks, stems through lakes,
-  expectile-isotonic profiles, bank spill cap, clipped confluences, carve + capped levee, marsh fills).
+  Built by the bake's river DAG (hydro.py/profiles.py/snap.py): topology from sinks, stems through lakes,
+  **thalweg snap** (Viterbi path over lateral offsets toward the DEM valley floor within a class window,
+  `world.json rivers.snap`), pit closing, expectile-isotonic profiles, bank spill cap, clipped confluences,
+  edge-bounded carve walls + capped levee, band marsh fills that follow the river level, lake levels solved
+  in stems with deltas/lips at the shore. Every gate the bake reports lives in `report.json`.
 - `src/world/fields.ts` — the shared Shire/Bree field lattice (hedgerows + field colouring).
 
 ## Materials (src/materials)
@@ -72,10 +75,14 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
 - `atmosphere` (atmosphere.ts) — **the shared aerial perspective**: `scene.fogNode = atmosphere.fogNode()`;
   per-channel extinction + sun-phase in-scatter from a sky-radiance LUT, distance-ramped (`env.hazeRamp`:
   near field clear, depth grows with distance), height falloff, y < 0 clip (slab/void in clear studio air),
-  regional haze from a CPU-built texture (`bindWorld`: region weights × `looks.json atmo` + place spots).
-  The water material uses the same functions.
-- `LookNodes` (looks.ts) — region palettes as uniform arrays + per-pixel region weights; `TERRAIN_SHADE` —
-  the shared terrain-shading constants (terrain material + the water's reflected terrain).
+  regional haze from a CPU-built texture (`bindWorld`: region weights × `looks.json atmo` + place spots),
+  valley mist (ground layer thickened over `terrainMask` valleys at low sun). The water material uses the
+  same functions.
+- Ground look (looks.ts): `groundLookTexture(world)` bakes region weights × `looks.json ground` (+ place /
+  km spots) once on the CPU into a 5-layer sRGB array texture (grass+dryness, dry+pattern, soil+snowline
+  offset, rock+volcanic, rockiness+turf); `groundPalette(tex, uv)` reads it (domain-warped). `TERRAIN_SHADE`
+  and the shared TSL rules (`snowLineAt`, `alpineAt`, `rockAt`, `snowAt`, `coarseGroundAlbedo`) are the single
+  source for anything that approximates the terrain (the water's reflected terrain uses them).
 - `looks.json` — one key per line per region: `ground` (terrain palette), `grade` (tint, saturation,
   contrast, exposure, lift, redKeep, bloom, spots[] per place), `atmo` (tint, density (> 1 = local haze),
   sky, spots[]).
@@ -92,7 +99,15 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
    sampled on the CPU over a disk around the target, blended `looks.json grade`, `lookOverride` honoured,
    no temporal smoothing. **Cloud shadows** (clouds.ts): deterministic world-XZ field scrolled by
    `weather.wind × tFx`, coverage from `weather`, applied through the key light's `colorNode`, slab top only.
-2. `TerrainSystem` (terrain/) — one instanced CDLOD draw (root 320 km, 8 levels, morph + skirts).
+2. `TerrainSystem` (terrain/, async init) — one instanced CDLOD draw (root 320 km, 8 levels, morph + skirts).
+   Surface pass: 5 shared height taps → normal, slope, curvature; `terrainMask` AO/valley (faded where stamps
+   changed the ground); ground look + regional rules (alpine rock, dry-brushed crests, scree, snow v2 with
+   aspect and per-region snowlines, volcanic ash/fissures, wetland pools, shores, forest floor, Shire fields).
+   `groundMaps.ts` builds CPU masks at init: stamp turf/presence (stamped − base), shore bands, the Shire field
+   mask (from `fields.ts`). Detail: 6 CC0-derived layers (`tools/textures/prep.mjs` → `public/textures/terrain`,
+   luminance-normalised so the palette keeps the hue; preview 512²×4 planar, review 512²×6, final 1024²×6
+   triplanar on hard ground), faded by texel footprint. Raw sources live in `data/textures-src` (never shipped;
+   `pnpm data:fetch` syncs + derives).
 3. `WaterSystem` (water/) — one material family (presets sea/lake/river): depth absorption, sky+heightfield
    reflection, env.tFx waves, shore foam; sea plane, earcut lakes at manifest levels, merged river ribbons
    built from the baked v2 points/levels as-is (flat across; whitewater only at declared falls or steep baked
