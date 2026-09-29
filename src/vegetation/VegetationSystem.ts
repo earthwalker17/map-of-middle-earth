@@ -27,7 +27,7 @@ const SHADOW_MARGIN = 28;
  * three-sided trunk hint.
  */
 const LODS: { detail: number; trunkSides: number; relief: number; minPx: number; cap: number }[] = [
-  { detail: 2, trunkSides: 6, relief: 1, minPx: 130, cap: 4000 },
+  { detail: 2, trunkSides: 6, relief: 1, minPx: 100, cap: 4000 },
   { detail: 1, trunkSides: 6, relief: 0, minPx: 38, cap: 40000 },
   { detail: 0, trunkSides: 4, relief: 0, minPx: 9, cap: Infinity },
   { detail: -1, trunkSides: 3, relief: 0, minPx: 0, cap: Infinity },
