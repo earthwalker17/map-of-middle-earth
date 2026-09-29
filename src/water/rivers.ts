@@ -16,6 +16,10 @@ export interface RiverStats {
   rapidKm: number;
   /** share of cross-sections whose centre vertex ends up below the ground (dry patches), % */
   dryCentrePct: number;
+  /** v2: rapid (whitewater) length within ±1 km of a declared fall; `rapidKm` counts the rest */
+  fallKm?: number;
+  /** v2: ribbons built on baked levels (true) or the v1 runtime estimate (false) */
+  baked?: boolean;
 }
 
 /** Water level above the thalweg the profile aims for (the terrain channel is carved ~0.35–0.53). */
@@ -114,18 +118,27 @@ function smoothLine(p: [number, number][], passes: number): void {
 
 /**
  * River surface ribbons: one merged mesh for every river line (streams optional).
- * The ribbon follows the carved channel (polyline resampled every ~0.5 km, corners smoothed,
- * vertices across ≤ 0.5 km apart). Its water level is a smoothed blend of the downhill-monotone
- * "cut" and "fill" envelopes of the thalweg (+ clearance), capped at lake-outlet / upstream-run
- * levels. Per vertex the level is clamped: never more than MAX_ABOVE_GROUND over the ground (no
- * floating over banks), the channel interior always at least INTERIOR_MIN over it (no dry
- * patches where the DEM slopes across the channel), outer vertices may sink under rising banks
- * (natural waterline). Steep reaches of the resulting surface are flagged as rapids (whitewater).
+ *  - Bake v2 (rivers.json carries per-point `level`): the ribbon runs on the processed centreline
+ *    exactly as the bake carved it, flat across at the baked water level. The bake cut the channel
+ *    below that level and built the banks above it, so nothing is draped or clamped here; whitewater
+ *    comes only from declared falls and genuinely steep baked reaches.
+ *  - v1 bakes: see buildEstimatedRivers (runtime level estimate + drape clamps).
  * Widths taper at sources, ribbons fade into the sea at mouths and into the main river at
  * confluences. Attributes: flow = (along km, across −1..1, half width km, fade),
  * flowDir = (dir.x, dir.z, rapid 0..1, 0).
  */
 export function buildRiverGeometry(world: World, lakes: LakeInfo[], opts: RiverBuildOptions): { geometry: BufferGeometry; stats: RiverStats } {
+  const baked = world.rivers.length > 0 && world.rivers.every((r) => r.level && r.level.length === r.points.length);
+  return baked ? buildBakedRivers(world, lakes, opts) : buildEstimatedRivers(world, lakes, opts);
+}
+
+/**
+ * v1 fallback: the level is a smoothed blend of the downhill-monotone "cut" and "fill" envelopes of
+ * the thalweg (+ clearance), capped at lake-outlet / upstream-run levels; per vertex it is clamped to
+ * the ground (never more than MAX_ABOVE_GROUND over it, the interior at least INTERIOR_MIN over it);
+ * steep reaches of the draped surface are flagged as rapids.
+ */
+function buildEstimatedRivers(world: World, lakes: LakeInfo[], opts: RiverBuildOptions): { geometry: BufferGeometry; stats: RiverStats } {
   const hf = world.heights;
   const runs: Run[] = [];
   for (const r of world.rivers) {
@@ -361,5 +374,131 @@ export function buildRiverGeometry(world: World, lakes: LakeInfo[], opts: RiverB
   return {
     geometry: g,
     stats: { lines: profiles.length, vertices: pos.length / 3, triangles: idx.length / 3, lengthKm: Math.round(lengthKm), rapidKm: Math.round(rapidKm), dryCentrePct: Math.round((1000 * dry) / Math.max(1, sections)) / 10 },
+  };
+}
+
+/** v2 whitewater: level grade (units per km) where rapids start / are full — mountain torrents only */
+const RAPID_GRADE: [number, number] = [1.5, 4.0];
+/** declared falls whiten the ribbon this far up- and downstream of the lip (km) */
+const FALL_SPRAY_KM = 1.0;
+
+/**
+ * Bake v2 ribbons: the processed centreline points, level per point, falls — used exactly as baked.
+ * Three vertices across (the surface is flat across), so the mesh is far lighter than the draped v1.
+ */
+function buildBakedRivers(world: World, lakes: LakeInfo[], opts: RiverBuildOptions): { geometry: BufferGeometry; stats: RiverStats } {
+  const hf = world.heights;
+  const lines = world.rivers.filter((r) => opts.includeStreams || r.cls !== 'stream');
+  const ids = new Set(world.rivers.map((r) => r.id));
+  const ends = world.rivers.map((r) => r.points[r.points.length - 1]);
+  /** does another line end at (x, z) (a continuation) or pass through it (a distributary)? */
+  const fed = (self: RiverLine, x: number, z: number): boolean => {
+    for (let j = 0; j < world.rivers.length; j++) {
+      const o = world.rivers[j];
+      if (o === self) continue;
+      if (Math.hypot(ends[j][0] - x, ends[j][1] - z) < 0.5) return true;
+      const p = o.points;
+      for (let i = 1; i < p.length; i++) {
+        const [ax, az] = p[i - 1];
+        const ex = p[i][0] - ax;
+        const ez = p[i][1] - az;
+        const t = Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / (ex * ex + ez * ez || 1)));
+        if (Math.hypot(x - (ax + ex * t), z - (az + ez * t)) < 0.3) return true;
+      }
+    }
+    return false;
+  };
+  const K = 3;
+  const pos: number[] = [];
+  const flow: number[] = [];
+  const dir: number[] = [];
+  const idx: number[] = [];
+  let lengthKm = 0;
+  let rapidKm = 0;
+  let fallKm = 0;
+  let dry = 0;
+  let sections = 0;
+  let count = 0;
+  for (const r of lines) {
+    const pts = r.points;
+    const lv = r.level!;
+    const bed = r.bed ?? lv;
+    const n = pts.length;
+    if (n < 2) continue;
+    count++;
+    const s = new Float64Array(n);
+    for (let i = 1; i < n; i++) s[i] = s[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+    const L = s[n - 1];
+    lengthKm += L;
+    const [sx, sz] = pts[0];
+    const source = !lakeNear(lakes, sx, sz, 1.0) && !fed(r, sx, sz);
+    const joins = typeof r.into === 'string' && ids.has(r.into);
+    const hwFull = (r.widthKm / 2) * opts.widthScale;
+    const taperLen = Math.min(L * 0.25, r.widthKm * 5 + 2);
+    const at = (i: number) => s[Math.min(n - 1, i)];
+    const fallS = (r.falls ?? []).map((f) => 0.5 * (at(f.index) + at(f.index + 1)));
+    const base = pos.length / 3;
+    for (let i = 0; i < n; i++) {
+      const a = Math.max(0, i - 1);
+      const b = Math.min(n - 1, i + 1);
+      const dx = pts[b][0] - pts[a][0];
+      const dz = pts[b][1] - pts[a][1];
+      const dl = Math.hypot(dx, dz) || 1;
+      const tx = dx / dl;
+      const tz = dz / dl;
+      const hw = hwFull * (source ? 0.3 + 0.7 * smooth01(0, taperLen, s[i]) : 1);
+      // whitewater: declared falls (spray around the lip) or a genuinely steep baked reach
+      const a2 = Math.max(0, i - 2);
+      const b2 = Math.min(n - 1, i + 2);
+      const grade = (lv[a2] - lv[b2]) / Math.max(1e-3, s[b2] - s[a2]);
+      const nearFall = fallS.some((f) => Math.abs(s[i] - f) < FALL_SPRAY_KM);
+      const rapid = nearFall ? 1 : smooth01(RAPID_GRADE[0], RAPID_GRADE[1], grade);
+      if (i > 0 && rapid > 0.5) {
+        if (nearFall) fallKm += s[i] - s[i - 1];
+        else rapidKm += s[i] - s[i - 1];
+      }
+      let fade = smooth01(-0.12, 0.0, bed[i]); // hand over to the sea at the mouth
+      if (source) fade *= smooth01(0, 0.8, s[i]);
+      if (joins) fade *= smooth01(L, L - (r.widthKm + 1.0), s[i]);
+      const nx = -tz;
+      const nz = tx;
+      const y = lv[i];
+      for (let k = 0; k < K; k++) {
+        const v = -1 + (2 * k) / (K - 1);
+        pos.push(pts[i][0] + nx * v * hw, y, pts[i][1] + nz * v * hw);
+        flow.push(s[i], v, hw, fade);
+        dir.push(tx, tz, rapid, 0);
+      }
+      sections++;
+      if (y < hf.sample(pts[i][0], pts[i][1]) - 0.005) dry++;
+      if (i > 0) {
+        const r0 = base + (i - 1) * K;
+        const r1 = base + i * K;
+        for (let k = 0; k < K - 1; k++) {
+          pushUpTri(idx, pos, r0 + k, r1 + k, r0 + k + 1);
+          pushUpTri(idx, pos, r0 + k + 1, r1 + k, r1 + k + 1);
+        }
+      }
+    }
+  }
+  const g = new BufferGeometry();
+  g.setAttribute('position', new Float32BufferAttribute(pos, 3));
+  g.setAttribute('flow', new Float32BufferAttribute(flow, 4));
+  g.setAttribute('flowDir', new Float32BufferAttribute(dir, 4));
+  g.setIndex(new Uint32BufferAttribute(idx, 1));
+  g.computeBoundingSphere();
+  g.computeBoundingBox();
+  return {
+    geometry: g,
+    stats: {
+      lines: count,
+      vertices: pos.length / 3,
+      triangles: idx.length / 3,
+      lengthKm: Math.round(lengthKm),
+      rapidKm: Math.round(rapidKm),
+      fallKm: Math.round(fallKm * 10) / 10,
+      dryCentrePct: Math.round((1000 * dry) / Math.max(1, sections)) / 10,
+      baked: true,
+    },
   };
 }

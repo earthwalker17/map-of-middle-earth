@@ -19,7 +19,7 @@
     "lookMaskDownsample": 4
   },
   "vertical": {
-    "notes": "Terrain height in world units = exaggeration * H * (h/H)^gamma with h = (DEM metres - seaLevelMetres)/1000 and H = referenceKm. The ME-DEM datum puts sea level at 16 grey levels (304.8 m): DEM values below it are real shelf bathymetry; seas are below-datum regions connected to coast.seaSeedsKm. Relief is split by scale: a Gaussian low-pass (macroSigmaKm) keeps the full exaggeration so ranges tower, while local relief above it is scaled by detailRatio so hills and peaks keep plausible slopes.",
+    "notes": "Terrain height in world units = exaggeration * H * (h/H)^gamma with h = (DEM metres - seaLevelMetres)/1000 and H = referenceKm. The ME-DEM datum puts sea level at 16 grey levels (304.8 m): DEM values below it are real shelf bathymetry; seas are below-datum regions connected to coast.seaSeedsKm. Relief is split by scale: a Gaussian low-pass (macroSigmaKm) keeps the full exaggeration so ranges tower, while local relief above it is scaled by detailRatio so hills and peaks keep plausible slopes. Inside a Gaussian band around every canon river (valleyBandKm) the split relief is pulled back down to the unsplit exaggeration where the low-pass lifted it (narrow valley floors next to ranges), never raised.",
     "exaggeration": 12,
     "gamma": 0.8,
     "macroSigmaKm": 12,
@@ -55,10 +55,16 @@
         220,
         265
       ]
+    },
+    "valleyBandKm": {
+      "great": 14,
+      "major": 10,
+      "minor": 7,
+      "stream": 5
     }
   },
   "rivers": {
-    "notes": "Exaggerated channel widths (km) for readability at diorama scale.",
+    "notes": "Exaggerated channel widths (km) for readability at diorama scale. Bake v2: every canon line gets a processed centreline (smoothKm corner smoothing, sampleKm spacing); lines joined end-to-start form one stem with a monotone water level (profile.*: asymmetric isotonic fit to thalweg + depth[class] - filling costs fillWeight x cutting; a sill is cut at most maxCut deep unless that would hold back a pool deeper than maxPool; maxCutOverrides for gorges; smoothKmByClass; free sources in a hollow below a sill within trimSourceKm start at the sill). falls are the only places the surface may drop steeply. sinks = endorheic lakes (bake lake keys). bankKm / bankSlope ease valley walls beside the channel.",
     "widthKm": {
       "great": 4.0,
       "major": 2.2,
@@ -98,7 +104,54 @@
       "minor": [
         "*"
       ]
-    }
+    },
+    "depth": {
+      "great": 0.3,
+      "major": 0.22,
+      "minor": 0.16,
+      "stream": 0.1
+    },
+    "sampleKm": 0.25,
+    "smoothKm": 0.6,
+    "profile": {
+      "fillWeight": 8.0,
+      "maxCut": 2.0,
+      "maxPool": 0.5,
+      "smoothKm": 2.0,
+      "smoothKmByClass": {
+        "great": 8.0,
+        "major": 5.0,
+        "minor": 3.0,
+        "stream": 2.0
+      },
+      "minGrade": 0.002,
+      "rampKm": 3.0,
+      "rampGrade": 0.08,
+      "trimSourceKm": 25.0
+    },
+    "bankKm": {
+      "great": 4.0,
+      "major": 3.0,
+      "minor": 2.0,
+      "stream": 1.2
+    },
+    "bankSlope": 1.2,
+    "falls": [
+      {
+        "name": "Rauros",
+        "river": "Anduin",
+        "atKm": [
+          1074.64,
+          744.47
+        ]
+      }
+    ],
+    "maxCutOverrides": [],
+    "sinks": [
+      "sea of rhn",
+      "sea of nrnen"
+    ],
+    "plungeKm": 6.0
   },
   "tableScale": {
     "notes": "Lens/DOF physics treat the diorama as a physical model: 1 km of world = 1 mm of table (1:1,000,000).",
@@ -139,5 +192,16 @@
         1375
       ]
     ]
+  },
+  "lakes": {
+    "notes": "Lake levels (keys = bake lake keys, as in lakes.json): levels{} authored override; else the outlet river's natural start level capped by the shorePercentile of the shore ring (a lake spilling over falls right at its outlet, and lakes without an outlet, use the percentile). Beds are deepened below the level; shores above it are graded down to level + shoreEpsilon over gradeKm (default 0.3*sqrt(area), 1.5-5 km), low shores rise to it.",
+    "shorePercentile": 40,
+    "shoreEpsilon": 0.03,
+    "gradeKm": {
+      "long lake": 8.0
+    },
+    "levels": {
+      "nen hithoel": 4.4
+    }
   }
 }

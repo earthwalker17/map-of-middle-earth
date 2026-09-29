@@ -3,6 +3,36 @@ import type { WorldSpec } from './WorldSpec.ts';
 import { applyStamp, stampBounds, type Stamp } from './stamps.ts';
 
 const BLOCK = 16;
+/** the river guard fades out over this distance beyond its radius (km) */
+const GUARD_FADE = 1.0;
+
+/**
+ * Water the stamp layer must leave alone ("rivers win"): after the stamps are composited, every cell
+ * within `radius` of a river centreline (fading over GUARD_FADE) or inside a lake returns to its baked
+ * height — a stamp may neither lift the channel (false cascades) nor sink the banks below the baked
+ * water level (floating ribbons) — unless it lies in an allowlisted circle (landmarks that sit on or
+ * over the water by design: places.json `onRiver`).
+ */
+export interface RiverGuard {
+  lines: { points: [number, number][]; radius: number }[];
+  lakes: [number, number][][];
+  exempt: { x: number; z: number; r: number }[];
+}
+
+const smoothstep = (e0: number, e1: number, x: number): number => {
+  const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
+  return t * t * (3 - 2 * t);
+};
+
+function inRing(r: [number, number][], x: number, z: number): boolean {
+  let c = false;
+  for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+    const [xi, zi] = r[i];
+    const [xj, zj] = r[j];
+    if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) c = !c;
+  }
+  return c;
+}
 
 /**
  * The ONLY height API in the project: base bake (u16 → float) + TypeScript stamp layer.
@@ -20,6 +50,9 @@ export class HeightField {
   readonly texture: DataTexture;
   private pyramid: { w: number; h: number; min: Float32Array; max: Float32Array }[] = [];
   private stamps: Stamp[] = [];
+  private guard: RiverGuard | null = null;
+  /** cells the river guard restored at the last setStamps (diagnostics / validators) */
+  guardedCells = 0;
 
   private constructor(
     readonly spec: WorldSpec,
@@ -86,8 +119,84 @@ export class HeightField {
     this.stamps = stamps;
     this.data.set(this.base);
     for (const s of stamps) this.applyOne(s);
+    this.guardedCells = this.guard && stamps.length ? this.applyGuard(stamps, this.guard) : 0;
     this.texture.needsUpdate = true;
     this.buildPyramid();
+  }
+
+  /** Register the water the stamp layer must not raise (World.load, before any setStamps). */
+  setRiverGuard(guard: RiverGuard): void {
+    this.guard = guard;
+    if (this.stamps.length) this.setStamps(this.stamps);
+  }
+
+  /** Cell index range [c0, c1, r0, r1] covering a world rectangle. */
+  private cellRange(x0: number, z0: number, x1: number, z1: number): [number, number, number, number] {
+    return [
+      Math.max(0, Math.floor((x0 - this.spec.xMin) / this.texel)),
+      Math.min(this.width - 1, Math.ceil((x1 - this.spec.xMin) / this.texel)),
+      Math.max(0, Math.floor((z0 - this.spec.zMin) / this.texel)),
+      Math.min(this.height - 1, Math.ceil((z1 - this.spec.zMin) / this.texel)),
+    ];
+  }
+
+  /** "Rivers win": inside each stamp's bounds, return guarded water cells to their baked height. */
+  private applyGuard(stamps: Stamp[], g: RiverGuard): number {
+    const seen = new Uint8Array(this.width * this.height);
+    let n = 0;
+    for (const s of stamps) {
+      const [x0, z0, x1, z1] = stampBounds(s);
+      const segs: number[] = [];
+      for (const l of g.lines) {
+        const m = l.radius + GUARD_FADE;
+        const p = l.points;
+        for (let i = 1; i < p.length; i++) {
+          const [ax, az] = p[i - 1];
+          const [bx, bz] = p[i];
+          if (Math.max(ax, bx) + m < x0 || Math.min(ax, bx) - m > x1 || Math.max(az, bz) + m < z0 || Math.min(az, bz) - m > z1) continue;
+          segs.push(ax, az, bx, bz, l.radius);
+        }
+      }
+      const rings = g.lakes.filter((r) => {
+        let a0 = Infinity, b0 = Infinity, a1 = -Infinity, b1 = -Infinity;
+        for (const [x, z] of r) {
+          a0 = Math.min(a0, x);
+          a1 = Math.max(a1, x);
+          b0 = Math.min(b0, z);
+          b1 = Math.max(b1, z);
+        }
+        return a1 >= x0 && a0 <= x1 && b1 >= z0 && b0 <= z1;
+      });
+      if (!segs.length && !rings.length) continue;
+      const [c0, c1, r0, r1] = this.cellRange(x0, z0, x1, z1);
+      for (let r = r0; r <= r1; r++)
+        for (let c = c0; c <= c1; c++) {
+          const i = r * this.width + c;
+          if (seen[i]) continue;
+          seen[i] = 1;
+          // both ways: a stamp may neither lift the channel nor sink its banks below the baked water
+          const up = this.data[i] - this.base[i];
+          if (up === 0) continue;
+          const x = this.spec.xMin + (c + 0.5) * this.texel;
+          const z = this.spec.zMin + (r + 0.5) * this.texel;
+          if (g.exempt.some((e) => Math.hypot(x - e.x, z - e.z) < e.r)) continue;
+          let w = 0;
+          for (let k = 0; k < segs.length && w < 1; k += 5) {
+            const ax = segs[k];
+            const az = segs[k + 1];
+            const ex = segs[k + 2] - ax;
+            const ez = segs[k + 3] - az;
+            const t = Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / (ex * ex + ez * ez || 1)));
+            const d = Math.hypot(x - (ax + ex * t), z - (az + ez * t));
+            w = Math.max(w, 1 - smoothstep(segs[k + 4], segs[k + 4] + GUARD_FADE, d));
+          }
+          if (w < 1 && rings.some((ring) => inRing(ring, x, z))) w = 1;
+          if (w <= 0) continue;
+          this.data[i] -= w * up;
+          n++;
+        }
+    }
+    return n;
   }
 
   get stampCount(): number {

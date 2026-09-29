@@ -5,7 +5,12 @@ export default defineLandmark({
   id: 'rivendell',
   placeId: 'rivendell',
   tier: 'A',
-  stamps: [{ kind: 'carve', path: [[-6, 0.5], [-2, 0], [2, -0.3], [6, 0.4]], width: 2.4, depth: 2.4, falloff: 3.2 }],
+  // the cleft of Imladris: walls raised either side of the stream that runs ~1.7 km south of the house
+  // (a carve along it would sink the banks below the baked water); the stream corridor stays as baked
+  stamps: [
+    { kind: 'raise', at: [0, -2.8], radius: 3.2, amount: 2.5 },
+    { kind: 'raise', at: [0.5, 5], radius: 3.2, amount: 2.5 },
+  ],
   proxy: (k) => {
     for (let i = 0; i < 16; i++) {
       const x = -3 + k.r(1) * 6;

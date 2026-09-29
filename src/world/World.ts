@@ -23,6 +23,8 @@ export interface PlaceDef {
   footprintKm?: number;
   region?: string;
   parent?: string;
+  /** the landmark sits on / over water by design: its stamps may raise river or lake cells */
+  onRiver?: boolean;
 }
 
 export interface Place extends PlaceDef {
@@ -139,6 +141,12 @@ export class World {
       const [x, z] = spec.kmToWorld(def.canonical[0] + off[0], def.canonical[1] + off[1]);
       places.set(def.id, { ...def, x, z, cx, cz });
     }
+    // "rivers win": no landmark stamp may lift a river channel or a lake (allowlisted landmarks aside)
+    heights.setRiverGuard({
+      lines: rivers.map((r) => ({ points: r.points, radius: 1.6 * Math.max(r.widthKm / 2, 0.5) + 0.3 })),
+      lakes: lakes.map((l) => l.ring),
+      exempt: [...places.values()].filter((p) => p.onRiver).map((p) => ({ x: p.x, z: p.z, r: p.footprintKm ?? 5 })),
+    });
     const regions = m.look.regions as LookRegion[];
     for (const r of regions) if (!(r in looksJson.regions)) throw new Error(`looks.json has no preset for region '${r}'`);
     const terrainMask = m.terrain && terrain ? mk(m.terrain, terrain) : null;
