@@ -4,7 +4,6 @@ import type { World } from '../world/World.ts';
 import type { QualityTier } from '../core/quality.ts';
 import type { Cdlod } from './cdlod.ts';
 import { env } from '../materials/environment.ts';
-import { atmosphere, valleyMistInput } from '../materials/atmosphere.ts';
 import { TERRAIN_SHADE as TS, alpineAt, groundLookTexture, groundPalette, rockAt, snowAt, snowLineAt, srgbNode } from '../materials/looks.ts';
 import type { GroundMaps } from './groundMaps.ts';
 import type { TerrainDetail } from './terrainTextures.ts';
@@ -67,6 +66,8 @@ const SOFT_STEEP = [0.22, 0.45] as const;
 const BANK_TURF_SLOPE = [0.3, 0.5] as const;
 /** wetland only on flat ground (marsh fills, river flats), gone on this slope range */
 const WET_SLOPE = [0.06, 0.2] as const;
+/** cos, sin of the fixed grain direction of the bog pools */
+const POOL_GRAIN = [Math.cos(0.7), Math.sin(0.7)] as const;
 
 /**
  * Terrain material family (the only terrain material in the project).
@@ -326,17 +327,27 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     const wetEdge = max(pal.wetland.mul(1.25), lc.g.mul(0.55)).add(n2.mul(0.2)).add(n3.mul(0.16)).add(n4.mul(0.08));
     const wetW = smoothstep(0.35, 0.7, wetEdge).mul(float(1).sub(smoothstep(WET_SLOPE[0], WET_SLOPE[1], slope)));
     const poolFade = float(1).sub(smoothstep(0.03, 0.2, fp));
-    const n5 = preview ? n4 : mx_noise_float(p.xz.mul(1 / 0.32));
+    // fine pool noise in a stretched frame bent by a gentle domain warp: bog pools lie in a grain
+    // (along the mire's slope and drainage) that wanders, not as round blobs (a fixed rotation —
+    // a position-dependent angle on world-scale coordinates would swirl into moiré)
+    const pq = vec2(p.x.mul(POOL_GRAIN[0]).sub(p.z.mul(POOL_GRAIN[1])), p.x.mul(POOL_GRAIN[1]).add(p.z.mul(POOL_GRAIN[0]))).add(vec2(n3.mul(1.6), n2.mul(3)));
+    const n5 = preview ? n4 : mx_noise_float(vec2(pq.x.div(0.55), pq.y.div(0.22)));
     // pool density: open, water-logged reaches in clusters (12 and 3 km noise, the wetter core)
     // between stretches of closed mat
-    const poolDens = clamp(n2.mul(0.8).add(n3.mul(1.6)).add(wetW.sub(0.6)).add(0.12), 0, 1);
-    const tS = mix(float(0.52), float(0.2), poolDens);
-    const tL = mix(float(0.75), float(0.45), poolDens);
-    const poolS = smoothstep(tS, tS.add(0.07), n5.add(n4.mul(0.3)));
-    const poolL = smoothstep(tL, tL.add(0.1), n4.add(n3.mul(0.35)));
+    const poolDens = clamp(n2.mul(0.8).add(n3.mul(1.6)).add(wetW.sub(0.6)).add(0.2), 0, 1);
+    const tS = mix(float(0.48), float(0.18), poolDens);
+    const tL = mix(float(0.72), float(0.42), poolDens);
+    const nS = n5.add(n4.mul(0.3));
+    const nL = n4.add(n3.mul(0.35));
+    const poolS = smoothstep(tS, tS.add(0.07), nS);
+    const poolL = smoothstep(tL, tL.add(0.1), nL);
     const pools = mix(poolDens.mul(0.16).add(0.04), max(poolS, poolL), poolFade).mul(wetW);
-    const matN = clamp(n3.mul(0.7).add(n2.mul(0.5)).add(n5.mul(0.25)).add(0.42), 0, 1);
-    const mat = mix(mix(srgbNode(TS.wetSedge), srgbNode(TS.wetRust), matN), srgbNode(TS.wetReed), smoothstep(0, 0.5, n4.add(n5.mul(0.5))).mul(0.4)).mul(lumSoft);
+    // a wetter, darker moss rim around each pool
+    const poolRim = max(smoothstep(tS.sub(0.14), tS, nS), smoothstep(tL.sub(0.16), tL, nL)).mul(poolFade);
+    const matN = clamp(n3.mul(0.7).add(n2.mul(0.5)).add(n4.mul(0.25)).add(0.42), 0, 1);
+    const mat = mix(mix(srgbNode(TS.wetSedge), srgbNode(TS.wetRust), matN), srgbNode(TS.wetReed), smoothstep(0, 0.5, n4.add(n3.mul(0.4))).mul(0.4))
+      .mul(float(1).sub(poolRim.mul(0.22)))
+      .mul(lumSoft);
     const wetCol = mix(mat, srgbNode(TS.wetPool), pools.mul(0.85));
     col.assign(mix(col, wetCol, wetW.mul(0.92)));
     col.assign(mix(col, srgbNode(TS.ash), lc.b.mul(0.9)));
@@ -363,9 +374,6 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     outAO.assign(mix(float(1), occl, 0.85));
     const rough = mix(mix(float(0.92), float(0.82), rock), float(0.55), snow);
     outRough.assign(mix(mix(rough, float(0.24), pools.mul(0.85)), float(0.12), channel));
-    // valley mist for the shared fog (review/final): the stamp-corrected valley index of the mask
-    // fetched above, so the fog itself needs no texture tap
-    if (!preview) valleyMistInput.assign(atmosphere.valleyMistFrom(tpi));
     return col;
   });
 

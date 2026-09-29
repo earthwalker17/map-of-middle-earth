@@ -1,7 +1,7 @@
 import { FrontSide, MeshStandardNodeMaterial, type DataTexture } from 'three/webgpu';
 import { tsl, type TslNode } from '../materials/tsl.ts';
 import { env } from '../materials/environment.ts';
-import { atmosphere, valleyMistInput } from '../materials/atmosphere.ts';
+import { atmosphere } from '../materials/atmosphere.ts';
 import { coarseGroundAlbedo, groundLookTexture, groundPalette } from '../materials/looks.ts';
 import type { QualityTier } from '../core/quality.ts';
 import type { World } from '../world/World.ts';
@@ -378,14 +378,7 @@ export function createWaterMaterial(opts: WaterMaterialOptions): MeshStandardNod
     [6, vec3(depthB.mul(0.5))],
     [7, vec3(foam)],
   ];
-  const colour = select(waterDebug.equal(0).or(waterDebug.equal(3)), albedo, vec3(0));
-  // valley mist for the shared fog (review/final): rivers and lakes in the dales carry the same
-  // mist as their banks (the terrain assigns it from its own mask fetch; this is the water's one)
-  const mask = world.terrainMask;
-  material.colorNode = preview || !mask ? colour : Fn(() => {
-    valleyMistInput.assign(atmosphere.valleyMistFrom(texture(mask, uv0).g));
-    return colour;
-  })();
+  material.colorNode = select(waterDebug.equal(0).or(waterDebug.equal(3)), albedo, vec3(0));
   material.emissiveNode = views.reduceRight((acc: N, [k, v]) => select(waterDebug.equal(k), v, acc), emissive);
   material.normalNode = normalize(cameraViewMatrix.mul(vec4(nW, 0)).xyz);
   material.roughnessNode = roughness;
