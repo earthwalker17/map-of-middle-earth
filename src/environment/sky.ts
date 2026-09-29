@@ -65,7 +65,6 @@ function compress(c: N, lmax: number): N {
 const _m4 = new Matrix4();
 const lum = (r: number, g: number, b: number) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
 
-
 /**
  * Analytic sky: Preetham daylight (ported so it can be evaluated anywhere, e.g. for fog) + a
  * parametric twilight/night layer (blue hour, afterglow, Belt of Venus) + stars, moon and sun disc
@@ -143,12 +142,17 @@ export class SkyModel {
     u.starMatrix.value.setFromMatrix4(_m4);
   }
 
-  /** Key of every input radianceCPU depends on (for the atmosphere's LUT cache). */
+  /**
+   * Exact key of every input radianceCPU reads (for the atmosphere's LUT memo): full-precision
+   * values (JS number → string round-trips exactly), including the derived Rayleigh / Mie
+   * coefficients, so a runtime change to `rayleigh`, `mieCoefficient` or `turbidity` — or any sun
+   * direction, however close — never reuses a stale table. Equal key ⇔ identical table.
+   */
   radianceKey(): string {
     const u = this.u;
-    const s = this.sunDir;
-    const c = (x: Color) => `${x.r.toFixed(6)},${x.g.toFixed(6)},${x.b.toFixed(6)}`;
-    return [s.x.toFixed(6), s.y.toFixed(6), s.z.toFixed(6), u.gain.value, u.dayWeight.value, this.turbidity, c(u.twiZenith.value), c(u.twiHorizon.value), c(u.twiGlow.value), c(u.twiBelt.value), u.glowPower.value, u.glowHeight.value, c(u.moonSky.value)].join('|');
+    const v = (x: Vector3) => `${x.x},${x.y},${x.z}`;
+    const c = (x: Color) => `${x.r},${x.g},${x.b}`;
+    return [v(this.sunDir), v(u.betaR.value), v(u.betaM.value), u.mieG.value, u.sunE.value, u.gain.value, u.dayWeight.value, c(u.twiHorizon.value), c(u.twiGlow.value), c(u.twiBelt.value), u.glowPower.value, c(u.moonSky.value)].join('|');
   }
 
   /**
@@ -403,5 +407,3 @@ export class SkyModel {
     return mesh;
   }
 }
-
-
