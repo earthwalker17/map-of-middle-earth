@@ -60,9 +60,9 @@ const flatGround = (slope: N): N => float(1).sub(smoothstep(0.08, 0.22, slope));
 
 /** tiling of the detail layers (km per tile): soft ground (planar) and hard ground (triplanar) */
 const SOFT_TILE = 1.7;
-/** domain warp of the regional ground look (km) */
-const PAL_WARP = 9;
 const HARD_TILE = 4.2;
+/** domain warp of the regional ground look (km): region borders meander instead of running straight */
+const PAL_WARP = 20;
 
 /**
  * Terrain material family (the only terrain material in the project).
@@ -299,7 +299,7 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     // distance; far off the pools average into a darker, wetter mat) — pools get a wet sheen
     const wetW = smoothstep(0.15, 0.85, lc.g);
     const poolFade = float(1).sub(smoothstep(0.03, 0.2, fp));
-    const n5 = mx_noise_float(p.xz.mul(1 / 0.32));
+    const n5 = preview ? n4 : mx_noise_float(p.xz.mul(1 / 0.32));
     const poolN = n5.mul(0.55).add(n4.mul(0.35)).add(n3.mul(0.15)).add(wetW.sub(0.8).mul(0.5));
     const pools = mix(float(0.22), smoothstep(0.16, 0.3, poolN), poolFade).mul(wetW);
     const reeds = mix(srgbNode(TS.wetSedge), srgbNode(TS.wetReed), clamp(n3.mul(0.6).add(n5.mul(0.4)).add(0.5), 0, 1)).mul(lumSoft);

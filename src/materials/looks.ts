@@ -64,6 +64,10 @@ const toSrgb8 = (v: number): number => {
   return Math.round(s * 255);
 };
 const to8 = (v: number): number => Math.round(Math.min(1, Math.max(0, v)) * 255);
+const smooth01 = (t: number): number => {
+  const c = Math.min(1, Math.max(0, t));
+  return c * c * (3 - 2 * c);
+};
 
 /** Per-texel ground properties in linear space: 4 colours × 3 + dryness, pattern, snowline, volcanic, rockiness, turf value, turf weight. */
 const P = 19;
@@ -120,7 +124,11 @@ export function groundLookTexture(world: World): DataArrayTexture {
       let sum = 0;
       const o = (y * W + x) * P;
       for (let r = 0; r < n; r++) {
-        const w = d[(((r >> 2) * H + y) * W + x) * 4 + (r & 3)] / 255;
+        let w = d[(((r >> 2) * H + y) * W + x) * 4 + (r & 3)] / 255;
+        // the default region (index 0) also fills what the soft region masks leave uncovered; in the
+        // gaps between two regions that fill would paint a band of the default ground, so for the
+        // ground look it only counts where it dominates (the neighbours are renormalised instead)
+        if (r === 0) w *= smooth01((w - 0.55) / 0.4);
         if (w <= 0) continue;
         sum += w;
         const R = regions[r];
