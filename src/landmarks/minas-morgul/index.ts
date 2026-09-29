@@ -6,9 +6,9 @@ export default defineLandmark({
   placeId: 'minas-morgul',
   tier: 'A',
   headingDeg: 270,
-  // the tower stands on the vale's northern spur (display offset): a small pad that never reaches the
-  // Morgulduin ~2.5 km below it (a larger one lifted the stream into a false waterfall)
-  stamps: [{ kind: 'flatten', at: [0, 0], radius: 1.2, falloff: 0.6, height: 'auto' }],
+  // the tower stands on the vale's northern spur (display offset) on a pad that carries the whole walled
+  // ring (r 2.4); the Morgulduin runs in the vale ~4 km below it, clear of the pad
+  stamps: [{ kind: 'flatten', at: [0, 0], radius: 2.6, falloff: 0.7, height: 'auto' }],
   proxy: (k) => {
     k.ring('weathered', 2.4, 0.35, 1.6, { seg: 40, tint: 0x8a9a92 });
     let y = 0;

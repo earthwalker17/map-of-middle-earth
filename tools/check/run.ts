@@ -4,7 +4,8 @@
  *  - landmarks: every definition folder matches a place; every Tier-A place has a definition
  *  - assets: every shipped file in public/ is covered by CREDITS.md
  *  - baked world (when a bake exists; MOME_WORLD_DIR overrides data/baked): monotone baked river levels,
- *    no stamp moves a river channel / lake ("rivers win", onRiver allowlist) — see world.ts
+ *    no stamp moves a river channel / lake ("rivers win", onRiver allowlist), per-landmark stamp loss to
+ *    the river guard, the bake's hydro geometry gates (report.json) — see world.ts
  * Exit code 1 on any error.
  */
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';

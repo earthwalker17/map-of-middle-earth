@@ -4,8 +4,10 @@ import { lakeNear, pushUpTri, type LakeInfo } from './lakes.ts';
 
 export interface RiverBuildOptions {
   includeStreams: boolean;
-  /** ribbon half width = widthKm / 2 × widthScale (slightly wider than the carved channel) */
+  /** ribbon half width = widthKm / 2 × widthScale (world.json rivers.ribbonScale; v2: never inside the carved core) */
   widthScale: number;
+  /** v2: the ribbon reaches at least this far beyond the carved core (world.json rivers.ribbonMarginKm) */
+  marginKm?: number;
 }
 
 export interface RiverStats {
@@ -381,32 +383,53 @@ function buildEstimatedRivers(world: World, lakes: LakeInfo[], opts: RiverBuildO
 const RAPID_GRADE: [number, number] = [1.5, 4.0];
 /** declared falls whiten the ribbon this far up- and downstream of the lip (km) */
 const FALL_SPRAY_KM = 1.0;
+/** a free end (a stream ending in its own valley) fades out over this length (km) */
+const FREE_END_FADE_KM = 0.8;
+/** on a bend tighter than the ribbon, the inner edge stays inside this share of the bend radius */
+const INNER_EDGE = 0.9;
+
+/** The carved channel core half width of a line (tools/bake/bake/hydro.py Line.core). */
+export const coreHalfWidth = (r: { widthKm: number }): number => Math.max(r.widthKm / 2, 0.5);
+
+/** Ribbon half width on bake v2 (tools/bake/bake/hydro.py ribbon_half): scale × half the width, but
+ * always `margin` beyond the carved core so no dry channel wall shows beside a stream. */
+export const ribbonHalfWidth = (r: { widthKm: number }, scale: number, margin: number): number => Math.max((scale * r.widthKm) / 2, coreHalfWidth(r) + margin);
+
+function distToPolyline(p: [number, number][], x: number, z: number): number {
+  let best = Infinity;
+  for (let i = 1; i < p.length; i++) {
+    const [ax, az] = p[i - 1];
+    const ex = p[i][0] - ax;
+    const ez = p[i][1] - az;
+    const t = Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / (ex * ex + ez * ez || 1)));
+    best = Math.min(best, Math.hypot(x - (ax + ex * t), z - (az + ez * t)));
+  }
+  return best;
+}
 
 /**
  * Bake v2 ribbons: the processed centreline points, level per point, falls — used exactly as baked.
  * Three vertices across (the surface is flat across), so the mesh is far lighter than the draped v1.
+ * The half width is `widthScale` × half the width but at least `marginKm` beyond the carved core, so
+ * the ribbon edge always lies on the bank just beyond the channel (never over a dry channel wall). A tributary ends at its parent's core
+ * edge (the bake clipped it there, at the parent's level) and fades out across the parent's ribbon; a
+ * distributary starts there and fades in; a line ending in its own valley (no `into`) fades out.
  */
 function buildBakedRivers(world: World, lakes: LakeInfo[], opts: RiverBuildOptions): { geometry: BufferGeometry; stats: RiverStats } {
   const hf = world.heights;
   const lines = world.rivers.filter((r) => opts.includeStreams || r.cls !== 'stream');
-  const ids = new Set(world.rivers.map((r) => r.id));
+  const byId = new Map(world.rivers.map((r) => [r.id, r]));
   const ends = world.rivers.map((r) => r.points[r.points.length - 1]);
-  /** does another line end at (x, z) (a continuation) or pass through it (a distributary)? */
-  const fed = (self: RiverLine, x: number, z: number): boolean => {
+  const halfWidth = (r: RiverLine) => ribbonHalfWidth(r, opts.widthScale, opts.marginKm ?? 0.1);
+  /** the other line whose water (core) a start at (x, z) lies on: a continuation or a distributary */
+  const feeder = (self: RiverLine, x: number, z: number): RiverLine | null => {
     for (let j = 0; j < world.rivers.length; j++) {
       const o = world.rivers[j];
       if (o === self) continue;
-      if (Math.hypot(ends[j][0] - x, ends[j][1] - z) < 0.5) return true;
-      const p = o.points;
-      for (let i = 1; i < p.length; i++) {
-        const [ax, az] = p[i - 1];
-        const ex = p[i][0] - ax;
-        const ez = p[i][1] - az;
-        const t = Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / (ex * ex + ez * ez || 1)));
-        if (Math.hypot(x - (ax + ex * t), z - (az + ez * t)) < 0.3) return true;
-      }
+      if (Math.hypot(ends[j][0] - x, ends[j][1] - z) < 0.5) return o;
+      if (distToPolyline(o.points, x, z) < coreHalfWidth(o) + 0.3) return o;
     }
-    return false;
+    return null;
   };
   const K = 3;
   const pos: number[] = [];
@@ -431,9 +454,18 @@ function buildBakedRivers(world: World, lakes: LakeInfo[], opts: RiverBuildOptio
     const L = s[n - 1];
     lengthKm += L;
     const [sx, sz] = pts[0];
-    const source = !lakeNear(lakes, sx, sz, 1.0) && !fed(r, sx, sz);
-    const joins = typeof r.into === 'string' && ids.has(r.into);
-    const hwFull = (r.widthKm / 2) * opts.widthScale;
+    const [ex, ez] = pts[n - 1];
+    const up = lakeNear(lakes, sx, sz, 1.0) ? null : feeder(r, sx, sz);
+    const source = !up && !lakeNear(lakes, sx, sz, 1.0);
+    const parent = typeof r.into === 'string' ? byId.get(r.into) : undefined;
+    const sp = world.spec;
+    const atEdge = Math.min(ex - sp.xMin, sp.xMax - ex, ez - sp.zMin, sp.zMax - ez) < 1.0;
+    const freeEnd = !r.into && bed[n - 1] >= 0 && !atEdge && !lakeNear(lakes, ex, ez, 1.0);
+    // across the parent's ribbon beyond its core (where the tributary's own ribbon overlaps it)
+    const overlap = (o: RiverLine | null | undefined) => (o ? Math.max(0.15, halfWidth(o) - coreHalfWidth(o) + 0.1) : 0);
+    const joinFade = parent ? overlap(parent) : 0;
+    const startFade = up && distToPolyline(up.points, sx, sz) > 0.3 ? overlap(up) : 0;
+    const hwFull = halfWidth(r);
     const taperLen = Math.min(L * 0.25, r.widthKm * 5 + 2);
     const at = (i: number) => s[Math.min(n - 1, i)];
     const fallS = (r.falls ?? []).map((f) => 0.5 * (at(f.index) + at(f.index + 1)));
@@ -447,6 +479,24 @@ function buildBakedRivers(world: World, lakes: LakeInfo[], opts: RiverBuildOptio
       const tx = dx / dl;
       const tz = dz / dl;
       const hw = hwFull * (source ? 0.3 + 0.7 * smooth01(0, taperLen, s[i]) : 1);
+      // bend radius from the turn between the neighbouring segments: the inner edge never folds over
+      let inner = 0;
+      let rInner = Infinity;
+      if (i > 0 && i < n - 1) {
+        const ax = pts[i][0] - pts[i - 1][0];
+        const az = pts[i][1] - pts[i - 1][1];
+        const bx = pts[i + 1][0] - pts[i][0];
+        const bz = pts[i + 1][1] - pts[i][1];
+        const la = Math.hypot(ax, az) || 1;
+        const lb = Math.hypot(bx, bz) || 1;
+        const cross = (ax * bz - az * bx) / (la * lb);
+        const turn = Math.asin(Math.max(-1, Math.min(1, cross)));
+        if (Math.abs(turn) > 1e-4) {
+          rInner = (0.5 * (la + lb)) / Math.abs(turn);
+          // the normal (−tz, tx) (v = +1) is the tangent turned the way a positive cross product turns
+          inner = cross > 0 ? 1 : -1;
+        }
+      }
       // whitewater: declared falls (spray around the lip) or a genuinely steep baked reach
       const a2 = Math.max(0, i - 2);
       const b2 = Math.min(n - 1, i + 2);
@@ -459,13 +509,16 @@ function buildBakedRivers(world: World, lakes: LakeInfo[], opts: RiverBuildOptio
       }
       let fade = smooth01(-0.12, 0.0, bed[i]); // hand over to the sea at the mouth
       if (source) fade *= smooth01(0, 0.8, s[i]);
-      if (joins) fade *= smooth01(L, L - (r.widthKm + 1.0), s[i]);
+      if (startFade) fade *= smooth01(0, startFade, s[i]);
+      if (joinFade) fade *= smooth01(L, L - joinFade, s[i]);
+      if (freeEnd) fade *= smooth01(L, L - Math.min(FREE_END_FADE_KM, 0.5 * L), s[i]);
       const nx = -tz;
       const nz = tx;
       const y = lv[i];
       for (let k = 0; k < K; k++) {
         const v = -1 + (2 * k) / (K - 1);
-        pos.push(pts[i][0] + nx * v * hw, y, pts[i][1] + nz * v * hw);
+        const off = v === inner ? Math.min(hw, INNER_EDGE * rInner) : hw;
+        pos.push(pts[i][0] + nx * v * off, y, pts[i][1] + nz * v * off);
         flow.push(s[i], v, hw, fade);
         dir.push(tx, tz, rapid, 0);
       }

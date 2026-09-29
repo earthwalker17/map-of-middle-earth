@@ -141,11 +141,18 @@ export class World {
       const [x, z] = spec.kmToWorld(def.canonical[0] + off[0], def.canonical[1] + off[1]);
       places.set(def.id, { ...def, x, z, cx, cz });
     }
-    // "rivers win": no landmark stamp may lift a river channel or a lake (allowlisted landmarks aside)
+    // "rivers win": landmark stamps keep off the water and leave natural banks beside it (HeightField
+    // RiverGuard; allowlisted landmarks aside). The ribbon half width matches src/water/rivers.ts.
+    const R = spec.json.rivers;
     heights.setRiverGuard({
-      lines: rivers.map((r) => ({ points: r.points, radius: 1.6 * Math.max(r.widthKm / 2, 0.5) + 0.3 })),
-      lakes: lakes.map((l) => l.ring),
+      lines: rivers.map((r) => ({
+        points: r.points,
+        level: r.level ?? r.points.map((p) => heights.sample(p[0], p[1], 'base')),
+        halfWidth: Math.max((R.ribbonScale * r.widthKm) / 2, Math.max(r.widthKm / 2, 0.5) + R.ribbonMarginKm),
+      })),
+      lakes: lakes.map((l) => ({ ring: l.ring, level: l.level })),
       exempt: [...places.values()].filter((p) => p.onRiver).map((p) => ({ x: p.x, z: p.z, r: p.footprintKm ?? 5 })),
+      slope: R.stampBankSlope,
     });
     const regions = m.look.regions as LookRegion[];
     for (const r of regions) if (!(r in looksJson.regions)) throw new Error(`looks.json has no preset for region '${r}'`);

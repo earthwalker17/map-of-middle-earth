@@ -67,7 +67,7 @@ export class WaterSystem implements System {
   }
 
   private buildRivers() {
-    const r = buildRiverGeometry(this.world, this.lakeList, { includeStreams: this.includeStreams, widthScale: 1.4 });
+    const r = buildRiverGeometry(this.world, this.lakeList, { includeStreams: this.includeStreams, widthScale: this.world.spec.json.rivers.ribbonScale, marginKm: this.world.spec.json.rivers.ribbonMarginKm });
     this.riverStats = r.stats;
     this.heightsVersion = this.world.heights.texture.version;
     return r.geometry;

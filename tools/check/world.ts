@@ -4,11 +4,18 @@
  *    falls (tolerance 1e-3), `into` resolves to a line id or a lake key
  *  - "rivers win": no landmark stamp moves a river-channel or lake cell unless it lies in an onRiver
  *    allowlisted landmark's footprint (places.json)
+ *  - stamp loss: per landmark, the share of its stamp volume the river guard takes back (error above
+ *    LOSS_SHARE / LOSS_MIN: the landmark sits on the water — move it, reshape it or allowlist it)
+ *  - hydro report (report.json from the bake): ground raised outside the channel cores, confluence joins
+ *    (end on the parent's core edge, at its level, not floating), new cliffs (warning)
  *  - onRiver only on landmark places
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { LakePoly, RiverLine } from '../../src/world/World.ts';
+import { pathToFileURL } from 'node:url';
+import type { LandmarkDefinition } from '../../src/landmarks/types.ts';
+import type { LakePoly, RiverLine, World } from '../../src/world/World.ts';
+import type { BakedManifest } from '../../src/world/WorldSpec.ts';
 import { loadWorld, readManifest, readMaskChannel, ROOT } from './baked.ts';
 
 export const LEVEL_TOL = 1e-3;
@@ -52,10 +59,74 @@ export function checkRiverLevels(rivers: RiverLine[], lakes: LakePoly[]): CheckR
   return r;
 }
 
-/** Cells where the composited stamp layer differs from the baked base on river channels / lakes. */
-export async function checkRiversWin(dir: string): Promise<CheckResult & { moved: number; maxLift: number }> {
+/**
+ * Per landmark: how much of its stamp volume the river guard takes back (composited alone). Beside
+ * the water the guard only clamps a stamp to a natural bank, so a landmark losing a large share of its
+ * shape sits on / over the water — move it (display offset), reshape its stamps, or allowlist it
+ * (places.json onRiver). Error above LOSS_SHARE of the stamp volume and LOSS_MIN units·km².
+ */
+export const LOSS_SHARE = 0.15;
+export const LOSS_MIN = 0.5;
+
+export async function checkStampLoss(world: World, landmarks: LandmarkDefinition[]): Promise<CheckResult & { rows: { id: string; cells: number; share: number; lost: number; maxLost: number }[] }> {
   const r: CheckResult = { errors: [], warnings: [], info: [] };
-  const { world } = await loadWorld(dir);
+  const { landmarkStamps } = (await import(pathToFileURL(join(ROOT, 'src/landmarks/LandmarkSystem.ts')).href)) as typeof import('../../src/landmarks/LandmarkSystem.ts');
+  const rows: { id: string; cells: number; share: number; lost: number; maxLost: number }[] = [];
+  for (const d of landmarks) {
+    if (!d.stamps?.length) continue;
+    const place = world.places.get(d.placeId);
+    if (!place || place.onRiver) continue;
+    const loss = world.heights.stampLoss(landmarkStamps(world, [d]));
+    const share = loss.lostVolume / Math.max(loss.stampVolume, 1e-9);
+    rows.push({ id: d.id, cells: loss.cells, share, lost: loss.lostVolume, maxLost: loss.maxLost });
+    if (share > LOSS_SHARE && loss.lostVolume > LOSS_MIN) r.errors.push(`stamps: the river guard takes ${(100 * share).toFixed(0)} % of ${d.id}'s stamp volume (${loss.lostVolume.toFixed(2)} units·km², ${loss.cells} cells, max ${loss.maxLost.toFixed(2)})`);
+  }
+  const touched = rows.filter((x) => x.cells > 0).sort((a, b) => b.share - a.share);
+  r.info.push(`stamps: river guard vs landmark stamps — ${touched.length ? touched.map((x) => `${x.id} ${(100 * x.share).toFixed(1)} % (${x.cells} cells, max ${x.maxLost.toFixed(2)})`).join(', ') : 'no landmark touched'}`);
+  return { ...r, rows };
+}
+
+/** Hydro gates from the bake's report.json (tools/bake/bake/hydro.py geometry_report). */
+export const RAISE_KM2 = 5;
+export const JOIN_OFF_KM = 0.5;
+export const JOIN_LEVEL = 0.1;
+export const JOIN_FLOAT = 0.15;
+
+export function checkHydroReport(dir: string): CheckResult {
+  const r: CheckResult = { errors: [], warnings: [], info: [] };
+  const m = readManifest(dir) as BakedManifest & { files: { report?: { file: string } } };
+  if (!m.files.report) {
+    r.warnings.push('bake has no report.json (hydro geometry gates skipped)');
+    return r;
+  }
+  interface Join {
+    id: string;
+    into: string;
+    offKm: number;
+    dLevel: number;
+    float: number;
+  }
+  const rep = JSON.parse(readFileSync(join(dir, m.files.report.file), 'utf8')) as {
+    riverRaise: { over05Km2: number; over1Km2: number; max: number; at: number[] };
+    newSteps: { over3: number; at: number[][] };
+    joins: Join[];
+    edgeFloat: { totalKm: number };
+    cuts: { id: string; max: number; over2Km: number }[];
+    lakeRims: { key: string; over05Km2: number; max: number }[];
+  };
+  const rr = rep.riverRaise;
+  if (rr.over05Km2 > RAISE_KM2) r.errors.push(`hydro: ground raised > 0.5 outside the channel cores on ${rr.over05Km2} km² (gate ${RAISE_KM2}; max ${rr.max} at ${rr.at.join(',')} km)`);
+  const bad = rep.joins.filter((j) => j.offKm > JOIN_OFF_KM || Math.abs(j.dLevel) > JOIN_LEVEL || j.float > JOIN_FLOAT);
+  for (const j of bad.slice(0, 8)) r.errors.push(`hydro: ${j.id} → ${j.into}: end ${j.offKm.toFixed(2)} km off the parent's core edge, Δlevel ${j.dLevel.toFixed(3)}, floats ${j.float.toFixed(2)} above its bed`);
+  if (rep.newSteps.over3) r.warnings.push(`hydro: ${rep.newSteps.over3} new > 3-unit neighbour steps (mountain torrents), first at ${rep.newSteps.at.map((p) => p.join(',')).join('; ')} km`);
+  const worstCut = rep.cuts[0];
+  r.info.push(`hydro: raised > 0.5 outside cores ${rr.over05Km2} km² (> 1: ${rr.over1Km2}), ${rep.joins.length - bad.length}/${rep.joins.length} joins OK, ribbon edges > 0.15 above the ground on ${rep.edgeFloat.totalKm} km, deepest cut ${worstCut ? `${worstCut.id} ${worstCut.max}` : '—'}, lake rims > 0.5 on ${rep.lakeRims.reduce((a, l) => a + l.over05Km2, 0).toFixed(0)} km²`);
+  return r;
+}
+
+/** Cells where the composited stamp layer differs from the baked base on river channels / lakes. */
+export async function checkRiversWin(dir: string, world: World): Promise<CheckResult & { moved: number; maxLift: number }> {
+  const r: CheckResult = { errors: [], warnings: [], info: [] };
   const hf = world.heights;
   const chan = readMaskChannel(dir, 'water', 0);
   const lake = readMaskChannel(dir, 'water', 1);
@@ -88,7 +159,8 @@ export async function checkBakedWorld(dir: string): Promise<CheckResult> {
   const m = readManifest(dir);
   const rivers = JSON.parse(readFileSync(join(dir, m.files.rivers.file), 'utf8')) as RiverLine[];
   const lakes = JSON.parse(readFileSync(join(dir, m.files.lakes.file), 'utf8')) as LakePoly[];
-  for (const part of [checkRiverLevels(rivers, lakes), await checkRiversWin(dir)]) {
+  const { world, landmarks } = await loadWorld(dir);
+  for (const part of [checkRiverLevels(rivers, lakes), await checkRiversWin(dir, world), await checkStampLoss(world, landmarks), checkHydroReport(dir)]) {
     out.errors.push(...part.errors);
     out.warnings.push(...part.warnings);
     out.info.push(...part.info);

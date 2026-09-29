@@ -4,10 +4,13 @@
  *
  *   node --import tsx tools/check/geometry.ts [--json out.json]
  *
- * Coastline IoU, lake areas vs polygons + levels + shore walls 0.4 km outside, carved channel vs
- * centreline, river ribbon stats, landmark ground heights, named peaks, snow/tree line areas, relief
- * steepness. Exit code 1 when a hard gate fails (coast IoU < 0.99, lake area off > 5 %, channel
- * misaligned > 1 px on > 2 % of samples, dry river centres ≥ 1 %).
+ * Coastline IoU, lakes (wetted area = terrain below the level inside the polygon, dry land below the
+ * level just outside it, shore rims raised by the bake, levels, shore walls 0.4 km outside), carved
+ * channel vs centreline, river ribbon stats, landmark ground heights, named peaks, snow/tree line
+ * areas, relief steepness. Exit code 1 when a hard gate fails (coast IoU < 0.99, wetted lake area off
+ * the polygon by > 5 % or, for lakes > 10 km², > 5 % of it spilling outside, channel misaligned > 1 px
+ * on > 2 % of samples,
+ * dry river centres ≥ 1 %).
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -52,6 +55,17 @@ const inRing = (r: [number, number][], x: number, z: number) => {
   }
   return c;
 };
+const ringDist = (r: [number, number][], x: number, z: number) => {
+  let best = Infinity;
+  for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+    const [ax, az] = r[j];
+    const ex = r[i][0] - ax;
+    const ez = r[i][1] - az;
+    const t = Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / (ex * ex + ez * ez || 1)));
+    best = Math.min(best, Math.hypot(x - (ax + ex * t), z - (az + ez * t)));
+  }
+  return best;
+};
 const pct = (v: number[], q: number) => {
   if (!v.length) return NaN;
   const s = [...v].sort((a, b) => a - b);
@@ -79,7 +93,11 @@ const f = (v: number, d = 2) => (Number.isFinite(v) ? v.toFixed(d) : '—');
 {
   const lakes = JSON.parse(readFileSync(join(cur, mB.files.lakes.file), 'utf8')) as LakePoly[];
   const lakesA = JSON.parse(readFileSync(join(base, readManifest(base).files.lakes.file), 'utf8')) as LakePoly[];
-  const lakeMask = readMaskChannel(cur, 'water', 1);
+  const chanMask = readMaskChannel(cur, 'water', 0);
+  // shore rims the bake raised (report.json lakeRims, bake v2)
+  const rims = new Map<string, { over05Km2: number; max: number }>();
+  const repFile = (mB.files as { report?: { file: string } }).report;
+  if (repFile) for (const r of (JSON.parse(readFileSync(join(cur, repFile.file), 'utf8')) as { lakeRims: { key: string; over05Km2: number; max: number }[] }).lakeRims) rims.set(r.key, r);
   const rows: Record<string, unknown>[] = [];
   const byKey = new Map<string, LakePoly[]>();
   for (const l of lakes) byKey.set(l.key, [...(byKey.get(l.key) ?? []), l]);
@@ -96,24 +114,30 @@ const f = (v: number, d = 2) => (Number.isFinite(v) ? v.toFixed(d) : '—');
         x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z);
       }
     }
-    let cells = 0;
+    // wetted area: terrain below the level inside the polygon (what the lake surface really covers);
+    // spill: dry land below the level within SPILL_KM outside the polygon, river channels aside (a hole
+    // in the shore the drawn lake surface does not reach — the lake edge would hang over it)
+    const SPILL_KM = 0.5;
+    let wetCells = 0;
+    let spillCells = 0;
     let dry = 0;
     let depth = 0;
     let n = 0;
-    for (let r = Math.floor((z0 - zMin) / px); r <= Math.ceil((z1 - zMin) / px); r++)
-      for (let c = Math.floor((x0 - xMin) / px); c <= Math.ceil((x1 - xMin) / px); c++) {
+    for (let r = Math.floor((z0 - SPILL_KM - zMin) / px); r <= Math.ceil((z1 + SPILL_KM - zMin) / px); r++)
+      for (let c = Math.floor((x0 - SPILL_KM - xMin) / px); c <= Math.ceil((x1 + SPILL_KM - xMin) / px); c++) {
         if (r < 0 || c < 0 || r >= B.h || c >= B.w) continue;
         const x = xMin + (c + 0.5) * px;
         const z = zMin + (r + 0.5) * px;
-        if (lakeMask.data[r * B.w + c] > 127 && polys.some((p) => inRing(p.ring, x, z))) cells++;
+        const h = B.data[r * B.w + c];
         if (polys.some((p) => inRing(p.ring, x, z))) {
           n++;
-          const h = B.data[r * B.w + c];
           if (h > level - 0.01) dry++;
+          else wetCells++;
           depth += level - h;
-        }
+        } else if (h < level - 0.01 && h > 0 && chanMask.data[r * B.w + c] < 128 && polys.some((p) => ringDist(p.ring, x, z) < SPILL_KM)) spillCells++;
       }
-    const area = cells * px * px;
+    const area = wetCells * px * px;
+    const spill = spillCells * px * px;
     // shore walls: terrain 0.4 km outside the polygon along each edge's outward normal
     const walls: number[] = [];
     const wallsA: number[] = [];
@@ -136,14 +160,17 @@ const f = (v: number, d = 2) => (Number.isFinite(v) ? v.toFixed(d) : '—');
         if (levelA !== null) wallsA.push(bil(A, mx + nx * 0.4, mz + nz * 0.4) - levelA);
       }
     const off = (area - poly) / poly;
-    rows.push({ key, level, levelS1: levelA, polygonKm2: +poly.toFixed(1), maskKm2: +area.toFixed(1), areaErr: +off.toFixed(3), dryPct: +((100 * dry) / Math.max(1, n)).toFixed(1), meanDepth: +(depth / Math.max(1, n)).toFixed(2), wallMedian: +pct(walls, 0.5).toFixed(2), wallP90: +pct(walls, 0.9).toFixed(2), wallMedianS1: +pct(wallsA, 0.5).toFixed(2), wallP90S1: +pct(wallsA, 0.9).toFixed(2) });
-    if (poly > 2 && Math.abs(off) > 0.05) gates.push(`lake ${key} mask area ${area.toFixed(1)} km² vs polygon ${poly.toFixed(1)} km² (${(off * 100).toFixed(1)} %)`);
+    const rim = rims.get(key);
+    rows.push({ key, level, levelS1: levelA, polygonKm2: +poly.toFixed(1), wetKm2: +area.toFixed(1), areaErr: +off.toFixed(3), spillKm2: +spill.toFixed(1), rimRaisedKm2: rim?.over05Km2 ?? null, rimMax: rim?.max ?? null, dryPct: +((100 * dry) / Math.max(1, n)).toFixed(1), meanDepth: +(depth / Math.max(1, n)).toFixed(2), wallMedian: +pct(walls, 0.5).toFixed(2), wallP90: +pct(walls, 0.9).toFixed(2), wallMedianS1: +pct(wallsA, 0.5).toFixed(2), wallP90S1: +pct(wallsA, 0.9).toFixed(2) });
+    if (poly > 2 && Math.abs(off) > 0.05) gates.push(`lake ${key} wetted ${area.toFixed(1)} km² vs polygon ${poly.toFixed(1)} km² (${(off * 100).toFixed(1)} %)`);
+    // (small lakes are dominated by the 0.4 km pixel against the simplified runtime ring)
+    if (poly > 10 && spill / poly > 0.05) gates.push(`lake ${key}: ${spill.toFixed(1)} km² of dry land below the level within ${SPILL_KM} km outside the shore (${((100 * spill) / poly).toFixed(1)} % of the lake)`);
   }
   report.lakes = rows;
-  console.log('[geometry] lakes (walls = terrain 0.4 km outside the polygon above the level; S1 in brackets)');
+  console.log('[geometry] lakes (wetted = terrain below the level inside the polygon; spill = dry land below the level ≤ 0.5 km outside (channels aside); rim = shore raised > 0.5 by the bake; walls = terrain 0.4 km outside the polygon above the level; S1 in brackets)');
   for (const r of rows)
     console.log(
-      `  ${String(r.key).padEnd(14)} level ${f(r.level as number)} [${f((r.levelS1 as number) ?? NaN)}]  area ${r.maskKm2}/${r.polygonKm2} km² (${((r.areaErr as number) * 100).toFixed(1)} %)  dry ${r.dryPct} %  depth ${r.meanDepth}  walls median ${r.wallMedian} p90 ${r.wallP90} [${r.wallMedianS1} / ${r.wallP90S1}]`,
+      `  ${String(r.key).padEnd(14)} level ${f(r.level as number)} [${f((r.levelS1 as number) ?? NaN)}]  wetted ${r.wetKm2}/${r.polygonKm2} km² (${((r.areaErr as number) * 100).toFixed(1)} %)  spill ${r.spillKm2} km²  rim ${r.rimRaisedKm2 ?? '—'} km² (max ${r.rimMax ?? '—'})  dry ${r.dryPct} %  depth ${r.meanDepth}  walls median ${r.wallMedian} p90 ${r.wallP90} [${r.wallMedianS1} / ${r.wallP90S1}]`,
     );
 }
 
@@ -188,7 +215,7 @@ const { world, stamps } = await loadWorld(cur);
   const { buildRiverGeometry } = (await import('../../src/water/rivers.ts')) as typeof import('../../src/water/rivers.ts');
   const { lakeInfos } = (await import('../../src/water/lakes.ts')) as typeof import('../../src/water/lakes.ts');
   for (const includeStreams of [false, true]) {
-    const { stats } = buildRiverGeometry(world, lakeInfos(world), { includeStreams, widthScale: 1.4 });
+    const { stats } = buildRiverGeometry(world, lakeInfos(world), { includeStreams, widthScale: world.spec.json.rivers.ribbonScale, marginKm: world.spec.json.rivers.ribbonMarginKm });
     report[includeStreams ? 'riverStatsAll' : 'riverStats'] = stats;
     console.log(`[geometry] ribbons${includeStreams ? ' (+streams)' : ''}: ${stats.lines} lines, ${stats.lengthKm} km, ${stats.vertices} vertices, rapids outside falls ${stats.rapidKm} km, at falls ${stats.fallKm ?? 0} km, dry centres ${stats.dryCentrePct} %`);
     if (stats.dryCentrePct >= 1) gates.push(`dry river centres ${stats.dryCentrePct} %`);
