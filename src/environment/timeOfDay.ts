@@ -305,11 +305,11 @@ export function daylight(sunDir: Vector3): Daylight {
   const sunDisc = curve(el, [[-1, 6], [2, 8], [6, 12], [12, 18], [25, 30], [90, 40]]);
 
   // haze: a touch denser at golden hour / dawn (evening and morning mist in the valleys), clearest
-  // at noon. Calibrated for the miniature at 20–2000 km (tools: optical depth ≈ 0.12 at an overview,
-  // ≈ 0.13 at a regional target, ≈ 0.35 half a map away; peaks stand above the ground haze).
-  const fogHeightDensity = 0.0028 + 0.0016 * golden + 0.0007 * twilight + 0.0006 * night;
+  // at noon. Calibrated for the miniature at 20–2000 km (optical depth ≈ 0.08 at an overview,
+  // ≈ 0.09 at a regional target, ≈ 0.25–0.3 half a map away; peaks stand above the ground haze).
+  const fogHeightDensity = 0.0024 + 0.0016 * golden + 0.0007 * twilight + 0.0006 * night;
   const fogHeightFalloff = 0.16;
-  const airDensity = 0.00085 + 0.00025 * golden + 0.0001 * twilight;
+  const airDensity = 0.00072 + 0.00025 * golden + 0.0001 * twilight;
   const airFalloff = 0.016;
   const fogDensity = 0.000015;
   const cloudShadow = 0.34 - 0.12 * night;

@@ -55,7 +55,7 @@ export const env = {
   airDensity: uniform(0.0012),
   airFalloff: uniform(0.016),
   /** relative extinction per channel (green = 1): distance shifts towards the blue-grey in-scatter */
-  extinction: uniform(new Vector3(0.66, 1, 1.42)),
+  extinction: uniform(new Vector3(0.72, 1, 1.32)),
   /** multiplier on the sky dome from the region the camera looks at (Mordor's charcoal sky) */
   skyTint: uniform(new Color(1, 1, 1)),
   /** cloud shadows: 0..1 darkening of the key light under a cloud, height of the cloud deck */
