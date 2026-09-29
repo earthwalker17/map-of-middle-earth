@@ -998,6 +998,8 @@ def shape_lakes(cfg: Config, h: np.ndarray, land: np.ndarray, lakes: dict[str, L
     rim_slope = float(L.get("rimSlope", 0.5))
     delta_km = float(L.get("deltaKm", 0.0))
     keep_km = float(L.get("riverKeepKm", 2.0))
+    # low shore is raised at most rimMaxRaise (a basin deeper than that stays a basin)
+    max_raise = float(L.get("rimMaxRaise", 1e9))
     for lk in lakes.values():
         if lk.level is None:
             continue
@@ -1040,7 +1042,7 @@ def shape_lakes(cfg: Config, h: np.ndarray, land: np.ndarray, lakes: dict[str, L
         # elsewhere a narrow lip hides the lake's edge (rimFlatKm at the level) and falls back to the
         # natural shore at rimSlope — no broad embankment
         rim = np.where(delta, top, top - np.maximum(0.0, d_out - rim_flat) * rim_slope)
-        hw[:] = np.where(out & landish & (hw < rim), rim, hw)
+        hw[:] = np.where(out & landish & (hw < rim), np.minimum(rim, hw + max_raise), hw)
 
 
 def river_distance(cfg: Config, lk: Lake, conn: list[Line]) -> np.ndarray:
@@ -1319,7 +1321,7 @@ def geometry_report(cfg: Config, h_pre: np.ndarray, h_lakes: np.ndarray, h_carve
     px2 = cfg.px_km**2
     core = m["core"]
     onland = land >= 0.5
-    wet = m["lake_any"] > 0.5
+    wet = m["lake_any"] >= 0.5  # the lake bed as shape_lakes deepens it (coverage ≥ 0.5)
     out = ~core & onland & ~wet
     by_idx = {l.idx: l for l in lines}
 
@@ -1361,7 +1363,20 @@ def geometry_report(cfg: Config, h_pre: np.ndarray, h_lakes: np.ndarray, h_carve
     near = m["dist"] <= 1.0
     far = m["dist"] > 2.0
     band = ~near & ~far
-    rep["riverLower"] = {"over2Km2": area(dc < -2), "over2NearKm2": area((dc < -2) & near), "over2BandKm2": area((dc < -2) & band), "over2FarKm2": area((dc < -2) & far), "over4Km2": area(dc < -4), "over6Km2": area(dc < -6), "max": round(float(-dc.min()), 3), "at": where(-dc), "worst": worst_lines(dc < -2), "worstFar": worst_lines((dc < -2) & far)}
+    # the declared easing zone of the nearest line: half its class easing width (world.json rivers.bankKm,
+    # where the eased wall holds the class slope) but at least 1 km — beyond it a lowering is not the design
+    bank_w = cfg.world["rivers"].get("bankKm", {})
+    half_ease = np.array([max(1.0, 0.5 * float(bank_w.get(l.cls, 2.0))) for l in lines] + [1.0], np.float32)
+    ease_zone = m["dist"] <= half_ease[m["near_line"]]
+    in_gorge = np.zeros(h.shape, bool)
+    for o in cfg.world["rivers"].get("bankOverrides", []):
+        (zx, zy), zr = o["atKm"], float(o["radiusKm"])
+        c0, r0 = cfg.km_to_px(zx - zr, zy + zr)
+        c1, r1 = cfg.km_to_px(zx + zr, zy - zr)
+        rr, cc = np.mgrid[max(0, int(r0)) : min(h.shape[0], int(r1) + 1), max(0, int(c0)) : min(h.shape[1], int(c1) + 1)]
+        xs, ys = cfg.x0_km + (cc + 0.5) * cfg.px_km, cfg.y1_km - (rr + 0.5) * cfg.px_km
+        in_gorge[rr, cc] |= np.hypot(xs - zx, ys - zy) < zr
+    rep["riverLower"] = {"nearKm2": area(out & near), "bandKm2": area(out & band), "over2Km2": area(dc < -2), "over2NearKm2": area((dc < -2) & near), "over2BandKm2": area((dc < -2) & band), "over2FarKm2": area((dc < -2) & far), "over2BeyondEaseKm2": area((dc < -2) & ~ease_zone & ~in_gorge), "worstBeyondEase": worst_lines((dc < -2) & ~ease_zone & ~in_gorge), "over4Km2": area(dc < -4), "over6Km2": area(dc < -6), "max": round(float(-dc.min()), 3), "at": where(-dc), "worst": worst_lines(dc < -2), "worstBand": worst_lines((dc < -2) & band), "worstFar": worst_lines((dc < -2) & far), "worst4": worst_lines(dc < -4), "deep": clusters(-dc, 4.0)}
     # 1b. inside the channel cores (on land, off the lakes): the bed raised above the relief — pits the
     # profile pools over (pit closing, held levels) instead of cutting; the water surface there stands
     # above the natural valley floor, so the banks around it are raised too (levees, marsh fills)
@@ -1380,7 +1395,8 @@ def geometry_report(cfg: Config, h_pre: np.ndarray, h_lakes: np.ndarray, h_carve
             continue
         sl = (slice(lk.r0, lk.r0 + lk.cov.shape[0]), slice(lk.c0, lk.c0 + lk.cov.shape[1]))
         w = dl[sl]
-        rims.append({"key": lk.key, "level": round(float(lk.level), 3), "over05Km2": area(w > 0.5), "max": round(float(w.max()), 3), "lowered2Km2": area(w < -2)})
+        perim = float(lk.geom.length)
+        rims.append({"key": lk.key, "level": round(float(lk.level), 3), "perimeterKm": round(perim, 1), "over05Km2": area(w > 0.5), "max": round(float(w.max()), 3), "lowered2Km2": area(w < -2), "lowered4Km2": area(w < -4), "maxLower": round(float(-w.min()), 3)})
     rep["lakeRims"] = rims
     # 4. everything together, against the relief outside the cores (the honest total) and what is left
     # once the declared allowances (marsh fills, lake rims / shore grading) are taken out
@@ -1422,13 +1438,14 @@ def geometry_report(cfg: Config, h_pre: np.ndarray, h_lakes: np.ndarray, h_carve
     und = np.zeros(h.shape, bool)
     und[r[~declared], c[~declared]] = True
     lab, ncl = ndimage.label(und, structure=np.ones((3, 3), bool))
-    at = []
+    at, largest = [], []
     if ncl:
         sizes = ndimage.sum(und, lab, index=np.arange(1, ncl + 1))
         for k in np.argsort(-sizes, kind="stable")[:5]:
             rr, cc = np.argwhere(lab == k + 1)[0]
             at.append([round(cfg.x0_km + (cc + 0.5) * cfg.px_km, 1), round(cfg.y1_km - (rr + 0.5) * cfg.px_km, 1)])
-    rep["newSteps"] = {"over3": pairs, "cells": int(cells.sum()), "declaredCells": int(declared.sum()), "undeclaredCells": int(und.sum()), "clusters": int(ncl), "at": at, "worst": worst_lines(und)}
+            largest.append(int(sizes[k]))
+    rep["newSteps"] = {"over3": pairs, "cells": int(cells.sum()), "declaredCells": int(declared.sum()), "undeclaredCells": int(und.sum()), "clusters": int(ncl), "at": at, "largest": largest, "worst": worst_lines(und)}
     # 6. confluences: a side feeder ends at its parent's core edge, at the parent's level, and its ribbon
     # end never floats above its own bed
     by_id = {l.id: l for l in lines}

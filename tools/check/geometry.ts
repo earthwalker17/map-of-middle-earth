@@ -222,6 +222,29 @@ const { world, stamps } = await loadWorld(cur);
   }
 }
 
+// ------------------------------------------------------------------ river lengths vs the baseline
+{
+  // per named river (all its lines together; the unnamed streams as one group): the canon length the bake
+  // keeps against the baseline (S1: the raw ME-GIS geometry clipped to the frame) — source trims, core
+  // clips at confluences and absorbed side channels show up as the difference
+  const cur = JSON.parse(readFileSync(join(bakedDir(), mB.files.rivers.file), 'utf8')) as RiverLine[];
+  const baseRivers = JSON.parse(readFileSync(join(base, readManifest(base).files.rivers.file), 'utf8')) as RiverLine[];
+  const len = (p: [number, number][]) => p.reduce((a, q, i) => (i ? a + Math.hypot(q[0] - p[i - 1][0], q[1] - p[i - 1][1]) : 0), 0);
+  const key = (s: string | null) => (s ?? '').trim() || '(unnamed streams)';
+  const sum = (ls: RiverLine[]) => {
+    const m = new Map<string, number>();
+    for (const l of ls) m.set(key(l.name), (m.get(key(l.name)) ?? 0) + len(l.points));
+    return m;
+  };
+  const A0 = sum(baseRivers);
+  const B0 = sum(cur);
+  const rows = [...new Set([...A0.keys(), ...B0.keys()])].map((k) => ({ name: k, base: A0.get(k) ?? 0, now: B0.get(k) ?? 0 }));
+  const tot = (k: 'base' | 'now') => rows.reduce((a, r) => a + r[k], 0);
+  report.riverLengths = { baseKm: +tot('base').toFixed(1), nowKm: +tot('now').toFixed(1), rivers: rows.map((r) => ({ name: r.name, baseKm: +r.base.toFixed(1), nowKm: +r.now.toFixed(1) })) };
+  const worst = [...rows].sort((a, b) => a.now - a.base - (b.now - b.base)).slice(0, 10);
+  console.log(`[geometry] river lengths vs the baseline (per named river): ${tot('base').toFixed(0)} → ${tot('now').toFixed(0)} km; largest changes ${worst.map((r) => `${r.name} ${(r.now - r.base).toFixed(1)}`).join(', ')}`);
+}
+
 // ------------------------------------------------------------------ landmarks + peaks
 {
   const rows: string[] = [];
