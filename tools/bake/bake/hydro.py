@@ -389,6 +389,7 @@ def solve(cfg: Config, h_pre: np.ndarray, land: np.ndarray, lakes: dict[str, Lak
 
     for l in lines:
         classify(l)
+    flow_widths(cfg, lines, lakes, log)
 
     with Timer("hydro: centrelines"):
         sig = float(R.get("smoothKm", 0.6))
@@ -550,6 +551,41 @@ def solve(cfg: Config, h_pre: np.ndarray, land: np.ndarray, lakes: dict[str, Lak
                 lk.level = float(authored.get(lk.key, lk.shore))
         log.append("stems: " + "; ".join(" → ".join(lines[e[1]].id if e[0] == "line" else f"[{e[1]}]" for e in st) for st in stems if len(st) > 1))
     return lines, log
+
+
+def flow_widths(cfg: Config, lines: list[Line], lakes: dict[str, Lake], log: list) -> None:
+    """Width from flow: the class width scaled by (upstream network length / class reference)^k, so the
+    lower Anduin clearly dominates its tributaries (world.json rivers.flowWidth)."""
+    fwc = cfg.world["rivers"].get("flowWidth")
+    if not fwc:
+        return
+    feeders: dict[int, list[int]] = {l.idx: [] for l in lines}
+    for l in lines:
+        if l.down[0] == "line":
+            feeders[l.down[1]].append(l.idx)
+        elif l.down[0] == "lake":
+            for o in lakes[l.down[1]].outlets:
+                feeders[o].append(l.idx)
+    memo: dict[int, float] = {}
+
+    def lup(i: int, stack: frozenset = frozenset()) -> float:
+        if i in memo:
+            return memo[i]
+        if i in stack:
+            return 0.0
+        v = lines[i].geom.length + sum(lup(f, stack | {i}) for f in feeders[i])
+        memo[i] = v
+        return v
+
+    k, lo, hi = float(fwc.get("exponent", 0.35)), float(fwc.get("min", 0.8)), float(fwc.get("max", 1.3))
+    for l in lines:
+        ref = float(fwc["refKm"].get(l.cls, 0) or 0)
+        if ref <= 0:
+            continue
+        s = float(np.clip((lup(l.idx) / ref) ** k, lo, hi))
+        l.width = round(l.width * s / 0.05) * 0.05
+    big = sorted(lines, key=lambda l: -l.width)[:6]
+    log.append("flow widths: " + ", ".join(f"{l.name or 'stream'} {l.width:.2f} km (upstream {lup(l.idx):.0f} km)" for l in big))
 
 
 def solve_stem(cfg, st: list[tuple], lines, lakes, fp: FitParams, ds: float, fall_at: dict, cap_for, level_on, stem_of: dict, done: set, authored: dict, lake_w: float, smooth_by: dict, log: list) -> None:
