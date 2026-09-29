@@ -166,8 +166,8 @@ export async function prepTerrainDetail({ src = null, sizes = DEFAULT_SIZES, log
   return manifest;
 }
 
-/** Verify the derived files against detail.json (exit code 1 on mismatch). */
-function check() {
+/** Verify the derived files against detail.json; returns the number of problems. */
+export function checkTerrainDetail() {
   const man = JSON.parse(readFileSync(join(OUT, 'detail.json'), 'utf8'));
   let bad = 0;
   for (const [file, f] of Object.entries(man.files)) {
@@ -190,7 +190,7 @@ function check() {
 // run only when executed directly (fetch-data.mjs imports prepTerrainDetail)
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   const o = parse(process.argv.slice(2));
-  if (o.check) process.exit(check() ? 1 : 0);
+  if (o.check) process.exit(checkTerrainDetail() ? 1 : 0);
   prepTerrainDetail(o).catch((e) => {
     console.error(e.message ?? e);
     process.exit(1);

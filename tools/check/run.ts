@@ -2,7 +2,8 @@
  * Static project validators (no GPU):  pnpm check
  *  - places: display offsets within the maximum, no overlapping landmark footprints
  *  - landmarks: every definition folder matches a place; every Tier-A place has a definition
- *  - assets: every shipped file in public/ is covered by CREDITS.md
+ *  - assets: every shipped file in public/ is covered by CREDITS.md (derived terrain textures through
+ *    their detail.json sources); raw texture sources under public/textures/ are flagged (they ship)
  *  - baked world (when a bake exists; MOME_WORLD_DIR overrides data/baked): monotone baked river levels,
  *    no stamp moves a river channel / lake ("rivers win", onRiver allowlist), per-landmark stamp loss to
  *    the river guard, the bake's hydro geometry gates (report.json) — see world.ts
@@ -86,13 +87,31 @@ function walk(dir: string): string[] {
     return statSync(p).isDirectory() ? walk(p) : [p];
   });
 }
+// derived textures (tools/textures/prep.mjs): covered through their sources, listed in detail.json
+const DERIVED = 'textures/terrain/';
+const derivedDir = join(ROOT, 'public', DERIVED);
+const derivedCovered = new Set<string>();
+if (existsSync(join(derivedDir, 'detail.json'))) {
+  const man = JSON.parse(readFileSync(join(derivedDir, 'detail.json'), 'utf8')) as { layers: { id: string; source: string }[]; files: Record<string, unknown> };
+  for (const l of man.layers) if (!credits.includes(l.source.toLowerCase())) errors.push(`assets: derived terrain layer '${l.id}' comes from '${l.source}', which CREDITS.md does not credit`);
+  for (const f of [...Object.keys(man.files), 'detail.json']) derivedCovered.add(DERIVED + f);
+  if (!credits.includes('public/textures/terrain')) errors.push('assets: CREDITS.md does not describe the derived public/textures/terrain set');
+}
+let rawTextureSets = 0;
 for (const file of walk(join(ROOT, 'public'))) {
   const rel = relative(join(ROOT, 'public'), file).replace(/\\/g, '/');
   if (rel.endsWith('_manifest.json')) continue;
+  if (rel.startsWith(DERIVED)) {
+    if (!derivedCovered.has(rel)) errors.push(`assets: public/${rel} is not listed in public/${DERIVED}detail.json (stale derived file? re-run tools/textures/prep.mjs)`);
+    continue;
+  }
+  // raw texture sources belong in data/textures-src (they would be copied into every build)
+  if (rel.startsWith('textures/') && /\.(jpe?g|png|exr)$/i.test(rel)) rawTextureSets++;
   const top = rel.split('/').slice(0, 2).join('/');
   const key = rel.split('/')[1]?.toLowerCase() ?? rel.toLowerCase();
   if (!credits.includes(key)) errors.push(`assets: public/${rel} not covered by CREDITS.md (looked for '${key}' from ${top})`);
 }
+if (rawTextureSets) warnings.push(`assets: ${rawTextureSets} raw texture source file(s) under public/textures/ — move them to data/textures-src/ (they ship with every build); the runtime uses public/textures/terrain only`);
 
 // ------------------------------------------------------------------ baked world
 const baked = bakedDir();
