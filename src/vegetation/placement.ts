@@ -65,7 +65,7 @@ const PALETTE: Record<number, string[]> = {
   [Kind.Scrub]: ['#3f5427', '#495d2c', '#364c26', '#50602f', '#425226'],
 };
 /** Mirkwood's older stands: muted bronze-olive patches (never isolated red crowns) */
-const MIRK_BRONZE = ['#3c3c26', '#403b25', '#383924', '#3d3d24'];
+const MIRK_BRONZE = ['#3b3d27', '#3e3c26', '#373a25', '#3c3e26'];
 const LORIEN_SAGE = ['#6f7646', '#7a7c44', '#687040'];
 /** Ithilien's dark cypresses and cedars */
 const CYPRESS = ['#233a22', '#2a4226', '#1f351f'];
@@ -308,7 +308,7 @@ function pickColor(kind: Kind, seed: number, id: number, x: number, z: number, p
   if (kind === Kind.Mirkwood) {
     // older bronze-olive stands in coherent patches (never isolated red crowns)
     const patch = valueNoise(x / 26, z / 26, seed + 5);
-    if (rand(seed, id, 12) < 0.4 * smooth(0.64, 0.9, patch)) pal = BRONZE_RGB;
+    if (rand(seed, id, 12) < 0.28 * smooth(0.64, 0.9, patch)) pal = BRONZE_RGB;
   } else if (kind === Kind.Lorien && rand(seed, id, 12) < 0.05) pal = SAGE_RGB;
   const c = pal[Math.floor(r0 * pal.length) % pal.length];
   // stands: low-frequency tone so wide shots read texture instead of a flat carpet
@@ -526,7 +526,8 @@ export function placeVegetation(world: World, opts: PlacementOptions): Placement
     const landOk = (x: number, z: number) =>
       s.water(x, z, 2) > 0.5 && s.water(x, z, 0) < 0.25 && s.water(x, z, 1) < 0.2 && s.forest(x, z) < 0.4 && s.slope(x, z) < 0.3 && s.height(x, z) > 0.3;
     const tree = (px: number, pz: number, size: number, tid: number, list: InstanceList) => {
-      const t = broadleaf(seed, tid, size);
+      // now and then a veteran oak or beech, the landmark of its field
+      const t = broadleaf(seed, tid, size * (rand(seed, tid, 40) < 0.14 ? 1.55 : 1));
       if (excluded(ex, px, pz, t.hr)) return;
       list.push(px, pz, t.hr, t.vr, t.trunk, Kind.Oak, rand(seed, tid, 3) * TAU, 0.85 + 0.25 * rand(seed, tid, 4), pickColor(Kind.Oak, seed, tid, px, pz), t.shape);
     };
@@ -626,9 +627,9 @@ export function placeVegetation(world: World, opts: PlacementOptions): Placement
         if (rand(seed, id, 9) < barren.at(x, z)) continue;
         const t = rand(seed, id, 4);
         const yaw = rand(seed, id, 7) * TAU;
-        if (t < 0.65 * grove) {
+        if (t < 0.7 * grove) {
           // a grove: a cluster of crowns
-          const hr = c * (0.42 + 0.16 * rand(seed, id, 5));
+          const hr = 0.7 + 0.5 * rand(seed, id, 5);
           if (excluded(ex, x, z, hr)) continue;
           const vr = hr * (0.8 + 0.3 * rand(seed, id, 6));
           coarse.push(x, z, hr, vr, -0.06 * vr, Kind.Ithilien, yaw, 0.85 + 0.3 * rand(seed, id, 8), pickColor(Kind.Ithilien, seed, id, x, z), { spread: 0.9, gap: 0.2, hVar: 0.32 });
