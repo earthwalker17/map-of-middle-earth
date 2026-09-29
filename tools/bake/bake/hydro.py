@@ -982,7 +982,8 @@ def shape_lakes(cfg: Config, h: np.ndarray, land: np.ndarray, lakes: dict[str, L
         # steeply at the waterline); further in, any deeper DEM basin is kept
         t_in = np.clip((d_in - 0.5 * ramp_in) / ramp_in, 0, 1)
         keep = t_in * t_in * (3 - 2 * t_in)
-        hw[:] = np.where(wet, bed + (np.minimum(hw, bed) - bed) * keep, hw)
+        # (an inland lake's bed stays above the sea datum: h > 0 is land for every mask and system)
+        hw[:] = np.where(wet, np.maximum(bed + (np.minimum(hw, bed) - bed) * keep, np.minimum(hw, 0.1) if lk.level > 0.2 else -np.inf), hw)
         # shores: walls above the level are eased down to it over D km, low shores rise to the level
         D = float(L.get("gradeKm", {}).get(lk.key, np.clip(size * 0.3, 1.5, 5.0)))
         out = ~wet
