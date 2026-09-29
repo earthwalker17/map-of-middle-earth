@@ -11,6 +11,7 @@ import {
 import type { FrameContext, InitContext, System } from '../core/types.ts';
 import type { World } from '../world/World.ts';
 import { createClumpGeometry, CROWN_TOP } from './clumpGeometry.ts';
+import { createFoamTexture } from './foamTexture.ts';
 import { createFoliageMaterial, type FoliageMaterialParts } from './foliageMaterial.ts';
 import { FLOATS_PER_INSTANCE, placeVegetation, type ExclusionCircle } from './placement.ts';
 
@@ -19,15 +20,17 @@ const CHUNK = 32;
 /** Extra margin (km) around chunks for the frustum test so off-screen casters still shadow. */
 const SHADOW_MARGIN = 28;
 /**
- * LOD ladder: crown tessellation (icosphere detail) and the projected crown diameter (px) above
- * which it is used. The fragment micro-structure carries the close-range detail, so geometry
- * stays modest (the iGPU is triangle-bound long before it is fragment-bound).
+ * LOD ladder: sub-crown tessellation (sphere detail: −1 octahedron … 2 = 320 tris per sub-crown,
+ * seven sub-crowns per cluster), trunk prism sides, and the projected cluster diameter (px) above
+ * which it is used. The fragment micro-structure carries the close-range detail, so geometry stays
+ * modest; the far LOD keeps the seven sub-crowns (the canopy texture of regional shots) and a
+ * three-sided trunk hint.
  */
-const LODS: { detail: number; trunk: boolean; minPx: number; cap: number }[] = [
-  { detail: 3, trunk: true, minPx: 130, cap: 6000 },
-  { detail: 2, trunk: true, minPx: 38, cap: 40000 },
-  { detail: 1, trunk: true, minPx: 9, cap: Infinity },
-  { detail: 0, trunk: false, minPx: 0, cap: Infinity },
+const LODS: { detail: number; trunkSides: number; minPx: number; cap: number }[] = [
+  { detail: 2, trunkSides: 6, minPx: 130, cap: 4000 },
+  { detail: 1, trunkSides: 6, minPx: 38, cap: 40000 },
+  { detail: 0, trunkSides: 4, minPx: 9, cap: Infinity },
+  { detail: -1, trunkSides: 3, minPx: 0, cap: Infinity },
 ];
 
 function lodFor(px: number): number {
@@ -80,6 +83,10 @@ const _v = new Vector3();
 export class VegetationSystem implements System {
   readonly id = 'vegetation';
   private parts!: FoliageMaterialParts;
+  /** one foliage material per quality tier (the micro structure is tier-aware); built on demand */
+  private materials = new Map<string, FoliageMaterialParts>();
+  private materialTier = '';
+  private foam: ReturnType<typeof createFoamTexture> | null = null;
   private lodGeometries: InstancedBufferGeometry[] = [];
   private buckets: Bucket[] = [];
   private scene: InitContext['scene'] | null = null;
@@ -101,8 +108,8 @@ export class VegetationSystem implements System {
 
   init(ctx: InitContext): void {
     this.scene = ctx.scene;
-    this.parts = createFoliageMaterial(this.world);
-    this.lodGeometries = LODS.map((l) => createClumpGeometry({ detail: l.detail, trunk: l.trunk }));
+    this.useMaterial(ctx.quality.id);
+    this.lodGeometries = LODS.map((l) => createClumpGeometry({ detail: l.detail, trunkSides: l.trunkSides }));
     this.place(ctx.quality.density);
   }
 
@@ -118,6 +125,20 @@ export class VegetationSystem implements System {
 
   getExclusions(): readonly ExclusionCircle[] {
     return this.exclusions;
+  }
+
+  /** Select (building once) the foliage material of a quality tier: preview samples one foam scale, review/final two. */
+  private useMaterial(tier: string): void {
+    if (tier === this.materialTier) return;
+    let parts = this.materials.get(tier);
+    if (!parts) {
+      this.foam ??= createFoamTexture(this.world.spec.json.seeds.world + 71);
+      parts = createFoliageMaterial(this.world, { microTaps: tier === 'preview' ? 1 : 2, foam: this.foam });
+      this.materials.set(tier, parts);
+    }
+    this.parts = parts;
+    this.materialTier = tier;
+    for (const b of this.buckets) b.mesh.material = parts.material;
   }
 
   // ------------------------------------------------------------------ placement
@@ -221,6 +242,7 @@ export class VegetationSystem implements System {
   // ------------------------------------------------------------------ per frame
 
   evaluate(frame: FrameContext): void {
+    this.useMaterial(frame.quality.id);
     const density = frame.quality.density;
     if (density !== this.placedDensity || this.placedExclusions !== this.exclusionsVersion) this.place(density);
 
@@ -279,11 +301,12 @@ export class VegetationSystem implements System {
           B[o] = this.coarse[s + 4];
           B[o + 1] = this.coarse[s + 5];
           B[o + 2] = this.coarse[s + 6];
-          B[o + 3] = 0;
+          B[o + 3] = this.coarse[s + 8];
           const rgb = this.coarse[s + 7];
           C[o] = rgb >>> 16;
           C[o + 1] = (rgb >>> 8) & 255;
           C[o + 2] = rgb & 255;
+          C[o + 3] = Math.round(this.coarse[s + 9] * 255);
         }
         bk.count = n;
       }
@@ -314,11 +337,12 @@ export class VegetationSystem implements System {
           B[o] = this.fine[s + 4] * sc;
           B[o + 1] = this.fine[s + 5];
           B[o + 2] = this.fine[s + 6];
-          B[o + 3] = 0;
+          B[o + 3] = this.fine[s + 8];
           const rgb = this.fine[s + 7];
           C[o] = rgb >>> 16;
           C[o + 1] = (rgb >>> 8) & 255;
           C[o + 2] = rgb & 255;
+          C[o + 3] = Math.round(this.fine[s + 9] * 255);
           bk.count++;
         }
       }
@@ -344,6 +368,7 @@ export class VegetationSystem implements System {
       b.geometry.dispose();
     }
     for (const g of this.lodGeometries) g.dispose();
-    this.parts?.material.dispose();
+    for (const m of this.materials.values()) m.material.dispose();
+    this.foam?.dispose();
   }
 }
