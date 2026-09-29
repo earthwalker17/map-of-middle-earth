@@ -1,4 +1,4 @@
-import { Mesh } from 'three/webgpu';
+import { Mesh, type MeshStandardNodeMaterial } from 'three/webgpu';
 import { tsl, type TslNode } from '../materials/tsl.ts';
 import type { FrameContext, InitContext, System } from '../core/types.ts';
 import type { World } from '../world/World.ts';
@@ -16,29 +16,42 @@ const { vec2 } = tsl;
  *    from the seabed up to sea level (the water system draws the surface itself)
  *  - plinth: a restrained dark-stone moulding (ledge, rounded bevel, face, recessed foot)
  * The atmospheric void around it is part of the environment's sky dome.
- * Static geometry; the only animation (light shafts in the water) runs on env.tFx.
+ * Static geometry; the only animation (light shafts in the water) runs on env.tFx. The strata
+ * material is tier-aware (a cheaper preview variant), selected from `frame.quality`.
  */
 export class DioramaSystem implements System {
   readonly id = 'diorama';
   strata!: Mesh;
   waterColumn!: Mesh;
   plinth!: Mesh;
+  private inp!: SlabMaterialInputs;
+  private strataMaterials = new Map<boolean, MeshStandardNodeMaterial>();
 
   constructor(private readonly world: World) {}
+
+  private strataFor(tier: string): MeshStandardNodeMaterial {
+    const preview = tier === 'preview';
+    let m = this.strataMaterials.get(preview);
+    if (!m) {
+      m = createStrataMaterial(this.inp, { preview });
+      this.strataMaterials.set(preview, m);
+    }
+    return m;
+  }
 
   init(ctx: InitContext): void {
     const spec = this.world.spec;
     const hf = this.world.heights;
-    const inp: SlabMaterialInputs = {
+    const inp: SlabMaterialInputs = (this.inp = {
       heights: hf.texture,
       toUv: (xz: TslNode) => vec2(xz.x.sub(spec.xMin).div(spec.width), xz.y.sub(spec.zMin).div(spec.depth)),
-    };
+    });
     if (Math.abs(spec.xMin - SLAB.xMin) > 1e-6 || Math.abs(spec.zMax - SLAB.zMax) > 1e-6) {
       throw new Error('DioramaSystem: slab frame does not match the world frame');
     }
     const strip = createEdgeStrip(hf.texel, hf.width, hf.height);
 
-    this.strata = new Mesh(strip, createStrataMaterial(inp));
+    this.strata = new Mesh(strip, this.strataFor(ctx.quality.id));
     this.strata.name = 'diorama-strata';
     this.strata.frustumCulled = false;
     this.strata.castShadow = true;
@@ -58,5 +71,8 @@ export class DioramaSystem implements System {
     ctx.scene.add(this.strata, this.waterColumn, this.plinth);
   }
 
-  evaluate(_frame: FrameContext): void {}
+  evaluate(frame: FrameContext): void {
+    const m = this.strataFor(frame.quality.id);
+    if (this.strata.material !== m) this.strata.material = m;
+  }
 }

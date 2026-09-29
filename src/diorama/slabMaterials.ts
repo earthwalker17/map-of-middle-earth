@@ -29,6 +29,7 @@ const {
   sin,
   smoothstep,
   texture,
+  varying,
   vec2,
   vec3,
   vec4,
@@ -60,21 +61,56 @@ function edgeHeight(inp: SlabMaterialInputs, xz: N, level = true): N {
 
 // ------------------------------------------------------------------ strata cut face
 
+export interface StrataOptions {
+  /**
+   * Preview tier: everything that varies only along the cut (fold under the relief, undulation,
+   * fault-block coordinate, soil depth noise, the cut-top height) moves to the vertex stage — the
+   * strip has a vertex per height texel — and the per-pixel noise drops its fine octaves
+   * (grain, warp, rock normal). No texture taps are left in the fragment stage.
+   */
+  preview?: boolean;
+}
+
 /**
  * Geological cross-section on the cut faces: turf line → topsoil → subsoil → folded sedimentary
  * strata (sandstones, shales, limestones, mudstones) that arch up under mountain ranges, marine
  * sediments under the sea, darker and denser with depth. Ledges of harder beds are carried by the
  * normal (finite differences of a bump function), not geometry.
  */
-export function createStrataMaterial(inp: SlabMaterialInputs): MeshStandardNodeMaterial {
+export function createStrataMaterial(inp: SlabMaterialInputs, opts: StrataOptions = {}): MeshStandardNodeMaterial {
   const base = SLAB.base;
   const BAND = 5.6;
+  const preview = opts.preview ?? false;
 
   const positionNode = Fn(() => {
     const p = positionLocal;
     const h = edgeHeight(inp, p.xz);
     return vec3(p.x, mix(float(base), h, attribute('top', 'float')), p.z);
   })();
+
+  // along-cut terms (vertex stage in the preview tier; the strip's xz is its world xz)
+  const along = (xz: N, level: boolean) => {
+    const s = xz.x.add(xz.y);
+    const tap = (o: N) => edgeHeight(inp, xz.add(o), level);
+    const fold = select0(tap(vec2(22, 22)).add(tap(vec2(-22, -22))).add(tap(vec2(48, -48))).add(tap(vec2(-48, 48))).mul(0.25));
+    const fcS = s.div(70).add(mx_noise_float(vec2(s.mul(0.004), 3.7)).mul(0.6));
+    const undul = sin(s.mul(0.0105).add(1.3)).mul(2.5).add(mx_noise_float(vec2(s.mul(0.0045), 8.1)).mul(5));
+    const soilN = mx_noise_float(vec2(s.mul(0.09), 0.5));
+    return { fold, fcS, undul, soilN, top: edgeHeight(inp, xz, level) };
+  };
+  const vAlong = preview
+    ? (() => {
+        const a = along(positionLocal.xz, true);
+        return {
+          foldUndul: varying(a.fold.add(a.undul), 'vStrataFoldUndul'),
+          fcS: varying(a.fcS, 'vStrataFc'),
+          soilN: varying(a.soilN, 'vStrataSoilN'),
+          top: varying(a.top, 'vStrataTop'),
+        };
+      })()
+    : null;
+
+  const soilNoise = (): N => (vAlong ? vAlong.soilN : mx_noise_float(vec2(positionWorld.x.add(positionWorld.z).mul(0.09), 0.5)));
 
   /**
    * Shared per-pixel core (computed once, used by colour and normal):
@@ -86,17 +122,14 @@ export function createStrataMaterial(inp: SlabMaterialInputs): MeshStandardNodeM
   const core = Fn(() => {
     const p = positionWorld;
     const s = p.x.add(p.z);
-    const ra = edgeHeight(inp, p.xz.add(vec2(22, 22)), false);
-    const rb = edgeHeight(inp, p.xz.sub(vec2(22, 22)), false);
-    const rc = edgeHeight(inp, p.xz.add(vec2(48, -48)), false);
-    const rd = edgeHeight(inp, p.xz.add(vec2(-48, 48)), false);
-    const fold = select0(ra.add(rb).add(rc).add(rd).mul(0.25));
-    const fc = s.add(p.y.mul(0.36)).div(70).add(mx_noise_float(vec2(s.mul(0.004), 3.7)).mul(0.6));
+    const a = vAlong ?? along(p.xz, false);
+    const foldUndul = vAlong ? vAlong.foldUndul : (a as ReturnType<typeof along>).fold.add((a as ReturnType<typeof along>).undul);
+    const fc = a.fcS.add(p.y.mul(0.36 / 70));
     const throwY = hash11(floor(fc).add(21.3)).sub(0.5).mul(7);
-    const undul = sin(s.mul(0.0105).add(1.3)).mul(2.5).add(mx_noise_float(vec2(s.mul(0.0045), 8.1)).mul(5));
-    const warp = mx_noise_float(vec2(s.mul(0.011), p.y.mul(0.03))).mul(1.4).add(mx_noise_float(vec2(s.mul(0.045), p.y.mul(0.12))).mul(0.35));
-    const off = throwY.sub(fold).sub(undul).add(warp);
-    return vec4(off, fract(fc), edgeHeight(inp, p.xz, false), length(p.sub(env.cameraPos))).toVar();
+    let warp: N = mx_noise_float(vec2(s.mul(0.011), p.y.mul(0.03))).mul(1.4);
+    if (!preview) warp = warp.add(mx_noise_float(vec2(s.mul(0.045), p.y.mul(0.12))).mul(0.35));
+    const off = throwY.sub(foldUndul).add(warp);
+    return vec4(off, fract(fc), a.top, length(p.sub(env.cameraPos))).toVar();
   })
     .once()();
 
@@ -144,7 +177,8 @@ export function createStrataMaterial(inp: SlabMaterialInputs): MeshStandardNodeM
     const fissile = smoothstep(0.55, 0.75, hash11(id.add(12.1)));
     const lam = sin(bw.mul(BAND * 6.3).add(sin(s.mul(0.05)).mul(2))).mul(0.5).add(0.5).mul(fissile);
     const near = float(1).sub(smoothstep(60, 500, core.w));
-    const grain = mx_noise_float(p.mul(1.7)).mul(0.09).add(mx_noise_float(p.mul(7.0)).mul(0.06).mul(near));
+    let grain: N = mx_noise_float(p.mul(1.7)).mul(0.09);
+    if (!preview) grain = grain.add(mx_noise_float(p.mul(7.0)).mul(0.06).mul(near));
     // vertical joints, faint at distance
     const joint = smoothstep(0.93, 1.0, abs(mx_noise_float(vec2(s.mul(0.32), p.y.mul(0.045).add(id.mul(3.1)))))).mul(0.25).mul(near.mul(0.7).add(0.3));
     // lateral facies change: a bed drifts towards another's colour along the cut
@@ -160,7 +194,7 @@ export function createStrataMaterial(inp: SlabMaterialInputs): MeshStandardNodeM
     // soils (land) / marine sediments (sea floor)
     const land = smoothstep(-0.3, 0.3, hTop);
     const mountain = smoothstep(9, 20, hTop);
-    const soilN = mx_noise_float(vec2(s.mul(0.09), 0.5));
+    const soilN = soilNoise();
     const soilD = float(0.3).add(soilN.mul(0.18)).mul(float(1).sub(mountain.mul(0.75)));
     const subD = soilD.add(float(1.1).add(sin(s.mul(0.031).add(soilN)).mul(0.4)).mul(float(1).sub(mountain.mul(0.6))));
     const turf = srgb(0x3b4126);
@@ -190,7 +224,8 @@ export function createStrataMaterial(inp: SlabMaterialInputs): MeshStandardNodeM
     // rough rock: one vector-noise perturbation (+ a finer octave up close)
     const detail = float(1).sub(smoothstep(40, 300, core.w));
     // slightly stretched along the bedding; the ledges carry the main relief
-    const nv = mx_noise_vec3(p.mul(vec3(0.3, 0.85, 0.3))).mul(0.065).add(mx_noise_vec3(p.mul(1.6)).mul(0.035).mul(detail));
+    let nv: N = mx_noise_vec3(p.mul(vec3(0.3, 0.85, 0.3))).mul(0.065);
+    if (!preview) nv = nv.add(mx_noise_vec3(p.mul(1.6)).mul(0.035).mul(detail));
     const tangential = nv.sub(nW.mul(dot(nv, nW)));
     const n = normalize(nW.sub(up.mul(dy.mul(0.75))).add(tangential));
     return normalize(cameraViewMatrix.mul(vec4(n, 0)).xyz);
