@@ -570,7 +570,7 @@ export function placeVegetation(world: World, opts: PlacementOptions): Placement
             });
           }
           // hedgerow trees
-          const trees = rand(seed, eid, 5) < 0.55 * w ? 1 + Math.floor(rand(seed, eid, 6) * 3) : 0;
+          const trees = rand(seed, eid, 5) < 0.72 * w ? 1 + Math.floor(rand(seed, eid, 6) * 3) : 0;
           for (let q = 0; q < trees; q++) {
             const t = 0.1 + 0.8 * rand(seed, eid, 110 + q);
             const px = A[0] + dx * t;
@@ -586,7 +586,7 @@ export function placeVegetation(world: World, opts: PlacementOptions): Placement
         const fz = (A2[1] + C[1]) / 2;
         const fw = hedgeWeight(fx, fz);
         const fid = hash32(i, j, 204);
-        if (fw > 0.05 && rand(seed, fid, 1) < 0.2 * fw) {
+        if (fw > 0.05 && rand(seed, fid, 1) < 0.26 * fw) {
           const count = 4 + Math.floor(rand(seed, fid, 2) * 8);
           const rad = 0.5 + 0.6 * rand(seed, fid, 3);
           for (let q = 0; q < count; q++) {
