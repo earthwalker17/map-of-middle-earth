@@ -1,8 +1,9 @@
 {
+  "notes": "Raw CC0 Poly Haven texture sources, fetched by `pnpm data:fetch` (gitignored). They are NOT shipped: tools/textures/prep.mjs derives the runtime terrain detail layers into public/textures/terrain/ (gitignored too).",
   "agent": "refs-south-east-assets",
   "items": [
     {
-      "file": "public/textures/aerial_grass_rock/diffuse.jpg",
+      "file": "data/textures-src/aerial_grass_rock/diffuse.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/aerial_grass_rock/aerial_grass_rock_diff_2k.jpg",
       "shows": "Aerial Grass Rock — diffuse map (2k JPG)",
       "subject": "general",
@@ -17,7 +18,7 @@
       "sha256": "1a2ddfa4652adbe00447b940c40019d46f4b88245bc1b341cdf622c2110b7bc5"
     },
     {
-      "file": "public/textures/aerial_grass_rock/nor_gl.jpg",
+      "file": "data/textures-src/aerial_grass_rock/nor_gl.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/aerial_grass_rock/aerial_grass_rock_nor_gl_2k.jpg",
       "shows": "Aerial Grass Rock — nor_gl map (2k JPG)",
       "subject": "general",
@@ -32,7 +33,7 @@
       "sha256": "c6aa14b042ce243f93a6ca807f46a085711c23ad316b104578e92df7770ee285"
     },
     {
-      "file": "public/textures/aerial_grass_rock/rough.jpg",
+      "file": "data/textures-src/aerial_grass_rock/rough.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/aerial_grass_rock/aerial_grass_rock_rough_2k.jpg",
       "shows": "Aerial Grass Rock — rough map (2k JPG)",
       "subject": "general",
@@ -47,7 +48,7 @@
       "sha256": "fc0fff40e3378f2f54d225db6e3e566a8563bb2c143eef0f09b543c9d4698776"
     },
     {
-      "file": "public/textures/aerial_grass_rock/ao.jpg",
+      "file": "data/textures-src/aerial_grass_rock/ao.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/aerial_grass_rock/aerial_grass_rock_ao_2k.jpg",
       "shows": "Aerial Grass Rock — ao map (2k JPG)",
       "subject": "general",
@@ -62,7 +63,7 @@
       "sha256": "2eb11d2282c78126dff97697ae87a35ac5c1e2b7a3aa0b1c67473a0ae0621d03"
     },
     {
-      "file": "public/textures/aerial_grass_rock/disp.jpg",
+      "file": "data/textures-src/aerial_grass_rock/disp.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/aerial_grass_rock/aerial_grass_rock_disp_2k.jpg",
       "shows": "Aerial Grass Rock — disp map (2k JPG)",
       "subject": "general",
@@ -77,7 +78,7 @@
       "sha256": "402db9334208ac6b505e4aa955ee9564d04073e5507b49adfc84282c26181dc8"
     },
     {
-      "file": "public/textures/leafy_grass/diffuse.jpg",
+      "file": "data/textures-src/leafy_grass/diffuse.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/leafy_grass/leafy_grass_diff_2k.jpg",
       "shows": "Leafy Grass — diffuse map (2k JPG)",
       "subject": "general",
@@ -92,7 +93,7 @@
       "sha256": "8e1c6d21365d4b89bc5a35ab664da98a78dbc3ab9ba6100474881c8619a5b113"
     },
     {
-      "file": "public/textures/leafy_grass/nor_gl.jpg",
+      "file": "data/textures-src/leafy_grass/nor_gl.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/leafy_grass/leafy_grass_nor_gl_2k.jpg",
       "shows": "Leafy Grass — nor_gl map (2k JPG)",
       "subject": "general",
@@ -107,7 +108,7 @@
       "sha256": "df0cf0ce96e653f033e5b934d5b12995464bda027aa53bd12e329be889aa9f45"
     },
     {
-      "file": "public/textures/leafy_grass/rough.jpg",
+      "file": "data/textures-src/leafy_grass/rough.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/leafy_grass/leafy_grass_rough_2k.jpg",
       "shows": "Leafy Grass — rough map (2k JPG)",
       "subject": "general",
@@ -122,7 +123,7 @@
       "sha256": "34e1733bf4064b6950a575ff57e78c8b7ff71b63749eb48a49221bd65de6fb4f"
     },
     {
-      "file": "public/textures/leafy_grass/ao.jpg",
+      "file": "data/textures-src/leafy_grass/ao.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/leafy_grass/leafy_grass_ao_2k.jpg",
       "shows": "Leafy Grass — ao map (2k JPG)",
       "subject": "general",
@@ -137,7 +138,7 @@
       "sha256": "bcce4368f6a1affe11b4a643e14cfed7dfb46abf6bb9e6a28a3b87c2de2ddb11"
     },
     {
-      "file": "public/textures/leafy_grass/disp.jpg",
+      "file": "data/textures-src/leafy_grass/disp.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/leafy_grass/leafy_grass_disp_2k.jpg",
       "shows": "Leafy Grass — disp map (2k JPG)",
       "subject": "general",
@@ -152,7 +153,7 @@
       "sha256": "de34be0f135a3c92fe6e55cca9501a4cc40e02e84de9cc4c7fefded1da5bd3f3"
     },
     {
-      "file": "public/textures/withered_grass/diffuse.jpg",
+      "file": "data/textures-src/withered_grass/diffuse.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/withered_grass/withered_grass_diff_2k.jpg",
       "shows": "Withered Grass — diffuse map (2k JPG)",
       "subject": "general",
@@ -167,7 +168,7 @@
       "sha256": "0cf0fca68cbf4277199a2b9b7b3a8013357e4087247b1367f86d4a53b4fafa7e"
     },
     {
-      "file": "public/textures/withered_grass/nor_gl.jpg",
+      "file": "data/textures-src/withered_grass/nor_gl.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/withered_grass/withered_grass_nor_gl_2k.jpg",
       "shows": "Withered Grass — nor_gl map (2k JPG)",
       "subject": "general",
@@ -182,7 +183,7 @@
       "sha256": "5fd42baf06224086cb9afcb2f7a3b9f26feddd719bf1f9aed65ec49c586e7ff9"
     },
     {
-      "file": "public/textures/withered_grass/rough.jpg",
+      "file": "data/textures-src/withered_grass/rough.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/withered_grass/withered_grass_rough_2k.jpg",
       "shows": "Withered Grass — rough map (2k JPG)",
       "subject": "general",
@@ -197,7 +198,7 @@
       "sha256": "86adb8d6f24d0a38eb96c6b625f2dd027b805f59af46fe2a05ffe29f633e33c8"
     },
     {
-      "file": "public/textures/withered_grass/ao.jpg",
+      "file": "data/textures-src/withered_grass/ao.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/withered_grass/withered_grass_ao_2k.jpg",
       "shows": "Withered Grass — ao map (2k JPG)",
       "subject": "general",
@@ -212,7 +213,7 @@
       "sha256": "b91ec4cab6fdd8034c928647a4ad9a09a5b99744db8d18c0743ead407c8d1b93"
     },
     {
-      "file": "public/textures/withered_grass/disp.jpg",
+      "file": "data/textures-src/withered_grass/disp.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/withered_grass/withered_grass_disp_2k.jpg",
       "shows": "Withered Grass — disp map (2k JPG)",
       "subject": "general",
@@ -227,7 +228,7 @@
       "sha256": "2e9ade0a66c6d6b9990ce19ead20b155e1aed7969e4e86f8210fc7595dd2983d"
     },
     {
-      "file": "public/textures/forrest_ground_01/diffuse.jpg",
+      "file": "data/textures-src/forrest_ground_01/diffuse.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/forrest_ground_01/forrest_ground_01_diff_2k.jpg",
       "shows": "Forest Ground 01 — diffuse map (2k JPG)",
       "subject": "general",
@@ -242,7 +243,7 @@
       "sha256": "e4d557ff61a0b42712a58e8a2e91c6010738977d4e172b7af47abd7d406ae735"
     },
     {
-      "file": "public/textures/forrest_ground_01/nor_gl.jpg",
+      "file": "data/textures-src/forrest_ground_01/nor_gl.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/forrest_ground_01/forrest_ground_01_nor_gl_2k.jpg",
       "shows": "Forest Ground 01 — nor_gl map (2k JPG)",
       "subject": "general",
@@ -257,7 +258,7 @@
       "sha256": "aa23fa930c6303490f842f7c016c19d838263e8e4538d42508a9332e3fd76b69"
     },
     {
-      "file": "public/textures/forrest_ground_01/rough.jpg",
+      "file": "data/textures-src/forrest_ground_01/rough.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/forrest_ground_01/forrest_ground_01_rough_2k.jpg",
       "shows": "Forest Ground 01 — rough map (2k JPG)",
       "subject": "general",
@@ -272,7 +273,7 @@
       "sha256": "e09258c7f055156a7607f1b21dccf38c7efd847e7d030271d5ffcc4a722df37d"
     },
     {
-      "file": "public/textures/forrest_ground_01/ao.jpg",
+      "file": "data/textures-src/forrest_ground_01/ao.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/forrest_ground_01/forrest_ground_01_ao_2k.jpg",
       "shows": "Forest Ground 01 — ao map (2k JPG)",
       "subject": "general",
@@ -287,7 +288,7 @@
       "sha256": "3da52f2f2182f2cf0a7b417e10764ee1ff446df0bc9fb12d49c4e3570ea3effe"
     },
     {
-      "file": "public/textures/forrest_ground_01/disp.jpg",
+      "file": "data/textures-src/forrest_ground_01/disp.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/forrest_ground_01/forrest_ground_01_disp_2k.jpg",
       "shows": "Forest Ground 01 — disp map (2k JPG)",
       "subject": "general",
@@ -302,7 +303,7 @@
       "sha256": "1d5c63d39e67af44e96cc9d5752273982bc5c82c9855695dada4abc2fc20575d"
     },
     {
-      "file": "public/textures/mossy_rock/diffuse.jpg",
+      "file": "data/textures-src/mossy_rock/diffuse.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/mossy_rock/mossy_rock_diff_2k.jpg",
       "shows": "Mossy Rock — diffuse map (2k JPG)",
       "subject": "general",
@@ -317,7 +318,7 @@
       "sha256": "98ecbd1d19953433f5909b79958992b1da2b45addbee772d1d4c27287f368499"
     },
     {
-      "file": "public/textures/mossy_rock/nor_gl.jpg",
+      "file": "data/textures-src/mossy_rock/nor_gl.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/mossy_rock/mossy_rock_nor_gl_2k.jpg",
       "shows": "Mossy Rock — nor_gl map (2k JPG)",
       "subject": "general",
@@ -332,7 +333,7 @@
       "sha256": "78c05b52eb78617fcce4fde7a9ac4872a9725fb2d13aff33248cbdb9c6330563"
     },
     {
-      "file": "public/textures/mossy_rock/rough.jpg",
+      "file": "data/textures-src/mossy_rock/rough.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/mossy_rock/mossy_rock_rough_2k.jpg",
       "shows": "Mossy Rock — rough map (2k JPG)",
       "subject": "general",
@@ -347,7 +348,7 @@
       "sha256": "341c4f85e9b350738d30e82e616177316cc5fcbc3e8b5ee9777db47dfc5e6b7a"
     },
     {
-      "file": "public/textures/mossy_rock/ao.jpg",
+      "file": "data/textures-src/mossy_rock/ao.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/mossy_rock/mossy_rock_ao_2k.jpg",
       "shows": "Mossy Rock — ao map (2k JPG)",
       "subject": "general",
@@ -362,7 +363,7 @@
       "sha256": "7ced8b235f6e1c8dc537aa55fdb1990189fe0a30ea70edfa954f61043347053e"
     },
     {
-      "file": "public/textures/mossy_rock/disp.jpg",
+      "file": "data/textures-src/mossy_rock/disp.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/mossy_rock/mossy_rock_disp_2k.jpg",
       "shows": "Mossy Rock — disp map (2k JPG)",
       "subject": "general",
@@ -377,7 +378,7 @@
       "sha256": "cc9a0ef96a0912c93fc8447f9a702a00fe3c442c36ed5999dbac5f7013ac5dde"
     },
     {
-      "file": "public/textures/dirt_aerial_02/diffuse.jpg",
+      "file": "data/textures-src/dirt_aerial_02/diffuse.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dirt_aerial_02/dirt_aerial_02_diff_2k.jpg",
       "shows": "Dirt Aerial 02 — diffuse map (2k JPG)",
       "subject": "general",
@@ -392,7 +393,7 @@
       "sha256": "f4c81ff69a62773dd6dbfe8f3116980a53d8e730e1731ea7992836115d8f56c6"
     },
     {
-      "file": "public/textures/dirt_aerial_02/nor_gl.jpg",
+      "file": "data/textures-src/dirt_aerial_02/nor_gl.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dirt_aerial_02/dirt_aerial_02_nor_gl_2k.jpg",
       "shows": "Dirt Aerial 02 — nor_gl map (2k JPG)",
       "subject": "general",
@@ -407,7 +408,7 @@
       "sha256": "a907cdca993c1e1a0ffbd528de84916d58feda891f283f599b9d7c68bc33c603"
     },
     {
-      "file": "public/textures/dirt_aerial_02/rough.jpg",
+      "file": "data/textures-src/dirt_aerial_02/rough.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dirt_aerial_02/dirt_aerial_02_rough_2k.jpg",
       "shows": "Dirt Aerial 02 — rough map (2k JPG)",
       "subject": "general",
@@ -422,7 +423,7 @@
       "sha256": "679b9a06e4b3607c73b61874c351fe8be5ba36b86a0f174774e9f16d18deb399"
     },
     {
-      "file": "public/textures/dirt_aerial_02/ao.jpg",
+      "file": "data/textures-src/dirt_aerial_02/ao.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dirt_aerial_02/dirt_aerial_02_ao_2k.jpg",
       "shows": "Dirt Aerial 02 — ao map (2k JPG)",
       "subject": "general",
@@ -437,7 +438,7 @@
       "sha256": "e693fb030b376d7fe73b12bd3749b340b32e3ecc5deac296a69122341af51fd7"
     },
     {
-      "file": "public/textures/dirt_aerial_02/disp.jpg",
+      "file": "data/textures-src/dirt_aerial_02/disp.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dirt_aerial_02/dirt_aerial_02_disp_2k.jpg",
       "shows": "Dirt Aerial 02 — disp map (2k JPG)",
       "subject": "general",
@@ -452,7 +453,7 @@
       "sha256": "5f0ae83df528874deaecd9fcb5f40aefeab2f6d8c6957ffed2793247041e981b"
     },
     {
-      "file": "public/textures/aerial_rocks_02/diffuse.jpg",
+      "file": "data/textures-src/aerial_rocks_02/diffuse.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/aerial_rocks_02/aerial_rocks_02_diff_2k.jpg",
       "shows": "Aerial Rocks 02 — diffuse map (2k JPG)",
       "subject": "general",
@@ -467,7 +468,7 @@
       "sha256": "f759d2471cb6a4b3b37d0a5a249adbad1d4d48d67825f37622a603dac8d9bb22"
     },
     {
-      "file": "public/textures/aerial_rocks_02/nor_gl.jpg",
+      "file": "data/textures-src/aerial_rocks_02/nor_gl.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/aerial_rocks_02/aerial_rocks_02_nor_gl_2k.jpg",
       "shows": "Aerial Rocks 02 — nor_gl map (2k JPG)",
       "subject": "general",
@@ -482,7 +483,7 @@
       "sha256": "e7ad2a65b446ef70c3eb8b32267bee74d91d9759ed52c349c38e34cfd62d079e"
     },
     {
-      "file": "public/textures/aerial_rocks_02/rough.jpg",
+      "file": "data/textures-src/aerial_rocks_02/rough.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/aerial_rocks_02/aerial_rocks_02_rough_2k.jpg",
       "shows": "Aerial Rocks 02 — rough map (2k JPG)",
       "subject": "general",
@@ -497,7 +498,7 @@
       "sha256": "f1808dec1ad6dd77881baa41813d9718bb93e9aa1dabdcd9d6dc9b7f45dd90da"
     },
     {
-      "file": "public/textures/aerial_rocks_02/ao.jpg",
+      "file": "data/textures-src/aerial_rocks_02/ao.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/aerial_rocks_02/aerial_rocks_02_ao_2k.jpg",
       "shows": "Aerial Rocks 02 — ao map (2k JPG)",
       "subject": "general",
@@ -512,7 +513,7 @@
       "sha256": "c5c2f5f4158e2f49e8b751361f9e868417c6ac27700297970ab5a9b628bec7f2"
     },
     {
-      "file": "public/textures/aerial_rocks_02/disp.jpg",
+      "file": "data/textures-src/aerial_rocks_02/disp.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/aerial_rocks_02/aerial_rocks_02_disp_2k.jpg",
       "shows": "Aerial Rocks 02 — disp map (2k JPG)",
       "subject": "general",
@@ -527,7 +528,7 @@
       "sha256": "d67a273e73cafdcda427a969660edcd1e58ab124fc9f17206068995d4f5b735b"
     },
     {
-      "file": "public/textures/rocky_terrain_02/diffuse.jpg",
+      "file": "data/textures-src/rocky_terrain_02/diffuse.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rocky_terrain_02/rocky_terrain_02_diff_2k.jpg",
       "shows": "Rocky Terrain 02 — diffuse map (2k JPG)",
       "subject": "general",
@@ -542,7 +543,7 @@
       "sha256": "9b042fe0618ffbc3650592456d7d8d265ba9a1cb5ce802f5f1d86b7ee79508a1"
     },
     {
-      "file": "public/textures/rocky_terrain_02/nor_gl.jpg",
+      "file": "data/textures-src/rocky_terrain_02/nor_gl.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rocky_terrain_02/rocky_terrain_02_nor_gl_2k.jpg",
       "shows": "Rocky Terrain 02 — nor_gl map (2k JPG)",
       "subject": "general",
@@ -557,7 +558,7 @@
       "sha256": "556ed903180a9431b253fc1c334c769dc4615c5c0f4ef1cedf20533ae8409ce8"
     },
     {
-      "file": "public/textures/rocky_terrain_02/rough.jpg",
+      "file": "data/textures-src/rocky_terrain_02/rough.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rocky_terrain_02/rocky_terrain_02_rough_2k.jpg",
       "shows": "Rocky Terrain 02 — rough map (2k JPG)",
       "subject": "general",
@@ -572,7 +573,7 @@
       "sha256": "89f3c7b9e467160a821cbac32a1fdfd75f13cb87c9deeb22099d16677a711126"
     },
     {
-      "file": "public/textures/rocky_terrain_02/ao.jpg",
+      "file": "data/textures-src/rocky_terrain_02/ao.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rocky_terrain_02/rocky_terrain_02_ao_2k.jpg",
       "shows": "Rocky Terrain 02 — ao map (2k JPG)",
       "subject": "general",
@@ -587,7 +588,7 @@
       "sha256": "30a581b6d3f11db1f5f4f5bd3cbe89695d94042455311bb44a54f6691743a648"
     },
     {
-      "file": "public/textures/rocky_terrain_02/disp.jpg",
+      "file": "data/textures-src/rocky_terrain_02/disp.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rocky_terrain_02/rocky_terrain_02_disp_2k.jpg",
       "shows": "Rocky Terrain 02 — disp map (2k JPG)",
       "subject": "general",
@@ -602,7 +603,7 @@
       "sha256": "84a544dad4d12da56962297dbc7c64813c918ca4942cc8b71b5a18799e454c24"
     },
     {
-      "file": "public/textures/burned_ground_01/diffuse.jpg",
+      "file": "data/textures-src/burned_ground_01/diffuse.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/burned_ground_01/burned_ground_01_diff_2k.jpg",
       "shows": "Burned Ground 01 — diffuse map (2k JPG)",
       "subject": "general",
@@ -617,7 +618,7 @@
       "sha256": "3d7f67558e6ec57a50b56e196c37665ea4a1b3d7f8dc4049618f9002e08c109d"
     },
     {
-      "file": "public/textures/burned_ground_01/nor_gl.jpg",
+      "file": "data/textures-src/burned_ground_01/nor_gl.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/burned_ground_01/burned_ground_01_nor_gl_2k.jpg",
       "shows": "Burned Ground 01 — nor_gl map (2k JPG)",
       "subject": "general",
@@ -632,7 +633,7 @@
       "sha256": "703e907fe5cdf952aea61134600be985453da66d1a6d88519e5b7cd71d93c9f0"
     },
     {
-      "file": "public/textures/burned_ground_01/rough.jpg",
+      "file": "data/textures-src/burned_ground_01/rough.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/burned_ground_01/burned_ground_01_rough_2k.jpg",
       "shows": "Burned Ground 01 — rough map (2k JPG)",
       "subject": "general",
@@ -647,7 +648,7 @@
       "sha256": "7ab3d961e8d6bf8ae56e993dc32df3b5466d257f4c7547e8739b91615f45d1a9"
     },
     {
-      "file": "public/textures/burned_ground_01/ao.jpg",
+      "file": "data/textures-src/burned_ground_01/ao.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/burned_ground_01/burned_ground_01_ao_2k.jpg",
       "shows": "Burned Ground 01 — ao map (2k JPG)",
       "subject": "general",
@@ -662,7 +663,7 @@
       "sha256": "660f2a3c8f38d21a06c279309e57ac7f5a00677374391f06d5009cdf909b6970"
     },
     {
-      "file": "public/textures/burned_ground_01/disp.jpg",
+      "file": "data/textures-src/burned_ground_01/disp.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/burned_ground_01/burned_ground_01_disp_2k.jpg",
       "shows": "Burned Ground 01 — disp map (2k JPG)",
       "subject": "general",
@@ -677,7 +678,7 @@
       "sha256": "c952251c285d68bb95aa9833b97c5681b57c8faf320b7b820282f43db00ea20f"
     },
     {
-      "file": "public/textures/dark_rock/diffuse.jpg",
+      "file": "data/textures-src/dark_rock/diffuse.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dark_rock/dark_rock_diff_2k.jpg",
       "shows": "Dark Rock — diffuse map (2k JPG)",
       "subject": "general",
@@ -692,7 +693,7 @@
       "sha256": "0f01bfec36ec4546e23576a10c52ef073f9eb815826c5fce2a1cdb08cd8188b8"
     },
     {
-      "file": "public/textures/dark_rock/nor_gl.jpg",
+      "file": "data/textures-src/dark_rock/nor_gl.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dark_rock/dark_rock_nor_gl_2k.jpg",
       "shows": "Dark Rock — nor_gl map (2k JPG)",
       "subject": "general",
@@ -707,7 +708,7 @@
       "sha256": "abb3c5f1f932693537333a6d467c3e79bb810afa84416d0deaa10ead9fb4f628"
     },
     {
-      "file": "public/textures/dark_rock/rough.jpg",
+      "file": "data/textures-src/dark_rock/rough.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dark_rock/dark_rock_rough_2k.jpg",
       "shows": "Dark Rock — rough map (2k JPG)",
       "subject": "general",
@@ -722,7 +723,7 @@
       "sha256": "de4dc9e276ea769f0eb58faae8c3bc04b512ad62ca49301a0287efe35d26b058"
     },
     {
-      "file": "public/textures/dark_rock/ao.jpg",
+      "file": "data/textures-src/dark_rock/ao.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dark_rock/dark_rock_ao_2k.jpg",
       "shows": "Dark Rock — ao map (2k JPG)",
       "subject": "general",
@@ -737,7 +738,7 @@
       "sha256": "ab74e7bd4d52bbc66bcf6955430f88b5bc34525cb570873897e20237504090c2"
     },
     {
-      "file": "public/textures/dark_rock/disp.jpg",
+      "file": "data/textures-src/dark_rock/disp.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/dark_rock/dark_rock_disp_2k.jpg",
       "shows": "Dark Rock — disp map (2k JPG)",
       "subject": "general",
@@ -752,7 +753,7 @@
       "sha256": "b72e529899ee15361d5b3ca14a75d6bbfecb7164388a4bf76a70809bbd978b77"
     },
     {
-      "file": "public/textures/snow_field_aerial/diffuse.jpg",
+      "file": "data/textures-src/snow_field_aerial/diffuse.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/snow_field_aerial/snow_field_aerial_col_2k.jpg",
       "shows": "Snow Field Aerial — diffuse map (2k JPG)",
       "subject": "general",
@@ -767,7 +768,7 @@
       "sha256": "aa52efea36819ea5bdbefad370cbcd587952f622eb526218bcfa0c72c3fd047a"
     },
     {
-      "file": "public/textures/snow_field_aerial/nor_gl.jpg",
+      "file": "data/textures-src/snow_field_aerial/nor_gl.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/snow_field_aerial/snow_field_aerial_nor_gl_2k.jpg",
       "shows": "Snow Field Aerial — nor_gl map (2k JPG)",
       "subject": "general",
@@ -782,7 +783,7 @@
       "sha256": "1b5807059f13b46adfef3aa8fbbaea61495f3ff97659145a2430f2e1e0f684b3"
     },
     {
-      "file": "public/textures/snow_field_aerial/rough.jpg",
+      "file": "data/textures-src/snow_field_aerial/rough.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/snow_field_aerial/snow_field_aerial_rough_2k.jpg",
       "shows": "Snow Field Aerial — rough map (2k JPG)",
       "subject": "general",
@@ -797,7 +798,7 @@
       "sha256": "e41cf2c3d4af5b0f67665d0f41a3f94e26556b298944d3f19687ac172ea320a8"
     },
     {
-      "file": "public/textures/snow_field_aerial/ao.jpg",
+      "file": "data/textures-src/snow_field_aerial/ao.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/snow_field_aerial/snow_field_aerial_ao_2k.jpg",
       "shows": "Snow Field Aerial — ao map (2k JPG)",
       "subject": "general",
@@ -812,7 +813,7 @@
       "sha256": "848e7d701706953f18b6c8336140e12bc5fd4ed51feea7f2ccc025071b8ab3c9"
     },
     {
-      "file": "public/textures/snow_field_aerial/disp.jpg",
+      "file": "data/textures-src/snow_field_aerial/disp.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/snow_field_aerial/snow_field_aerial_height_2k.jpg",
       "shows": "Snow Field Aerial — disp map (2k JPG)",
       "subject": "general",
@@ -827,7 +828,7 @@
       "sha256": "184353c091f4429ade216894bcf240fa5b129077c8974a8e8fe5b4b02c502549"
     },
     {
-      "file": "public/textures/aerial_beach_01/diffuse.jpg",
+      "file": "data/textures-src/aerial_beach_01/diffuse.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/aerial_beach_01/aerial_beach_01_diff_2k.jpg",
       "shows": "Aerial Beach 01 — diffuse map (2k JPG)",
       "subject": "general",
@@ -842,7 +843,7 @@
       "sha256": "1803d7e2861b304bea6d2e124dcd4c657fcb93843b84c17bb2db98ce48a87e4e"
     },
     {
-      "file": "public/textures/aerial_beach_01/nor_gl.jpg",
+      "file": "data/textures-src/aerial_beach_01/nor_gl.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/aerial_beach_01/aerial_beach_01_nor_gl_2k.jpg",
       "shows": "Aerial Beach 01 — nor_gl map (2k JPG)",
       "subject": "general",
@@ -857,7 +858,7 @@
       "sha256": "0f35185b7225fe2027897bb7e4586c7deb048817524f1ed104fdae7ce80bdc06"
     },
     {
-      "file": "public/textures/aerial_beach_01/rough.jpg",
+      "file": "data/textures-src/aerial_beach_01/rough.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/aerial_beach_01/aerial_beach_01_rough_2k.jpg",
       "shows": "Aerial Beach 01 — rough map (2k JPG)",
       "subject": "general",
@@ -872,7 +873,7 @@
       "sha256": "318b440c109de7411f9e7443f38ae3cf873f34e90afd762c931bae3b23426da2"
     },
     {
-      "file": "public/textures/aerial_beach_01/ao.jpg",
+      "file": "data/textures-src/aerial_beach_01/ao.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/aerial_beach_01/aerial_beach_01_ao_2k.jpg",
       "shows": "Aerial Beach 01 — ao map (2k JPG)",
       "subject": "general",
@@ -887,7 +888,7 @@
       "sha256": "f8514f0932c3a1286532f3eb1f007f1f8eb819335669dc97427bc43ee42853b8"
     },
     {
-      "file": "public/textures/aerial_beach_01/disp.jpg",
+      "file": "data/textures-src/aerial_beach_01/disp.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/aerial_beach_01/aerial_beach_01_disp_2k.jpg",
       "shows": "Aerial Beach 01 — disp map (2k JPG)",
       "subject": "general",
@@ -902,7 +903,7 @@
       "sha256": "73c4795adc4232511b1810995eb6740295ff6d713df5b57573f9413565231f20"
     },
     {
-      "file": "public/textures/brown_mud_leaves_01/diffuse.jpg",
+      "file": "data/textures-src/brown_mud_leaves_01/diffuse.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/brown_mud_leaves_01/brown_mud_leaves_01_diff_2k.jpg",
       "shows": "Brown Mud Leaves 01 — diffuse map (2k JPG)",
       "subject": "general",
@@ -917,7 +918,7 @@
       "sha256": "29c997d77f56e4ea16d3e998a306be0c17fddb28ab4822657c7cd8249040ffda"
     },
     {
-      "file": "public/textures/brown_mud_leaves_01/nor_gl.jpg",
+      "file": "data/textures-src/brown_mud_leaves_01/nor_gl.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/brown_mud_leaves_01/brown_mud_leaves_01_nor_gl_2k.jpg",
       "shows": "Brown Mud Leaves 01 — nor_gl map (2k JPG)",
       "subject": "general",
@@ -932,7 +933,7 @@
       "sha256": "b6ec386e00d9d2a1c3a1da6a98a67066b0dfaa88ddb779341df29700cf081bdf"
     },
     {
-      "file": "public/textures/brown_mud_leaves_01/rough.jpg",
+      "file": "data/textures-src/brown_mud_leaves_01/rough.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/brown_mud_leaves_01/brown_mud_leaves_01_rough_2k.jpg",
       "shows": "Brown Mud Leaves 01 — rough map (2k JPG)",
       "subject": "general",
@@ -947,7 +948,7 @@
       "sha256": "9556215f5fef905c37cdf19c77aef7822f124890f8fb7dcce65d57c5eafc0ca5"
     },
     {
-      "file": "public/textures/brown_mud_leaves_01/ao.jpg",
+      "file": "data/textures-src/brown_mud_leaves_01/ao.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/brown_mud_leaves_01/brown_mud_leaves_01_ao_2k.jpg",
       "shows": "Brown Mud Leaves 01 — ao map (2k JPG)",
       "subject": "general",
@@ -962,7 +963,7 @@
       "sha256": "76c342dc7b5ee7dc5f2246e24147f16afcaa2c0b31599da4c385404416e16eb8"
     },
     {
-      "file": "public/textures/brown_mud_leaves_01/disp.jpg",
+      "file": "data/textures-src/brown_mud_leaves_01/disp.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/brown_mud_leaves_01/brown_mud_leaves_01_disp_2k.jpg",
       "shows": "Brown Mud Leaves 01 — disp map (2k JPG)",
       "subject": "general",
@@ -977,7 +978,7 @@
       "sha256": "3688c1acc705f604ffdaf956064c898658bcd2d8b0258e437e671390c896abb8"
     },
     {
-      "file": "public/textures/river_small_rocks/diffuse.jpg",
+      "file": "data/textures-src/river_small_rocks/diffuse.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/river_small_rocks/river_small_rocks_diff_2k.jpg",
       "shows": "River Small Rocks — diffuse map (2k JPG)",
       "subject": "general",
@@ -992,7 +993,7 @@
       "sha256": "656a20860f5960cc0f442dd425bfe4607052ab1749efdde35d60c5df9639beac"
     },
     {
-      "file": "public/textures/river_small_rocks/nor_gl.jpg",
+      "file": "data/textures-src/river_small_rocks/nor_gl.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/river_small_rocks/river_small_rocks_nor_gl_2k.jpg",
       "shows": "River Small Rocks — nor_gl map (2k JPG)",
       "subject": "general",
@@ -1007,7 +1008,7 @@
       "sha256": "4468fc6354767fd959b74e4cb7095d061e533268189c2336e03cb0be1bddc250"
     },
     {
-      "file": "public/textures/river_small_rocks/rough.jpg",
+      "file": "data/textures-src/river_small_rocks/rough.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/river_small_rocks/river_small_rocks_rough_2k.jpg",
       "shows": "River Small Rocks — rough map (2k JPG)",
       "subject": "general",
@@ -1022,7 +1023,7 @@
       "sha256": "8f9f6104716d3a3af9330dc32905e7f1d5ee3183a7204e2cedecb0b8e3902b42"
     },
     {
-      "file": "public/textures/river_small_rocks/ao.jpg",
+      "file": "data/textures-src/river_small_rocks/ao.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/river_small_rocks/river_small_rocks_ao_2k.jpg",
       "shows": "River Small Rocks — ao map (2k JPG)",
       "subject": "general",
@@ -1037,7 +1038,7 @@
       "sha256": "38e555e168e15eae5416ff279e00f6ab43658bf1d7504b1b9e446bc33edbae36"
     },
     {
-      "file": "public/textures/river_small_rocks/disp.jpg",
+      "file": "data/textures-src/river_small_rocks/disp.jpg",
       "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/river_small_rocks/river_small_rocks_disp_2k.jpg",
       "shows": "River Small Rocks — disp map (2k JPG)",
       "subject": "general",

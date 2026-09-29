@@ -26,9 +26,17 @@ files are saved without the upstream `[wght]` brackets in the filename; content 
 ## Textures
 
 [Poly Haven](https://polyhaven.com) PBR textures, **CC0 1.0** (public domain; credit given as a courtesy).
-2k JPG maps (`diffuse`, `nor_gl`, `rough`, `ao`, `disp`) in `public/textures/<asset_id>/`.
-**Fetched by script, not committed**: `pnpm data:fetch` (`node tools/refs/fetch-data.mjs --only textures`),
-manifest `public/textures/_manifest.json`.
+
+- **Sources** (not shipped): 2k JPG maps (`diffuse`, `nor_gl`, `rough`, `ao`, `disp`) in
+  `data/textures-src/<asset_id>/`, **fetched by script, never committed**: `pnpm data:fetch`
+  (`node tools/refs/fetch-data.mjs --only textures`), manifest `data/textures-src/manifest.json`.
+- **Shipped (derived)**: `public/textures/terrain/` — the terrain ground-detail layers
+  (`detail-512.bin`, `detail-1024.bin`, `detail.json`), generated from six of the sources by
+  `node tools/textures/prep.mjs` (run automatically after the fetch; gitignored). Modifications:
+  resized to 512² / 1024², luminance high-passed and contrast-normalised, packed with the normal
+  map's x/y and the displacement map as height. Layers (see `detail.json`): meadow ← `aerial_grass_rock`,
+  dry ← `withered_grass`, rock ← `aerial_rocks_02`, snow ← `snow_field_aerial`, scree ←
+  `river_small_rocks`, ash ← `burned_ground_01`.
 
 | Asset | Maps | Intended use |
 |---|---|---|

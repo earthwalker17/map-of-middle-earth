@@ -15,6 +15,19 @@ export interface FieldGrid {
   vert(i: number, j: number): [number, number];
 }
 
+const smooth = (e0: number, e1: number, x: number): number => {
+  const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
+  return t * t * (3 - 2 * t);
+};
+
+/**
+ * How strongly the patchwork applies at a point, from the raw (bilinear, un-normalised) Shire look
+ * weight there and the distance to Bree (km) — the same rule as the hedgerow placement.
+ */
+export function fieldWeight(shireWeight: number, breeDistKm: number): number {
+  return Math.max(smooth(0.18, 0.42, shireWeight), 1 - smooth(16, 30, breeDistKm));
+}
+
 export function shireFieldGrid(spec: WorldSpec, seed: number): FieldGrid {
   const fs = 5.2;
   const ang = 0.38;

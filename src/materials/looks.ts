@@ -1,71 +1,284 @@
-import { ClampToEdgeWrapping, Color, DataTexture, DataUtils, HalfFloatType, LinearFilter, NoColorSpace, RGBAFormat } from 'three/webgpu';
+import { ClampToEdgeWrapping, Color, DataArrayTexture, LinearFilter, RGBAFormat, SRGBColorSpace, UnsignedByteType } from 'three/webgpu';
 import { tsl, type TslNode } from './tsl.ts';
 
-const { float, int, texture, uniformArray, vec3 } = tsl;
+const { clamp, float, int, max, mix, smoothstep, texture, vec3 } = tsl;
 import looksJson from '../../data/world/looks.json';
 import type { World } from '../world/World.ts';
 
 type N = TslNode;
 
+// ------------------------------------------------------------------ ground palette (terrain look v2)
+
 /**
- * Region look data as GPU arrays, indexed like the baked look layers (manifest.look.regions).
- * `regionWeights(uv)` returns one weight node per region (they sum to 1).
+ * A region's ground look (looks.json `ground`, one line per region). Colours are sRGB hex; the
+ * scalars are 0..1 unless noted. `spots` are local variations around a place (or an ME-GIS km
+ * point): colours and scalars blend towards the spot's values with a Gaussian falloff (weight
+ * exp(−(d/radiusKm)²) · strength), `snowline` is ADDED (so neighbouring spots superpose).
  */
-export class LookNodes {
-  readonly count: number;
-  readonly grass;
-  readonly dry;
-  readonly soil;
-
-  constructor(readonly world: World) {
-    const ids = world.lookRegions;
-    this.count = ids.length;
-    const col = (hex: string) => new Color(hex);
-    const g = ids.map((id) => col(looksJson.regions[id].ground.grass));
-    const d = ids.map((id) => col(looksJson.regions[id].ground.dry));
-    const s = ids.map((id) => col(looksJson.regions[id].ground.soil));
-    // palette colours are authored in sRGB; Color(hex) converts to linear working space
-    this.grass = uniformArray(g, 'color');
-    this.dry = uniformArray(d, 'color');
-    this.soil = uniformArray(s, 'color');
-  }
-
-  index(id: string): number {
-    return this.world.lookRegions.indexOf(id as never);
-  }
-
+export interface GroundJson {
+  grass: string;
+  dry: string;
+  soil: string;
+  /** exposed rock on steep faces / above the treeline */
+  rock?: string;
+  /** mean grass ↔ dry mix at sea level (terrain adds altitude, noise, moisture) */
+  dryness?: number;
+  /** micro-pattern amplitude: tussock / mottle / patchwork contrast of the ground */
+  pattern?: number;
+  /** snowline offset, world units (negative = snow lower); blurred ~10 km */
+  snowline?: number;
+  /** 0..1 volcanic ground: ash detail, darker scree, no snow (Mordor) */
+  volcanic?: number;
+  /** 0..1 bare-rock tendency: rock starts on gentler slopes and on crests (Emyn Muil) */
+  rockiness?: number;
   /**
-   * Per-region weights at map uv (one texture fetch per 4 regions). `level` forces an explicit-LOD
-   * fetch, which is legal inside non-uniform control flow (e.g. a reflection march branch).
+   * landmark turf override where stamps reshaped the ground: 1 = turf / soil, never slope rock
+   * (Edoras), 0 = keep the rock (Moria's cliff); unset = automatic (turf where the stamp built new
+   * faces on gentle ground)
    */
-  regionWeights(uv: N, level?: number): N[] {
-    const layers = Math.ceil(this.count / 4);
-    const w: N[] = [];
-    for (let L = 0; L < layers; L++) {
-      const t = texture(this.world.look, uv).depth(int(L));
-      const s = level === undefined ? t : t.level(level);
-      for (let c = 0; c < 4 && L * 4 + c < this.count; c++) w.push(s.element(int(c)) as N);
+  turf?: number;
+  spots?: GroundSpotJson[];
+}
+export interface GroundSpotJson extends Partial<Omit<GroundJson, 'spots'>> {
+  place?: string;
+  /** ME-GIS km [x, y] (instead of a place) */
+  atKm?: [number, number];
+  radiusKm: number;
+  strength?: number;
+}
+
+/** Palette layers of the ground-look texture (see groundLookTexture). */
+export const GROUND_LAYERS = 5;
+/** snowline offsets are stored as (offset + RANGE) / (2 · RANGE) */
+const SNOW_RANGE = 20;
+
+const DEFAULT_ROCK = '#77726a';
+
+function groundJson(id: string): GroundJson {
+  return (looksJson.regions as unknown as Record<string, { ground: GroundJson }>)[id].ground;
+}
+
+const toSrgb8 = (v: number): number => {
+  const c = Math.min(1, Math.max(0, v));
+  const s = c <= 0.0031308 ? c * 12.92 : 1.055 * c ** (1 / 2.4) - 0.055;
+  return Math.round(s * 255);
+};
+const to8 = (v: number): number => Math.round(Math.min(1, Math.max(0, v)) * 255);
+const smooth01 = (t: number): number => {
+  const c = Math.min(1, Math.max(0, t));
+  return c * c * (3 - 2 * c);
+};
+
+/** Per-texel ground properties in linear space: 4 colours × 3 + dryness, pattern, snowline, volcanic, rockiness, turf value, turf weight. */
+const P = 19;
+function regionProps(g: Partial<GroundJson>, base?: Float32Array): Float32Array {
+  const out = base ? base.slice() : new Float32Array(P);
+  const col = (hex: string | undefined, o: number) => {
+    if (!hex) return;
+    const c = new Color(hex);
+    out[o] = c.r;
+    out[o + 1] = c.g;
+    out[o + 2] = c.b;
+  };
+  col(g.grass, 0);
+  col(g.dry, 3);
+  col(g.soil, 6);
+  col(g.rock ?? (base ? undefined : DEFAULT_ROCK), 9);
+  if (g.dryness !== undefined || !base) out[12] = g.dryness ?? 0.4;
+  if (g.pattern !== undefined || !base) out[13] = g.pattern ?? 0.4;
+  if (!base) out[14] = g.snowline ?? 0;
+  if (g.volcanic !== undefined || !base) out[15] = g.volcanic ?? 0;
+  if (g.rockiness !== undefined || !base) out[16] = g.rockiness ?? 0;
+  if (g.turf !== undefined || !base) out[17] = g.turf ?? 0;
+  if (g.turf !== undefined || !base) out[18] = g.turf !== undefined ? 1 : 0;
+  return out;
+}
+
+const groundCache = new WeakMap<World, DataArrayTexture>();
+
+/**
+ * The regional ground look, baked once on the CPU at the look-layer resolution (≈ 1.6 km/texel):
+ * region weights × looks.json `ground` + the local spots, as an sRGB RGBA8 array texture —
+ *   layer 0: grass.rgb, a = dryness
+ *   layer 1: dry.rgb,   a = pattern
+ *   layer 2: soil.rgb,  a = snowline offset (blurred; decoded by groundPalette)
+ *   layer 3: rock.rgb,  a = volcanic
+ *   layer 4: r = rockiness, g = landmark turf value, b = its weight (sRGB-encoded scalars), a spare
+ * Five low-resolution fetches replace the per-pixel region-weight blend (5 fetches + 19 × N multiply-adds), and every
+ * system that approximates the terrain (the water's reflected terrain) reads the same texture.
+ */
+export function groundLookTexture(world: World): DataArrayTexture {
+  const hit = groundCache.get(world);
+  if (hit) return hit;
+  const img = world.look.image as unknown as { data: Uint8Array; width: number; height: number };
+  const W = img.width;
+  const H = img.height;
+  const ids = world.lookRegions;
+  const n = ids.length;
+  const regions = ids.map((id) => regionProps(groundJson(id)));
+  const spec = world.spec;
+  const px = new Float32Array(W * H * P);
+  const d = img.data;
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      let sum = 0;
+      const o = (y * W + x) * P;
+      for (let r = 0; r < n; r++) {
+        let w = d[(((r >> 2) * H + y) * W + x) * 4 + (r & 3)] / 255;
+        // the default region (index 0) also fills what the soft region masks leave uncovered; in the
+        // gaps between two regions that fill would paint a band of the default ground, so for the
+        // ground look it only counts where it dominates (the neighbours are renormalised instead)
+        if (r === 0) w *= smooth01((w - 0.55) / 0.4);
+        if (w <= 0) continue;
+        sum += w;
+        const R = regions[r];
+        for (let k = 0; k < P; k++) px[o + k] += w * R[k];
+      }
+      if (sum > 1e-6) for (let k = 0; k < P; k++) px[o + k] /= sum;
+      else px.set(regions[0], o);
     }
-    return w;
+  // local spots (Gaussian, applied after the region blend)
+  const texelKm = spec.width / W;
+  for (const id of ids) {
+    for (const s of groundJson(id).spots ?? []) {
+      let cx: number;
+      let cz: number;
+      if (s.place) {
+        const p = world.places.get(s.place);
+        if (!p) throw new Error(`looks.json ground spot: unknown place '${s.place}'`);
+        cx = p.x;
+        cz = p.z;
+      } else if (s.atKm) [cx, cz] = spec.kmToWorld(s.atKm[0], s.atKm[1]);
+      else throw new Error(`looks.json ground spot in '${id}' needs a place or atKm`);
+      const target = regionProps(s, new Float32Array(P));
+      const has = (k: number) =>
+        k < 3 ? !!s.grass : k < 6 ? !!s.dry : k < 9 ? !!s.soil : k < 12 ? !!s.rock : k === 12 ? s.dryness !== undefined : k === 13 ? s.pattern !== undefined : k === 15 ? s.volcanic !== undefined : k === 16 ? s.rockiness !== undefined : k === 17 || k === 18 ? s.turf !== undefined : false;
+      const keys = [...Array(P).keys()].filter(has);
+      const strength = s.strength ?? 1;
+      const reach = Math.ceil((s.radiusKm * 2.6) / texelKm);
+      const gx = Math.round((cx - spec.xMin) / texelKm - 0.5);
+      const gz = Math.round((cz - spec.zMin) / texelKm - 0.5);
+      for (let y = Math.max(0, gz - reach); y <= Math.min(H - 1, gz + reach); y++)
+        for (let x = Math.max(0, gx - reach); x <= Math.min(W - 1, gx + reach); x++) {
+          const wx = spec.xMin + (x + 0.5) * texelKm;
+          const wz = spec.zMin + (y + 0.5) * texelKm;
+          const q = Math.hypot(wx - cx, wz - cz) / s.radiusKm;
+          const wgt = Math.exp(-q * q) * strength;
+          if (wgt < 1e-3) continue;
+          const o = (y * W + x) * P;
+          for (const k of keys) px[o + k] += (target[k] - px[o + k]) * wgt;
+          if (s.snowline) px[o + 14] += s.snowline * wgt;
+        }
+    }
   }
+  blurChannel(px, W, H, P, 14, 5);
+  const data = new Uint8Array(W * H * 4 * GROUND_LAYERS);
+  const layer = W * H * 4;
+  for (let i = 0; i < W * H; i++) {
+    const o = i * P;
+    for (let L = 0; L < 4; L++) {
+      const t = L * layer + i * 4;
+      data[t] = toSrgb8(px[o + L * 3]);
+      data[t + 1] = toSrgb8(px[o + L * 3 + 1]);
+      data[t + 2] = toSrgb8(px[o + L * 3 + 2]);
+    }
+    data[i * 4 + 3] = to8(px[o + 12]);
+    data[layer + i * 4 + 3] = to8(px[o + 13]);
+    data[2 * layer + i * 4 + 3] = to8((px[o + 14] + SNOW_RANGE) / (2 * SNOW_RANGE));
+    data[3 * layer + i * 4 + 3] = to8(px[o + 15]);
+    // scalars in an sRGB layer: encoded so the hardware decode returns the value
+    data[4 * layer + i * 4] = toSrgb8(px[o + 16]);
+    data[4 * layer + i * 4 + 1] = toSrgb8(px[o + 17]);
+    data[4 * layer + i * 4 + 2] = toSrgb8(px[o + 18]);
+    data[4 * layer + i * 4 + 3] = 255;
+  }
+  const t = new DataArrayTexture(data, W, H, GROUND_LAYERS);
+  t.format = RGBAFormat;
+  t.type = UnsignedByteType;
+  // sRGB colours (hardware-decoded); alpha stays linear in rgba8unorm-srgb
+  t.colorSpace = SRGBColorSpace;
+  t.wrapS = ClampToEdgeWrapping;
+  t.wrapT = ClampToEdgeWrapping;
+  t.minFilter = LinearFilter;
+  t.magFilter = LinearFilter;
+  t.generateMipmaps = false;
+  t.name = 'ground-look';
+  t.needsUpdate = true;
+  groundCache.set(world, t);
+  return t;
+}
 
-  /** Weighted ground palette {grass, dry, soil} at the given weights. */
-  palette(weights: N[]): { grass: N; dry: N; soil: N } {
-    let grass: N = vec3(0);
-    let dry: N = vec3(0);
-    let soil: N = vec3(0);
-    weights.forEach((w, i) => {
-      grass = grass.add(this.grass.element(int(i)).mul(w));
-      dry = dry.add(this.dry.element(int(i)).mul(w));
-      soil = soil.add(this.soil.element(int(i)).mul(w));
-    });
-    return { grass, dry, soil };
+/** Separable 3-pass box blur of one channel of an interleaved float image. */
+function blurChannel(px: Float32Array, w: number, h: number, stride: number, ch: number, radius: number): void {
+  const a = new Float32Array(w * h);
+  const b = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) a[i] = px[i * stride + ch];
+  const pass = (src: Float32Array, dst: Float32Array, horizontal: boolean) => {
+    const len = horizontal ? w : h;
+    const lines = horizontal ? h : w;
+    for (let l = 0; l < lines; l++) {
+      let acc = 0;
+      const at = (i: number) => src[horizontal ? l * w + Math.min(len - 1, Math.max(0, i)) : Math.min(len - 1, Math.max(0, i)) * w + l];
+      for (let k = -radius; k <= radius; k++) acc += at(k);
+      for (let i = 0; i < len; i++) {
+        dst[horizontal ? l * w + i : i * w + l] = acc / (2 * radius + 1);
+        acc += at(i + radius + 1) - at(i - radius);
+      }
+    }
+  };
+  for (let it = 0; it < 3; it++) {
+    pass(a, b, true);
+    pass(b, a, false);
   }
+  for (let i = 0; i < w * h; i++) px[i * stride + ch] = a[i];
+}
 
-  weightOf(weights: N[], id: string): N {
-    const i = this.index(id);
-    return i >= 0 ? weights[i] : float(0);
-  }
+/** The ground look at a map position (TSL). */
+export interface GroundPalette {
+  grass: N;
+  dry: N;
+  soil: N;
+  rock: N;
+  dryness: N;
+  pattern: N;
+  /** snowline offset, world units */
+  snowline: N;
+  volcanic: N;
+  rockiness: N;
+  /** landmark turf override (value, weight; applies where stamps reshaped the ground) */
+  turf: N;
+  turfWeight: N;
+}
+
+/**
+ * Sample the ground look at map uv (five fetches). `warpedUv` (optional) is used for the colour and
+ * scalar layers — the terrain domain-warps them so region borders are never straight lines — while
+ * the landmark layer (turf, rockiness) stays at `uv`. `explicitLod` makes the fetches legal in
+ * non-uniform control flow.
+ */
+export function groundPalette(tex: DataArrayTexture, uv: N, explicitLod = false, warpedUv: N = uv): GroundPalette {
+  const f = (L: number): N => {
+    const t = texture(tex, L < 4 ? warpedUv : uv).depth(int(L));
+    return explicitLod ? t.level(0) : t;
+  };
+  const a = f(0);
+  const b = f(1);
+  const c = f(2);
+  const d = f(3);
+  const q = f(4);
+  return {
+    grass: a.rgb,
+    dryness: a.a,
+    dry: b.rgb,
+    pattern: b.a,
+    soil: c.rgb,
+    snowline: c.a.mul(2 * SNOW_RANGE).sub(SNOW_RANGE),
+    rock: d.rgb,
+    volcanic: d.a,
+    rockiness: q.r,
+    turf: q.g,
+    turfWeight: q.b,
+  };
 }
 
 // ------------------------------------------------------------------ grade / atmo data (CPU)
@@ -208,93 +421,104 @@ export function sampleRegionWeights(world: World, x: number, z: number, out: Flo
   return out;
 }
 
-/**
- * Terrain shading constants shared by the terrain material family and every system that
- * approximates it (the water's reflected terrain today). terrainMaterial.ts still inlines the same
- * numbers; wave 2's terrain look v2 owns them here and should import these instead of literals so
- * the approximations never drift.
- */
-export const TERRAIN_SHADE = {
-  /** snow line (world units): base + south · southness (0 at the north edge … 1 at the south) */
-  snowLineBase: 23,
-  snowLineSouth: 13,
-  /** amplitude of the 60 km / 12 km noise on the snow line (mean 0) */
-  snowLineNoise: [4, 1.5] as const,
-  /** snow fades in over this many units above the line; none on slopes steeper than [a, b] */
-  snowFade: 3.5,
-  snowSlope: [0.55, 0.8] as const,
-  /** snow albedo (sRGB) */
-  snow: 0xeef1f5,
-  /** rock: slope thresholds (1 − n.y), altitude onset [from, to, amount] */
-  rockSlope: [0.26, 0.46] as const,
-  rockAltitude: [20, 34, 0.55] as const,
-  /** grey rock (sRGB, noise mixes the two) and Mordor's basalt */
-  greyRock: [0x6b665f, 0x8e8a84] as const,
-  basalt: 0x2b2826,
-  /** mean grass ↔ dry mix at sea level (+ per unit of height) */
-  dryness: 0.38,
-  drynessPerHeight: 0.006,
-  /** Mordor weight = mordor + this × nurn (basalt rock, no snow) */
-  nurnInMordor: 0.6,
-} as const;
+// ------------------------------------------------------------------ shared terrain shading
 
 /**
- * A coarse ground-albedo map (region palette, linear, ≈ 6.4 km per texel) built once on the CPU —
- * for cheap secondary shading such as terrain seen in water reflections, where the full per-pixel
- * palette blend is not worth its cost. RGB = the grass/dry mix at the terrain's mean dryness
- * (TERRAIN_SHADE), A = the Mordor weight (basalt rock, no snow). One per world.
+ * Terrain shading constants: the ONE source for the terrain material family (src/terrain) and every
+ * system that approximates it (the water's reflected terrain), through the shared TSL helpers below.
+ * Heights are world units of the exaggerated bake v2 relief; slopes are 1 − n.y.
  */
-const albedoCache = new WeakMap<World, DataTexture>();
-export function groundAlbedoTexture(world: World): DataTexture {
-  const hit = albedoCache.get(world);
-  if (hit) return hit;
-  const W = 256;
-  const H = 154;
-  const ids = world.lookRegions;
-  const grass = ids.map((id) => new Color(looksJson.regions[id].ground.grass));
-  const dry = ids.map((id) => new Color(looksJson.regions[id].ground.dry));
-  const iMordor = ids.indexOf('mordor' as never);
-  const iNurn = ids.indexOf('nurn' as never);
-  const dm = TERRAIN_SHADE.dryness;
-  const w = new Float32Array(ids.length);
-  const data = new Uint16Array(W * H * 4);
-  const spec = world.spec;
-  for (let y = 0; y < H; y++)
-    for (let x = 0; x < W; x++) {
-      sampleRegionWeights(world, spec.xMin + ((x + 0.5) / W) * spec.width, spec.zMin + ((y + 0.5) / H) * spec.depth, w);
-      let r = 0;
-      let g = 0;
-      let b = 0;
-      let s = 0;
-      for (let k = 0; k < ids.length; k++) {
-        if (w[k] <= 0) continue;
-        r += w[k] * (grass[k].r * (1 - dm) + dry[k].r * dm);
-        g += w[k] * (grass[k].g * (1 - dm) + dry[k].g * dm);
-        b += w[k] * (grass[k].b * (1 - dm) + dry[k].b * dm);
-        s += w[k];
-      }
-      const mordor = s > 0 ? Math.min(1, ((iMordor >= 0 ? w[iMordor] : 0) + (iNurn >= 0 ? w[iNurn] * TERRAIN_SHADE.nurnInMordor : 0)) / s) : 0;
-      if (s <= 0) {
-        r = 0.16;
-        g = 0.15;
-        b = 0.1;
-        s = 1;
-      }
-      const o = (y * W + x) * 4;
-      data[o] = DataUtils.toHalfFloat(r / s);
-      data[o + 1] = DataUtils.toHalfFloat(g / s);
-      data[o + 2] = DataUtils.toHalfFloat(b / s);
-      data[o + 3] = DataUtils.toHalfFloat(mordor);
-    }
-  const t = new DataTexture(data, W, H, RGBAFormat, HalfFloatType);
-  t.wrapS = ClampToEdgeWrapping;
-  t.wrapT = ClampToEdgeWrapping;
-  t.minFilter = LinearFilter;
-  t.magFilter = LinearFilter;
-  t.generateMipmaps = false;
-  t.colorSpace = NoColorSpace;
-  t.name = 'ground-albedo';
-  t.needsUpdate = true;
-  albedoCache.set(world, t);
-  return t;
+export const TERRAIN_SHADE = {
+  /** snow line: base + south · southness (0 north edge … 1 south edge) + the ground look's regional offset */
+  snowLineBase: 32,
+  snowLineSouth: 2,
+  /** amplitude of the 60 km / 12 km / 3 km noise on the snow line (mean 0; the water uses none) */
+  snowLineNoise: [2.4, 1.1, 0.45] as const,
+  /** snow fades in over this many units above the line */
+  snowFade: 2.2,
+  /** north-facing faces hold snow lower: effective height + northness (−n.z) · this */
+  snowNorth: 2.8,
+  /** snow sheds from slopes steeper than [a, b]; concave gullies hold it `snowGully` steeper */
+  snowSlope: [0.3, 0.6] as const,
+  snowGully: 0.16,
+  /** snow albedo (sRGB) */
+  snow: 0xe4e8ee,
+  /** rock on steep slopes [a, b] (none on turf stamps) */
+  rockSlope: [0.2, 0.44] as const,
+  /** a rockiness of 1 moves the slope onset this much towards gentler ground */
+  rockinessShift: 0.12,
+  /** alpine zone (rock and scree above the grass): fades in from snowline − a to snowline − b */
+  alpine: [12, 4.5] as const,
+  /** rock cover in the alpine zone on gentle / steep ground */
+  alpineRock: [0.4, 0.95] as const,
+  /** ground dryness added per unit of height */
+  drynessPerHeight: 0.01,
+  /** scree / talus (sRGB): the light grey gravel below the rock faces */
+  scree: 0x8a8c8c,
+  /** beaches (sRGB) and lake / river shore gravel */
+  beach: 0xb8aa88,
+  shore: 0x86857c,
+  /** wetland: open pools, reed / sedge mottle (sRGB) */
+  wetPool: 0x1f2a28,
+  wetReed: 0x4f5438,
+  wetSedge: 0x5d6247,
+  /** water channels under the water system's surfaces */
+  channel: 0x1d3137,
+  /** roads, ash fields */
+  road: 0x9a8a6c,
+  ash: 0x1a1817,
+} as const;
+
+/** sRGB hex → linear vec3 (TSL constant). */
+export function srgbNode(hex: number): N {
+  const c = new Color(hex);
+  return vec3(c.r, c.g, c.b);
+}
+
+/** Snow line (world units) at a map position: base + south gradient + regional offset + `noise`. */
+export function snowLineAt(pal: GroundPalette, southness: N, noise: N = float(0)): N {
+  const T = TERRAIN_SHADE;
+  return float(T.snowLineBase).add(southness.mul(T.snowLineSouth)).add(pal.snowline).add(noise);
+}
+
+/** 0..1 alpine zone (rock and scree dominate) at effective height `h` below the snow line. */
+export function alpineAt(h: N, line: N): N {
+  const T = TERRAIN_SHADE;
+  return smoothstep(line.sub(T.alpine[0]), line.sub(T.alpine[1]), h);
+}
+
+/**
+ * 0..1 rock cover from slope and the alpine zone; `rockiness` (ground look) moves the slope onset
+ * towards gentler ground, `turf` suppresses the slope term (landmark stamps on gentle ground).
+ */
+export function rockAt(slope: N, alpine: N, turf: N = float(0), rockiness: N = float(0)): N {
+  const T = TERRAIN_SHADE;
+  const r = rockiness.mul(T.rockinessShift);
+  const steep = smoothstep(r.negate().add(T.rockSlope[0]), r.negate().add(T.rockSlope[1]), slope).mul(float(1).sub(turf));
+  const high = alpine.mul(mix(float(T.alpineRock[0]), float(T.alpineRock[1]), smoothstep(0.04, 0.24, slope)));
+  return clamp(max(steep, high), 0, 1);
+}
+
+/** 0..1 snow cover: effective height over the line, shed from steep faces, none on volcanic ground. */
+export function snowAt(hEff: N, slope: N, line: N, volcanic: N, gully: N = float(0)): N {
+  const T = TERRAIN_SHADE;
+  const g = gully.mul(T.snowGully);
+  return smoothstep(line, line.add(T.snowFade), hEff)
+    .mul(float(1).sub(smoothstep(g.add(T.snowSlope[0]), g.add(T.snowSlope[1]), slope)))
+    .mul(float(1).sub(volcanic));
+}
+
+/**
+ * Coarse terrain albedo (linear) for secondary views of the terrain (the water's reflected
+ * terrain): the ground look at its mean dryness + rock + snow from the same rules as the terrain
+ * material, without its noise, curvature, masks or detail textures.
+ */
+export function coarseGroundAlbedo(pal: GroundPalette, h: N, slope: N, southness: N, northness: N): N {
+  const T = TERRAIN_SHADE;
+  const line = snowLineAt(pal, southness);
+  const hEff = h.add(northness.mul(T.snowNorth));
+  const ground = mix(pal.grass, pal.dry, clamp(pal.dryness.add(h.mul(T.drynessPerHeight)), 0, 1));
+  const rock = rockAt(slope, alpineAt(hEff, line), float(0), pal.rockiness);
+  const snow = snowAt(hEff, slope, line, pal.volcanic);
+  return mix(mix(ground, pal.rock, rock), srgbNode(T.snow), snow);
 }

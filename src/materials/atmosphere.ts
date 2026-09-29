@@ -23,6 +23,13 @@ const { Fn, abs, atan, clamp, dot, exp, float, length, max, min, mix, output, po
 /** In-scatter LUT: azimuth × depression (rows at −dir.y = (j / (ROWS − 1))²). */
 const LUT_AZ = 96;
 const LUT_ROWS = 16;
+/**
+ * Valley mist: the ground haze layer thickens over valleys (World.terrainMask G < 0.5) when the sun
+ * is low (env.golden, env.twilight) — golden-hour and dawn mist in the dales. Multiplier on the
+ * ground layer at full strength (a clearly valley-bottom endpoint, golden hour).
+ */
+const VALLEY_MIST = 3.5;
+
 /** Regional haze texture over the map frame (≈ 6.3 km per texel before the blur). */
 const HAZE_W = 256;
 const HAZE_H = 154;
@@ -54,6 +61,9 @@ const _c = new Color();
  *    pixel. Density below 1 thins the air; the EXCESS above 1 is a local feature (Mordor's fumes,
  *    Dagorlad ash, marsh damp, elven luminous haze) and fades in over a much shorter range
  *    (env.hazeRamp.zw), so Mordor keeps its gloom beyond a clear Ithilien at any shot scale.
+ *  - Valley mist: at low sun (env.golden / twilight) the ground layer thickens over the valleys of
+ *    the baked terrain analysis (World.terrainMask G < 0.5), sampled at the ray endpoint and faded in
+ *    like the local haze — mist lies in the dales at golden hour and dawn, the heights stay clear.
  *  - β_rgb is gently Rayleigh-like (blue extincts fastest), so distant land drifts to blue-grey;
  *    the spread is kept small so dark albedos (forests) do not turn teal.
  *  - C∞(dir) is the sky model's single-scattering radiance for the view direction (Preetham with
@@ -68,6 +78,8 @@ export class Atmosphere {
   private readonly lutLin = new Float32Array(LUT_AZ * LUT_ROWS * 3);
   private lutKey = '';
   private hazeWorld: World | null = null;
+  /** World.terrainMask (G = valley index, 0.5 flat) — a neutral 1×1 until a world with a mask is bound */
+  private readonly valleyTex: N;
 
   constructor() {
     this.lut = new DataTexture(this.lutData, LUT_AZ, LUT_ROWS, RGBAFormat, HalfFloatType);
@@ -91,6 +103,11 @@ export class Atmosphere {
     this.haze.colorSpace = NoColorSpace;
     this.haze.name = 'atmosphere-regional-haze';
     this.haze.needsUpdate = true;
+
+    const flat = new DataTexture(new Uint8Array([255, 128, 0, 0]), 1, 1, RGBAFormat);
+    flat.colorSpace = NoColorSpace;
+    flat.needsUpdate = true;
+    this.valleyTex = texture(flat);
   }
 
   // ---------------------------------------------------------------- CPU (per frame / once)
@@ -156,6 +173,7 @@ export class Atmosphere {
   bindWorld(world: World): void {
     if (this.hazeWorld === world) return;
     this.hazeWorld = world;
+    if (world.terrainMask) this.valleyTex.value = world.terrainMask;
     const ids = world.lookRegions;
     const looks = ids.map((id) => atmoLook(id));
     const spec = world.spec;
@@ -245,6 +263,18 @@ export class Atmosphere {
     return (explicitLod ? t.level(0) : t).rgb;
   }
 
+  /**
+   * Valley-mist multiplier on the ground layer at world xz: the terrain analysis' valley index
+   * (World.terrainMask G, < 0.5 in valleys) × the low-sun amount (golden hour, dawn twilight).
+   */
+  valleyMist(xz: N, explicitLod = false): N {
+    const f = this.hazeFrame;
+    const t = this.valleyTex.sample(vec2(xz.x.sub(f.x).mul(f.z), xz.y.sub(f.y).mul(f.w)));
+    const g = (explicitLod ? t.level(0) : t).g;
+    const lowSun = max(env.golden, env.twilight.mul(0.8));
+    return clamp(float(0.44).sub(g).mul(4), 0, 1).mul(lowSun).mul(VALLEY_MIST);
+  }
+
   /** Regional haze at world xz: rgb = in-scatter tint, a = density multiplier. */
   regional(xz: N, explicitLod = false): N {
     const f = this.hazeFrame;
@@ -259,7 +289,7 @@ export class Atmosphere {
    * or below it) see nothing but the faint studio air. `density` is the regional multiplier: up
    * to 1 it scales the distance-ramped air, the excess above 1 is local haze (short ramp).
    */
-  opticalDepth(from: N, to: N, density: N): N {
+  opticalDepth(from: N, to: N, density: N, valley: N = float(0)): N {
     const ray = to.sub(from);
     const d = length(ray);
     const y0 = max(from.y, 0);
@@ -287,12 +317,15 @@ export class Atmosphere {
       const kdy = k.mul(dy);
       return select(abs(kdy).greaterThan(1e-3), seg.mul(eA.sub(eB)).div(kdy), seg.mul(eA));
     };
-    const layers = env.fogHeightDensity.mul(layer(env.fogHeightFalloff)).add(env.airDensity.mul(layer(env.airFalloff)));
+    const ground = env.fogHeightDensity.mul(layer(env.fogHeightFalloff));
+    const layers = ground.add(env.airDensity.mul(layer(env.airFalloff)));
     // distance ramps (see the class doc): the air fades in far from the camera, local haze early
     const r = env.hazeRamp;
     const air = smoothstep(r.x, r.y, d).mul(min(density, 1));
     const local = smoothstep(r.z, r.w, d).mul(max(density.sub(1), 0));
-    return layers.mul(air.add(local)).add(env.fogDensity.mul(d.mul(frac)));
+    // valley mist is a local feature too (short ramp): the ground layer thickened over the dales
+    const mist = ground.mul(valley).mul(smoothstep(r.z, r.w, d));
+    return layers.mul(air.add(local)).add(mist).add(env.fogDensity.mul(d.mul(frac)));
   }
 
   /**
@@ -301,7 +334,7 @@ export class Atmosphere {
    */
   apply(color: N, from: N, to: N, inScatter = true, explicitLod = false): N {
     const reg = this.regional(to.xz, explicitLod);
-    const tau = this.opticalDepth(from, to, reg.a);
+    const tau = this.opticalDepth(from, to, reg.a, this.valleyMist(to.xz, explicitLod));
     const beta = inScatter ? env.extinction : vec3(1);
     const T = exp(beta.mul(tau).negate());
     const ray = to.sub(from);

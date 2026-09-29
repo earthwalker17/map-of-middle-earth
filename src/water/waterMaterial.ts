@@ -1,8 +1,8 @@
-import { Color, FrontSide, MeshStandardNodeMaterial, type DataTexture } from 'three/webgpu';
+import { FrontSide, MeshStandardNodeMaterial, type DataTexture } from 'three/webgpu';
 import { tsl, type TslNode } from '../materials/tsl.ts';
 import { env } from '../materials/environment.ts';
 import { atmosphere } from '../materials/atmosphere.ts';
-import { TERRAIN_SHADE as TS, groundAlbedoTexture } from '../materials/looks.ts';
+import { coarseGroundAlbedo, groundLookTexture, groundPalette } from '../materials/looks.ts';
 import type { QualityTier } from '../core/quality.ts';
 import type { World } from '../world/World.ts';
 
@@ -298,12 +298,7 @@ export function createWaterMaterial(opts: WaterMaterialOptions): MeshStandardNod
   const steps = preview ? Math.min(P.traceSteps, 4) : P.traceSteps;
   let refl: N = skyRefl;
   if (steps > 0) {
-    const albedoTex = groundAlbedoTexture(world);
-    const lin = (hex: number): N => {
-      const c = new Color(hex);
-      return vec3(c.r, c.g, c.b);
-    };
-    const greyRock = mix(lin(TS.greyRock[0]), lin(TS.greyRock[1]), 0.5);
+    const groundTex = groundLookTexture(world);
     const southness = (z: N): N => z.sub(spec.zMin).div(D);
     const R3 = normalize(vec3(Rv.x, Ry, Rv.z));
     // explicit-LOD fetches: legal inside the dynamic branch below
@@ -328,9 +323,9 @@ export function createWaterMaterial(opts: WaterMaterialOptions): MeshStandardNod
           tPrev = tk;
           tk *= P.traceGrowth;
         }
-        // shade the reflected terrain at the hit: heightfield normal, the region's ground palette
-        // at the terrain's mean dryness, its rock (slope + altitude, basalt in Mordor) and snow
-        // line (none in Mordor) from the shared TERRAIN_SHADE constants, lit by sun + sky + moon
+        // shade the reflected terrain at the hit: heightfield normal and the terrain material's own
+        // ground look + rock / alpine / snow rules (coarseGroundAlbedo: the shared ground look
+        // texture and TERRAIN_SHADE, without the terrain's noise and masks), lit by sun + sky + moon
         // and seen through the same atmosphere as everything else (from the water surface to the
         // hit) — mountains and shores mirror in lakes and calm bays
         const hitP = origin.add(dir.mul(hitT));
@@ -341,15 +336,7 @@ export function createWaterMaterial(opts: WaterMaterialOptions): MeshStandardNod
         const nH = normalize(vec3(hx.negate(), float(4 * e), hz.negate()));
         const hh = hs(vec2(0, 0));
         const slope = float(1).sub(nH.y);
-        const ga = texture(albedoTex, huv).level(0);
-        const mordor = ga.a;
-        const rockCol = mix(greyRock, lin(TS.basalt), mordor);
-        const rockAmt = clamp(smoothstep(TS.rockSlope[0], TS.rockSlope[1], slope).add(smoothstep(TS.rockAltitude[0], TS.rockAltitude[1], hh).mul(TS.rockAltitude[2])), 0, 1);
-        const snowLine = float(TS.snowLineBase).add(southness(hitP.z).mul(TS.snowLineSouth));
-        const snow = smoothstep(snowLine, snowLine.add(TS.snowFade), hh)
-          .mul(float(1).sub(smoothstep(TS.snowSlope[0], TS.snowSlope[1], slope)))
-          .mul(float(1).sub(mordor));
-        const alb = mix(mix(ga.rgb, rockCol, rockAmt), lin(TS.snow), snow);
+        const alb = coarseGroundAlbedo(groundPalette(groundTex, huv, true), hh, slope, southness(hitP.z), nH.z.negate());
         const sunLit = env.sunColor.mul(env.sunIntensity).mul(max(dot(nH, env.sunDir), 0));
         const skyLit = mix(env.groundColor, env.skyColor, nH.y.mul(0.5).add(0.5));
         const moonLit = env.moonColor.mul(env.moonIntensity).mul(max(dot(nH, env.moonDir), 0));

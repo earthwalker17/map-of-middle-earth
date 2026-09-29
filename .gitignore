@@ -25,10 +25,11 @@ reference/**
 !reference/*/
 reference/_fragments/
 
-# third-party CC0 textures are fetched by script (manifest committed)
+# third-party CC0 texture sources are fetched by script (manifest committed) and never shipped;
+# the runtime terrain detail layers in public/textures/ are derived from them (tools/textures/prep.mjs)
+data/textures-src/*
+!data/textures-src/manifest.json
 public/textures/**
-!public/textures/_manifest.json
-!public/textures/*/
 
 # renders, captures, caches
 renders/
