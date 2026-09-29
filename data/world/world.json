@@ -158,8 +158,8 @@
       "smoothRaise": 0.3,
       "pitKmByClass": {
         "great": 12.0,
-        "major": 8.0,
-        "minor": 5.0,
+        "major": 12.0,
+        "minor": 6.0,
         "stream": 3.0
       },
       "minGrade": 0.002,
@@ -184,7 +184,7 @@
     "coneFadeKm": 1.0,
     "wallRise": 3.0,
     "marshMaxKm2": 250,
-    "marshMaxDepth": 3.0,
+    "marshMaxDepth": 4.5,
     "marshBandKm": 3.0,
     "bankKm": {
       "great": 8.0,

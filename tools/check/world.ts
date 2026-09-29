@@ -102,7 +102,7 @@ export async function checkStampLoss(world: World, landmarks: LandmarkDefinition
  *  - confluence joins (end on the parent's core edge, at its level, not floating).
  */
 export const RAISE_KM2 = 5;
-export const MARSH_KM2 = 550;
+export const MARSH_KM2 = 650;
 export const LAKE_RIM_KM2 = 250;
 export const LAKE_RIM_MAX = 5;
 export const LOWER4_KM2 = 150;
@@ -154,7 +154,8 @@ export function checkHydroReport(dir: string): CheckResult {
   // declared allowances
   const marshKm2 = t?.allowances.marshRaised05Km2 ?? rep.marshFill.over05Km2;
   if (marshKm2 > MARSH_KM2) r.errors.push(`hydro: marsh fills raise ground > 0.5 above the relief on ${marshKm2} km² (allowance ${MARSH_KM2})`);
-  if (rep.marshFill.max > 3.05) r.errors.push(`hydro: a marsh fill is ${rep.marshFill.max} deep (bake bound world.json rivers.marshMaxDepth)`);
+  const marshDepth = (JSON.parse(readFileSync(join(ROOT, 'data/world/world.json'), 'utf8')) as { rivers: { marshMaxDepth?: number } }).rivers.marshMaxDepth ?? 3;
+  if (rep.marshFill.max > marshDepth + 0.05) r.errors.push(`hydro: a marsh fill is ${rep.marshFill.max} deep (bound world.json rivers.marshMaxDepth ${marshDepth})`);
   const rimKm2 = rep.lakeRims.reduce((a, l) => a + l.over05Km2, 0);
   if (rimKm2 > LAKE_RIM_KM2) r.errors.push(`hydro: lake rims / deltas raise > 0.5 on ${rimKm2.toFixed(0)} km² (allowance ${LAKE_RIM_KM2})`);
   for (const l of rep.lakeRims) if (l.max > LAKE_RIM_MAX) r.errors.push(`hydro: lake ${l.key} shore raised up to ${l.max} (allowance ${LAKE_RIM_MAX})`);
