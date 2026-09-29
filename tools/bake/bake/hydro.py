@@ -6,7 +6,9 @@
              from the sinks (the sea, the endorheic lakes of world.json rivers.sinks, else a basin's
              lowest node), never by comparing end heights.
 2. centre    one processed centreline per line (0.1 km resample, Gaussian-smoothed corners with pinned
-             ends, junction ends re-snapped onto their parent, resampled every `sampleKm`); widths from
+             ends), snapped onto the DEM valley floor within a class window (snap.py: the ME-GIS vectors
+             are laterally offset from the DEM valleys in places), junction ends re-attached to the snapped
+             parent, resampled every `sampleKm`; widths from
              the upstream network length (flow width). A tributary (or a side feeder of a continuation
              node) is clipped at the edge of its parent's channel core — it meets the parent's water at
              the parent's level there; a distributary starts there; a side channel lying inside its
@@ -14,26 +16,31 @@
 3. profiles  monotone water levels (profiles.py) per STEM — lines joined end-to-start and lakes between
              their main inlet and their outlet — solved downstream-first: sea mouth → 0, confluence → the
              parent's level, other inlets → the lake level. A lake is one pinned, heavily weighted sample,
-             so its level is decided with the rivers around it. The target is the thalweg + depth but never
-             above the lower bank (the river is incised into its floodplain), and the level never exceeds
+             so its level is decided with the rivers around it. The target is the thalweg + depth (short
+             pits closed first: a river pools over a DEM hollow instead of cutting the reach around it)
+             but never above the lower bank (the river is incised into its floodplain), and the level
+             never exceeds
              what the banks hold: their SPILL level (priority-flood; a closed hollow beside the river does
              not drain it) + fillCap — where it would, the sill downstream is cut instead (no perched
              water, no embankments). A side feeder whose own valley lies below its parent's level (the
              vector crosses a DEM divide) ends at its valley bottom. Declared falls (world.json
              rivers.falls, snapped to the steepest DEM drop) are the only places the surface drops
-             steeply; a free source in a hollow below a sill starts at the sill.
+             steeply; a free source in a hollow below a sill, or on a hillside above the valley it runs
+             into, starts at the sill / where it meets the valley.
 4. lakes     beds deepened below the level (inside the polygon) as a shelf near the shore, shores graded
-             to the level, low shores raised to it.
+             to the level (not beside the lake's own inlets / outlets); low shore connected to the water
+             below the level is a flat delta at the level, elsewhere a narrow lip hides the lake's edge.
 5. carve     U cross-section into h (exact on land: the thalweg IS the centreline); a levee under the
              ribbon edge at most fillCap above the ground, tapering 1:2 and ending within 0.8 km; valley
-             walls under a continuous envelope rising from the water's edge at the class slope (gorge
-             slope where great/major rivers cut deep through a sill), steepening smoothly beyond half
-             the easing width while the cut fades out; no line's easing undercuts another line's banks.
-             Closed hollows beside a river
-             (below its level) fill flat to it — marshes (bounded, reported).
+             walls under a continuous envelope rising from the water's edge at the class slope (steeper
+             only in declared gorges), never lowered more than the ground at the water's edge stands
+             above the water (tapering over edgeEaseKm) — a V valley keeps its shape instead of being
+             dug out; each sample's cone fades beyond the cell's own foot point (no seams at bends); no
+             line's easing undercuts another line's banks. Hollows beside a river that its water surface
+             closes off fill to its level within marshBandKm — marshes (bounded, reported).
 6. masks     channel / valley / distance rasters from the same centrelines; rivers.json v2 export data;
-             report.json (geometry gates read by tools/check: raised ground, new cliffs, joins, ribbon
-             edges, cuts, lake rims, marsh fills).
+             report.json (geometry gates read by tools/check: terrain vs the relief outside the cores by
+             cause — carve, lake shores, marshes — new cliffs, joins, ribbon edges, cuts, snap shifts).
 """
 from __future__ import annotations
 

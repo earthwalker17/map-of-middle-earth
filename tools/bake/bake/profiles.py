@@ -8,9 +8,12 @@ cut at most `max_cut` deep unless that would hold back a pool deeper than `max_p
 heavily weighted sample (its shore level, symmetric cost) that stays pinned through the smoothing, so
 the lake level is decided jointly with the rivers entering and leaving it. Boundary conditions (sea
 mouth, confluence = the parent's level, distributary start) are imposed with monotonicity-preserving
-ramps; the result is smoothed and given a minimum gradient. Last, the level is capped by what the banks
-can hold (cap_profile: level ≤ cummin(upper), never below a held level downstream — the excess where the
-two conflict is returned so the caller can end a side feeder at its valley bottom or allow the fill).
+ramps; the result is smoothed with each line's own class window (never more than smooth_lower below or
+smooth_raise above the fit: no excavated torrent heads, no ramps in the air below a cascade) and given a
+minimum gradient. Last, the level is capped by what the banks can hold (cap_profile: level ≤
+cummin(upper), never below a held level downstream — the excess where the two conflict is returned so
+the caller can end a side feeder at its valley bottom or allow the fill); the drops the cap creates are
+smoothed only where it binds.
 """
 from __future__ import annotations
 

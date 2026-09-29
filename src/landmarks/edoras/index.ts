@@ -4,9 +4,13 @@ export default defineLandmark({
   id: 'edoras',
   placeId: 'edoras',
   tier: 'B',
-  // Meduseld's green hill on the plain at the mouth of Harrowdale, inside the Snowbourn's bend (the
-  // stream runs past its west and north foot ~2.5 km out; the White Mountains rise behind it)
-  stamps: [{ kind: 'raise', at: [0, 0], radius: 2.0, amount: 2.6 }],
+  // Meduseld's green hill standing alone on the plain before the White Mountains: display offset
+  // (2, 5.5) km puts it on a natural knoll north of the Snowbourn, which runs past its southern foot
+  // ~3 km out, between the hill and the mountain front; a level crown carries Meduseld and its ring
+  stamps: [
+    { kind: 'raise', at: [0, 0], radius: 2.2, amount: 2.8 },
+    { kind: 'flatten', at: [0, 0], radius: 1.4, falloff: 0.5, height: 'auto', strength: 0.85 },
+  ],
   proxy: (k) => {
     k.box('wood', 1.2, 0.45, 0.45, { at: [0, 0, -0.3], tint: 0x7a5a38 });
     k.box('thatch', 1.25, 0.25, 0.5, { at: [0, 0.45, -0.3], tint: 0xe0b050 });
