@@ -3,7 +3,7 @@
   "notes": "Per-region look presets, one key per line so parallel work never conflicts. 'ground' drives the terrain material and its approximations through the ground look texture (src/materials/looks.ts groundLookTexture: grass/dry/soil/rock sRGB, dryness, pattern, snowline offset in world units, volcanic, rockiness, local spots by place or atKm; terrain look v2 owns these lines); 'grade' drives the RegionLook colour grade and 'atmo' the regional haze/aerial perspective (atmosphere work owns those lines). Palettes derived from docs/research/lookdev-route-typography.md (Lesnie/Doyle descriptions) — proposals, tune visually.",
   "regions": {
     "eriador": {
-      "ground": {"grass": "#648a45", "dry": "#8f9360", "soil": "#6a5941", "rock": "#5b6168", "dryness": 0.34, "pattern": 0.45, "spots": [{"place": "caradhras", "radiusKm": 30, "snowline": -4, "rock": "#5c6873"}, {"atKm": [350, 1200], "radiusKm": 110, "snowline": -5}, {"atKm": [640, 880], "radiusKm": 70, "grass": "#737d48", "dry": "#958a5e", "dryness": 0.5}, {"place": "bree", "radiusKm": 5, "turf": 1}, {"place": "weathertop", "radiusKm": 6, "turf": 0.7}, {"place": "moria", "radiusKm": 6, "turf": 0}]},
+      "ground": {"grass": "#648a45", "dry": "#8f9360", "soil": "#6a5941", "rock": "#5b6168", "dryness": 0.34, "pattern": 0.45, "spots": [{"place": "caradhras", "radiusKm": 30, "snowline": -4, "rock": "#5c6873"}, {"atKm": [350, 1200], "radiusKm": 90, "snowline": -1}, {"atKm": [640, 880], "radiusKm": 70, "grass": "#737d48", "dry": "#958a5e", "dryness": 0.5}, {"place": "bree", "radiusKm": 5, "turf": 1}, {"place": "weathertop", "radiusKm": 6, "turf": 0.7}, {"place": "moria", "radiusKm": 6, "turf": 0}]},
       "grade": {"tint": "#fff8ee", "saturation": 1, "contrast": 1, "spots": [{"place": "rivendell", "radiusKm": 32, "tint": "#fff0dc", "saturation": 1.04, "contrast": 0.95, "exposure": 0.05, "lift": [0.002, 0.0016, 0.0012], "bloom": 0.6}, {"place": "caradhras", "radiusKm": 24, "tint": "#eef5fb", "saturation": 0.86, "contrast": 1.03}]},
       "atmo": {"tint": [1.0, 1.0, 0.98], "density": 1, "spots": [{"place": "rivendell", "radiusKm": 22, "tint": [1.28, 1.1, 0.96], "density": 1.7}, {"place": "caradhras", "radiusKm": 55, "tint": [0.9, 1.0, 1.12], "density": 0.65}, {"place": "weathertop", "radiusKm": 30, "tint": [0.9, 1.0, 1.0], "density": 1.1}]}
     },
@@ -13,7 +13,7 @@
       "atmo": {"tint": [1.08, 1.04, 0.95], "density": 1.05, "spots": [{"place": "grey-havens", "radiusKm": 40, "tint": [1.2, 1.08, 0.9], "density": 1.3}]}
     },
     "north": {
-      "ground": {"grass": "#727a62", "dry": "#8e8d7c", "soil": "#5b5850", "rock": "#5f6264", "dryness": 0.55, "pattern": 0.6, "snowline": -10, "spots": [{"atKm": [1100, 1255], "radiusKm": 150, "snowline": -6, "rock": "#626262"}]},
+      "ground": {"grass": "#727a62", "dry": "#8e8d7c", "soil": "#5b5850", "rock": "#5f6264", "dryness": 0.55, "pattern": 0.6, "snowline": -5, "spots": [{"atKm": [1100, 1255], "radiusKm": 150, "snowline": -6, "rock": "#626262"}]},
       "grade": {"tint": "#f3f6fb", "saturation": 0.86, "contrast": 1.02},
       "atmo": {"tint": [0.94, 1.0, 1.08], "density": 0.8, "sky": [0.96, 1.0, 1.06]}
     },
