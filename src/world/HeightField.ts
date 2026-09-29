@@ -53,7 +53,8 @@ function inRing(r: [number, number][], x: number, z: number): boolean {
  * The ONLY height API in the project: base bake (u16 → float) + TypeScript stamp layer.
  * Provides the GPU texture (R32F, linear), CPU bilinear sampling, normals, min/max bounds for
  * culling and a ray-march for picking / camera clearance. Terrain, water, vegetation, landmarks,
- * labels and the route all go through this.
+ * labels and the route all go through this. The stamp layer never moves river corridors or lakes
+ * (RiverGuard, registered by World.load).
  */
 export class HeightField {
   readonly width: number;

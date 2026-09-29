@@ -735,7 +735,8 @@ def shape_lakes(cfg: Config, h: np.ndarray, land: np.ndarray, lakes: dict[str, L
 def carve(cfg: Config, h: np.ndarray, land: np.ndarray, lines: list[Line], lakes: dict[str, Lake]) -> dict[str, np.ndarray]:
     Rv = cfg.world["rivers"]
     bank_w = Rv.get("bankKm", {"great": 4.0, "major": 3.0, "minor": 2.0, "stream": 1.2})
-    bank_slope = float(Rv.get("bankSlope", 1.2))
+    slope_by = Rv.get("bankSlope", 1.2)
+    bank_ovr = Rv.get("bankOverrides", [])
     eps = 0.03
     H, W = h.shape
     core_min = np.full((H, W), np.inf, np.float32)
@@ -757,6 +758,12 @@ def carve(cfg: Config, h: np.ndarray, land: np.ndarray, lines: list[Line], lakes
         dp = np.stack([np.interp(sd, l.s, l.pts[:, 0]), np.interp(sd, l.s, l.pts[:, 1])], axis=1)
         lv = np.interp(sd, l.s, l.level)
         bd = np.interp(sd, l.s, l.bed)
+        # steepest valley wall allowed beside the water: by class, raised in declared gorges
+        slope = np.full(n, float(slope_by[l.cls] if isinstance(slope_by, dict) else slope_by), np.float32)
+        for o in bank_ovr:
+            if norm(o["river"]) == norm(l.name):
+                near = np.hypot(*(dp - np.array(o["atKm"])).T) < o["radiusKm"]
+                slope[near] = float(o["bankSlope"])
         tree = cKDTree(dp)
         (x0, y0), (x1, y1) = dp.min(0) - R, dp.max(0) + R
         c0, r0 = cfg.km_to_px(x0, y1)
@@ -795,7 +802,7 @@ def carve(cfg: Config, h: np.ndarray, land: np.ndarray, lines: list[Line], lakes
         # valley walls: ease anything steeper than bank_slope from the water's edge (soft cap)
         m3 = (d >= c) & ~wet_lake
         dd = d[m3] - c
-        lim = lvk[m3] + eps + dd * bank_slope
+        lim = lvk[m3] + eps + dd * slope[k[m3]]
         bw = float(bank_w[l.cls])
         x = np.clip((dd - 0.5 * bw) / (0.5 * bw), 0, 1)
         wb = 1 - x * x * (3 - 2 * x)
