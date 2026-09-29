@@ -7,18 +7,33 @@
              lowest node), never by comparing end heights.
 2. centre    one processed centreline per line (0.1 km resample, Gaussian-smoothed corners with pinned
              ends, junction ends re-snapped onto their parent, resampled every `sampleKm`); widths from
-             the upstream network length (flow width).
+             the upstream network length (flow width). A tributary (or a side feeder of a continuation
+             node) is clipped at the edge of its parent's channel core — it meets the parent's water at
+             the parent's level there; a distributary starts there; a side channel lying inside its
+             parent's core is absorbed. Continuation starts are fed (never trimmed as sources).
 3. profiles  monotone water levels (profiles.py) per STEM — lines joined end-to-start and lakes between
              their main inlet and their outlet — solved downstream-first: sea mouth → 0, confluence → the
              parent's level, other inlets → the lake level. A lake is one pinned, heavily weighted sample,
-             so its level is decided with the rivers around it. Declared falls (world.json rivers.falls,
-             snapped to the steepest DEM drop) are the only places the surface drops steeply; a free
-             source in a hollow below a sill starts at the sill.
-4. lakes     beds deepened below the level as a shelf near the shore, shores graded to the level.
-5. carve     U cross-section into h (exact on land: the thalweg IS the centreline), levee fill beside the
-             channel where the bank is lower than the water (so the runtime never needs to drape), tapering
-             1:2 to the ground, valley walls eased to a per-class slope (gorge overrides).
-6. masks     channel / valley / distance rasters from the same centrelines; rivers.json v2 export data.
+             so its level is decided with the rivers around it. The target is the thalweg + depth but never
+             above the lower bank (the river is incised into its floodplain), and the level never exceeds
+             what the banks hold: their SPILL level (priority-flood; a closed hollow beside the river does
+             not drain it) + fillCap — where it would, the sill downstream is cut instead (no perched
+             water, no embankments). A side feeder whose own valley lies below its parent's level (the
+             vector crosses a DEM divide) ends at its valley bottom. Declared falls (world.json
+             rivers.falls, snapped to the steepest DEM drop) are the only places the surface drops
+             steeply; a free source in a hollow below a sill starts at the sill.
+4. lakes     beds deepened below the level (inside the polygon) as a shelf near the shore, shores graded
+             to the level, low shores raised to it.
+5. carve     U cross-section into h (exact on land: the thalweg IS the centreline); a levee under the
+             ribbon edge at most fillCap above the ground, tapering 1:2 and ending within 0.8 km; valley
+             walls under a continuous envelope rising from the water's edge at the class slope (gorge
+             slope where great/major rivers cut deep through a sill), steepening smoothly beyond half
+             the easing width while the cut fades out; no line's easing undercuts another line's banks.
+             Closed hollows beside a river
+             (below its level) fill flat to it — marshes (bounded, reported).
+6. masks     channel / valley / distance rasters from the same centrelines; rivers.json v2 export data;
+             report.json (geometry gates read by tools/check: raised ground, new cliffs, joins, ribbon
+             edges, cuts, lake rims, marsh fills).
 """
 from __future__ import annotations
 
@@ -38,6 +53,8 @@ from .profiles import FitParams, fit_profile
 from .vectors import canon_lakes, canon_rivers, norm, raster_mask_window, smooth_band
 
 TOL_KM = 0.3
+# the bank beside the water stays this much above the level (hides the ribbon edge)
+CARVE_EPS = 0.03
 
 
 @dataclass
@@ -65,10 +82,19 @@ class Line:
     pts: np.ndarray | None = None
     s: np.ndarray | None = None
     thal: np.ndarray | None = None
+    # lowest ground beside the channel (core edge … ribbon edge, the lower side; +inf where the bank is
+    # water — the sea, a lake, another river's channel)
+    bank: np.ndarray | None = None
     bed: np.ndarray | None = None
     level: np.ndarray | None = None
     falls: list = field(default_factory=list)
     into: str | None = None
+    # parent line(s) whose core this line's end was clipped against (T-junction / side feeder)
+    clip_parents: list = field(default_factory=list)
+    # level above what the banks can hold (+ fillCap), forced by a held level downstream (a lake)
+    excess: np.ndarray | None = None
+    # a side channel lying entirely inside its parent's core: the parent's water covers it
+    absorbed: bool = False
 
     @property
     def core(self) -> float:
@@ -330,6 +356,146 @@ def lake_shore_level(cfg: Config, lk: Lake, h: np.ndarray, pct: float) -> float 
     return float(np.percentile(vals, pct)) if vals.size else None
 
 
+def normals(pts: np.ndarray) -> np.ndarray:
+    t = np.gradient(pts, axis=0)
+    t /= np.maximum(np.hypot(*t.T), 1e-9)[:, None]
+    return np.stack([-t[:, 1], t[:, 0]], axis=1)
+
+
+def lake_raster(cfg: Config, lakes: dict[str, Lake]) -> np.ndarray:
+    out = np.zeros((cfg.H, cfg.W), np.float32)
+    for lk in lakes.values():
+        sl = (slice(lk.r0, lk.r0 + lk.cov.shape[0]), slice(lk.c0, lk.c0 + lk.cov.shape[1]))
+        np.maximum(out[sl], lk.cov, out=out[sl])
+    return out
+
+
+def ribbon_half(cfg: Config, l: Line) -> float:
+    """Runtime ribbon half width (src/water/rivers.ts ribbonHalfWidth): ribbonScale × half the line
+    width, but always a margin beyond the carved core (no dry channel walls on streams)."""
+    R = cfg.world["rivers"]
+    return max(float(R.get("ribbonScale", 1.4)) * l.width / 2, l.core + float(R.get("ribbonMarginKm", 0.1)))
+
+
+def spill_levels(cfg: Config, h_pre: np.ndarray, land: np.ndarray, lakes: dict[str, Lake]) -> np.ndarray:
+    """Priority-flood fill of the relief: each cell's spill level. Outlets = the sea, the frame edge and
+    the endorheic lakes (world.json rivers.sinks)."""
+    from .flow import fill_depressions
+
+    seed = land < 0.5
+    for key in cfg.world["rivers"].get("sinks", []):
+        lk = lakes.get(key)
+        if lk is not None:
+            seed[lk.r0 : lk.r0 + lk.cov.shape[0], lk.c0 : lk.c0 + lk.cov.shape[1]] |= lk.cov > 0.5
+    return fill_depressions(h_pre, seed)
+
+
+def bank_heights(cfg: Config, lines: list[Line], spill: np.ndarray, land: np.ndarray, lakes: dict[str, Lake]) -> None:
+    """Per sample, the lowest level the banks can hold the water at: along both normals from the core edge
+    to just beyond the ribbon edge, the lower side's minimum SPILL level (a closed hollow beside the river
+    fills up before the river spills into it; an open valley beside it drains the river at its own
+    height). Bank samples that are water anyway (the sea, a lake, another line's channel core) never hold
+    anything back (+inf)."""
+    lake_any = lake_raster(cfg, lakes)
+    allp = np.concatenate([l.pts for l in lines])
+    owner = np.concatenate([np.full(len(l.pts), l.idx) for l in lines])
+    core_of = np.array([l.core for l in lines])
+    tree = cKDTree(allp)
+    for l in lines:
+        c = l.core
+        hw = ribbon_half(cfg, l) + 0.1
+        offs = np.linspace(c, hw, max(2, int(np.ceil((hw - c) / 0.2)) + 1))
+        nrm = normals(l.pts)
+        sides = []
+        for sgn in (1.0, -1.0):
+            lo = np.full(len(l.pts), np.inf)
+            for o in offs:
+                q = l.pts + nrm * (sgn * o)
+                hv = bilinear(cfg, spill, q)
+                wet = (bilinear(cfg, land, q) < 0.5) | (bilinear(cfg, lake_any, q) > 0.5)
+                d, j = tree.query(q, k=8)
+                own = owner[j]
+                other = ((own != l.idx) & (d < core_of[own] + 0.05)).any(axis=1)
+                lo = np.minimum(lo, np.where(wet | other, np.inf, hv))
+            sides.append(lo)
+        l.bank = np.minimum(sides[0], sides[1])
+
+
+def nearest_parent(lines: list[Line], l: Line, default: int) -> int:
+    """The parent line whose core edge this line's end lies on (the one it is nearest to beyond its core)."""
+
+    def gap(j: int) -> float:
+        par = lines[j]
+        return float(np.hypot(*(project(par.pts, par.s, l.pts[-1])[1] - l.pts[-1]))) - par.core
+
+    return min(l.clip_parents or [default], key=gap)
+
+
+def main_feeders(lines: list[Line], rank: dict) -> dict[int, int]:
+    """continuation line → the feeder that carries the stem on (highest class, then longest)."""
+    out: dict[int, int] = {}
+
+    def key_of(i: int) -> tuple:
+        return (rank[lines[i].cls], lines[i].s[-1], -i)
+
+    for l in lines:
+        if l.down[0] == "line" and l.down[2] == "cont":
+            j = l.down[1]
+            if j not in out or key_of(l.idx) > key_of(out[j]):
+                out[j] = l.idx
+    return out
+
+
+def clip_side_feeders(lines: list[Line], main_feeder: dict[int, int], log: list) -> None:
+    """A tributary (or side feeder of a continuation node) ends at the edge of its parent's channel core,
+    where it meets the parent's water at the parent's level; a distributary starts there. Inside the
+    parent's core the parent's own surface and section rule (no tributary ribbon floating above it)."""
+
+    def inside(p: np.ndarray, parents: list[int]) -> bool:
+        for j in parents:
+            par = lines[j]
+            _, q = project(par.pts, par.s, p)
+            if np.hypot(*(q - p)) < par.core:
+                return True
+        return False
+
+    def cut(l: Line, sl: slice) -> None:
+        l.pts, l.thal, l.bank = l.pts[sl], l.thal[sl], l.bank[sl]
+        l.s = arclen(l.pts)
+
+    for l in lines:
+        if l.down[0] == "line" and main_feeder.get(l.down[1]) != l.idx:
+            j = l.down[1]
+            parents = [j] + ([main_feeder[j]] if l.down[2] == "cont" and j in main_feeder else [])
+            k = len(l.pts) - 1
+            while k > 0 and inside(l.pts[k], parents):
+                k -= 1
+            if k < 2 or l.s[k] < 0.5:
+                l.absorbed = True
+                log.append(f"absorb {l.id}: lies inside {lines[j].id}'s core")
+                continue
+            if k < len(l.pts) - 1:
+                log.append(f"clip {l.id}: ends at the edge of {lines[j].id}'s core ({l.s[-1] - l.s[k]:.2f} km inside it dropped)")
+                cut(l, slice(0, k + 1))
+            l.clip_parents = parents
+        if l.up[0] == "line":
+            j = l.up[1]
+            k = 0
+            while k < len(l.pts) - 1 and inside(l.pts[k], [j]):
+                k += 1
+            if k > len(l.pts) - 3 or l.s[-1] - l.s[k] < 0.5:
+                l.absorbed = True
+                log.append(f"absorb {l.id}: lies inside {lines[j].id}'s core")
+                continue
+            if k > 0:
+                log.append(f"clip {l.id}: starts at the edge of {lines[j].id}'s core ({l.s[k]:.2f} km inside it dropped)")
+                cut(l, slice(k, None))
+    for l in lines:
+        for ref in (l.down, l.up):
+            if ref[0] == "line" and lines[ref[1]].absorbed and not l.absorbed:
+                log.append(f"WARN {l.id} joins {lines[ref[1]].id}, which lies inside its parent's core")
+
+
 def solve(cfg: Config, h_pre: np.ndarray, land: np.ndarray, lakes: dict[str, Lake]) -> tuple[list[Line], list[str]]:
     R = cfg.world["rivers"]
     P = R.get("profile", {})
@@ -365,9 +531,11 @@ def solve(cfg: Config, h_pre: np.ndarray, land: np.ndarray, lakes: dict[str, Lak
     tj = net["tjunc"]
     rank = {"great": 3, "major": 2, "minor": 1, "stream": 0}
     starts_at: dict[str, list[int]] = {}
+    ends_at: dict[str, list[int]] = {}
     for l in lines:
         up, dn = oriented_ends(l)
         starts_at.setdefault(up.node, []).append(l.idx)
+        ends_at.setdefault(dn.node, []).append(l.idx)
 
     def classify(l: Line) -> None:
         up, dn = oriented_ends(l)
@@ -389,6 +557,9 @@ def solve(cfg: Config, h_pre: np.ndarray, land: np.ndarray, lakes: dict[str, Lak
             lakes[up.lake].outlets.append(l.idx)
         elif up.node in tj:
             l.up = ("line", tj[up.node][0], "T")
+        elif up.kind == "node" and [j for j in ends_at.get(up.node, []) if j != l.idx]:
+            # a continuation: other lines end where this one starts — fed, never a source (no trim)
+            l.up = ("cont", *sorted(j for j in ends_at[up.node] if j != l.idx))
         else:
             l.up = ("free",)
 
@@ -420,23 +591,31 @@ def solve(cfg: Config, h_pre: np.ndarray, land: np.ndarray, lakes: dict[str, Lak
             l.pts = resample(l.pts, ds)
             l.s = arclen(l.pts)
             offs = np.array([-0.5, -0.25, 0.0, 0.25, 0.5]) * l.core
-            t = np.gradient(l.pts, axis=0)
-            t /= np.maximum(np.hypot(*t.T), 1e-9)[:, None]
-            nrm = np.stack([-t[:, 1], t[:, 0]], axis=1)
+            nrm = normals(l.pts)
             samples = np.stack([bilinear(cfg, h_pre, l.pts + nrm * o) for o in offs], axis=0)
             l.thal = samples.min(axis=0)
+        spill = spill_levels(cfg, h_pre, land, lakes)
+        bank_heights(cfg, lines, spill, land, lakes)
+        del spill
+        # the main feeder of a continuation node carries the stem on; the others join it like tributaries
+        main_feeder = main_feeders(lines, rank)
+        clip_side_feeders(lines, main_feeder, log)
+        for lk in lakes.values():
+            lk.inlets = [i for i in lk.inlets if not lines[i].absorbed]
+            lk.outlets = [i for i in lk.outlets if not lines[i].absorbed]
 
     with Timer("hydro: profiles"):
-        # a free source sitting in a hollow below a sill (vector/DEM mismatch) starts at the sill instead
+        # a free source sitting in a hollow below a sill (vector/DEM mismatch) starts at the sill instead;
+        # continuation starts ('cont', fed by the lines ending there) are never trimmed
         trim_km = float(P.get("trimSourceKm", 25.0))
         for l in lines:
-            if l.up[0] != "free" or len(l.s) < 8:
+            if l.up[0] != "free" or l.absorbed or len(l.s) < 8:
                 continue
             n = int(np.searchsorted(l.s, min(trim_km, 0.3 * l.s[-1])))
             m = int(np.argmax(l.thal[: n + 1]))
             if m > 0 and l.thal[m] - l.thal[0] > fp.max_pool:
                 log.append(f"trim {l.id}: source moved {l.s[m]:.1f} km downstream to the sill ({l.thal[m] - l.thal[0]:.2f} above the old source)")
-                l.pts, l.thal = l.pts[m:], l.thal[m:]
+                l.pts, l.thal, l.bank = l.pts[m:], l.thal[m:], l.bank[m:]
                 l.s = l.s[m:] - l.s[m]
 
         # falls: declared knickpoints (world.json rivers.falls) → sample index per line
@@ -444,7 +623,7 @@ def solve(cfg: Config, h_pre: np.ndarray, land: np.ndarray, lakes: dict[str, Lak
         for f in R.get("falls", []):
             best = None
             for l in lines:
-                if norm(l.name) != norm(f["river"]):
+                if l.absorbed or norm(l.name) != norm(f["river"]):
                     continue
                 d = np.hypot(*(l.pts - np.array(f["atKm"])).T)
                 i = int(np.argmin(d))
@@ -487,22 +666,14 @@ def solve(cfg: Config, h_pre: np.ndarray, land: np.ndarray, lakes: dict[str, Lak
         def key_of(i: int) -> tuple:
             return (rank[lines[i].cls], lines[i].s[-1], -i)
 
-        nxt: dict[tuple, tuple] = {}
-        for l in lines:
-            if l.down[0] == "line" and l.down[2] == "cont":
-                j = l.down[1]
-                cur = next((a for a, b in nxt.items() if b == ("line", j)), None)
-                if cur is None or key_of(l.idx) > key_of(cur[1]):
-                    if cur is not None:
-                        del nxt[cur]
-                    nxt[("line", l.idx)] = ("line", j)
+        nxt: dict[tuple, tuple] = {("line", f): ("line", j) for j, f in sorted(main_feeder.items())}
         for key, lk in lakes.items():
             if lk.inlets:
                 nxt[("line", max(lk.inlets, key=key_of))] = ("lake", key)
             if lk.outlets:
                 nxt[("lake", key)] = ("line", max(lk.outlets, key=key_of))
         has_prev = set(nxt.values())
-        elems = [("line", l.idx) for l in lines] + [("lake", k) for k, lk in lakes.items() if lk.inlets or lk.outlets]
+        elems = [("line", l.idx) for l in lines if not l.absorbed] + [("lake", k) for k, lk in lakes.items() if lk.inlets or lk.outlets]
         stems: list[list[tuple]] = []
         for e in elems:
             if e in has_prev:
@@ -593,10 +764,19 @@ def flow_widths(cfg: Config, lines: list[Line], lakes: dict[str, Lake], log: lis
     log.append("flow widths: " + ", ".join(f"{l.name or 'stream'} {l.width:.2f} km (upstream {lup(l.idx):.0f} km)" for l in big))
 
 
-def solve_stem(cfg, st: list[tuple], lines, lakes, fp: FitParams, ds: float, fall_at: dict, cap_for, level_on, stem_of: dict, done: set, authored: dict, lake_w: float, smooth_by: dict, log: list) -> None:
-    """Fit one stem in LEVEL space (target = thalweg + the line's water depth) and split it back.
-    A lake is a single sample shared by its main inlet's last sample and its outlet's first sample."""
-    t_parts, c_parts, bw_parts, fw_parts = [], [], [], []
+def solve_stem(cfg, st: list[tuple], lines, lakes, fp: FitParams, ds: float, fall_at: dict, cap_for, level_on, stem_of: dict, done: set, authored: dict, lake_w: float, smooth_by: dict, log: list, retry: bool = True) -> None:
+    """Fit one stem in LEVEL space and split it back. Target = the thalweg + the line's water depth, but
+    never above the lower bank less a freeboard (the river is incised into its floodplain instead of
+    sitting on top of it); the level may never exceed the banks + the allowed levee fill (no perched
+    water: profiles.cap_profile), so where the terrain cannot hold the water the sill downstream is cut.
+    A lake is a single sample shared by its main inlet's last sample and its outlet's first sample.
+    A side feeder whose own valley lies below the parent's level (the vector crosses a DEM divide on its
+    way to the parent) ends at the bottom of that valley instead of being held up on an embankment."""
+    PR = cfg.world["rivers"].get("profile", {})
+    fb = float(PR.get("bankFreeboard", 0.05))
+    fill_cap = float(PR.get("fillCap", 0.4))
+    tol = float(PR.get("conflictTol", 0.3))
+    t_parts, c_parts, bw_parts, fw_parts, u_parts = [], [], [], [], []
     offs: dict[int, int] = {}
     lake_at: dict[str, int] = {}
     n = 0
@@ -610,20 +790,22 @@ def solve_stem(cfg, st: list[tuple], lines, lakes, fp: FitParams, ds: float, fal
                 c_parts.append(np.array([1e3]))
                 bw_parts.append(np.array([w]))
                 fw_parts.append(np.array([1.0]))
+                u_parts.append(np.array([np.inf]))
                 n += 1
             else:  # the inlet's last sample becomes the lake
-                t_parts[-1][-1], c_parts[-1][-1], bw_parts[-1][-1], fw_parts[-1][-1] = tgt, 1e3, w, 1.0
+                t_parts[-1][-1], c_parts[-1][-1], bw_parts[-1][-1], fw_parts[-1][-1], u_parts[-1][-1] = tgt, 1e3, w, 1.0, np.inf
             lake_at[e[1]] = n - 1
             continue
         l = lines[e[1]]
         a = 0 if q == 0 else 1  # consecutive elements share their junction sample
         offs[l.idx] = n - a
-        t_parts.append(l.thal[a:] + l.depth)
+        t_parts.append(np.minimum(l.thal + l.depth, l.bank - fb)[a:])
         c_parts.append(cap_for(l)[a:])
         bw_parts.append(np.ones(len(l.s) - a))
         fw_parts.append(np.full(len(l.s) - a, fp.fill_weight))
+        u_parts.append((l.bank + fill_cap - CARVE_EPS)[a:])
         n += len(l.s) - a
-    t, cap, bw, fw = (np.concatenate(x) for x in (t_parts, c_parts, bw_parts, fw_parts))
+    t, cap, bw, fw, upper = (np.concatenate(x) for x in (t_parts, c_parts, bw_parts, fw_parts, u_parts))
     falls, names = [], {}
     plunge = int(round(float(cfg.world["rivers"].get("plungeKm", 4.0)) / ds))
     for i, o in offs.items():
@@ -649,7 +831,9 @@ def solve_stem(cfg, st: list[tuple], lines, lakes, fp: FitParams, ds: float, fal
         elif dn[0] == "line":
             ll.into = lines[dn[1]].id
             if stem_of[("line", dn[1])] in done:
-                E = level_on(dn[1], ll.pts[-1])
+                # the parent whose core edge this line was clipped at (a side feeder of a continuation
+                # node meets whichever of the two lines is nearer)
+                E = level_on(nearest_parent(lines, ll, dn[1]), ll.pts[-1])
     if first[0] == "line":
         fl = lines[first[1]]
         if fl.up[0] == "line" and stem_of[("line", fl.up[1])] in done:
@@ -658,7 +842,25 @@ def solve_stem(cfg, st: list[tuple], lines, lakes, fp: FitParams, ds: float, fal
         S = E  # a distributary cannot start below where it ends
     cls_in = [lines[e[1]].cls for e in st if e[0] == "line"]
     pk = FitParams(**{**fp.__dict__, "smooth_km": float(max(smooth_by.get(c, fp.smooth_km) for c in cls_in))})
-    lvl, drops = fit_profile(t, ds, pk, E, S, falls, cap, bw, fw, list(lake_at.values()))
+    lvl, drops, excess = fit_profile(t, ds, pk, E, S, falls, cap, bw, fw, list(lake_at.values()), upper)
+    # a side feeder held above its own valley by the parent's level: end it at the valley bottom
+    if retry and last[0] == "line" and E is not None and lines[last[1]].down[0] in ("line", "lake"):
+        ll = lines[last[1]]
+        o = offs[ll.idx]
+        ex = excess[o : o + len(ll.s)]
+        bad = np.nonzero(ex > tol)[0]
+        if bad.size:
+            k0 = int(bad[0])
+            m = k0 + int(np.argmin(ll.thal[k0:]))
+            if 4 <= m < len(ll.s) - 2:
+                log.append(f"end {ll.id}: its valley lies {float(ex.max()):.2f} below the level of {ll.into} (a DEM divide at {ll.pts[m][0]:.1f},{ll.pts[m][1]:.1f} km); it ends at the valley bottom, {ll.s[-1] - ll.s[m]:.1f} km short")
+                ll.pts, ll.thal, ll.bank = ll.pts[: m + 1], ll.thal[: m + 1], ll.bank[: m + 1]
+                ll.s = ll.s[: m + 1]
+                if ll.down[0] == "lake":
+                    lakes[ll.down[1]].inlets.remove(ll.idx)
+                ll.down, ll.into, ll.clip_parents = ("free",), None, []
+                solve_stem(cfg, st, lines, lakes, fp, ds, fall_at, cap_for, level_on, stem_of, done, authored, lake_w, smooth_by, log, retry=False)
+                return
     for key, i in lake_at.items():
         lakes[key].level = float(lvl[i])
     for q, e in enumerate(st):
@@ -668,6 +870,10 @@ def solve_stem(cfg, st: list[tuple], lines, lakes, fp: FitParams, ds: float, fal
         o, m = offs[l.idx], len(l.s)
         l.level = lvl[o : o + m].copy()
         l.bed = l.level - l.depth
+        l.excess = excess[o : o + m].copy()
+        if l.excess.max() > 0.05:
+            k = int(np.argmax(l.excess))
+            log.append(f"note {l.id}: held {l.excess.max():.2f} above what its banks allow (+{fill_cap}) by the level downstream, at {l.pts[k][0]:.1f},{l.pts[k][1]:.1f} km")
         l.falls = [{"index": int(f - o), "drop": round(float(dr), 4), "name": names.get(f)} for f, dr in drops if o <= f < o + m - 1]
         if q + 1 < len(st):
             nx = st[q + 1]
@@ -709,7 +915,8 @@ def shape_lakes(cfg: Config, h: np.ndarray, land: np.ndarray, lakes: dict[str, L
             continue
         sl = (slice(lk.r0, lk.r0 + lk.cov.shape[0]), slice(lk.c0, lk.c0 + lk.cov.shape[1]))
         hw = h[sl]
-        wet = lk.cov > 0.02
+        # the bed lies inside the polygon (the runtime lake surface); its antialiased edge pixels are shore
+        wet = lk.cov >= 0.5
         d_in = ndimage.distance_transform_edt(wet) * cfg.px_km
         d_out = ndimage.distance_transform_edt(~wet) * cfg.px_km
         size = np.sqrt(max(lk.area_km2, 0.1))
@@ -742,33 +949,57 @@ def carve(cfg: Config, h: np.ndarray, land: np.ndarray, lines: list[Line], lakes
     bank_w = Rv.get("bankKm", {"great": 4.0, "major": 3.0, "minor": 2.0, "stream": 1.2})
     slope_by = Rv.get("bankSlope", 1.2)
     bank_ovr = Rv.get("bankOverrides", [])
-    eps = 0.03
+    fill_cap = float(Rv.get("profile", {}).get("fillCap", 0.4))
+    max_cut = float(Rv.get("profile", {}).get("maxCut", 2.0))
+    gorge = float(Rv.get("gorgeSlope", 1.6))
+    rise = float(Rv.get("wallRise", 3.0))
+    eps = CARVE_EPS
     H, W = h.shape
     core_min = np.full((H, W), np.inf, np.float32)
     levee = np.full((H, W), -np.inf, np.float32)
     bank_cut = np.zeros((H, W), np.float32)
+    protect = np.full((H, W), -np.inf, np.float32)
     channel = np.zeros((H, W), np.float32)
     dist = np.full((H, W), 1e3, np.float32)
     near_level = np.zeros((H, W), np.float32)
+    near_zone = np.zeros((H, W), np.float32)  # the nearest line's ribbon edge beyond its core (km)
     lake_any = np.zeros((H, W), np.float32)
     for lk in lakes.values():
         sl = (slice(lk.r0, lk.r0 + lk.cov.shape[0]), slice(lk.c0, lk.c0 + lk.cov.shape[1]))
         np.maximum(lake_any[sl], lk.cov, out=lake_any[sl])
     for l in lines:
+        if l.absorbed:
+            continue
         c = l.core
-        R = c + float(bank_w[l.cls])
         # dense centreline (0.1 km) carrying level / bed
         n = max(2, int(np.ceil(l.s[-1] / 0.1)) + 1)
         sd = np.linspace(0, l.s[-1], n)
         dp = np.stack([np.interp(sd, l.s, l.pts[:, 0]), np.interp(sd, l.s, l.pts[:, 1])], axis=1)
         lv = np.interp(sd, l.s, l.level)
         bd = np.interp(sd, l.s, l.bed)
-        # steepest valley wall allowed beside the water: by class, raised in declared gorges
+        ex = np.interp(sd, l.s, l.excess) if l.excess is not None else np.zeros(n)
+        # steepest valley wall allowed beside the water: by class, raised in declared gorges and where
+        # the channel is cut deep through a sill (a narrow gorge instead of a wide trough)
         slope = np.full(n, float(slope_by[l.cls] if isinstance(slope_by, dict) else slope_by), np.float32)
+        cut_d = np.interp(sd, l.s, l.thal) - bd
+        if l.cls in ("great", "major"):  # small rivers keep their (already steep) class walls: vales, not slots
+            x = np.clip((cut_d - 0.5 * max_cut) / max_cut, 0, 1)
+            slope = np.maximum(slope, slope + (gorge - slope) * (x * x * (3 - 2 * x))).astype(np.float32)
         for o in bank_ovr:
             if norm(o["river"]) == norm(l.name):
                 near = np.hypot(*(dp - np.array(o["atKm"])).T) < o["radiusKm"]
-                slope[near] = float(o["bankSlope"])
+                slope[near] = np.maximum(slope[near], float(o["bankSlope"]))
+        # the eased wall reaches the ground the cut went through before it fades out (a deep cut with a
+        # class-width fade would leave a cliff where the easing stops)
+        bw0 = float(bank_w[l.cls])
+        bw = np.maximum(bw0, 2.0 * (np.maximum(cut_d, 0.0) + 0.5) / slope).astype(np.float32)
+        # reach: out to where the wall cap has risen above the highest ground around the line
+        R0 = c + float(bw.max())
+        (x0, y0), (x1, y1) = dp.min(0) - R0 - 10.0, dp.max(0) + R0 + 10.0
+        c0, r0 = cfg.km_to_px(x0, y1)
+        c1, r1 = cfg.km_to_px(x1, y0)
+        hmax = float(h[max(0, int(r0)) : min(H, int(np.ceil(r1)) + 1), max(0, int(c0)) : min(W, int(np.ceil(c1)) + 1)].max())
+        R = R0 + max(0.0, hmax - float(lv.min()) - 0.5 * float(bw.min()) * float(slope.min())) / (float(slope.min()) + rise)
         tree = cKDTree(dp)
         (x0, y0), (x1, y1) = dp.min(0) - R, dp.max(0) + R
         c0, r0 = cfg.km_to_px(x0, y1)
@@ -797,23 +1028,45 @@ def carve(cfg: Config, h: np.ndarray, land: np.ndarray, lines: list[Line], lakes
         core_h = lvk[m] - (lvk[m] - bdk[m]) * (1 - u)
         cur = core_min[idx_r[m], idx_c[m]]
         core_min[idx_r[m], idx_c[m]] = np.minimum(cur, core_h)
-        # levee fill: the bank beside the water stays a little above the level (land only), then
-        # tapers down at 1:2 to the natural ground instead of ending in a dike
-        d_lev = 1.6 * c + 0.3
-        m2 = (d >= c) & (d < R) & ~wet_lake & (land[idx_r, idx_c] >= 0.5)
+        # levee: under the ribbon the bank stays a little above the level (land only), then tapers down
+        # at 1:2; never more than fillCap above the ground (the profile keeps the level within reach of
+        # the banks, so this only tops up low bank lips) and nothing beyond the taper — no embankments
+        hw_r = ribbon_half(cfg, l) + 0.1
+        d_lev = hw_r + fill_cap / 0.5
+        m2 = (d >= c) & (d < d_lev) & ~wet_lake & (land[idx_r, idx_c] >= 0.5)
         dm = d[m2]
-        req = lvk[m2] + eps + 0.08 * (np.minimum(dm, d_lev) - c) - 0.5 * np.maximum(0.0, dm - d_lev)
+        tx = np.clip((dm - hw_r) / (d_lev - hw_r), 0, 1)
+        allow = (fill_cap + ex[k[m2]]) * (1 - tx * tx * (3 - 2 * tx))
+        req = np.minimum(lvk[m2] + eps - 0.5 * np.maximum(0.0, dm - hw_r), h[idx_r[m2], idx_c[m2]] + allow)
         levee[idx_r[m2], idx_c[m2]] = np.maximum(levee[idx_r[m2], idx_c[m2]], req)
-        # valley walls: ease anything steeper than bank_slope from the water's edge (soft cap)
+        # valley walls: nothing stands above a cap that rises from the water's edge at the wall slope out
+        # to half the easing width and steepens beyond — a continuous envelope (the max cut over the
+        # nearby centreline samples' cones, so bends and steep reaches leave no seam)
         m3 = (d >= c) & ~wet_lake
-        dd = d[m3] - c
-        lim = lvk[m3] + eps + dd * slope[k[m3]]
-        bw = float(bank_w[l.cls])
-        x = np.clip((dd - 0.5 * bw) / (0.5 * bw), 0, 1)
-        wb = 1 - x * x * (3 - 2 * x)
-        hc = h[idx_r[m3], idx_c[m3]]
-        cutv = wb * np.maximum(0.0, hc - lim)
-        bank_cut[idx_r[m3], idx_c[m3]] = np.maximum(bank_cut[idx_r[m3], idx_c[m3]], cutv)
+        if m3.any():
+            step = 2
+            sp = dp[::step]
+            kq = min(12, len(sp))
+            dj, kj = cKDTree(sp).query(q[ok][m3], k=kq)
+            if kq == 1:
+                dj, kj = dj[:, None], kj[:, None]
+            kj = kj * step
+            ddj = np.maximum(dj - c, 0.0)
+            # beyond half the easing width the cap steepens smoothly (its slope grows by 2·wallRise over
+            # the second half): a bounded reach in steep terrain without a crease on gentle slopes
+            over = np.maximum(0.0, ddj - 0.5 * bw[kj])
+            limj = lv[kj] + eps + ddj * slope[kj] + rise * over * over / (0.5 * bw[kj])
+            # ...and the cut fades out between half the easing width and the full width (no crease
+            # where the eased wall meets the untouched slope)
+            xw = np.clip((ddj - 0.5 * bw[kj]) / (0.5 * bw[kj]), 0.0, 1.0)
+            wbj = 1.0 - xw * xw * (3.0 - 2.0 * xw)
+            hc = h[idx_r[m3], idx_c[m3]]
+            cutv = (wbj * np.maximum(0.0, hc[:, None] - limj)).max(axis=1).astype(np.float32)
+            bank_cut[idx_r[m3], idx_c[m3]] = np.maximum(bank_cut[idx_r[m3], idx_c[m3]], cutv)
+            # ...and no other line's (or a lower reach's) easing may undercut this line's banks: below the
+            # ribbon edge the ground may fall away from the water at most as steeply as the walls rise
+            fl = (lv[kj] + eps - (slope[kj] + rise) * np.maximum(0.0, dj - (hw_r - 0.1))).max(axis=1).astype(np.float32)
+            protect[idx_r[m3], idx_c[m3]] = np.maximum(protect[idx_r[m3], idx_c[m3]], fl)
         # masks
         aa = max(cfg.px_km * 0.75, l.width * 0.25)
         ch = smooth_band(d, c, aa)
@@ -822,13 +1075,58 @@ def carve(cfg: Config, h: np.ndarray, land: np.ndarray, lines: list[Line], lakes
         closer = db < dist[idx_r, idx_c]
         dist[idx_r[closer], idx_c[closer]] = db[closer]
         near_level[idx_r[closer], idx_c[closer]] = lvk[closer]
+        near_zone[idx_r[closer], idx_c[closer]] = hw_r - c
     in_core = np.isfinite(core_min)
-    h -= bank_cut
+    # eased walls, but never below another channel's bank protection (and never raised by it)
+    np.maximum(h - bank_cut, np.minimum(h, protect), out=h)
+    del bank_cut, protect
     np.maximum(h, np.where(in_core, -np.inf, levee), out=h)
     on_land = in_core & (land >= 0.5)
     h[on_land] = core_min[on_land]
     np.minimum(h, core_min, out=h)  # at sea mouths the section only ever lowers
-    return {"channel": channel, "dist": dist, "near_level": near_level, "lake_any": lake_any, "core": in_core}
+    return {"channel": channel, "dist": dist, "near_level": near_level, "near_zone": near_zone, "lake_any": lake_any, "core": in_core}
+
+
+def marsh_fill(cfg: Config, h: np.ndarray, land: np.ndarray, lakes: dict[str, Lake], m: dict) -> list[dict]:
+    """A closed hollow beside a river (its spill level above the ground, touching the river's ribbon
+    zone below the water) fills up to the river's level: a flat marsh instead of the ribbon edge hanging
+    over a drop. These are the canon marshes where the DEM has them (the Gladden Fields, the Wetwang).
+    Bounded: hollows larger than marshMaxKm2 or needing more than marshMaxDepth are left as they are
+    (reported), a hollow touching a lake is the lake's business. Returns the fills."""
+    from .flow import fill_depressions
+
+    Rv = cfg.world["rivers"]
+    max_km2 = float(Rv.get("marshMaxKm2", 250.0))
+    max_depth = float(Rv.get("marshMaxDepth", 3.0))
+    seed_out = land < 0.5
+    for key in Rv.get("sinks", []):
+        lk = lakes.get(key)
+        if lk is not None:
+            seed_out[lk.r0 : lk.r0 + lk.cov.shape[0], lk.c0 : lk.c0 + lk.cov.shape[1]] |= lk.cov > 0.5
+    spill = fill_depressions(h, seed_out)
+    hollow = (spill - h) > 0.01
+    wet = m["lake_any"] > 0.5
+    seeds = hollow & (land >= 0.5) & ~wet & (m["dist"] > 0) & (m["dist"] <= m["near_zone"]) & (h < m["near_level"] - 0.02)
+    lab, _ = ndimage.label(hollow, structure=np.ones((3, 3), bool))
+    ids = np.unique(lab[seeds])
+    ids = ids[ids > 0]
+    objs = ndimage.find_objects(lab)
+    fills = []
+    for i in ids:
+        sl = objs[i - 1]
+        comp = lab[sl] == i
+        area = float(comp.sum() * cfg.px_km**2)
+        hs = h[sl]
+        top = min(float(spill[sl][comp].max()), float(m["near_level"][sl][comp & seeds[sl]].max()) + CARVE_EPS)
+        need = np.where(comp, top - hs, 0.0)
+        r, c = sl[0].start + int(np.argwhere(comp)[0][0]), sl[1].start + int(np.argwhere(comp)[0][1])
+        rec = {"at": [round(cfg.x0_km + (c + 0.5) * cfg.px_km, 1), round(cfg.y1_km - (r + 0.5) * cfg.px_km, 1)], "km2": round(area, 1), "depth": round(float(need.max()), 2)}
+        if area > max_km2 or need.max() > max_depth or (wet[sl] & comp).any():
+            rec["skipped"] = True
+        else:
+            hs[:] = np.where(comp & (hs < top), top, hs)
+        fills.append(rec)
+    return sorted(fills, key=lambda f: -f["km2"])
 
 
 def valley_mask(cfg: Config, lines: list[Line]) -> np.ndarray:
@@ -836,7 +1134,7 @@ def valley_mask(cfg: Config, lines: list[Line]) -> np.ndarray:
 
     valley = np.zeros((cfg.H, cfg.W), np.float32)
     for cls in ("great", "major", "minor", "stream"):
-        sub = [LineString(l.pts) for l in lines if l.cls == cls]
+        sub = [LineString(l.pts) for l in lines if l.cls == cls and not l.absorbed]
         if not sub:
             continue
         g = [affinity.scale(s, 1e3, 1e3, origin=(0, 0)) for s in sub]
@@ -847,6 +1145,98 @@ def valley_mask(cfg: Config, lines: list[Line]) -> np.ndarray:
     return valley
 
 
+def geometry_report(cfg: Config, h_pre: np.ndarray, h_lakes: np.ndarray, h_carve: np.ndarray, h: np.ndarray, land: np.ndarray, lines: list[Line], lakes: dict[str, Lake], m: dict, fills: list[dict]) -> dict:
+    """What the hydro step did to the terrain, as gates (tools/check reads report.json):
+    raised ground outside the channel cores (the carve's levees; marsh fills of closed hollows are
+    reported on their own), lake shore rims, new cliffs, confluence joins, ribbon edges, cuts."""
+    px2 = cfg.px_km**2
+    core = m["core"]
+    onland = land >= 0.5
+    wet = m["lake_any"] > 0.5
+
+    def where(a: np.ndarray) -> list[float]:
+        r, c = np.unravel_index(int(np.argmax(a)), a.shape)
+        return [round(cfg.x0_km + (c + 0.5) * cfg.px_km, 1), round(cfg.y1_km - (r + 0.5) * cfg.px_km, 1)]
+
+    rep: dict = {}
+    # 1. ground raised by the river carve (levee fill) outside the channel cores
+    rr = np.where(~core & onland & ~wet, h_carve - h_lakes, 0.0)
+    rep["riverRaise"] = {"over05Km2": round(float((rr > 0.5).sum() * px2), 1), "over1Km2": round(float((rr > 1).sum() * px2), 1), "max": round(float(rr.max()), 3), "at": where(rr)}
+    mf = h - h_carve
+    rep["marshFill"] = {"over05Km2": round(float((mf > 0.5).sum() * px2), 1), "filledKm2": round(float((mf > 0.01).sum() * px2), 1), "max": round(float(mf.max()), 3), "fills": fills}
+    # 2. lake shores: low shores raised to the lake level
+    lr = np.where(~wet & onland, h_lakes - h_pre, 0.0)
+    rims = []
+    for lk in lakes.values():
+        if lk.level is None:
+            continue
+        sl = (slice(lk.r0, lk.r0 + lk.cov.shape[0]), slice(lk.c0, lk.c0 + lk.cov.shape[1]))
+        w = lr[sl]
+        rims.append({"key": lk.key, "over05Km2": round(float((w > 0.5).sum() * px2), 1), "max": round(float(w.max()), 3)})
+    rep["lakeRims"] = rims
+    # 3. neighbour steps > 3 units that the relief did not have
+    new = 0
+    at: list = []
+    for ax in (0, 1):
+        dh = np.abs(np.diff(h, axis=ax))
+        dp = np.abs(np.diff(h_pre, axis=ax))
+        mm = (dh > 3) & (dp <= 3)
+        new += int(mm.sum())
+        if mm.any() and len(at) < 5:
+            r, c = np.argwhere(mm)[0]
+            at.append([round(cfg.x0_km + (c + 0.5) * cfg.px_km, 1), round(cfg.y1_km - (r + 0.5) * cfg.px_km, 1)])
+    rep["newSteps"] = {"over3": new, "at": at}
+    # 4. confluences: a side feeder ends at its parent's core edge, at the parent's level, and its ribbon
+    # end never floats above its own bed
+    by_id = {l.id: l for l in lines}
+    joins = []
+    for l in lines:
+        if l.absorbed or l.into not in by_id:
+            continue
+        par = nearest_parent(lines, l, by_id[l.into].idx)
+        P = lines[par]
+        sp, q = project(P.pts, P.s, l.pts[-1])
+        d = float(np.hypot(*(q - l.pts[-1])))
+        # the side feeder's last 2 km on land (a main feeder runs straight on into its continuation's
+        # deeper channel; at an estuary the ribbon hands over to the sea)
+        tail = l.s >= l.s[-1] - 2.0
+        ground = bilinear(cfg, h, l.pts[tail])
+        fl = np.where(ground > 0.02, l.level[tail] - ground - l.depth, 0.0) if l.clip_parents else np.zeros(1)
+        joins.append({"id": l.id, "into": l.into, "offKm": round(d - (P.core if l.clip_parents else 0.0), 3), "dLevel": round(float(l.level[-1] - np.interp(sp, P.s, P.level)), 4), "float": round(float(fl.max()), 3)})
+    rep["joins"] = joins
+    # 5. ribbon edges above the final ground (water hanging over a lower bank), km of river per side
+    edge = []
+    total = 0.0
+    for l in lines:
+        if l.absorbed or len(l.s) < 2:
+            continue
+        nrm = normals(l.pts)
+        hw = ribbon_half(cfg, l)
+        ds = float(l.s[1] - l.s[0])
+        fl = np.zeros(len(l.s))
+        for sgn in (1.0, -1.0):
+            q = l.pts + nrm * (sgn * hw * 0.85)
+            g = bilinear(cfg, h, q)
+            dry = (bilinear(cfg, land, q) >= 0.5) & (bilinear(cfg, m["lake_any"], q) < 0.5)
+            fl = np.maximum(fl, np.where(dry, l.level - g, 0.0))
+        km = float((fl > 0.15).sum() * ds)
+        total += km
+        if km > 0:
+            k = int(np.argmax(fl))
+            edge.append({"id": l.id, "km": round(km, 1), "max": round(float(fl[k]), 2), "at": [round(float(l.pts[k][0]), 1), round(float(l.pts[k][1]), 1)]})
+    rep["edgeFloat"] = {"totalKm": round(total, 1), "lines": sorted(edge, key=lambda e: -e["km"])}
+    # 6. cuts below the relief (thalweg − bed)
+    cuts = []
+    for l in lines:
+        if l.absorbed:
+            continue
+        cut = l.thal - l.bed
+        k = int(np.argmax(cut))
+        cuts.append({"id": l.id, "max": round(float(cut[k]), 2), "at": [round(float(l.pts[k][0]), 1), round(float(l.pts[k][1]), 1)], "over2Km": round(float((cut > 2).sum() * (l.s[1] - l.s[0] if len(l.s) > 1 else 0)), 1)})
+    rep["cuts"] = sorted(cuts, key=lambda c: -c["max"])
+    return rep
+
+
 def run_hydro(cfg: Config, h_pre: np.ndarray, land: np.ndarray) -> tuple[np.ndarray, dict[str, np.ndarray], dict]:
     with Timer("hydro: lakes"):
         lakes = load_lakes(cfg)
@@ -854,13 +1244,31 @@ def run_hydro(cfg: Config, h_pre: np.ndarray, land: np.ndarray) -> tuple[np.ndar
     h = h_pre.copy()
     with Timer("hydro: lake shores"):
         shape_lakes(cfg, h, land, lakes)
+    h_lakes = h.copy()
     with Timer("hydro: carve + masks"):
         m = carve(cfg, h, land, lines, lakes)
         valley = valley_mask(cfg, lines)
+    h_carve = h.copy()
+    with Timer("hydro: marsh fill"):
+        fills = marsh_fill(cfg, h, land, lakes, m)
+    with Timer("hydro: geometry report"):
+        report = geometry_report(cfg, h_pre, h_lakes, h_carve, h, land, lines, lakes, m, fills)
+    del h_lakes, h_carve
     for s in log:
         print(f"[bake]   {s}")
+    rr = report["riverRaise"]
+    print(f"[bake]   report: ground raised > 0.5 outside channel cores {rr['over05Km2']} km² (> 1: {rr['over1Km2']} km², max {rr['max']} at {rr['at']}); new > 3-unit steps {report['newSteps']['over3']}")
+    worst = sorted(report["joins"], key=lambda j: -max(j["float"], abs(j["dLevel"]) * 10, j["offKm"]))[:3]
+    print("[bake]   report: worst joins " + "; ".join(f"{j['id']}→{j['into']} off {j['offKm']} km, Δlevel {j['dLevel']}, float {j['float']}" for j in worst))
+    print("[bake]   report: deepest cuts " + ", ".join(f"{c['id']} {c['max']} ({c['over2Km']} km > 2)" for c in report["cuts"][:6]))
+    mf = report["marshFill"]
+    print(f"[bake]   report: marsh fills {mf['filledKm2']} km² (> 0.5: {mf['over05Km2']} km², max {mf['max']}): " + ", ".join(f"{f['km2']} km² at {f['at']}" + (" skipped" if f.get("skipped") else "") for f in mf["fills"][:6]))
+    ef = report["edgeFloat"]
+    print(f"[bake]   report: ribbon edges > 0.15 above the ground on {ef['totalKm']} km: " + ", ".join(f"{e['id']} {e['km']} km (max {e['max']})" for e in ef["lines"][:6]))
     rivers = []
     for l in lines:
+        if l.absorbed:
+            continue
         rivers.append(
             {
                 "id": l.id,
@@ -873,7 +1281,8 @@ def run_hydro(cfg: Config, h_pre: np.ndarray, land: np.ndarray) -> tuple[np.ndar
                 "falls": l.falls,
                 "into": l.into,
                 "_down": list(l.down[:1]) + ([lines[l.down[1]].id] if l.down[0] == "line" else list(l.down[1:])),
-                "_up": list(l.up[:1]) + ([lines[l.up[1]].id] if l.up[0] == "line" else list(l.up[1:])),
+                "_up": list(l.up[:1]) + ([lines[l.up[1]].id] if l.up[0] == "line" else [lines[j].id for j in l.up[1:]] if l.up[0] == "cont" else list(l.up[1:])),
+                "_bank": [round(float(v), 3) if np.isfinite(v) else None for v in l.bank],
                 "_thal": [round(float(v), 3) for v in l.thal],
                 "_flipped": l.flipped,
             }
@@ -888,4 +1297,4 @@ def run_hydro(cfg: Config, h_pre: np.ndarray, land: np.ndarray) -> tuple[np.ndar
         "near_level": m["near_level"],
         "lake": q8(np.clip(m["lake_any"], 0, 1)),
     }
-    return h, masks, {"rivers": rivers, "lakes": lake_info, "log": log}
+    return h, masks, {"rivers": rivers, "lakes": lake_info, "log": log, "report": report}

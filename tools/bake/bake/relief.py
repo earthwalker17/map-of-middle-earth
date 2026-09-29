@@ -56,6 +56,42 @@ def valley_band(cfg: Config, rivers) -> np.ndarray:
     return band
 
 
+def remove_sea_ridges(cfg: Config, metres: np.ndarray, land: np.ndarray) -> np.ndarray:
+    """Declared DEM artefacts under the sea (world.json vertical.seaArtefacts): inside each corridor the
+    sea floor is replaced by its grey opening (disc of radiusKm), which removes ridges narrower than the
+    disc while keeping every shelf that is wider or attached to land (land counts as the datum)."""
+    arts = cfg.world["vertical"].get("seaArtefacts", [])
+    if not arts:
+        return metres
+    out = metres.copy()
+    datum = float(cfg.world["vertical"]["seaLevelMetres"])
+    for a in arts:
+        (xa, ya), (xb, yb) = a["fromKm"], a["toKm"]
+        half, feather, rad = 0.5 * float(a["widthKm"]), float(a.get("featherKm", 3.0)), float(a.get("radiusKm", 3.0))
+        pad = half + feather + rad + 1
+        c0, r0 = cfg.km_to_px(min(xa, xb) - pad, max(ya, yb) + pad)
+        c1, r1 = cfg.km_to_px(max(xa, xb) + pad, min(ya, yb) - pad)
+        c0, r0 = max(0, int(c0)), max(0, int(r0))
+        c1, r1 = min(cfg.W, int(np.ceil(c1))), min(cfg.H, int(np.ceil(r1)))
+        win = (slice(r0, r1), slice(c0, c1))
+        sea = land[win] < 0.5
+        m = np.where(sea, np.minimum(metres[win], datum), datum).astype(np.float32)
+        r = max(1, int(round(rad / cfg.px_km)))
+        yy, xx = np.mgrid[-r : r + 1, -r : r + 1]
+        opened = ndimage.grey_opening(m, footprint=(xx * xx + yy * yy) <= r * r)
+        rr, cc = np.mgrid[r0:r1, c0:c1]
+        px = cfg.x0_km + (cc + 0.5) * cfg.px_km
+        py = cfg.y1_km - (rr + 0.5) * cfg.px_km
+        ex, ey = xb - xa, yb - ya
+        t = np.clip(((px - xa) * ex + (py - ya) * ey) / (ex * ex + ey * ey), 0, 1)
+        d = np.hypot(px - (xa + ex * t), py - (ya + ey * t))
+        w = 1 - smoothstep(half, half + feather, d)
+        fixed = metres[win] + (np.minimum(metres[win], opened) - metres[win]) * w
+        out[win] = np.where(sea, fixed, metres[win])
+        print(f"[bake]   sea artefact '{a['name']}': lowered {int(((metres[win] - out[win]) > 20).sum() * cfg.px_km ** 2)} km² by > 20 m (max {float((metres[win] - out[win]).max()):.0f} m)")
+    return out
+
+
 def synthesize_relief(cfg: Config, metres: np.ndarray, land: np.ndarray, rivers) -> np.ndarray:
     V = cfg.world["vertical"]
     seed = cfg.world["seeds"]["world"]
@@ -80,6 +116,7 @@ def synthesize_relief(cfg: Config, metres: np.ndarray, land: np.ndarray, rivers)
         del raw, split, band, lift
 
     with Timer("relief: bathymetry"):
+        metres = remove_sea_ridges(cfg, metres, land)
         land_b = land >= 0.5
         d_sea = (ndimage.distance_transform_edt(~land_b) * cfg.px_km).astype(np.float32)
         sl = float(V["seaLevelMetres"])

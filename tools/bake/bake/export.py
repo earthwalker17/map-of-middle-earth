@@ -110,6 +110,12 @@ def export_all(cfg: Config, hy: dict, rivers: list[dict], vec: dict, reg: dict, 
             p = out / f"{name}.json"
             p.write_text(json.dumps(data, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
             files[name] = {"file": p.name, "count": len(data), "sha256": _sha(p)}
+        # hydro geometry report (for validators, not a runtime asset): tools/check gates on it
+        rep = hy["_extra"].get("report")
+        if rep is not None:
+            p = out / "report.json"
+            p.write_text(json.dumps(rep, indent=1, ensure_ascii=False), encoding="utf-8")
+            files["report"] = {"file": p.name, "sha256": _sha(p)}
 
     cx, cy = cfg.centre_km
     manifest = {
