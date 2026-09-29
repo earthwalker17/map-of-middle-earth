@@ -1,25 +1,101 @@
 {
-  "version": 1,
-  "notes": "Per-region look presets. 'ground' drives the terrain material (S1); 'grade'/'fog'/'sun' drive the RegionLook system (S3). Palettes derived from docs/research/lookdev-route-typography.md (Lesnie/Doyle descriptions) — proposals, tune visually.",
+  "version": 2,
+  "notes": "Per-region look presets, one key per line so parallel work never conflicts. 'ground' drives the terrain material (terrain look v2 owns these lines); 'grade' drives the RegionLook colour grade and 'atmo' the regional haze/aerial perspective (atmosphere work owns those lines). Palettes derived from docs/research/lookdev-route-typography.md (Lesnie/Doyle descriptions) — proposals, tune visually.",
   "regions": {
-    "eriador":     { "ground": { "grass": "#7d8f4e", "dry": "#a39866", "soil": "#6b5c45" }, "grade": { "tint": "#fff6ea", "saturation": 1.0 } },
-    "lindon":      { "ground": { "grass": "#6f9a58", "dry": "#a8a276", "soil": "#6a5e48" }, "grade": { "tint": "#fff2dc", "saturation": 1.05 } },
-    "north":       { "ground": { "grass": "#7a8468", "dry": "#9a9680", "soil": "#5f5a50" }, "grade": { "tint": "#eef2f8", "saturation": 0.85 } },
-    "shire":       { "ground": { "grass": "#6f9e3c", "dry": "#b0a95a", "soil": "#6e5a3a" }, "grade": { "tint": "#fff0d8", "saturation": 1.15 } },
-    "enedwaith":   { "ground": { "grass": "#7f8a52", "dry": "#a79b68", "soil": "#6d5d45" }, "grade": { "tint": "#fff6ea", "saturation": 0.95 } },
-    "rhovanion":   { "ground": { "grass": "#74904a", "dry": "#a89e62", "soil": "#6a5a42" }, "grade": { "tint": "#fff6ea", "saturation": 1.0 } },
-    "mirkwood":    { "ground": { "grass": "#4f5e38", "dry": "#6b6a45", "soil": "#3f3a2c" }, "grade": { "tint": "#eef4ea", "saturation": 0.8 } },
-    "wilderland":  { "ground": { "grass": "#7b8a55", "dry": "#a39a70", "soil": "#6a604e" }, "grade": { "tint": "#fff0e0", "saturation": 1.0 } },
-    "brown-lands": { "ground": { "grass": "#8a7d55", "dry": "#9c8a5e", "soil": "#74624a" }, "grade": { "tint": "#fff0e0", "saturation": 0.85 } },
-    "lorien":      { "ground": { "grass": "#8a9c50", "dry": "#c2ad5e", "soil": "#6f6040" }, "grade": { "tint": "#f1f0ff", "saturation": 0.95 } },
-    "fangorn":     { "ground": { "grass": "#4f6436", "dry": "#6d6e44", "soil": "#433c2c" }, "grade": { "tint": "#f2f6ea", "saturation": 0.85 } },
-    "rohan":       { "ground": { "grass": "#9a9a55", "dry": "#b8a462", "soil": "#6b5a43" }, "grade": { "tint": "#fff2dc", "saturation": 0.95 } },
-    "gondor":      { "ground": { "grass": "#7a9150", "dry": "#a89f6c", "soil": "#6c604c" }, "grade": { "tint": "#f4f5f6", "saturation": 0.85 } },
-    "ithilien":    { "ground": { "grass": "#6a8e45", "dry": "#9aa05e", "soil": "#5f563f" }, "grade": { "tint": "#fff4e4", "saturation": 1.05 } },
-    "dagorlad":    { "ground": { "grass": "#6e6a4c", "dry": "#7f7456", "soil": "#4e4638" }, "grade": { "tint": "#f6eef4", "saturation": 0.75 } },
-    "mordor":      { "ground": { "grass": "#4a443d", "dry": "#57504a", "soil": "#2e2b29" }, "grade": { "tint": "#fbe8dc", "saturation": 0.7 } },
-    "nurn":        { "ground": { "grass": "#5d5a44", "dry": "#6e6650", "soil": "#3d3830" }, "grade": { "tint": "#f6ece4", "saturation": 0.8 } },
-    "rhun":        { "ground": { "grass": "#8f8a5a", "dry": "#a8996a", "soil": "#75664c" }, "grade": { "tint": "#fff2e0", "saturation": 0.95 } },
-    "harad":       { "ground": { "grass": "#a08f5e", "dry": "#c0a878", "soil": "#8a7556" }, "grade": { "tint": "#fff0d8", "saturation": 0.95 } }
+    "eriador": {
+      "ground": {"grass": "#7d8f4e", "dry": "#a39866", "soil": "#6b5c45"},
+      "grade": {"tint": "#fff6ea", "saturation": 1},
+      "atmo": {}
+    },
+    "lindon": {
+      "ground": {"grass": "#6f9a58", "dry": "#a8a276", "soil": "#6a5e48"},
+      "grade": {"tint": "#fff2dc", "saturation": 1.05},
+      "atmo": {}
+    },
+    "north": {
+      "ground": {"grass": "#7a8468", "dry": "#9a9680", "soil": "#5f5a50"},
+      "grade": {"tint": "#eef2f8", "saturation": 0.85},
+      "atmo": {}
+    },
+    "shire": {
+      "ground": {"grass": "#6f9e3c", "dry": "#b0a95a", "soil": "#6e5a3a"},
+      "grade": {"tint": "#fff0d8", "saturation": 1.15},
+      "atmo": {}
+    },
+    "enedwaith": {
+      "ground": {"grass": "#7f8a52", "dry": "#a79b68", "soil": "#6d5d45"},
+      "grade": {"tint": "#fff6ea", "saturation": 0.95},
+      "atmo": {}
+    },
+    "rhovanion": {
+      "ground": {"grass": "#74904a", "dry": "#a89e62", "soil": "#6a5a42"},
+      "grade": {"tint": "#fff6ea", "saturation": 1},
+      "atmo": {}
+    },
+    "mirkwood": {
+      "ground": {"grass": "#4f5e38", "dry": "#6b6a45", "soil": "#3f3a2c"},
+      "grade": {"tint": "#eef4ea", "saturation": 0.8},
+      "atmo": {}
+    },
+    "wilderland": {
+      "ground": {"grass": "#7b8a55", "dry": "#a39a70", "soil": "#6a604e"},
+      "grade": {"tint": "#fff0e0", "saturation": 1},
+      "atmo": {}
+    },
+    "brown-lands": {
+      "ground": {"grass": "#8a7d55", "dry": "#9c8a5e", "soil": "#74624a"},
+      "grade": {"tint": "#fff0e0", "saturation": 0.85},
+      "atmo": {}
+    },
+    "lorien": {
+      "ground": {"grass": "#8a9c50", "dry": "#c2ad5e", "soil": "#6f6040"},
+      "grade": {"tint": "#f1f0ff", "saturation": 0.95},
+      "atmo": {}
+    },
+    "fangorn": {
+      "ground": {"grass": "#4f6436", "dry": "#6d6e44", "soil": "#433c2c"},
+      "grade": {"tint": "#f2f6ea", "saturation": 0.85},
+      "atmo": {}
+    },
+    "rohan": {
+      "ground": {"grass": "#9a9a55", "dry": "#b8a462", "soil": "#6b5a43"},
+      "grade": {"tint": "#fff2dc", "saturation": 0.95},
+      "atmo": {}
+    },
+    "gondor": {
+      "ground": {"grass": "#7a9150", "dry": "#a89f6c", "soil": "#6c604c"},
+      "grade": {"tint": "#f4f5f6", "saturation": 0.85},
+      "atmo": {}
+    },
+    "ithilien": {
+      "ground": {"grass": "#6a8e45", "dry": "#9aa05e", "soil": "#5f563f"},
+      "grade": {"tint": "#fff4e4", "saturation": 1.05},
+      "atmo": {}
+    },
+    "dagorlad": {
+      "ground": {"grass": "#6e6a4c", "dry": "#7f7456", "soil": "#4e4638"},
+      "grade": {"tint": "#f6eef4", "saturation": 0.75},
+      "atmo": {}
+    },
+    "mordor": {
+      "ground": {"grass": "#4a443d", "dry": "#57504a", "soil": "#2e2b29"},
+      "grade": {"tint": "#fbe8dc", "saturation": 0.7},
+      "atmo": {}
+    },
+    "nurn": {
+      "ground": {"grass": "#5d5a44", "dry": "#6e6650", "soil": "#3d3830"},
+      "grade": {"tint": "#f6ece4", "saturation": 0.8},
+      "atmo": {}
+    },
+    "rhun": {
+      "ground": {"grass": "#8f8a5a", "dry": "#a8996a", "soil": "#75664c"},
+      "grade": {"tint": "#fff2e0", "saturation": 0.95},
+      "atmo": {}
+    },
+    "harad": {
+      "ground": {"grass": "#a08f5e", "dry": "#c0a878", "soil": "#8a7556"},
+      "grade": {"tint": "#fff0d8", "saturation": 0.95},
+      "atmo": {}
+    }
   }
 }
