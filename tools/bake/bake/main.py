@@ -44,7 +44,7 @@ class Bake:
         regions_txt = cfg.path("data", "world", "regions.geojson").read_text(encoding="utf-8")
         self.keys["regions"] = digest("regions", w["frame"], w["heightfield"], regions_txt, code_stamp("regions"))
         self.keys["relief"] = digest("relief", self.keys["coast"], V, w["seeds"], w["rivers"]["classes"], src[1], code_stamp("relief", "vectors"))
-        self.keys["hydro"] = digest("hydro", self.keys["relief"], w["rivers"], w.get("lakes"), code_stamp("hydro", "profiles", "vectors", "flow"))
+        self.keys["hydro"] = digest("hydro", self.keys["relief"], w["rivers"], w.get("lakes"), code_stamp("hydro", "snap", "profiles", "vectors", "flow"))
         self.keys["mask"] = digest("mask", self.keys["hydro"], code_stamp("terrainmask", "flow"))
 
     def need(self, step: str) -> bool:
