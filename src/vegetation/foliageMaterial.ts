@@ -221,7 +221,8 @@ export function createFoliageMaterial(world: World, opts: FoliageOptions = {}): 
   // some crowns taller and narrower, some squat
   const sy = mix(float(0.8), float(1.32), h(8));
   const kSpread = float(1).sub(spread.mul(RING)).div(RNOM);
-  const R = sub.z.mul(kSpread).mul(size);
+  // the far LOD's single blob (sub.z = WHOLE) already spans the cluster, whatever its spread
+  const R = sub.z.mul(select(sub.z.greaterThan(0.9), float(1), kSpread)).mul(size);
   const cy = R.mul(sy).mul(0.55).add(h(3).sub(0.5).mul(hVar));
   const jit = spread.mul(0.16);
   const centreU = vec3(sub.x.mul(spread).add(h(4).sub(0.5).mul(jit)), cy, sub.y.mul(spread).add(h(5).sub(0.5).mul(jit)));

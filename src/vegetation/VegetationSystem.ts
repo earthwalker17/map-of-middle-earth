@@ -23,14 +23,16 @@ const SHADOW_MARGIN = 28;
  * LOD ladder: sub-crown tessellation (sphere detail: −1 octahedron … 2 = 320 tris per sub-crown,
  * seven sub-crowns per cluster), trunk prism sides, and the projected cluster diameter (px) above
  * which it is used. The fragment micro-structure carries the close-range detail, so geometry stays
- * modest; the far LOD keeps the seven sub-crowns (the canopy texture of regional shots) and a
- * three-sided trunk hint.
+ * modest; the octahedron LOD keeps the seven sub-crowns (the canopy texture of regional shots)
+ * and a three-sided trunk hint; below a few pixels one blob stands in for the cluster.
  */
-const LODS: { detail: number; trunkSides: number; relief: number; minPx: number; cap: number }[] = [
+const LODS: { detail: number; trunkSides: number; relief: number; whole?: boolean; minPx: number; cap: number }[] = [
   { detail: 2, trunkSides: 6, relief: 1, minPx: 100, cap: 4000 },
   { detail: 1, trunkSides: 6, relief: 0, minPx: 38, cap: 40000 },
   { detail: 0, trunkSides: 4, relief: 0, minPx: 9, cap: Infinity },
-  { detail: -1, trunkSides: 3, relief: 0, minPx: 0, cap: Infinity },
+  { detail: -1, trunkSides: 3, relief: 0, minPx: 5, cap: Infinity },
+  // a cluster of a few pixels (whole-slab views): one octahedron blob, no trunk
+  { detail: -1, trunkSides: 0, relief: 0, whole: true, minPx: 0, cap: Infinity },
 ];
 
 /** spread from a record's packed shape field (spread + 2·gapQ) */
@@ -116,7 +118,7 @@ export class VegetationSystem implements System {
   init(ctx: InitContext): void {
     this.scene = ctx.scene;
     this.useMaterial(ctx.quality.id);
-    this.lodGeometries = LODS.map((l) => createClumpGeometry({ detail: l.detail, trunkSides: l.trunkSides, relief: l.relief }));
+    this.lodGeometries = LODS.map((l) => createClumpGeometry({ detail: l.detail, trunkSides: l.trunkSides, relief: l.relief, whole: l.whole }));
     this.place(ctx.quality.density);
   }
 

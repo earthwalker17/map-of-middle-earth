@@ -29,6 +29,8 @@ export const SUBS = 7;
 /** ring radius and nominal sub-crown radius in unit space (shared with the vertex shader) */
 export const RING = 0.6;
 export const RNOM = 0.4;
+/** sub-crown radius of the single-blob far LOD (unit space; > 0.9 flags it to the shader) */
+export const WHOLE = 0.95;
 /** Height of the canonical crown (bottom 0 → top, in units of the vertical crown radius), for bounds. */
 export const CROWN_TOP = 1.3;
 
@@ -231,6 +233,11 @@ export interface ClumpGeometryOptions {
   trunkSides: number;
   /** clump-relief weight of this tessellation (0..1) */
   relief?: number;
+  /**
+   * one blob standing in for the whole cluster (radius WHOLE, flagged by sub.z > 0.9): the
+   * distant LOD where a cluster covers only a few pixels
+   */
+  whole?: boolean;
   seed?: number;
 }
 
@@ -239,7 +246,7 @@ export interface ClumpGeometryOptions {
  * tessellation only, not the silhouette.
  */
 export function createClumpGeometry(opts: ClumpGeometryOptions): InstancedBufferGeometry {
-  const layout = clusterLayout(opts.seed ?? 7);
+  const layout = opts.whole ? [{ cx: 0, cz: 0, r: WHOLE }] : clusterLayout(opts.seed ?? 7);
   const P: number[] = [];
   const N: number[] = [];
   const S: number[] = [];
