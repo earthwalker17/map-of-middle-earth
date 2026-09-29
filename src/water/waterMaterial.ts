@@ -287,10 +287,10 @@ export function createWaterMaterial(opts: WaterMaterialOptions): MeshStandardNod
   // unresolved ripples tilt part of the lobe up: reflected sky is sampled a little higher
   const Ry = abs(Rv.y).add(sigma.mul(0.6));
   // reflected sky: the atmosphere's horizon in-scatter in the reflected azimuth (the same colour
-  // the dome shows there) rising to a zenith tone; tinted like the dome (regional sky)
-  const zenith = env.skyColor.mul(vec3(0.8, 0.95, 1.2));
+  // the dome shows there) rising to a zenith tone that carries the dome's regional tint
+  const zenith = env.skyColor.mul(vec3(0.8, 0.95, 1.2)).mul(env.skyTint);
   const horizon = atmosphere.inScatter(vec3(Rv.x, 0, Rv.z));
-  const sky = mix(horizon, zenith, pow(saturate(Ry), 0.5)).mul(env.skyTint);
+  const sky = mix(horizon, zenith, pow(saturate(Ry), 0.5));
   const aureole = env.sunColor.mul(pow(saturate(dot(Rv, env.sunDir)), 10).mul(float(0.8).mul(float(1).sub(env.night))));
   const moonGlow = env.moonColor.mul(pow(saturate(dot(Rv, env.moonDir)), 40).mul(env.moonIntensity).mul(1.5));
   const skyRefl = sky.add(aureole).add(moonGlow);

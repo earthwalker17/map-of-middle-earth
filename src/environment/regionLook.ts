@@ -1,7 +1,7 @@
 import { Color, Vector3 } from 'three/webgpu';
 import type { SceneState } from '../core/types.ts';
 import type { World } from '../world/World.ts';
-import { atmoLook, gradeLook, isLookRegion, sampleRegionWeights, type AtmoLook, type GradeLook } from '../materials/looks.ts';
+import { atmoLook, gradeLook, isLookRegion, sampleRegionWeights, type AtmoLook, type GradeLook, type GradeSpot } from '../materials/looks.ts';
 import { gradeUniforms } from '../render/PostPipeline.ts';
 import { env } from '../materials/environment.ts';
 
@@ -35,6 +35,7 @@ const _t = new Vector3();
  *    (radius grows with the camera distance, so the blend is smooth as the camera travels — no
  *    springs or temporal smoothing, which would be hidden state);
  *  - SceneState.lookOverride pulls the blend strongly towards its region;
+ *  - place spots (looks.json grade.spots) blend in by the focus distance to the place;
  *  - wide views (the whole slab in frame) fade to the neutral world grade;
  *  - a moonlit night layer desaturates towards blue-grey;
  * and the result drives the post grade uniforms and the sky dome tint.
@@ -42,6 +43,8 @@ const _t = new Vector3();
 export class RegionLook {
   private readonly grades: GradeLook[];
   private readonly atmos: AtmoLook[];
+  /** place-based grade spots of every region, resolved to world positions */
+  private readonly spots: { x: number; z: number; r: number; grade: GradeSpot['grade'] }[] = [];
   private readonly w: Float32Array;
   private readonly acc: Float32Array;
   /** last blended region weights (diagnostics) */
@@ -51,6 +54,11 @@ export class RegionLook {
     const ids = world.lookRegions;
     this.grades = ids.map((id) => gradeLook(id));
     this.atmos = ids.map((id) => atmoLook(id));
+    for (const g of this.grades)
+      for (const s of g.spots) {
+        const p = world.places.get(s.place);
+        if (p) this.spots.push({ x: p.x, z: p.z, r: s.radiusKm, grade: s.grade });
+      }
     this.w = new Float32Array(ids.length);
     this.acc = new Float32Array(ids.length);
     this.weights = new Float32Array(ids.length);
@@ -113,6 +121,25 @@ export class RegionLook {
       sky.r += a * s.r;
       sky.g += a * s.g;
       sky.b += a * s.b;
+    }
+
+    // ---- place spots (Gaussian in the focus distance to the place; wide views fade them too)
+    for (const sp of this.spots) {
+      const q = Math.hypot(tx - sp.x, tz - sp.z) / sp.r;
+      const a = Math.exp(-q * q) * regional;
+      if (a < 1e-4) continue;
+      const g = sp.grade;
+      const L = lum(g.tint) || 1;
+      const mixTo = (v: number, to: number) => v + (to - v) * a;
+      tint.r = mixTo(tint.r, g.tint.r / L);
+      tint.g = mixTo(tint.g, g.tint.g / L);
+      tint.b = mixTo(tint.b, g.tint.b / L);
+      sat = mixTo(sat, g.saturation);
+      con = mixTo(con, g.contrast);
+      expo = mixTo(expo, g.exposure);
+      red = mixTo(red, g.redKeep);
+      bloom = mixTo(bloom, g.bloom);
+      for (let c = 0; c < 3; c++) lift[c] = mixTo(lift[c], g.lift[c]);
     }
 
     // ---- moonlit night layer

@@ -353,7 +353,9 @@ export class SkyModel {
     const u = this.u;
     const dir = normalize(positionWorld.sub(cameraPosition));
     const h = dir.y;
-    const tint = env.skyTint;
+    // the regional sky tint (Mordor's charcoal ceiling) darkens the sky overhead but not the
+    // horizon band, which must stay the colour distant land fades into
+    const tint = mix(vec3(1), env.skyTint, smoothstep(0.03, 0.25, h));
     // the haze at infinity in this direction (at or below the horizon) and at the horizon
     const hazeDir = atmosphere.inScatter(vec3(dir.x, min(h, 0), dir.z));
     const hazeHor = atmosphere.inScatter(vec3(dir.x, 0, dir.z));

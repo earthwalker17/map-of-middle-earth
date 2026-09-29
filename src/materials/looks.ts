@@ -89,6 +89,13 @@ export interface GradeLook {
   redKeep: number;
   /** 0..1 "Pro-Mist" diffusion (lower bloom threshold, more strength) */
   bloom: number;
+  /** local grades around places (Rivendell's autumn gold inside Eriador), blended by the focus */
+  spots: GradeSpot[];
+}
+export interface GradeSpot {
+  place: string;
+  radiusKm: number;
+  grade: Omit<GradeLook, 'spots'>;
 }
 
 /** A region's atmosphere (the per-pixel layer, baked into the regional haze texture). */
@@ -119,6 +126,7 @@ interface GradeJson {
   lift?: number[];
   redKeep?: number;
   bloom?: number;
+  spots?: (GradeJson & { place: string; radiusKm: number })[];
 }
 interface AtmoJson {
   tint?: ColorJson;
@@ -133,8 +141,7 @@ export function lookColor(c: ColorJson | undefined, fallback = '#ffffff'): Color
   return new Color(c ?? fallback);
 }
 
-export function gradeLook(id: string): GradeLook {
-  const g = ((looksJson.regions as Record<string, { grade?: GradeJson }>)[id]?.grade ?? {}) as GradeJson;
+function parseGrade(g: GradeJson): Omit<GradeLook, 'spots'> {
   const lift = g.lift ?? [0, 0, 0];
   return {
     tint: new Color(g.tint ?? '#ffffff'),
@@ -145,6 +152,11 @@ export function gradeLook(id: string): GradeLook {
     redKeep: g.redKeep ?? 0,
     bloom: g.bloom ?? 0,
   };
+}
+
+export function gradeLook(id: string): GradeLook {
+  const g = ((looksJson.regions as Record<string, { grade?: GradeJson }>)[id]?.grade ?? {}) as GradeJson;
+  return { ...parseGrade(g), spots: (g.spots ?? []).map((s) => ({ place: s.place, radiusKm: s.radiusKm, grade: parseGrade(s) })) };
 }
 
 export function atmoLook(id: string): AtmoLook {
