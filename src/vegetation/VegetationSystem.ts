@@ -365,9 +365,11 @@ export class VegetationSystem implements System {
       const s = k * F;
       const hr = this.hero[s + 2];
       const vr = this.hero[s + 3];
-      const cy = this.heroY[k] + Math.max(0, this.hero[s + 4]) * 0.5 + vr;
-      const r = Math.max(hr, (this.heroY[k] + this.hero[s + 4] + 1.3 * vr - cy)) + SHADOW_MARGIN;
-      _sphere.set(_v.set(this.hero[s], cy, this.hero[s + 1]), r);
+      // bounding sphere of the whole tree: trunk foot (0.25 below the ground) to the crown top
+      // (trunk + 1.3·vr), crown radius hr
+      const half = (Math.max(0, this.hero[s + 4]) + 1.3 * vr + 0.25) / 2;
+      const cy = this.heroY[k] - 0.25 + half;
+      _sphere.set(_v.set(this.hero[s], cy, this.hero[s + 1]), Math.hypot(hr, half) + SHADOW_MARGIN);
       if (!_frustum.intersectsSphere(_sphere)) continue;
       const dist = _v.set(this.hero[s] - camPos.x, this.heroY[k] + this.hero[s + 4] - camPos.y, this.hero[s + 1] - camPos.z).length();
       emit(this.hero, s, lodOf(this.hero, s, dist, 1), 1);
