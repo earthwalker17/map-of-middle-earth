@@ -8,6 +8,10 @@
     { "id": "veg-fangorn-close", "tod": 15.0, "camera": { "orbit": { "place": "fangorn", "distanceKm": 55, "elevationDeg": 18, "azimuthDeg": 150, "fov": 35 } }, "compare": ["reference/film/fangorn"] },
     { "id": "veg-hobbiton-close", "tod": 16.0, "camera": { "orbit": { "place": "hobbiton", "distanceKm": 40, "elevationDeg": 24, "azimuthDeg": 200, "fov": 35 } }, "compare": ["reference/film/hobbiton"] },
     { "id": "veg-shire-golden", "tod": 18.4, "camera": { "orbit": { "place": "hobbiton", "distanceKm": 60, "elevationDeg": 14, "azimuthDeg": 95, "fov": 35 } }, "compare": ["reference/film/hobbiton"] },
-    { "id": "veg-ithilien", "tod": 15.0, "camera": { "orbit": { "targetKm": [1150, 665], "distanceKm": 75, "elevationDeg": 24, "azimuthDeg": 250, "fov": 35 } }, "compare": ["reference/film/ithilien", "reference/concept-art/ithilien"] }
+    { "id": "veg-ithilien", "tod": 15.0, "camera": { "orbit": { "targetKm": [1150, 665], "distanceKm": 75, "elevationDeg": 24, "azimuthDeg": 250, "fov": 35 } }, "compare": ["reference/film/ithilien", "reference/concept-art/ithilien"] },
+    { "id": "veg-lorien-mallorns", "tod": 16.2, "camera": { "orbit": { "targetKm": [927, 934], "distanceKm": 20, "elevationDeg": 9, "azimuthDeg": 215, "fov": 35 } }, "compare": ["reference/film/lothlorien"], "note": "low over the Lórien canopy: emergent mallorns (silver trunks, golden crowns) above the gold / green canopy" },
+    { "id": "veg-mirkwood-backlit", "tod": 18.7, "camera": { "orbit": { "targetKm": [1130, 1120], "distanceKm": 90, "elevationDeg": 12, "azimuthDeg": 95, "fov": 35 } }, "compare": ["reference/film/mirkwood"], "note": "looking west into the low sun over Mirkwood: dark but readable canopy, no black crush" },
+    { "id": "veg-dagorlad", "tod": 11.0, "camera": { "orbit": { "targetKm": [1175, 745], "distanceKm": 130, "elevationDeg": 28, "azimuthDeg": 200, "fov": 35 } }, "note": "exclusion check: no trees on Dagorlad, the Morannon, the Dead Marshes or in Mordor; Ithilien's groves start south of the Morannon" },
+    { "id": "veg-hedgerows", "tod": 10.0, "camera": { "orbit": { "place": "hobbiton", "distanceKm": 16, "elevationDeg": 11, "azimuthDeg": 30, "fov": 35 } }, "compare": ["reference/film/hobbiton"], "note": "hedgerows on the shared field lattice (thin, dark, broken), field oaks / beeches / elms" }
   ]
 }
