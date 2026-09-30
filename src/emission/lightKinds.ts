@@ -3,8 +3,8 @@ import { rand } from '../core/rng.ts';
 import type { LightGate, LightKind, LightRecord } from '../landmarks/records.ts';
 
 /**
- * Per-kind emission rules (CPU side of EmissionSystem): default colours, physical size caps, lit
- * fractions, flicker defaults and the HDR scale. Everything here is static per record; the
+ * Per-kind emission rules (CPU side of EmissionSystem): default colours, physical size caps,
+ * flicker defaults and the HDR scale. Everything here is static per record; the
  * time-of-day gates and flicker run in the shader (emissionMaterial.ts).
  *
  * Intensity semantics: `intensity` 1 is a lit window. The sprite's surface radiance is
@@ -44,9 +44,6 @@ export const MAX_RADIUS_KM: Record<LightKind, number> = {
   ithildin: 0.05,
 };
 
-/** share of windows lit on any night (static per window: rand(seed) < on), by landmark variation */
-const WINDOW_ON: [number, number] = [0.6, 0.85];
-
 /** default flicker depth when a record leaves it at 0 (fires breathe, lamps and windows are steady) */
 const DEFAULT_FLICKER: Partial<Record<LightKind, number>> = { fire: 0.28, lava: 0.12, beacon: 0.25, magic: 0.08, eye: 0.06 };
 
@@ -84,15 +81,13 @@ export const EMISSION_STRIDE = 4;
 
 /**
  * Pack one record into the three instance vectors (pos+radius, HDR colour+flicker, gate/ω/φ).
- * Returns false when the light never shows (an unlit window, zero intensity).
+ * Returns false when the light never shows (zero intensity).
  */
 export function packLight(r: LightRecord, pos: Float32Array, col: Float32Array, aux: Float32Array, o: number): boolean {
   const s = r.seed >>> 0;
-  if (r.kind === 'window') {
-    // a landmark's windows share an occupancy; each window is lit or not, for good
-    const on = WINDOW_ON[0] + (WINDOW_ON[1] - WINDOW_ON[0]) * rand(0x77696e, r.landmark, 0);
-    if (rand(s, 'lit', 0) >= on) return false;
-  }
+  // (the static lit fraction of windows is decided where they are recorded: kit `windows` keeps a
+  // stable `on` share of its slots — default 0.7 — and records nothing for the unlit ones; a declared
+  // single light is always lit)
   const intensity = Math.min(MAX_INTENSITY, Math.max(0, r.intensity));
   if (intensity <= 0) return false;
   // colour: the record's, or the kind default for plain white / grey, normalised to luminance 1

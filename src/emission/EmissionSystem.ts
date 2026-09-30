@@ -15,7 +15,7 @@ export const MAX_LIGHTS = 4096;
  * (night / twilight / golden); flicker reads env.tFx. No per-light three.js lights.
  *
  * Records are static (built once by buildLandmarks) and packed at init (lightKinds.ts: colour
- * defaults, size caps, the static lit fraction of windows); evaluate() does no per-frame CPU work
+ * defaults, size caps, flicker rates); evaluate() does no per-frame CPU work
  * unless S4 dynamic lights are registered (a pure function of the state, re-packed per frame).
  */
 export class EmissionSystem implements System {

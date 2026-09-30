@@ -4,7 +4,7 @@ import { env } from '../materials/environment.ts';
 import type { World } from '../world/World.ts';
 import { RING, RNOM } from './clumpGeometry.ts';
 import { createFoamTexture, FOAM_PERIOD } from './foamTexture.ts';
-import { Kind, KIND_COUNT } from './placement.ts';
+import { Kind, KIND_COUNT, LORIEN_TRUNK_K } from './placement.ts';
 
 type N = TslNode;
 
@@ -204,7 +204,7 @@ export function createFoliageMaterial(world: World, opts: FoliageOptions = {}): 
   const toneK = perKind({ [Kind.Mirkwood]: 0.34, [Kind.Fangorn]: 0.36, [Kind.Lorien]: 0.4, [Kind.Hedge]: 0.3, [Kind.Ithilien]: 0.34 }, 0.3);
   const hueK = perKind({ [Kind.Mirkwood]: 0.08, [Kind.Lorien]: 0.08, [Kind.Fangorn]: 0.1, [Kind.Hedge]: 0.06 }, 0.09);
   // trunk radius / horizontal crown radius (mallorns: stout silver columns)
-  const trunkK = perKind({ [Kind.Lorien]: 0.12, [Kind.Hedge]: 0 }, 0.085);
+  const trunkK = perKind({ [Kind.Lorien]: LORIEN_TRUNK_K, [Kind.Hedge]: 0 }, 0.085);
 
   // ---------------------------------------------------------------- vertex
   const uvI = vec2(iA.x.sub(spec.xMin).div(spec.width), iA.y.sub(spec.zMin).div(spec.depth));

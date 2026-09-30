@@ -1,7 +1,7 @@
 import { rand } from '../core/rng.ts';
 import type { AuthoredTree, TreeKind } from '../landmarks/records.ts';
 import { RING } from './clumpGeometry.ts';
-import { InstanceList, Kind, mallornShape, pickColor, type Crown } from './placement.ts';
+import { HERO_MALLORN_VR, InstanceList, Kind, LORIEN_TRUNK_K, mallornShape, pickColor, type Crown } from './placement.ts';
 
 /**
  * Authored landmark trees (the mallorns of Caras Galadhon, the Party Tree, Rivendell's autumn
@@ -19,6 +19,19 @@ import { InstanceList, Kind, mallornShape, pickColor, type Crown } from './place
 /** crown top above the crown bottom in units of vr, for a cluster of this spread (tallest sub-crowns) */
 export function crownReach(spread: number): number {
   return 1.8 * (1 - RING * spread);
+}
+
+/**
+ * Where an authored mallorn's parts sit (km above the ground under its trunk), for landmarks that seat
+ * flets and lamps on it (src/landmarks/lothlorien/grove.ts). The crown cluster's origin is `trunk`; its
+ * sub-crowns reach `top` (= heightKm) and hang down to ≈ `low` (typical; a few hang lower); the silver
+ * trunk has radius `trunkR`. Exact for the hero mallorn recipe below (fixed crown ratio).
+ */
+export function mallornFrame(crownKm: number, heightKm: number): { trunk: number; vr: number; low: number; top: number; trunkR: number } {
+  const hr = Math.max(0.02, crownKm);
+  const vr = hr * HERO_MALLORN_VR;
+  const trunk = Math.max(0, heightKm - crownReach(0.5) * vr);
+  return { trunk, vr, low: trunk - 0.35 * vr, top: heightKm, trunkR: LORIEN_TRUNK_K * hr };
 }
 
 type RGB = [number, number, number];

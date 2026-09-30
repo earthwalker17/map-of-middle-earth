@@ -430,15 +430,21 @@ export function broadleaf(seed: number, id: number, size: number): Crown {
   return { hr, vr, trunk: vr * (0.34 + 0.1 * a), shape: { spread: 0.42, gap: 0.08, hVar: 0.34 } };
 }
 
+/** Crown height / width of an authored (hero) mallorn: `vr = HERO_MALLORN_VR · hr` (fixed, so a landmark
+ * can seat flets and lamps on the crown exactly — authored.ts `mallornFrame`). */
+export const HERO_MALLORN_VR = 1.05;
+/** Trunk radius / horizontal crown radius of Lórien trees (the foliage shader's stout silver columns). */
+export const LORIEN_TRUNK_K = 0.12;
+
 /**
  * The mallorn recipe (emergent Lórien mallorns and the authored ones of Caras Galadhon): a broad
  * golden crown (horizontal radius `hr`, km) lifted on a silver trunk to `trunk` km above the ground
  * (tall stacked columns read as sandstone pillars); `r` in [0, 1) varies the crown height. `hero`
- * (the great trees of the city) fuses the sub-crowns into one tall, full crown that reads as a
- * single giant tree rather than a lifted canopy patch.
+ * (the great trees of the city) fuses the sub-crowns into one full crown on a long bare trunk that
+ * reads as a single giant tree rather than a lifted canopy patch (its height is fixed, `r` unused).
  */
 export function mallornShape(hr: number, trunk: number, r: number, hero = false): Crown {
-  if (hero) return { hr, vr: hr * (1.2 + 0.25 * r), trunk, shape: { spread: 0.5, gap: 0.02, hVar: 0.3 } };
+  if (hero) return { hr, vr: hr * HERO_MALLORN_VR, trunk, shape: { spread: 0.5, gap: 0.02, hVar: 0.3 } };
   return { hr, vr: hr * (1.05 + 0.25 * r), trunk, shape: { spread: 0.75, gap: 0.04, hVar: 0.35 } };
 }
 

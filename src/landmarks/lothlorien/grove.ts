@@ -1,5 +1,7 @@
 import { hashString, rand } from '../../core/rng.ts';
-import type { LightDecl, TreeDecl, V2 } from '../types.ts';
+import { mallornFrame } from '../../vegetation/authored.ts';
+import type { ProxyKit } from '../kit/ProxyKit.ts';
+import type { TreeDecl, V2 } from '../types.ts';
 
 /**
  * Caras Galadhon: the grove of the greatest mallorns (local km around the display point). Research
@@ -7,9 +9,10 @@ import type { LightDecl, TreeDecl, V2 } from '../types.ts';
  * golden crowns, white flets, lamps glowing among the branches at night — the city is a cluster
  * of the biggest trees, the tallest at the centre.
  *
- * Rings around the grove centre (crown tops above the ground; the Lórien canopy reaches ≈ 1.8–2 km,
- * the emergent wild mallorns ≈ 2.5 km): centre 5.6 km · 6 at 1.8 km · 12 at 3.3 km · 21 at 4.8 km.
- * Everything is a pure function of the landmark seed.
+ * Rings around the grove centre (crown tops above the ground): centre 6.2 km · 6 at 1.8 km · 12 at
+ * 3.3 km · 21 at 4.8 km. The Lórien canopy reaches ≈ 1.8–2 km and the emergent wild mallorns ≈ 2.5 km,
+ * so even the outer ring shows a band of bare silver trunk (with its flet) between the canopy and the
+ * crowns. Everything is a pure function of the grove seed (module constants, never mutated by a build).
  */
 const SEED = hashString('lothlorien-grove');
 /** grove centre: a little north-west of the display point, away from the Celebrant (5.7 km south) */
@@ -22,10 +25,10 @@ interface Ring {
   height: [number, number];
 }
 const RINGS: Ring[] = [
-  { n: 1, r: 0, crown: [1.5, 1.5], height: [5.6, 5.6] },
-  { n: 6, r: 1.8, crown: [1.3, 1.4], height: [4.6, 5.0] },
-  { n: 12, r: 3.3, crown: [1.15, 1.3], height: [4.0, 4.4] },
-  { n: 21, r: 4.8, crown: [1.0, 1.15], height: [3.4, 3.75] },
+  { n: 1, r: 0, crown: [1.5, 1.5], height: [6.2, 6.2] },
+  { n: 6, r: 1.8, crown: [1.3, 1.4], height: [5.3, 5.7] },
+  { n: 12, r: 3.3, crown: [1.15, 1.3], height: [4.6, 5.0] },
+  { n: 21, r: 4.8, crown: [1.0, 1.15], height: [4.0, 4.35] },
 ];
 
 export interface GroveTree {
@@ -35,92 +38,122 @@ export interface GroveTree {
   ring: number;
 }
 
-export const GROVE_TREES: GroveTree[] = [];
-RINGS.forEach((ring, ri) => {
+export const GROVE_TREES: readonly GroveTree[] = RINGS.flatMap((ring, ri) => {
   const a0 = rand(SEED, ri, 0) * Math.PI * 2;
-  for (let i = 0; i < ring.n; i++) {
+  return Array.from({ length: ring.n }, (_, i): GroveTree => {
     const id = ri * 100 + i;
     const a = a0 + ((i + (rand(SEED, id, 1) - 0.5) * 0.45) / ring.n) * Math.PI * 2;
     const r = ring.r * (1 + (rand(SEED, id, 2) - 0.5) * 0.16);
     const t = rand(SEED, id, 3);
-    GROVE_TREES.push({
+    return {
       at: [GROVE[0] + Math.cos(a) * r, GROVE[1] + Math.sin(a) * r],
       crownKm: ring.crown[0] + (ring.crown[1] - ring.crown[0]) * t,
       // bigger crowns stand taller (correlated, with a little independent jitter)
       heightKm: ring.height[0] + (ring.height[1] - ring.height[0]) * (0.7 * t + 0.3 * rand(SEED, id, 4)),
       ring: ri,
-    });
-  }
+    };
+  });
 });
 
+/** The ~40 authored mallorns (VegetationSystem hero list: silver trunks, golden crowns). */
 export const TREES: TreeDecl[] = GROVE_TREES.map((t, i) => ({ at: t.at, kind: 'mallorn', crownKm: t.crownKm, heightKm: t.heightKm, color: 0xd6b94e, yawDeg: rand(SEED, i, 9) * 360 }));
 
-/**
- * Approximate crown underside above the ground (km) for a mallorn of this crown / height: the
- * vegetation recipe (vegetation/authored.ts, hero mallorn) derives the trunk from the height with
- * the cluster reach (≈ 1.26 · vr at spread 0.5) and vr ≈ 1.2–1.45 · crown — the mean is used here.
- */
-const VR = 1.32;
-export function crownBase(t: GroveTree): number {
-  return t.heightKm - 1.26 * VR * t.crownKm;
-}
-const trunkRadius = (t: GroveTree) => 0.12 * t.crownKm;
+/** trunk / crown frame of a grove tree (vegetation/authored.ts: exact for the hero mallorn recipe) */
+const frame = (t: GroveTree) => mallornFrame(t.crownKm, t.heightKm);
 
 export interface Flet {
+  tree: number;
   x: number;
   z: number;
-  /** height above the tree's ground, km */
+  /** deck height above the tree's ground, km */
   h: number;
+  /** deck radius, km */
   r: number;
+  /** trunk radius at the deck, km */
+  tr: number;
+  /** coarsest LOD keeping the deck: the high decks of the seven central trees read in regional shots */
+  lod: 0 | 1;
 }
 
-/** White flets around the trunks of the central seven trees (two levels each). */
-export const FLETS: Flet[] = GROVE_TREES.filter((t) => t.ring <= 1).flatMap((t) => {
-  const top = crownBase(t);
-  const r = t.ring === 0 ? 0.44 : 0.34;
-  return [0.5, 0.78].map((f) => ({ x: t.at[0], z: t.at[1], h: top * f, r: r * (f > 0.6 ? 0.85 : 1) }));
+/**
+ * White flets (telain) round the trunks: on every tree a deck just under the crown (the outer rings'
+ * decks sit in the band of bare trunk above the forest canopy, so they read from outside the grove),
+ * and a second, wider deck half-way up the seven central trunks (the city floor under the crowns).
+ */
+export const FLETS: readonly Flet[] = GROVE_TREES.flatMap((t, ti): Flet[] => {
+  const f = frame(t);
+  const r = [0.5, 0.42, 0.36, 0.32][t.ring];
+  const high: Flet = { tree: ti, x: t.at[0], z: t.at[1], h: f.low - 0.1 - 0.06 * rand(SEED, 300 + ti, 0), r: r * 0.9, tr: f.trunkR, lod: t.ring <= 1 ? 1 : 0 };
+  if (t.ring > 1) return [high];
+  return [{ ...high, h: f.trunk * (0.46 + 0.06 * rand(SEED, 300 + ti, 1)), r, lod: 0 }, high];
 });
 
+/** elven lamp colour (blue-white, research §7: ~#dfe8ff at night) */
 const LAMP = 0xdfe8ff;
+/** lamps of the landmark (shot-list budget) */
+export const LAMP_COUNT = 150;
 
 /**
- * ~150 blue-white elven lamps (heights relative to the ground under each tree — `ground` is the
- * proxy's local ground function, the lights are declared relative to the origin's ground):
- * lanterns on the flet rims, a spiral of stair lamps up the seven central trunks, lanterns hung
- * round the outer crowns of the grove.
+ * The flets as kit geometry (family 'plaster', white): a thin deck with a rounded rim on a shallow
+ * bracket that springs from the trunk below it, centred on the trunk of the vegetation's mallorn at
+ * `ground + h` (the ground under the trunk: the deck follows the tree, not the slope). Not seated:
+ * they hang on the trunks, so they record no ground contacts.
  */
-export function lamps(ground: (x: number, z: number) => number): LightDecl[] {
-  const out: LightDecl[] = [];
-  const add = (x: number, z: number, h: number, intensity: number, radius: number) =>
-    out.push({ at: [x, ground(x, z) + h, z], color: LAMP, intensity, radius, kind: 'lamp' });
-  // flet rims: 4 lanterns each
-  FLETS.forEach((f, fi) => {
-    for (let k = 0; k < 4; k++) {
-      const a = ((k + rand(SEED, 500 + fi, k)) / 4) * Math.PI * 2;
-      add(f.x + Math.cos(a) * f.r * 0.92, f.z + Math.sin(a) * f.r * 0.92, f.h + 0.035, 1.5, 0.045);
-    }
-  });
-  // stair lamps spiralling up the central trunks
-  GROVE_TREES.filter((t) => t.ring <= 1).forEach((t, ti) => {
-    const top = crownBase(t);
-    for (let k = 0; k < 3; k++) {
-      const a = (k * 2.4 + ti) % (Math.PI * 2);
-      const r = trunkRadius(t) * 1.3;
-      add(t.at[0] + Math.cos(a) * r, t.at[1] + Math.sin(a) * r, top * (0.15 + 0.14 * k), 1.1, 0.035);
-    }
-  });
-  // lanterns hung round the outer crowns of the grove (on the outer branches, lower half of the
-  // crown, facing out of the grove — inside it the crowns overlap and would hide them): the outer
-  // ring two or three each, the middle ring one or two
-  const outer = GROVE_TREES.filter((t) => t.ring >= 2);
-  const hanging = 150 - out.length;
-  for (let i = 0; i < hanging; i++) {
-    const t = outer[i % outer.length];
-    const out0 = Math.atan2(t.at[1] - GROVE[1], t.at[0] - GROVE[0]);
-    const a = out0 + (rand(SEED, 700 + i, 0) - 0.5) * Math.PI * 1.1;
-    const rho = t.crownKm * (1.08 + 0.16 * rand(SEED, 700 + i, 1));
-    const h = crownBase(t) + VR * t.crownKm * (0.05 + 0.5 * rand(SEED, 700 + i, 2));
-    add(t.at[0] + Math.cos(a) * rho, t.at[1] + Math.sin(a) * rho, h, 1.2 + 0.5 * rand(SEED, 700 + i, 3), 0.04);
+export function buildFlets(k: ProxyKit): void {
+  for (const f of FLETS) {
+    const y = k.ground(f.x, f.z) + f.h;
+    const tr = f.tr * 0.96;
+    k.lathe(
+      'plaster',
+      [
+        [tr, -0.12],
+        [f.r * 0.6, -0.045],
+        [f.r * 0.95, -0.022],
+        [f.r, -0.01],
+        [f.r, 0.016],
+        [f.r * 0.97, 0.024],
+        [tr, 0.024],
+      ],
+      { at: [f.x, y, f.z], seg: 20, color: 0xf2efe6, lod: f.lod },
+    );
   }
-  return out;
+}
+
+/**
+ * 150 blue-white elven lamps as kit light records (heights above the ground under each lamp's tree):
+ * lanterns on the flet rims (three on the central decks, two elsewhere), the rest hung in the crowns —
+ * just outside the crown surface (an ellipsoid round the cluster), on the outward faces of the outer
+ * rings and the upper crowns of the inner trees, where a camera outside the grove can see them.
+ */
+export function buildLamps(k: ProxyKit): void {
+  let n = 0;
+  const add = (t: GroveTree, x: number, z: number, h: number, intensity: number, radius: number) => {
+    if (n >= LAMP_COUNT) return;
+    n++;
+    k.light([x, k.ground(t.at[0], t.at[1]) + h, z], { color: LAMP, intensity, radius, kind: 'lamp' });
+  };
+  FLETS.forEach((f, fi) => {
+    const t = GROVE_TREES[f.tree];
+    const m = t.ring <= 1 ? 3 : 2;
+    const out0 = Math.atan2(t.at[1] - GROVE[1], t.at[0] - GROVE[0]);
+    for (let q = 0; q < m; q++) {
+      // outer rings: the lanterns on the outward half of the rim
+      const a = t.ring >= 2 ? out0 + (q / (m - 1) - 0.5) * 1.6 + (rand(SEED, 500 + fi, q) - 0.5) * 0.5 : ((q + rand(SEED, 500 + fi, q)) / m) * Math.PI * 2;
+      add(t, f.x + Math.cos(a) * f.r * 0.88, f.z + Math.sin(a) * f.r * 0.88, f.h + 0.045, 1.6, 0.05);
+    }
+  });
+  for (let i = 0; n < LAMP_COUNT; i++) {
+    const t = GROVE_TREES[i % GROVE_TREES.length];
+    const f = frame(t);
+    const out0 = t.ring === 0 ? 0 : Math.atan2(t.at[1] - GROVE[1], t.at[0] - GROVE[0]);
+    const spread = t.ring >= 2 ? Math.PI * 0.75 : Math.PI * 2;
+    const phi = out0 + (rand(SEED, 700 + i, 0) - 0.5) * spread;
+    // elevation on the crown: the outer rings from the lower middle up, the inner trees high
+    const th = (t.ring >= 2 ? -0.1 + 0.8 * rand(SEED, 700 + i, 1) : 0.35 + 0.6 * rand(SEED, 700 + i, 1)) * (Math.PI / 2);
+    // nestled in the leaf surface (0.97–1.03 of the ellipsoid): lamps among the branches, not beside them
+    const s = 0.97 + 0.06 * rand(SEED, 700 + i, 2);
+    const yc = f.trunk + 0.46 * f.vr;
+    const rh = t.crownKm * 1.0 * Math.cos(th) * s;
+    add(t, t.at[0] + Math.cos(phi) * rh, t.at[1] + Math.sin(phi) * rh, yc + 0.82 * f.vr * Math.sin(th) * s, 1.3 + 0.5 * rand(SEED, 700 + i, 3), 0.045);
+  }
 }

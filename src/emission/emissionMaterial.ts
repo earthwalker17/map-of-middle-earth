@@ -16,6 +16,14 @@ const SIGMA_MIN_PX = 0.6;
 const CUTOFF = 0.004;
 const QUAD_SIGMAS_MIN = 3;
 const QUAD_SIGMAS_MAX = 6;
+/**
+ * Soft halo: a share of each light's energy spread as a second, HALO_K× wider Gaussian — the lamp's
+ * light scattered in the air and the leaves round it, so a lantern reads as a glowing point rather than
+ * a hard pellet (and a town's windows melt into a warm glow in wide shots). The total energy is
+ * unchanged (sub-pixel stability under the jitter accumulation holds).
+ */
+const HALO_SHARE = 0.25;
+const HALO_K = 3.5;
 /** the sprite is pulled this many pixels' worth toward the camera (never z-fights its own wall) */
 const NUDGE_PX = 2;
 /** wide-shot gain: (dist / WIDE_KM)^0.75, clamped to [1, WIDE_MAX] — windows, lamps, fires only */
@@ -33,7 +41,8 @@ const WIDE_MAX = 6;
  * so the fragment is one exp().
  * Fragment: an energy-normalised Gaussian, peak = L·rpx²/(2σ²) — a resolved light peaks at 2L with
  * a soft edge at ~rpx, a sub-pixel light keeps its integrated energy (stable under the Halton jitter
- * of the accumulation: no fireflies, it converges at spp 4 / 12).
+ * of the accumulation: no fireflies, it converges at spp 4 / 12) — with a quarter of the energy in a
+ * 3.5× wider halo (HALO_SHARE / HALO_K).
  *
  * Instance attributes (three buffers + the quad's position = four vertex buffers):
  *  emPos = (x, y, z, radiusKm) · emCol = (HDR colour, flicker depth) · emAux = (gate code + 8·wide, ω₁, ω₂, φ)
@@ -53,8 +62,9 @@ export function createEmissionMaterial(): NodeMaterial {
   const wide = select(A.x.greaterThan(7.5), float(1), float(0));
   const code = A.x.sub(wide.mul(8));
   const isCode = (k: number): N => abs(code.sub(k)).lessThan(0.5);
-  // windows / lamps: ramp in through blue hour; a little already in golden hour ("dusk" shots)
-  const gNight = clamp(smoothstep(0.2, 0.7, env.night).add(env.twilight.mul(0.4)).add(env.golden.mul(0.3)), 0, 1);
+  // windows / lamps: ramp in through blue hour, off by day and in golden hour (the glow families'
+  // night gate, families.ts gateNode)
+  const gNight = clamp(smoothstep(0.2, 0.7, env.night).add(env.twilight.mul(0.4)), 0, 1);
   const gDim = smoothstep(0.35, 0.95, env.night);
   const gDusk = float(0.25).add(max(env.night, env.golden).mul(0.75));
   const gate = select(isCode(0), gNight, select(isCode(1), gDim, select(isCode(2), gDusk, select(isCode(3), float(1), float(0)))));
@@ -77,9 +87,12 @@ export function createEmissionMaterial(): NodeMaterial {
   const amp = C.rgb.mul(gate.mul(flick).mul(wideGain).mul(peak)).mul(T);
   const on = gate.greaterThan(1e-4);
 
-  // ---- camera-facing quad (view space), nudged toward the camera by NUDGE_PX pixels' worth
-  const peakLum = amp.dot(vec3(0.2126, 0.7152, 0.0722));
-  const kq = clamp(sqrt(max(tsl.log(max(peakLum, 1e-6).div(CUTOFF)), 0).mul(2)), QUAD_SIGMAS_MIN, QUAD_SIGMAS_MAX);
+  // ---- camera-facing quad (view space), nudged toward the camera by NUDGE_PX pixels' worth; it
+  // reaches to where the core or the halo falls below CUTOFF
+  const peakLum = max(amp.dot(vec3(0.2126, 0.7152, 0.0722)), 1e-6);
+  const kCore = clamp(sqrt(max(tsl.log(peakLum.mul(1 - HALO_SHARE).div(CUTOFF)), 0).mul(2)), QUAD_SIGMAS_MIN, QUAD_SIGMAS_MAX);
+  const kHalo = sqrt(max(tsl.log(peakLum.mul(HALO_SHARE / (HALO_K * HALO_K)).div(CUTOFF)), 0).mul(2)).mul(HALO_K);
+  const kq = max(kCore, clamp(kHalo, 0, 3 * HALO_K));
   const quadPx = select(on, sigma.mul(kq), float(0));
   const nudge = z.div(pxPerKm).mul(NUDGE_PX);
   const pNear = pView.mul(float(1).sub(nudge.div(dist)));
@@ -90,15 +103,17 @@ export function createEmissionMaterial(): NodeMaterial {
   const vUv = varying(corner.mul(quadPx), 'vEmUv');
   const vSigma = varying(sigma, 'vEmSigma');
   const vAmp = varying(amp, 'vEmAmp');
-  // the Gaussian's value at the quad radius (subtracted: the sprite ends at exactly zero)
-  const vEdge = varying(exp(kq.mul(kq).mul(-0.5)), 'vEmEdge');
+  // core + halo profile in units of σ² (energy 2πσ², like the core alone); its value at the quad radius is
+  // subtracted, so the sprite ends at exactly zero (round, no square edge)
+  const profile = (t: N): N => exp(t.mul(-0.5)).mul(1 - HALO_SHARE).add(exp(t.mul(-0.5 / (HALO_K * HALO_K))).mul(HALO_SHARE / (HALO_K * HALO_K)));
+  const vEdge = varying(profile(kq.mul(kq)), 'vEmEdge');
 
   const m = new NodeMaterial();
   m.name = 'emission-sprites';
   m.vertexNode = clip;
   m.fragmentNode = Fn(() => {
-    const d2 = vUv.dot(vUv);
-    const g = max(exp(d2.div(vSigma.mul(vSigma).mul(-2))).sub(vEdge), 0).div(float(1).sub(vEdge));
+    const t = vUv.dot(vUv).div(vSigma.mul(vSigma));
+    const g = max(profile(t).sub(vEdge), 0);
     return vec4(vAmp.mul(g), 1);
   })();
   m.transparent = true;
