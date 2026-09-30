@@ -3,7 +3,7 @@
 _Rolling document: roadmap, current state, decisions, next steps. Keep it compact; replace stale detail
 instead of appending logs._
 
-**Last updated:** 2026-09-30 · end of Session 2 (World look) — push pending user approval
+**Last updated:** 2026-09-30 · Session 3 (Landmarks) in progress — see "S3 progress" below
 
 ## Where we are
 **S1 and S2 are complete.** The world renders deterministically on the Intel UHD iGPU with the S2 look.
@@ -134,12 +134,17 @@ Landmark detail budgets target 15–60 km. Ground detail matters for about 80 % 
 **Readability policy:** replace size boosts with silhouette/emission/contrast; small landmarks are specks in
 wide shots.
 
-**Open decision:** extend the frame about 80 km south, so Tolfalas and the south are not sliced. Conversion
-plan (from T1r3):
-- 6 explicit-camera shots;
-- the constants in `cameras.ts` / `geometry.ts`;
-- a DEM re-read and perf re-baseline;
-- stray islands off Minhiriath.
+**Frame decision (closed, S3 start):** the world frame stays as it is — no 80 km south extension (the
+south edge is a clean diorama cut through the Bay of Belfalas; a squarer board would fit 16:9 worse).
+
+## S3 progress (rolling; replaced by the S3 summary at session end)
+- **W0 (main):** host hygiene + cleanup; contracts commit (build records, types v2, bookmarks v2, stubs);
+  shot list v0 (`data/tour/shotlist.json`, film draft 204 s); probe v2 (`tools/check/probe.ts`: void /
+  cut-face / top-void classes, subject px) + bookmark / shot-list gates (strict per landmark once its
+  shot-list `status` is `s3`); S3 QA sets; region shots reframed (mordor, erebor-long-lake, misty-moria);
+  `tools/capture/exportCameras.ts` for the final S2-vs-S3 A/B.
+- **W1 (agents):** A = kit v2 / families v2 / LOD / landmark gates + Edoras; B = emission / authored trees /
+  stamps v2 / pools + Lothlórien + Erebor massif.
 
 ## S4+ backlog
 - **Mordor mood (S4):** ash ceiling, plume, red under-glow, bloomed lava/Eye.
