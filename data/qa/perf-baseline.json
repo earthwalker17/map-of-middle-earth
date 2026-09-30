@@ -1,29 +1,29 @@
 {
-  "createdAt": "2026-09-29T11:57:36.471Z",
-  "label": "s1",
+  "createdAt": "2026-09-30T00:24:54.034Z",
+  "label": "s2",
   "quality": "preview",
   "width": 1280,
   "height": 720,
   "gpu": "intel/gen-11",
   "timings": {
-    "engineCreated": 1236,
-    "worldLoaded": 2456,
-    "init:environment": 2650,
-    "init:terrain": 2654,
-    "init:water": 3002,
-    "init:vegetation": 3336,
-    "init:diorama": 3345,
-    "init:landmarks": 3459,
-    "compiled": 21845,
-    "warm": 24758
+    "engineCreated": 1371,
+    "worldLoaded": 2541,
+    "init:environment": 3797,
+    "init:terrain": 5265,
+    "init:water": 5528,
+    "init:vegetation": 6125,
+    "init:diorama": 6137,
+    "init:landmarks": 6249,
+    "compiled": 13577,
+    "warm": 14931
   },
-  "compileMs": 18386,
-  "bootMs": 24758,
-  "jsHeapMB": 258,
+  "compileMs": 7328,
+  "bootMs": 14931,
+  "jsHeapMB": 303,
   "footprint": {
-    "chromeMB": 1605,
+    "chromeMB": 1639,
     "chromeProcs": 8,
-    "nodeMB": 207
+    "nodeMB": 191
   },
   "views": [
     {
@@ -31,30 +31,30 @@
       "width": 1280,
       "height": 720,
       "frames": 60,
-      "medianMs": 54.39999999990687,
-      "p95Ms": 74.5,
-      "meanMs": 56.556666666680634,
-      "maxMs": 83.39999999990687
+      "medianMs": 55.099999994039536,
+      "p95Ms": 71.5,
+      "meanMs": 54.973333333308496,
+      "maxMs": 75.60000000149012
     },
     {
       "name": "shire",
       "width": 1280,
       "height": 720,
       "frames": 60,
-      "medianMs": 50.10000000009313,
-      "p95Ms": 64.8000000002794,
-      "meanMs": 52.731666666649595,
-      "maxMs": 72.39999999990687
+      "medianMs": 48,
+      "p95Ms": 52.100000001490116,
+      "meanMs": 48.26000000014901,
+      "maxMs": 52.5
     },
     {
       "name": "anduin-gondor",
       "width": 1280,
       "height": 720,
       "frames": 60,
-      "medianMs": 49.5,
-      "p95Ms": 50.89999999990687,
-      "meanMs": 49.72999999998913,
-      "maxMs": 58.799999999813735
+      "medianMs": 48.600000001490116,
+      "p95Ms": 57.100000001490116,
+      "meanMs": 50.11499999972681,
+      "maxMs": 58.599999994039536
     }
   ]
 }
