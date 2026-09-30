@@ -84,8 +84,8 @@ function vesica(w: number, h: number, y: number): number {
 }
 
 /** An almond (the Eye's body, core or flame halo) facing ±z: loft of horizontal elliptical sections, base at `y0`. */
-function almond(k: ProxyKit, w: number, h: number, dz: number, y0: number, color: number, strength: number): void {
-  const levels = 5;
+function almond(k: ProxyKit, w: number, h: number, dz: number, y0: number, color: number, strength: number, lod?: 0 | 1 | 2): void {
+  const levels = 9;
   const secs: { outline: V2[]; y: number }[] = [];
   for (let i = 0; i <= levels; i++) {
     const y = -h / 2 + (i / levels) * h;
@@ -98,7 +98,7 @@ function almond(k: ProxyKit, w: number, h: number, dz: number, y0: number, color
     }
     secs.push({ outline: ring, y: y + h / 2 });
   }
-  k.loft('emissive', secs, { at: [0, y0, 0], color, glow: { gate: 'always', strength } });
+  k.loft('emissive', secs, { at: [0, y0, 0], color, glow: { gate: 'always', strength }, lod });
 }
 
 /**
@@ -272,7 +272,7 @@ export function buildTower(k: ProxyKit): void {
   almond(k, EW * 0.62, EH * 0.66, 0.58, ey - (EH * 0.66) / 2, 0xf8a040, 0.5);
   k.box('lava', 0.09, EH * 0.84, 0.66, { at: [0, ey - EH * 0.42, 0], color: 0x6d1d06, glow: { gate: 'always', strength: 0.1, flicker: 0.02 } });
   // the flame halo: a larger, thin almond of deep red fire behind the body (a soft rim, not a star)
-  almond(k, EW * 1.32, EH * 1.5, 0.22, ey - (EH * 1.5) / 2, 0x9a2a0c, 0.3);
+  almond(k, EW * 1.32, EH * 1.5, 0.22, ey - (EH * 1.5) / 2, 0x9a2a0c, 0.3, 0);
 
   // ---- lights: the Eye (always; one on each face of the lens, just proud of it) and the red slits
   for (const z of [-0.36, 0.36]) k.light([0, ey, z], { kind: 'eye', color: 0xf07a28, intensity: 0.6, radius: 0.2 });

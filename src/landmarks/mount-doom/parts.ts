@@ -24,7 +24,6 @@ export const polar = (az: number, d: number): V2 => [Math.sin(az * DEG) * d, -Ma
  * AgX). The lava lake and the door (glow override honoured) use the bright hot paint at low strength.
  */
 const LAVA_HOT = 0xf54a10;
-const LIP = 0x5c1606;
 const LAVA = 0x661806;
 const LAVA_WARM = 0x541204;
 const LAVA_CRUST = 0x420d03;
@@ -85,21 +84,12 @@ function pathLength(path: V2[]): number {
  * south and west flanks the hero camera sees, one long tongue, a short spill on the north-east.
  */
 const FLOWS: [number, number, number, number][] = [
-  [158, 9.5, 0.15, 3],
-  [196, 6.5, 0.16, 2],
-  [214, 11, 0.22, 3],
+  [158, 9.5, 0.15, 1],
+  [196, 6.5, 0.16, 1],
+  [214, 11, 0.22, 2],
   [262, 4.5, 0.13, 1],
   [118, 5.5, 0.15, 1],
-  [34, 3.5, 0.12, 1],
-];
-
-/** arcs of the rim where lava spills over the lip: [from az, to az] */
-const RIM_ARCS: [number, number][] = [
-  [152, 194],
-  [203, 221],
-  [252, 270],
-  [24, 41],
-  [110, 123],
+  [34, 3.5, 0.12, 0],
 ];
 
 /** the Sammath Naur: azimuth (toward Barad-dûr, 57°) and distance from the summit */
@@ -112,29 +102,18 @@ export function buildDoom(k: ProxyKit): void {
   // ---- the crater: a lava lake on its floor (seen from above) and the glowing lip where lava spills
   const floor = g([0, 0]);
   k.cylinder('lava', 1.35, 1.5, 0.35, { at: [0, floor - 0.2, 0], seg: 28, color: LAVA_HOT, glow: { strength: 0.5 } });
-  for (const [a0, a1] of RIM_ARCS) {
-    const pts: V2[] = [];
-    const n = Math.max(3, Math.round((a1 - a0) / 6));
-    for (let i = 0; i <= n; i++) {
-      const a = a0 + ((a1 - a0) * i) / n;
-      // just outside the crest (the crater wall inside it drops sheer), wandering a little: the lip where
-      // it spills
-      pts.push(polar(a, CRATER_R + 0.36 + 0.06 * Math.sin(i * 1.7 + a0)));
-    }
-    k.wallPath('lava', pts, 0.45, 0.13, { followGround: true, step: 0.12, color: LIP });
-  }
-  // the crater glow on the lip, round the rim (no light on the crater floor: seen from the plain it would
-  // sit behind the rim)
+  // the crater glow on the rim crest, round the crater (no light on the crater floor: seen from the plain
+  // it would sit behind the rim). The rim itself is the flows' hot heads spilling over it.
   for (const a of [176, 261, 33, 117]) {
-    const p = polar(a, CRATER_R + 0.36);
-    k.light([p[0], g(p) + 0.46, p[1]], { kind: 'lava', color: 0xff5a1a, intensity: 0.5, radius: 0.18 });
+    const p = polar(a, CRATER_R + 0.1);
+    k.light([p[0], g(p) + 0.12, p[1]], { kind: 'lava', color: 0xff5a1a, intensity: 0.55, radius: 0.2 });
   }
 
   // ---- the flows: traced down the gullies from the rim, cooling as they go (hot and wide at the lip,
   // a darker, redder, thinner tongue below), the longest ones braiding into a side branch
   let lights = 0;
   FLOWS.forEach(([az, len, w, nl], fi) => {
-    const start = polar(az, CRATER_R + 0.45);
+    const start = polar(az, CRATER_R + 0.3);
     const path = descend(k, start, len);
     if (path.length < 4) return;
     const L = pathLength(path);
@@ -158,8 +137,8 @@ export function buildDoom(k: ProxyKit): void {
       if (branch.length >= 3) k.wallPath('lava', [path[j], ...branch], 0.28, w * 0.45, { followGround: true, color: LAVA_CRUST });
     }
     for (let i = 0; i < nl && lights < 12; i++, lights++) {
-      const p = along(path, L * (0.3 + 0.55 * (i / Math.max(1, nl - 1))));
-      k.light([p[0], g(p) + 0.18, p[1]], { kind: 'lava', color: 0xff4a12, intensity: 0.3 - i * 0.05, radius: 0.08 });
+      const p = along(path, L * (0.25 + 0.35 * i));
+      k.light([p[0], g(p) + 0.18, p[1]], { kind: 'lava', color: 0xff4a12, intensity: 0.32 - i * 0.08, radius: 0.08 });
     }
   });
 
@@ -171,9 +150,15 @@ export function buildDoom(k: ProxyKit): void {
   const sill: V2 = [dp[0] + nx * 0.25, dp[1] + nz * 0.25];
   const gy = g(sill);
   const yaw = 180 - DOOR_AZ;
-  k.box('darkStone', 0.62, 0.62, 0.7, { at: [dp[0], gy - 0.1, dp[1]], rot: [0, yaw, 0], color: 0x1a1614 });
-  k.box('darkStone', 0.8, 0.12, 0.5, { at: [dp[0] + nx * 0.12, gy + 0.5, dp[1] + nz * 0.12], rot: [0, yaw, 0], color: 0x151210, lod: 1 });
-  const glowAt: V3 = [dp[0] + nx * 0.37, gy + 0.02, dp[1] + nz * 0.37];
+  // a dark frame let into the slope (two jambs and a heavy lintel, their backs buried in the rising
+  // ground) round the glowing opening — no free-standing block
+  const tx = -nz;
+  const tz = nx;
+  const fx = dp[0] + nx * 0.34;
+  const fz = dp[1] + nz * 0.34;
+  for (const sd of [-1, 1]) k.box('darkStone', 0.1, 0.5, 0.3, { at: [fx + tx * sd * 0.2, gy - 0.06, fz + tz * sd * 0.2], rot: [0, yaw, 0], color: 0x1a1614, lod: 0 });
+  k.box('darkStone', 0.56, 0.12, 0.34, { at: [fx, gy + 0.4, fz], rot: [0, yaw, 0], color: 0x151210, lod: 0 });
+  const glowAt: V3 = [dp[0] + nx * 0.37, gy - 0.04, dp[1] + nz * 0.37];
   k.box('lava', 0.24, 0.36, 0.05, { at: glowAt, rot: [0, yaw, 0], color: 0xff6418, glow: { strength: 0.5 } });
   k.light([glowAt[0], glowAt[1] + 0.18, glowAt[2]], { kind: 'lava', color: 0xff6a1a, intensity: 0.6, radius: 0.1 });
   // a ledge in front of the door (the path's end)
