@@ -83,7 +83,7 @@ export default defineLandmark({
       height: 2.0,
       run: 0.5,
       plateauKm: 0.9,
-      falloff: 2.4,
+      falloff: 1.8,
       // the face is rock (dark wet slate from the looks.json spot), the shelf above it grassed by the
       // terrain's slope rule
       surface: 'rock',

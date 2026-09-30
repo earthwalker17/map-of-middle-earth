@@ -60,7 +60,7 @@ export default defineLandmark({
       elevationDeg: 9,
       azimuthDeg: 238,
       fov: 30,
-      lift: 2.5,
+      lift: 1.8,
       aimKm: [0.3, -1.9],
       tod: 21.0,
       dayOfYear: 78,

@@ -4,17 +4,20 @@ import { BRIDGE_END, C, GATE, GATE_OUT, TOWER, WALL } from './layout.ts';
 
 /**
  * The corpse-light. The curtain walls, their towers and the fin buttresses are the 'emissiveGreen'
- * family built from lofts (which take the per-part `glow` strength): lit albedo ¼ of the paint plus an
- * always-on emission of paint × strength, so at night the walls read green-lit from within (the film's
- * #508264, brightest #7bad85) while by day they are a dark green-grey. The spiked parapet is a brighter
- * green line; the houses inside are lit stone under dark slate with green windows; the gatehouse is dark
- * between the glowing blades, its mouth burning.
+ * family built from lofts (which take the per-part `glow` strength and gate): lit albedo ¼ of the paint
+ * plus an emission of paint × strength that wakes at night, so at night the walls read green-lit from
+ * within (the film's #508264, brightest #7bad85) while by day they are a dark green-grey (an always-on
+ * glow made the city a saturated emerald by day). The spiked parapet is a brighter green line; the
+ * houses inside are lit stone under dark slate with green windows; the gatehouse is dark between the
+ * glowing blades, its mouth burning. The tower's slits and lantern and the magic lights burn always.
  */
-const WALL_PAINT = 0x508264;
+const WALL_PAINT = 0x478a60;
 const WALL_STRENGTH = 0.26;
-const FIN_PAINT = 0x5a8f70;
+const FIN_PAINT = 0x52906a;
 const FIN_STRENGTH = 0.2;
 const PARAPET_PAINT = 0x7bad85;
+/** the ribs catch a little more of the light than the wall between them */
+const RIB_PAINT = 0x5b9070;
 const PARAPET_STRENGTH = 0.9;
 const HOUSE = [0x5d746a, 0x637a70, 0x566d63, 0x687f75];
 const ROOF = [0x243230, 0x2a3836, 0x202b29];
@@ -42,7 +45,7 @@ function outward(p: V2): V2 {
  * run on by t/2 to close the corners, seated on the lowest ground under it; a row of lit spikes along its
  * top (LOD0). Returns the height of the wall top.
  */
-function wallSeg(k: ProxyKit, a: V2, b: V2, h: number, t: number, tt: number, shade: number, spikes: boolean): number {
+function wallSeg(k: ProxyKit, a: V2, b: V2, h: number, t: number, tt: number, shade: number, spikes: boolean, centre?: V2): number {
   const dx = b[0] - a[0];
   const dz = b[1] - a[1];
   const L = Math.hypot(dx, dz);
@@ -63,7 +66,7 @@ function wallSeg(k: ProxyKit, a: V2, b: V2, h: number, t: number, tt: number, sh
       { outline: rect(t / 2), y: 0 },
       { outline: rect(tt / 2), y: h },
     ],
-    { at: [mid[0], 0, mid[1]], rot: [0, yaw, 0], seat: true, color: WALL_PAINT, shade, glow: { strength: WALL_STRENGTH } },
+    { at: [mid[0], 0, mid[1]], rot: [0, yaw, 0], seat: true, color: WALL_PAINT, shade, glow: { strength: WALL_STRENGTH, gate: 'night' } },
   );
   // the kit seats the loft on the lowest ground under its foot corners and centre
   const nx = -uz;
@@ -76,11 +79,34 @@ function wallSeg(k: ProxyKit, a: V2, b: V2, h: number, t: number, tt: number, sh
     mid,
   ];
   const top = Math.min(...corners.map(([x, z]) => k.ground(x, z))) - SINK + h;
+  // pilaster ribs up the outer face (the film's vertically ribbed walls), following the batter (LOD0)
+  if (centre) {
+    const out = nx * (mid[0] - centre[0]) + nz * (mid[1] - centre[1]) > 0 ? 1 : -1;
+    const n = Math.floor(L / 0.13);
+    const rw = 0.035;
+    const rib = (f0: number, f1: number): V2[] => [
+      [-rw / 2, out * f0],
+      [rw / 2, out * f0],
+      [rw / 2, out * f1],
+      [-rw / 2, out * f1],
+    ];
+    for (let i = 0; i < n; i++) {
+      const s = (i + 0.5) / n - 0.5;
+      k.loft(
+        'emissiveGreen',
+        [
+          { outline: rib(t / 2 - 0.01, t / 2 + 0.045), y: 0 },
+          { outline: rib(tt / 2 - 0.01, tt / 2 + 0.018), y: h * 0.97 },
+        ],
+        { at: [mid[0] + ux * s * L, 0, mid[1] + uz * s * L], rot: [0, yaw, 0], seat: true, color: RIB_PAINT, shade, glow: { strength: WALL_STRENGTH * 1.15, gate: 'night' }, lod: 0 },
+      );
+    }
+  }
   if (spikes) {
     const n = Math.floor(L / 0.07);
     for (let i = 0; i < n; i++) {
       const s = (i + 0.5) / n - 0.5;
-      k.cone('emissiveGreen', 0.016, 0.065, { at: [mid[0] + ux * s * L, top - 0.005, mid[1] + uz * s * L], seg: 4, rot: [0, yaw + 45, 0], color: PARAPET_PAINT, glow: { strength: PARAPET_STRENGTH }, lod: 0 });
+      k.cone('emissiveGreen', 0.016, 0.065, { at: [mid[0] + ux * s * L, top - 0.005, mid[1] + uz * s * L], seg: 4, rot: [0, yaw + 45, 0], color: PARAPET_PAINT, glow: { strength: PARAPET_STRENGTH, gate: 'night' }, lod: 0 });
     }
   }
   return top;
@@ -96,7 +122,7 @@ function wallTower(k: ProxyKit, p: V2, r: number, h: number, spireH: number, lod
       [r, 0],
       [r * 0.86, h],
     ],
-    { at: [p[0], 0, p[1]], seg: 6, seat: true, color: WALL_PAINT, shade: 1.08, glow: { strength: WALL_STRENGTH }, lod },
+    { at: [p[0], 0, p[1]], seg: 6, seat: true, color: WALL_PAINT, shade: 1.08, glow: { strength: WALL_STRENGTH, gate: 'night' }, lod },
   );
   k.cone('slate', r * 1.06, spireH, { at: [p[0], base + h, p[1]], seg: 6, color: SLATE, lod });
 }
@@ -122,7 +148,7 @@ export function fin(k: ProxyKit, at: V2, dir: V2, len: number, h: number, t: num
     seat: true,
     color: FIN_PAINT,
     shade,
-    glow: { strength: FIN_STRENGTH },
+    glow: { strength: FIN_STRENGTH, gate: 'night' },
     lod,
   });
 }
@@ -140,11 +166,11 @@ function windowLight(k: ProxyKit, p: V3, n: V2, intensity = 2, radius = 0.03): v
  */
 export function buildCity(k: ProxyKit, maxWindows: number): void {
   // ---- the curtain wall (open at the gate) and its towers
-  for (let i = 0; i + 1 < WALL.length; i++) wallSeg(k, WALL[i], WALL[i + 1], 0.62, 0.17, 0.1, 0.92 + 0.16 * k.r(40 + i), true);
+  for (let i = 0; i + 1 < WALL.length; i++) wallSeg(k, WALL[i], WALL[i + 1], 0.85, 0.2, 0.11, 0.92 + 0.16 * k.r(40 + i), true, C);
   WALL.forEach((p, i) => {
     if (i === 0 || i === WALL.length - 1) return;
     const tall = i % 2 === 1;
-    wallTower(k, p, tall ? 0.13 : 0.1, tall ? 1.05 : 0.8, tall ? 0.55 : 0.4);
+    wallTower(k, p, tall ? 0.14 : 0.11, tall ? 1.3 : 1.05, tall ? 0.6 : 0.45);
   });
   // fin buttresses: from the wall line outwards, between the towers (uneven heights)
   for (let i = 0; i + 1 < WALL.length; i++) {
@@ -158,23 +184,23 @@ export function buildCity(k: ProxyKit, maxWindows: number): void {
       // skip the fins right beside the gate (the great blades stand there)
       if (Math.hypot(p[0] - GATE[0], p[1] - GATE[1]) < 0.35) continue;
       const d = outward(p);
-      const h = 0.8 + 0.35 * k.r(10 + i * 7 + j);
-      fin(k, [p[0] - d[0] * 0.06, p[1] - d[1] * 0.06], d, 0.24 + 0.1 * k.r(11 + i * 7 + j), h, 0.05, 0.85 + 0.3 * k.r(12 + i * 7 + j), 0);
+      const h = 1.1 + 0.45 * k.r(10 + i * 7 + j);
+      fin(k, [p[0] - d[0] * 0.06, p[1] - d[1] * 0.06], d, 0.3 + 0.12 * k.r(11 + i * 7 + j), h, 0.055, 0.85 + 0.3 * k.r(12 + i * 7 + j), 0);
     }
   }
   // ---- the gate: two great blades flanking a tall dark gatehouse with a fanged, burning mouth
   const side: V2 = [GATE_OUT[1], -GATE_OUT[0]];
   for (const s of [-1, 1]) {
     const at: V2 = [GATE[0] + side[0] * s * 0.19, GATE[1] + side[1] * s * 0.19];
-    fin(k, at, GATE_OUT, 0.5, 1.75, 0.07, 1.15);
+    fin(k, at, GATE_OUT, 0.6, 2.4, 0.08, 1.15);
   }
   const gy = k.ground(GATE[0], GATE[1]);
   const gyaw = -Math.atan2(side[1], side[0]) * DEG;
-  k.house('stone', 'slate', 0.3, 0.2, 0.62, { at: [GATE[0], 0, GATE[1]], rot: [0, gyaw, 0], roof: 'gable', pitch: 62, overhang: 0.01, color: GATE_STONE, roofColor: SLATE });
+  k.house('stone', 'slate', 0.3, 0.2, 0.85, { at: [GATE[0], 0, GATE[1]], rot: [0, gyaw, 0], roof: 'gable', pitch: 62, overhang: 0.01, color: GATE_STONE, roofColor: SLATE });
   const mouth: V3 = [GATE[0] + GATE_OUT[0] * 0.101, gy, GATE[1] + GATE_OUT[1] * 0.101];
-  k.box('darkStone', 0.13, 0.32, 0.01, { at: mouth, rot: [0, gyaw, 0], color: 0x0c1412 });
-  k.box('emissiveGreen', 0.11, 0.25, 0.006, { at: [mouth[0] + GATE_OUT[0] * 0.004, gy, mouth[2] + GATE_OUT[1] * 0.004], rot: [0, gyaw, 0], color: 0x2f7a4c, glow: { strength: 1.0 } });
-  for (const s of [-1, 0, 1]) k.cone('stone', 0.012, s ? 0.07 : 0.05, { at: [mouth[0] + GATE_OUT[0] * 0.008 + side[0] * s * 0.04, gy + 0.32, mouth[2] + GATE_OUT[1] * 0.008 + side[1] * s * 0.04], rot: [180, 0, 0], seg: 4, color: 0x9aa89f });
+  k.box('darkStone', 0.14, 0.4, 0.01, { at: mouth, rot: [0, gyaw, 0], color: 0x0c1412 });
+  k.box('emissiveGreen', 0.12, 0.32, 0.006, { at: [mouth[0] + GATE_OUT[0] * 0.004, gy, mouth[2] + GATE_OUT[1] * 0.004], rot: [0, gyaw, 0], color: 0x2f7a4c, glow: { strength: 1.0 } });
+  for (const s of [-1, 0, 1]) k.cone('stone', 0.012, s ? 0.07 : 0.05, { at: [mouth[0] + GATE_OUT[0] * 0.008 + side[0] * s * 0.04, gy + 0.4, mouth[2] + GATE_OUT[1] * 0.008 + side[1] * s * 0.04], rot: [180, 0, 0], seg: 4, color: 0x9aa89f });
   windowLight(k, [mouth[0], gy + 0.12, mouth[2]], GATE_OUT, 2.5, 0.05);
 
   // ---- the inner ring round the Tower's keep
@@ -209,7 +235,7 @@ export function buildCity(k: ProxyKit, maxWindows: number): void {
       const near = Math.max(0, 1 - (dT - 0.85) / 0.9);
       const w = 0.09 + 0.1 * u;
       const d = 0.07 + 0.06 * k.r(100 + i);
-      const h = 0.14 + 0.14 * k.r(200 + i) + 0.22 * near;
+      const h = 0.22 + 0.2 * k.r(200 + i) + 0.35 * near;
       const yaw = -Math.atan2(z - C[1], x - C[0]) * DEG + 90 + (k.r(300 + i) - 0.5) * 30;
       k.house('stone', 'slate', w, d, h, {
         at: [x, 0, z],
@@ -239,7 +265,7 @@ export function buildCity(k: ProxyKit, maxWindows: number): void {
     { polygon: inset },
     14,
     (i, x, z, u) => {
-      k.tower('stone', 0.05 + 0.03 * u, 0.6 + 0.45 * u, { at: [x, 0, z], seat: true, sides: 6, taper: 0.2, roof: 'spire', roofFam: 'slate', roofColor: SLATE, roofH: 0.35 + 0.2 * u, color: HOUSE[i % HOUSE.length], lod: 0 });
+      k.tower('stone', 0.055 + 0.035 * u, 0.9 + 0.6 * u, { at: [x, 0, z], seat: true, sides: 6, taper: 0.2, roof: 'spire', roofFam: 'slate', roofColor: SLATE, roofH: 0.35 + 0.2 * u, color: HOUSE[i % HOUSE.length], lod: 0 });
     },
     { minSpacing: 0.45, avoid: [street, { at: TOWER, r: 0.95 }] },
   );
@@ -266,7 +292,7 @@ export function buildBridge(k: ProxyKit, padY: number): void {
       const px = a[0] + (b[0] - a[0]) * t + nrm[0] * s * (width / 2 - 0.012);
       const pz = a[2] + (b[2] - a[2]) * t + nrm[1] * s * (width / 2 - 0.012);
       k.box('stone', 0.022, 0.035, 0.022, { at: [px, y, pz], color: POST, lod: 0 });
-      k.cone('emissiveGreen', 0.013, 0.05, { at: [px, y + 0.035, pz], seg: 4, color: PARAPET_PAINT, glow: { strength: 0.5 }, lod: 0 });
+      k.cone('emissiveGreen', 0.013, 0.05, { at: [px, y + 0.035, pz], seg: 4, color: PARAPET_PAINT, glow: { strength: 0.5, gate: 'night' }, lod: 0 });
     }
   }
 }

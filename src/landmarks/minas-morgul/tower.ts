@@ -83,7 +83,7 @@ export function buildTower(k: ProxyKit, s: TowerSpec): { crownY: number; topY: n
       { outline: finStar(s.r * 1.5), y: s.keepH * 0.92 },
       { outline: finStar(s.r * 1.3), y: s.keepH },
     ],
-    { at: [x, base, z], color: TOWER_STONE, shade: 0.95, glow: { strength: TOWER_STRENGTH } },
+    { at: [x, base, z], color: TOWER_STONE, shade: 0.95, glow: { strength: TOWER_STRENGTH, gate: 'night' } },
   );
   // ---- the shaft: twisted fin sections
   const y1 = base + s.keepH;
@@ -94,7 +94,7 @@ export function buildTower(k: ProxyKit, s: TowerSpec): { crownY: number; topY: n
       const t = i / n;
       return { outline: finStar(s.r), y: t * s.shaftH, rotDeg: twistAt(t), scale: scaleAt(t) };
     }),
-    { at: [x, y1, z], color: TOWER_STONE, glow: { strength: TOWER_STRENGTH } },
+    { at: [x, y1, z], color: TOWER_STONE, glow: { strength: TOWER_STRENGTH, gate: 'night' } },
   );
   // glowing cores in the recesses (bands of the shaft): a circle between the recess and rib radii,
   // twisted and scaled like the shaft (its edge midpoints sit on the recess vertices), so it shows only
