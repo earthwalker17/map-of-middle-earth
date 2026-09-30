@@ -1,6 +1,6 @@
 import { Euler, Matrix4, Quaternion, Vector3, type BufferGeometry } from 'three/webgpu';
 import { hash32, rand } from '../../core/rng.ts';
-import { familyKey, familyVertex, paintLinear, type FamilyId, type GlowOverride, type MaterialKey } from '../../materials/families.ts';
+import { aoFloor, familyKey, familyVertex, paintLinear, type FamilyId, type GlowOverride, type MaterialKey } from '../../materials/families.ts';
 import type { LightGate, LightKind, LodGeometry, TreeKind, V2, V3 } from '../records.ts';
 import { Geo, area2, boxGeo, cross3, face, icoGeo, latheGeo, noise3, packGeometry, prismGeo, sub3, type PackItem } from './geom.ts';
 
@@ -19,7 +19,11 @@ export type LodLevel = 0 | 1 | 2;
 export interface PartOpts {
   /** position of the part's BASE centre (spheres / rocks / blobs: the centre), local km */
   at?: V3;
-  /** rotation in degrees (x, y, z; Euler XYZ) — y is the yaw (counter-clockwise seen from above) */
+  /**
+   * rotation in degrees (x, y, z; Euler XYZ) — y is the yaw (counter-clockwise seen from above). Composite
+   * and ground-following primitives (`house`, `extrude` with followGround, `wallPath`, `cliff`, `mound`,
+   * `stairs`) use the yaw only; x / z are ignored there.
+   */
   rot?: V3;
   /** absolute paint, sRGB hex (overrides the family preset) */
   color?: number;
@@ -27,6 +31,8 @@ export interface PartOpts {
   shade?: number;
   /** legacy (S1): multiplies the family preset albedo */
   tint?: number;
+  /** surface noise amplitude 0..1 (default: the family's grain) */
+  grain?: number;
   /** coarsest LOD still containing the part (default: automatic by size, see `buildLods`) */
   lod?: LodLevel;
   /**
@@ -97,6 +103,16 @@ export interface HouseOpts extends PartOpts {
   /** absolute roof paint, sRGB hex */
   roofColor?: number;
   roofShade?: number;
+  /** surface noise amplitude of the roof (0..1, default: the roof family's grain) */
+  roofGrain?: number;
+  /** a ridge cap along the ridge (gable roofs; LOD0): thatch roll, turf or gilded trim */
+  ridge?: { fam?: FamilyId; color?: number; size?: number };
+  /**
+   * crossed gable boards at both gable ends (gable roofs), running up the verges and past the ridge as
+   * horns by `horn` km (default 0.25·size·10): `size` = board thickness (default 0.35·overhang + 0.004);
+   * LOD0 unless `lod`
+   */
+  gableBoards?: { fam?: FamilyId; color?: number; size?: number; horn?: number; lod?: LodLevel };
   /** family of the gable-end triangles (default: the walls) */
   gableFam?: FamilyId;
   /** foundation family on slopes (default 'weathered', shaded 0.72) */
@@ -107,6 +123,14 @@ export interface HouseOpts extends PartOpts {
   plinthGrow?: number;
   /** how deep the body may dig into the uphill side, in wall heights (default 0.5) */
   dig?: number;
+  /**
+   * A terrace bank instead of the vertical plinth: a sloped turf skirt from the floor (plus a level
+   * `ledge` round the walls, default 0.01 km) down to the ground on the downhill side, `slope` degrees
+   * steep (default 50; its run is capped at `maxRun`, default 0.6·min(w, d), so on steeper ground it gets
+   * steeper), so a house on a steep flank sits on a shelf instead of a pillar. LOD0 only; at LOD1/2 the
+   * ground-following wall column takes the bank's paint (distant towns read as roofs on turf).
+   */
+  bank?: { fam?: FamilyId; color?: number; shade?: number; slope?: number; ledge?: number; maxRun?: number };
   /** window lights on the long sides */
   windows?: WindowOpts & { sides?: 1 | 2 };
   /** a stone chimney on the roof */
@@ -151,6 +175,8 @@ export interface WallPathOpts extends PartOpts {
   followGround?: boolean;
   /** resample step for followGround, km (default 0.1) */
   step?: number;
+  /** per-segment paint jitter (0.1 → shade 0.9–1.1 per segment: weathered timber, patched stone) */
+  shadeJitter?: number;
   towers?: { every: number; r: number; h: number; fam?: FamilyId; sides?: number; roof?: TowerRoof; roofFam?: FamilyId; roofColor?: number; color?: number };
 }
 
@@ -165,6 +191,14 @@ export interface CliffOpts extends PartOpts {
   overhang?: number;
   /** bottom follows the ground (default true) */
   followGround?: boolean;
+  /**
+   * taper both ends down to nothing, sunk below the ground over this arc length, km (default
+   * max(0.1, 1.2 × the tallest height), at most a quarter of the path); 0 = keep the ends at full height
+   * (then they are closed by fanned caps with per-triangle normals)
+   */
+  taper?: number;
+  /** 0 = fully faceted rock, 1 = smooth normals; default 0.55 (fractured stone) */
+  soft?: number;
 }
 
 export type ScatterArea =
@@ -234,8 +268,11 @@ interface Part {
   lod?: LodLevel;
   cap: LodLevel;
   paint: [number, number, number];
+  /** paint at LOD >= 1 (a house column taking its terrace bank's paint) */
+  paintCoarse?: [number, number, number];
   surf: [number, number, number, number];
   h: number;
+  aoMin: number;
 }
 
 /** sink of seated parts into the ground, km */
@@ -256,8 +293,10 @@ const DEG = Math.PI / 180;
  * a separate kit stream keyed by an internal part index, so kit internals never shift author values.
  *
  * LOD: a part's (or a composite's) extent ≥ 8 % of the landmark bbox diagonal → in LOD2 (silhouette)
- * too; ≥ 2 % → LOD1; smaller → LOD0 only (`lod` overrides). LOD1 / LOD2 regenerate detailed parts with
- * ½ / ¼ of the segments; crenels and steps stop at LOD1.
+ * too; ≥ 2 % → LOD1; smaller → LOD0 only (`lod` overrides). A composite (a house, a wall path WITH its
+ * towers and crenels, a bridge, an arcade) is ONE group: nested composites join the outermost open group,
+ * so a wall's towers are sized and dropped together with the wall. LOD1 / LOD2 regenerate detailed parts
+ * with ½ / ¼ of the segments; crenels and steps stop at LOD1.
  *
  * Records (no geometry): `light`, `windows`, `tree` — local km, converted to world records by build.ts.
  */
@@ -308,8 +347,9 @@ export class ProxyKit {
     return this.groupStack.length ? this.groupStack[this.groupStack.length - 1] : ++this.groups;
   }
 
+  /** open a composite group; nested composites (a wall path's towers) join the outermost open group */
   private open(): void {
-    this.groupStack.push(++this.groups);
+    this.groupStack.push(this.groupStack.length ? this.groupStack[0] : ++this.groups);
   }
 
   private close(): void {
@@ -327,6 +367,7 @@ export class ProxyKit {
     if (m) g0.transform(m);
     const b = g0.bounds();
     const fv = familyVertex(fam, undefined, 1, undefined, o.glow);
+    if (o.grain !== undefined && familyKey(fam) === 'structure') fv.surf[2] = Math.round(Math.min(1, Math.max(0, o.grain)) * 255);
     const p: Part = {
       key: familyKey(fam),
       gen,
@@ -339,6 +380,7 @@ export class ProxyKit {
       paint: paintLinear(fam, o.color, o.shade ?? 1, o.tint),
       surf: fv.surf,
       h: x.h ?? Math.max(1e-3, b.max[1] - b.min[1]),
+      aoMin: aoFloor(fam),
     };
     this.list.push(p);
     return p;
@@ -432,10 +474,14 @@ export class ProxyKit {
     return this;
   }
 
-  /** Cylinder / truncated cone, base centre at `at` (`seg` ≤ 8 → faceted; LOD1/2 halve / quarter it). */
-  cylinder(fam: FamilyId, rTop: number, rBottom: number, h: number, o: PartOpts & { seg?: number } = {}): this {
+  /**
+   * Cylinder / truncated cone, base centre at `at`. Smooth normals like S1/S2 (three's CylinderGeometry)
+   * unless `faceted` (default: only `seg` ≤ 5); LOD1/2 halve / quarter `seg` > 8.
+   */
+  cylinder(fam: FamilyId, rTop: number, rBottom: number, h: number, o: PartOpts & { seg?: number; faceted?: boolean } = {}): this {
     this.begin();
     const seg = o.seg ?? 24;
+    const faceted = o.faceted ?? seg <= 5;
     this.place(
       fam,
       (d) =>
@@ -444,7 +490,7 @@ export class ProxyKit {
             [rBottom, 0],
             [rTop, h],
           ],
-          { seg: this.segs(seg, d), faceted: seg <= 8 },
+          { seg: this.segs(seg, d), faceted },
         ),
       o,
       { detailed: seg > 8 },
@@ -452,10 +498,14 @@ export class ProxyKit {
     return this;
   }
 
-  /** Cone of base radius `r`, base centre at `at` (`seg` 4 + rot 45 = pyramid). */
-  cone(fam: FamilyId, r: number, h: number, o: PartOpts & { seg?: number } = {}): this {
+  /**
+   * Cone of base radius `r`, base centre at `at` (`seg` 4 + rot 45 = pyramid). Smooth normals like S1/S2
+   * unless `faceted` (default: only `seg` ≤ 5).
+   */
+  cone(fam: FamilyId, r: number, h: number, o: PartOpts & { seg?: number; faceted?: boolean } = {}): this {
     this.begin();
     const seg = o.seg ?? 24;
+    const faceted = o.faceted ?? seg <= 5;
     this.place(
       fam,
       (d) =>
@@ -464,7 +514,7 @@ export class ProxyKit {
             [r, 0],
             [0, h],
           ],
-          { seg: this.segs(seg, d), faceted: seg <= 8 },
+          { seg: this.segs(seg, d), faceted },
         ),
       o,
       { detailed: seg > 8 },
@@ -499,29 +549,51 @@ export class ProxyKit {
    * Lumpy rock with smooth normals (indexed icosphere displaced by 3D value noise of the direction — no
    * cracks), CENTRED at `at`. `detail` 0–3 (default 2: 320 tris; LOD1/2 one / two levels coarser).
    * With `seat`, a third of it sinks into the ground.
+   *
+   * `leafy` (default for the 'foliage' family): a leaf mass instead of a stone — from r ≥ 0.3 km a lumpy
+   * core (0.78·r) with 6 smooth sub-crowns bulging from its upper part, so hero crowns read as clumped
+   * foliage (like the canopy clusters) rather than a lollipop sphere; 800 tris at LOD0, the core alone
+   * (20 tris) at LOD2.
    */
-  rock(fam: FamilyId, r: number, o: PartOpts & { squash?: number; lump?: number; detail?: number } = {}): this {
+  rock(fam: FamilyId, r: number, o: PartOpts & { squash?: number; lump?: number; detail?: number; leafy?: boolean } = {}): this {
     const p = this.begin();
     const sq = o.squash ?? 1;
     const lump = o.lump ?? 0.22;
+    const leafy = o.leafy ?? fam === 'foliage';
     const det = Math.min(3, Math.max(0, Math.round(o.detail ?? 2)));
     const nseed = hash32(this.kseed, p, 77);
     const ox = this.q(p, 1) * 10;
+    const lumpy = (level: number, R: number, cx: number, cy: number, cz: number, k: number, amp: number): Geo => {
+      const g = icoGeo(level);
+      for (let v = 0; v < g.p.length; v += 3) {
+        const x = g.p[v];
+        const y = g.p[v + 1];
+        const z = g.p[v + 2];
+        const n = 0.65 * noise3(x * 1.7 + ox + k * 3.1, y * 1.7, z * 1.7, nseed) + 0.35 * noise3(x * 3.6, y * 3.6 + ox, z * 3.6 + k, nseed + 1);
+        const s = R * (1 + amp * (2 * n - 1));
+        g.p[v] = cx + x * s;
+        g.p[v + 1] = (cy + y * s) * sq;
+        g.p[v + 2] = cz + z * s;
+      }
+      return g.smoothNormals();
+    };
+    const lobes = leafy && r >= 0.3 ? 6 : 0;
+    const lobe = Array.from({ length: lobes }, (_, k) => {
+      // golden-angle spiral over the upper ~2/3 of the crown
+      const t = (k + 0.5) / lobes;
+      const cy = 1 - t * 1.35;
+      const sy = Math.sqrt(Math.max(0, 1 - cy * cy));
+      const ph = k * 2.39996 + ox;
+      return { c: [Math.cos(ph) * sy * 0.6 * r, cy * 0.6 * r, Math.sin(ph) * sy * 0.6 * r] as V3, R: 0.42 * r * (0.85 + 0.3 * this.q(p, 10 + k)) };
+    });
     this.place(
       fam,
       (d) => {
-        const g = icoGeo(Math.max(0, det - (d < 1 ? (d < 0.5 ? 2 : 1) : 0)));
-        for (let k = 0; k < g.p.length; k += 3) {
-          const x = g.p[k];
-          const y = g.p[k + 1];
-          const z = g.p[k + 2];
-          const n = 0.65 * noise3(x * 1.7 + ox, y * 1.7, z * 1.7, nseed) + 0.35 * noise3(x * 3.6, y * 3.6 + ox, z * 3.6, nseed + 1);
-          const s = r * (1 + lump * (2 * n - 1));
-          g.p[k] = x * s;
-          g.p[k + 1] = y * s * sq;
-          g.p[k + 2] = z * s;
-        }
-        return g.smoothNormals();
+        const level = Math.max(0, det - (d < 1 ? (d < 0.5 ? 2 : 1) : 0));
+        if (!lobes || d < 0.5) return lumpy(level, r, 0, 0, 0, 0, lump);
+        const g = lumpy(level, 0.78 * r, 0, 0, 0, 0, lump * 0.7);
+        lobe.forEach((lb, k) => g.append(lumpy(Math.max(0, level - 1), lb.R, lb.c[0], lb.c[1], lb.c[2], k + 1, lump * 0.6)));
+        return g;
       },
       o,
       { detailed: det > 0, centred: true },
@@ -536,7 +608,8 @@ export class ProxyKit {
 
   /**
    * Ring wall (full or partial arc) of `radius` (centre line) and `thickness`, base at y = 0. A partial
-   * arc starts at +x and runs counter-clockwise seen from above (towards −z, north), as in S1.
+   * arc starts at +x and runs counter-clockwise seen from above (towards −z, north), as in S1. Flat
+   * facets like S1/S2 (an extruded shape: the facet lines read as masonry panels).
    */
   ring(fam: FamilyId, radius: number, thickness: number, h: number, o: PartOpts & { arcDeg?: number; seg?: number } = {}): this {
     this.begin();
@@ -554,7 +627,7 @@ export class ProxyKit {
             [r0, h],
             [r0, 0],
           ],
-          { seg: this.segs(seg, d, 8), arcDeg: o.arcDeg, faceted: seg <= 8 },
+          { seg: this.segs(seg, d, 8), arcDeg: o.arcDeg, faceted: true },
         ).transform(new Matrix4().makeScale(1, 1, -1)),
       o,
       { detailed: seg > 8 },
@@ -689,7 +762,10 @@ export class ProxyKit {
    * (`seat: false` to place it at `at[1]`): the body stands on the minimum ground under its corners or,
    * on steep ground, is dug in at most `dig` (default 50 %) of its wall height on the uphill side,
    * with a ground-following plinth below the downhill side (`plinthFam` / `plinthColor` — stone, or turf
-   * with `plinthGrow` > 1 for a terrace ledge). `windows` records window lights on the long sides; `chimney` adds a stone stack.
+   * with `plinthGrow` > 1 for a terrace ledge) or, with `bank`, a sloped turf terrace bank. `windows`
+   * records window lights on the long sides; `chimney` adds a stone stack. Only the yaw of `rot` is used.
+   * Seating contacts: the footprint centre (buried), the lowest corner (floating) and the highest corner
+   * (the dug-in uphill side, buried).
    */
   house(walls: FamilyId, roof: FamilyId, w: number, d: number, h: number, o: HouseOpts = {}): this {
     const p = this.begin();
@@ -710,7 +786,8 @@ export class ProxyKit {
       const gMin = Math.min(...gs, gc);
       const gMax = Math.max(...gs, gc);
       base = Math.max(gMin, gMax - (o.dig ?? 0.5) * h) - SINK + at[1];
-      if (base - (gMin - SINK) > 0.004) {
+      if (o.bank && base - (gMin - SINK) > 0.004) this.bankPart(o.bank, loc, w, d, base, common);
+      else if (base - (gMin - SINK) > 0.004) {
         // ground-following plinth (every corner reaches into the ground)
         const pf = o.plinthFam ?? 'weathered';
         const grow = o.plinthGrow ?? 1.03;
@@ -725,7 +802,11 @@ export class ProxyKit {
       const roofH = this.roofRise(o.roof ?? 'gable', w, d, o);
       const cpts: V2[] = [...corners, [at[0], at[2]]];
       const cgs = [...gs, gc];
-      this.contactPair(cpts, cgs, (k) => (plinth ? cgs[k] - SINK : base), h + roofH + Math.max(0, base - gMin));
+      const H = h + roofH + Math.max(0, base - gMin);
+      this.contactPair(cpts, cgs, (k) => (plinth ? cgs[k] - SINK : base), H);
+      // the dug-in uphill side: the wall bottom under the highest corner (burial gate)
+      const hi = gs.indexOf(Math.max(...gs));
+      if (gs[hi] > base + SINK + 1e-4) this.contacts.push({ x: corners[hi][0], z: corners[hi][1], baseY: base, groundY: gs[hi], h: H });
     }
     const m = this.matrix([at[0], base, at[2]], [0, yawDeg, 0]);
     const paint: PartOpts = { ...common, color: o.color, shade: o.shade, tint: o.tint };
@@ -744,7 +825,8 @@ export class ProxyKit {
         },
         bottom: false,
       });
-    this.addPart(walls, (dd) => (dd < 1 && seat ? column() : boxGeo(w, h, d, false)), m, paint, { detailed: !!seat });
+    const wp = this.addPart(walls, (dd) => (dd < 1 && seat ? column() : boxGeo(w, h, d, false)), m, paint, { detailed: !!seat });
+    if (seat && o.bank) wp.paintCoarse = paintLinear(o.bank.fam ?? 'foliage', o.bank.color, o.bank.shade ?? 1);
     this.roof(walls, roof, w, d, h, o, m, common);
     if (o.chimney) {
       const cw = Math.min(w, d) * 0.14;
@@ -763,6 +845,75 @@ export class ProxyKit {
     }
     this.close();
     return this;
+  }
+
+  /**
+   * The terrace bank of a seated house (landmark-local geometry): a level top at the floor (walls grown
+   * by the ledge) and sloped sides down to the ground, two facets per side, each corner / mid point
+   * pushed out (iteratively, so it lands on the slope) by drop / tan(slope), capped at maxRun.
+   */
+  private bankPart(bk: NonNullable<HouseOpts['bank']>, loc: (x: number, z: number) => V2, w: number, d: number, base: number, common: PartOpts): void {
+    const ledge = bk.ledge ?? 0.01;
+    const tanS = Math.tan((bk.slope ?? 50) * DEG);
+    const maxRun = bk.maxRun ?? 0.6 * Math.min(w, d);
+    const hw = w / 2 + ledge;
+    const hd = d / 2 + ledge;
+    const topY = base + 0.002;
+    // ring of 8 top points (corners and side midpoints) in house space, with each one's outward push
+    const ring: { x: number; z: number; ux: number; uz: number }[] = [
+      { x: -hw, z: -hd, ux: -1, uz: -1 },
+      { x: 0, z: -hd, ux: 0, uz: -1 },
+      { x: hw, z: -hd, ux: 1, uz: -1 },
+      { x: hw, z: 0, ux: 1, uz: 0 },
+      { x: hw, z: hd, ux: 1, uz: 1 },
+      { x: 0, z: hd, ux: 0, uz: 1 },
+      { x: -hw, z: hd, ux: -1, uz: 1 },
+      { x: -hw, z: 0, ux: -1, uz: 0 },
+    ];
+    const gen = (): Geo => {
+      const g = new Geo();
+      const top: V3[] = [];
+      const bot: V3[] = [];
+      for (const q of ring) {
+        let run = 0;
+        for (let it = 0; it < 4; it++) {
+          const [x, z] = loc(q.x + q.ux * run, q.z + q.uz * run);
+          run = Math.min(maxRun, Math.max(0, (topY - this.ground(x, z)) / tanS));
+        }
+        const [tx, tz] = loc(q.x, q.z);
+        const [bx, bz] = loc(q.x + q.ux * run, q.z + q.uz * run);
+        top.push([tx, topY, tz]);
+        bot.push([bx, Math.min(topY - 0.002, this.ground(bx, bz) - SINK), bz]);
+      }
+      face(g, [top[0], top[2], top[4], top[6]], [0, 1, 0]);
+      const [cx, cz] = loc(0, 0);
+      for (let k = 0; k < ring.length; k++) {
+        const k1 = (k + 1) % ring.length;
+        if (topY - bot[k][1] < 0.003 && topY - bot[k1][1] < 0.003) continue; // buried uphill side
+        const quad = [top[k], top[k1], bot[k1], bot[k]];
+        // outward = away from the house centre: orient the facet's own normal that way
+        const mx = (top[k][0] + top[k1][0]) / 2 - cx;
+        const mz = (top[k][2] + top[k1][2]) / 2 - cz;
+        let n = newell(quad);
+        if (n[0] * mx + n[2] * mz < 0) n = [-n[0], -n[1], -n[2]];
+        const v0 = g.vertexCount;
+        face(g, quad, n);
+        // shade the bank like the hillside it continues (the terrain normal, not the steeper facet's):
+        // the terrace reads by its ledge and the house on it, not as a lit box
+        for (let v = v0; v < g.vertexCount; v++) {
+          const x = g.p[v * 3];
+          const z = g.p[v * 3 + 2];
+          const e = 0.03;
+          const tn = norm2([-(this.ground(x + e, z) - this.ground(x - e, z)) / (2 * e), 1, -(this.ground(x, z + e) - this.ground(x, z - e)) / (2 * e)]);
+          g.n[v * 3] = tn[0];
+          g.n[v * 3 + 1] = tn[1];
+          g.n[v * 3 + 2] = tn[2];
+        }
+      }
+      return g;
+    };
+    const bp: PartOpts = { ...common, color: bk.color, shade: bk.shade };
+    this.addPart(bk.fam ?? 'foliage', gen, null, bp, { cap: 0 });
   }
 
   private roofRise(kind: RoofKind, w: number, d: number, o: HouseOpts): number {
@@ -786,7 +937,7 @@ export class ProxyKit {
     const pitch = (o.pitch ?? 42) * DEG;
     const ov = o.overhang ?? Math.min(w, d) * 0.08;
     const t = Math.max(0.002, Math.min(w, d) * 0.04); // eave (fascia) thickness
-    const rp: PartOpts = { ...common, color: o.roofColor, shade: o.roofShade };
+    const rp: PartOpts = { ...common, color: o.roofColor, shade: o.roofShade, grain: o.roofGrain };
     const gp: PartOpts = { ...common, color: o.gableFam ? undefined : o.color, shade: o.shade, tint: o.gableFam ? undefined : o.tint };
     const gf = o.gableFam ?? walls;
     const tan = Math.tan(pitch);
@@ -830,6 +981,35 @@ export class ProxyKit {
           gp,
           { cap: 0 },
         );
+        if (o.ridge) {
+          const rs = o.ridge.size ?? Math.max(0.004, d * 0.08);
+          this.addPart(o.ridge.fam ?? fam, () => boxGeo(2 * W, rs, rs * 1.5).translate(0, R - rs * 0.4, 0), m, { ...common, color: o.ridge.color ?? o.roofColor, shade: o.ridge.color === undefined ? 0.75 : 1 }, { cap: 0 });
+        }
+        if (o.gableBoards) {
+          const gb = o.gableBoards;
+          const bt = gb.size ?? 0.35 * ov + 0.004;
+          const horn = gb.horn ?? bt * 2.5;
+          const len = Math.hypot(S, R - ye);
+          this.addPart(
+            gb.fam ?? walls,
+            () => {
+              const g = new Geo();
+              for (const sx of [-1, 1])
+                for (const sg of [-1, 1]) {
+                  const phi = Math.atan2(-sg * S, R - ye);
+                  g.append(
+                    boxGeo(bt, len + horn, bt * 1.3)
+                      .transform(new Matrix4().makeRotationX(phi))
+                      .translate(sx * (W + bt * 0.5), ye - t, sg * S),
+                  );
+                }
+              return g;
+            },
+            m,
+            { lod: gb.lod ?? common.lod, color: gb.color, shade: 1 },
+            { cap: gb.lod ?? 0 },
+          );
+        }
         break;
       }
       case 'hip': {
@@ -1102,8 +1282,9 @@ export class ProxyKit {
    * using an open path. Faces are flat per segment.
    */
   wallPath(fam: FamilyId, path: V2[], h: number, thickness: number, o: WallPathOpts = {}): this {
-    this.begin();
+    const part = this.begin();
     this.open();
+    const jitter = o.shadeJitter ?? 0;
     const at: V3 = o.at ?? [0, 0, 0];
     const pts: V2[] = path.map((q) => [q[0] + at[0], q[1] + at[2]]);
     const closed = o.closed ?? false;
@@ -1165,10 +1346,15 @@ export class ProxyKit {
         const lean = (thickness - tt) / 2;
         const tiltR: V3 = [nr[0] * h, lean, nr[2] * h];
         const tiltL: V3 = [-nr[0] * h, lean, -nr[2] * h];
+        const v0 = g.vertexCount;
         face(g, [rb(s[k], ma, thickness / 2, bot[k]), rb(s[k1], mb, thickness / 2, bot[k1]), rb(s[k1], mb, tt / 2, top(k1)), rb(s[k], ma, tt / 2, top(k))], tiltR);
         face(g, [lb(s[k], ma, thickness / 2, bot[k]), lb(s[k1], mb, thickness / 2, bot[k1]), lb(s[k1], mb, tt / 2, top(k1)), lb(s[k], ma, tt / 2, top(k))], tiltL);
         const up: V3 = [-(top(k1) - top(k)) * dd[0], Math.hypot(bx - ax, bz - az), -(top(k1) - top(k)) * dd[1]];
         face(g, [rb(s[k], ma, tt / 2, top(k)), rb(s[k1], mb, tt / 2, top(k1)), lb(s[k1], mb, tt / 2, top(k1)), lb(s[k], ma, tt / 2, top(k))], up);
+        if (jitter) {
+          const sh = 1 + (this.q(part, 7000 + k) - 0.5) * 2 * jitter;
+          for (let v = v0; v < g.vertexCount; v++) g.shade(v, sh);
+        }
       }
       if (!closed) {
         for (const [k, sg] of [
@@ -1271,7 +1457,9 @@ export class ProxyKit {
    * can express. The face looks to the RIGHT of the walking direction; `height` is constant or one
    * value per path point (the skyline is jagged by noise). Faceted rock (flat triangles, per-facet
    * shade), buttresses and gullies (`rough`), strata bands, an optional `overhang`; the rock body slopes
-   * back `depth` km into the ground. Bottom follows the ground by default.
+   * back `depth` km into the ground. Bottom follows the ground by default. The ends taper to nothing
+   * below the ground (`taper`), so no end slab ever faces the camera; merge neighbouring crags into one
+   * path rather than placing several short ones.
    */
   cliff(fam: FamilyId, path: V2[], height: number | number[], o: CliffOpts = {}): this {
     const p = this.begin();
@@ -1300,10 +1488,13 @@ export class ProxyKit {
       return [(a[0] + b[0]) / l, (a[1] + b[1]) / l];
     });
     const depth = o.depth ?? 0.6 * hmax;
+    const taper = Math.min(total / 4, o.taper ?? Math.max(0.1, 1.2 * hmax));
+    const soft = Math.min(1, Math.max(0, o.soft ?? 0.55));
+    const ends: number[] = [];
     const gen = (d: number): Geo => {
       const g = new Geo();
-      const nu = Math.max(2, Math.ceil(total / (Math.max(0.02, hmax * 0.12) / d)));
-      const nv = Math.max(2, Math.round(7 * d));
+      const nu = Math.max(2, Math.ceil(total / (Math.max(0.02, hmax * 0.06) / d)));
+      const nv = Math.max(2, Math.round(10 * d));
       // grid of points (u along the path, v up the face, then 2 rows over the top and down the back)
       const P: V3[][] = [];
       const S: number[][] = [];
@@ -1321,10 +1512,12 @@ export class ProxyKit {
         nx /= nl;
         nz /= nl;
         const hh = hs[k - 1] + (hs[k] - hs[k - 1]) * f;
-        // taper the ends so the face grows out of the slope; a jagged skyline along the top
-        const endT = Math.min(1, (Math.min(t, total - t) / Math.max(1e-6, hmax)) * 1.5 + 0.15);
-        const H = hh * endT * (0.72 + 0.56 * noise3(t * 3.1, 0.3, 4.2, nseed));
-        const y0 = fg ? this.ground(x - nx * 0.02, z - nz * 0.02) - SINK : at[1];
+        // taper the ends to nothing so the face grows out of the slope; a jagged skyline along the top
+        const endT = taper > 0 ? smoothstep01(Math.min(t, total - t) / taper) : 1;
+        // a jagged skyline: broad steps plus sharper teeth
+        const H = hh * endT * (0.66 + 0.5 * noise3(t * 3.1, 0.3, 4.2, nseed) + 0.3 * (noise3(t * 12.5, 1.3, 2.2, nseed) - 0.5));
+        if (iu === 0 || iu === nu) ends[iu === 0 ? 0 : 1] = H;
+        const y0 = (fg ? this.ground(x - nx * 0.02, z - nz * 0.02) - SINK : at[1]) - (1 - endT) * SINK * 2;
         // buttresses and gullies: a column-wise bulge, plus two octaves of face noise
         const col = (noise3(t * 9, 0.7, 3.3, nseed) - 0.5) * rough * H * 0.3;
         const row: V3[] = [];
@@ -1349,20 +1542,46 @@ export class ProxyKit {
         P.push(row);
         S.push(sh);
       }
-      // faceted rock: every triangle its own flat normal (quad order A→B→C→D faces the right-hand side)
-      const tri = (a: V3, b: V3, c: V3, k: number) => {
+      // broken rock: every triangle keeps its own vertices, its normal a blend of the flat facet normal
+      // and the smoothed surface normal (`soft`), so the face reads as fractured stone, not folded paper
+      // (quad order A→B→C→D faces the right-hand side)
+      const m = P[0].length;
+      const SN: V3[][] = P.map((row) => row.map((): V3 => [0, 0, 0]));
+      const acc = (iu: number, iv: number, n: V3) => {
+        const q = SN[iu][iv];
+        q[0] += n[0];
+        q[1] += n[1];
+        q[2] += n[2];
+      };
+      for (let iu = 0; iu < nu; iu++)
+        for (let iv = 0; iv + 1 < m; iv++) {
+          const n1 = cross3(sub3(P[iu + 1][iv], P[iu][iv]), sub3(P[iu + 1][iv + 1], P[iu][iv]));
+          const n2 = cross3(sub3(P[iu + 1][iv + 1], P[iu][iv]), sub3(P[iu][iv + 1], P[iu][iv]));
+          acc(iu, iv, n1);
+          acc(iu + 1, iv, n1);
+          acc(iu + 1, iv + 1, n1);
+          acc(iu, iv, n2);
+          acc(iu + 1, iv + 1, n2);
+          acc(iu, iv + 1, n2);
+        }
+      const tri = (a: V3, b: V3, c: V3, k: number, sa?: V3, sb?: V3, sc?: V3) => {
         const n = cross3(sub3(b, a), sub3(c, a));
         const l = Math.hypot(n[0], n[1], n[2]);
         if (l < 1e-12) return;
-        const i0 = g.v(a[0], a[1], a[2], n[0] / l, n[1] / l, n[2] / l);
-        g.v(b[0], b[1], b[2], n[0] / l, n[1] / l, n[2] / l);
-        g.v(c[0], c[1], c[2], n[0] / l, n[1] / l, n[2] / l);
+        const f: V3 = [n[0] / l, n[1] / l, n[2] / l];
+        const blend = (sv?: V3): V3 => {
+          if (!sv) return f;
+          const sl = Math.hypot(sv[0], sv[1], sv[2]) || 1;
+          return norm2([f[0] * (1 - soft) + (sv[0] / sl) * soft, f[1] * (1 - soft) + (sv[1] / sl) * soft, f[2] * (1 - soft) + (sv[2] / sl) * soft]);
+        };
+        const i0 = g.v(a[0], a[1], a[2], ...blend(sa));
+        g.v(b[0], b[1], b[2], ...blend(sb));
+        g.v(c[0], c[1], c[2], ...blend(sc));
         g.shade(i0, k);
         g.shade(i0 + 1, k);
         g.shade(i0 + 2, k);
         g.tri(i0, i0 + 1, i0 + 2);
       };
-      const m = P[0].length;
       for (let iu = 0; iu < nu; iu++)
         for (let iv = 0; iv + 1 < m; iv++) {
           const A = P[iu][iv];
@@ -1370,17 +1589,26 @@ export class ProxyKit {
           const C = P[iu + 1][iv + 1];
           const D = P[iu][iv + 1];
           const k = (S[iu][iv] + S[iu + 1][iv] + S[iu + 1][iv + 1] + S[iu][iv + 1]) / 4;
-          tri(A, B, C, k);
-          tri(A, C, D, k * 0.96);
+          tri(A, B, C, k, SN[iu][iv], SN[iu + 1][iv], SN[iu + 1][iv + 1]);
+          tri(A, C, D, k * 0.96, SN[iu][iv], SN[iu + 1][iv + 1], SN[iu][iv + 1]);
         }
-      // end caps (flat) close the body
+      // end caps: only where an end stays tall (taper 0) — a fan from the section's centroid with
+      // per-triangle normals (the section is not planar), each facing out along the path
       for (const iu of [0, nu]) {
+        if ((ends[iu === 0 ? 0 : 1] ?? 0) < 0.02) continue;
         const k = iu === 0 ? 1 : pts.length - 1;
         const dx = pts[k][0] - pts[k - 1][0];
         const dz = pts[k][1] - pts[k - 1][1];
-        const dl = Math.hypot(dx, dz) || 1;
         const sgn = iu === 0 ? -1 : 1;
-        capPolygon(g, P[iu], [(sgn * dx) / dl, 0, (sgn * dz) / dl]);
+        const ring = P[iu];
+        const c = ring.reduce((acc, q) => [acc[0] + q[0] / ring.length, acc[1] + q[1] / ring.length, acc[2] + q[2] / ring.length], [0, 0, 0] as V3);
+        for (let j = 0; j < ring.length; j++) {
+          const a = ring[j];
+          const b = ring[(j + 1) % ring.length];
+          const n = cross3(sub3(a, c), sub3(b, c));
+          if (n[0] * dx * sgn + n[2] * dz * sgn >= 0) tri(c, a, b, 0.92);
+          else tri(c, b, a, 0.92);
+        }
       }
       return g;
     };
@@ -1659,10 +1887,12 @@ export class ProxyKit {
 
   /**
    * Merge the parts into 1–3 LODs (see the class doc for membership). The coarsest LOD always keeps at
-   * least the largest part group; LODs identical to the previous one (same parts, nothing detailed) are
-   * not duplicated.
+   * least the largest part group. A level identical to the previous one (same parts, nothing detailed)
+   * reuses the previous level's geometry objects (index = level stays meaningful for LandmarkSystem) and
+   * the next, smaller level is still built; trailing repeats are dropped. `lod0Only` (records / stats
+   * runs that keep no geometry) packs LOD0 and regenerates nothing.
    */
-  buildLods(): KitOutput {
+  buildLods(o: { lod0Only?: boolean } = {}): KitOutput {
     const out: KitOutput = { lods: [], lights: this.lights, trees: this.trees, contacts: this.contacts, bbox: null, parts: [] };
     if (!this.list.length) return out;
     const min: V3 = [Infinity, Infinity, Infinity];
@@ -1706,10 +1936,14 @@ export class ProxyKit {
       });
     }
     let prev: number[] | null = null;
-    for (let L = 0; L <= 2; L++) {
+    for (let L = 0; L <= (o.lod0Only ? 0 : 2); L++) {
       const idx = this.list.map((_, k) => k).filter((k) => lv[k] >= L);
       if (!idx.length) break;
-      if (prev && idx.length === prev.length && idx.every((k, j) => k === prev![j]) && !idx.some((k) => this.list[k].detailed)) break;
+      if (prev && idx.length === prev.length && idx.every((k, j) => k === prev![j]) && !idx.some((k) => this.list[k].detailed)) {
+        out.lods.push(out.lods[out.lods.length - 1]);
+        out.parts.push(idx.length);
+        continue;
+      }
       const byKey = new Map<string, PackItem[]>();
       for (const k of idx) {
         const p = this.list[k];
@@ -1719,7 +1953,7 @@ export class ProxyKit {
           if (p.m) geo.transform(p.m);
         }
         const list = byKey.get(p.key) ?? [];
-        list.push({ geo, paint: p.paint, surf: p.surf, h: p.h });
+        list.push({ geo, paint: L > 0 && p.paintCoarse ? p.paintCoarse : p.paint, surf: p.surf, h: p.h, aoMin: p.aoMin });
         byKey.set(p.key, list);
       }
       const lod: LodGeometry = new Map();
@@ -1731,11 +1965,36 @@ export class ProxyKit {
       out.parts.push(idx.length);
       prev = idx;
     }
+    while (out.lods.length > 1 && out.lods[out.lods.length - 1] === out.lods[out.lods.length - 2]) {
+      out.lods.pop();
+      out.parts.pop();
+    }
     return out;
   }
 }
 
 // ------------------------------------------------------------------ helpers
+
+/** smoothstep on [0, 1] */
+function smoothstep01(x: number): number {
+  const t = Math.min(1, Math.max(0, x));
+  return t * t * (3 - 2 * t);
+}
+
+/** Newell normal of a polygon (not normalised; area-weighted, robust for slightly non-planar quads) */
+function newell(pts: V3[]): V3 {
+  let nx = 0;
+  let ny = 0;
+  let nz = 0;
+  for (let k = 0; k < pts.length; k++) {
+    const a = pts[k];
+    const b = pts[(k + 1) % pts.length];
+    nx += (a[1] - b[1]) * (a[2] + b[2]);
+    ny += (a[2] - b[2]) * (a[0] + b[0]);
+    nz += (a[0] - b[0]) * (a[1] + b[1]);
+  }
+  return [nx, ny, nz];
+}
 
 function norm2(n: V3): V3 {
   const l = Math.hypot(n[0], n[1], n[2]) || 1;

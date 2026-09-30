@@ -58,7 +58,7 @@
       "atmo": {"tint": [0.84, 0.92, 0.86], "density": 1.25}
     },
     "rohan": {
-      "ground": {"ecotone": 0.4, "grass": "#a19f55", "dry": "#c3aa62", "soil": "#6c5a42", "rock": "#606368", "dryness": 0.62, "pattern": 0.8, "snowline": -5, "spots": [{"place": "edoras", "radiusKm": 5, "turf": 1, "grass": "#8f9a4c", "dryness": 0.5}, {"place": "helms-deep", "radiusKm": 7, "turf": 0}]},
+      "ground": {"ecotone": 0.4, "grass": "#a19f55", "dry": "#c3aa62", "soil": "#6c5a42", "rock": "#606368", "dryness": 0.62, "pattern": 0.8, "snowline": -5, "spots": [{"place": "edoras", "radiusKm": 3.0, "turf": 1, "grass": "#6c843f", "dryness": 0.26}, {"place": "helms-deep", "radiusKm": 7, "turf": 0}]},
       "grade": {"tint": "#fff5de", "saturation": 0.92, "contrast": 1.03},
       "atmo": {"tint": [1.05, 1.03, 0.95], "density": 0.9, "sky": [1.02, 1.01, 0.98]}
     },

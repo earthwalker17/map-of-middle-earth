@@ -81,7 +81,8 @@ export async function checkLandmarks(world: World, landmarks: LandmarkDefinition
       if (t0l > budget.lod0Tris) sev.push(`landmarks: ${b.id} LOD0 ${t0l} tris > budget ${budget.lod0Tris}${tag}`);
       if (b.lights.length > budget.lights) sev.push(`landmarks: ${b.id} ${b.lights.length} lights > budget ${budget.lights}${tag}`);
     }
-    if (t.length > 1 && t[1] > LIMITS.lod1Share * t0l) sev.push(`landmarks: ${b.id} LOD1 ${t[1]} tris > ${LIMITS.lod1Share * 100} % of LOD0 (${t0l})${tag}`);
+    const reuse = b.lods.length > 1 && b.lods[1] === b.lods[0] ? ', LOD1 reuses LOD0 — no part below 2 % of the diagonal' : '';
+    if (t.length > 1 && t[1] > LIMITS.lod1Share * t0l) sev.push(`landmarks: ${b.id} LOD1 ${t[1]} tris > ${LIMITS.lod1Share * 100} % of LOD0 (${t0l}${reuse})${tag}`);
     if (t.length && t[t.length - 1] > LIMITS.coarsestTris) sev.push(`landmarks: ${b.id} coarsest LOD${t.length - 1} ${t[t.length - 1]} tris > ${LIMITS.coarsestTris}${tag}`);
     for (const lod of b.lods) for (const key of lod.keys()) if (!(MATERIAL_KEYS as readonly string[]).includes(key)) out.errors.push(`landmarks: ${b.id} geometry key '${key}' is not a shared material key`);
     // seating

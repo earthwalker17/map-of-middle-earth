@@ -555,6 +555,8 @@ export interface PackItem {
   surf: [number, number, number, number];
   /** part height, km (contact AO scale) */
   h: number;
+  /** floor of the baked hemisphere AO (families.ts aoFloor) */
+  aoMin: number;
 }
 
 const toSrgbByte = (v: number): number => {
@@ -564,8 +566,8 @@ const toSrgbByte = (v: number): number => {
 
 /**
  * Merge items into one indexed BufferGeometry: position / normal (Float32×3), color / surf (Uint8×4
- * normalised), index (Uint32), plus the temporary `_contactH` (Float32, part height) that the AO bake
- * consumes and deletes.
+ * normalised), index (Uint32), plus the temporary `_contactH` (Float32, part height) and `_aoMin`
+ * (Float32, AO floor) that the AO bake consumes and deletes.
  */
 export function packGeometry(items: PackItem[]): BufferGeometry {
   let nv = 0;
@@ -579,6 +581,7 @@ export function packGeometry(items: PackItem[]): BufferGeometry {
   const col = new Uint8Array(nv * 4);
   const surf = new Uint8Array(nv * 4);
   const ch = new Float32Array(nv);
+  const am = new Float32Array(nv);
   const idx = new Uint32Array(ni);
   let vo = 0;
   let io = 0;
@@ -606,6 +609,7 @@ export function packGeometry(items: PackItem[]): BufferGeometry {
       col[v * 4 + 3] = 255;
       surf.set(it.surf, v * 4);
       ch[v] = it.h;
+      am[v] = it.aoMin;
     }
     for (let k = 0; k < g.i.length; k++) idx[io + k] = g.i[k] + vo;
     vo += g.vertexCount;
@@ -617,6 +621,7 @@ export function packGeometry(items: PackItem[]): BufferGeometry {
   geo.setAttribute('color', new BufferAttribute(col, 4, true));
   geo.setAttribute('surf', new BufferAttribute(surf, 4, true));
   geo.setAttribute('_contactH', new BufferAttribute(ch, 1));
+  geo.setAttribute('_aoMin', new BufferAttribute(am, 1));
   geo.setIndex(new BufferAttribute(idx, 1));
   geo.computeBoundingBox();
   geo.computeBoundingSphere();

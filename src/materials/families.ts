@@ -4,7 +4,7 @@ import { tsl } from './tsl.ts';
 import { env } from './environment.ts';
 
 // NB: TSL vec3(new Color()) silently yields black in r186 — always use color(Color) for colour constants
-const { Fn, float, vec3, attribute, mx_noise_float, positionWorld, fwidth, length, smoothstep, mix, clamp, max, sin, step, round, sRGBTransferEOTF } = tsl;
+const { Fn, float, vec3, attribute, mx_noise_float, positionWorld, positionLocal, normalGeometry, normalView, positionViewDirection, fwidth, length, smoothstep, mix, clamp, max, abs, sin, step, round, floor, select, hash, dot, sRGBTransferEOTF } = tsl;
 
 /**
  * Material families v2 (S3): every built structure is drawn with ONE of two shared uber materials —
@@ -12,10 +12,13 @@ const { Fn, float, vec3, attribute, mx_noise_float, positionWorld, fwidth, lengt
  * shadow). A family is DATA packed into two vertex attributes, so variety never costs a pipeline:
  *
  *  - `color` (Uint8×4, normalised): rgb = sRGB albedo — the ABSOLUTE paint of the vertex (family preset,
- *    or an explicit colour, times shade) — and a = baked ambient occlusion (kit/ao.ts; 1 = open).
+ *    or an explicit colour, times shade) — and a = baked hemisphere ambient occlusion (kit/ao.ts; 1 = open),
+ *    which feeds the material's AO slot only (indirect light), never the albedo.
  *  - `surf`  (Uint8×4, normalised):
- *      structure → r roughness, g metalness, b grain (0..1 noise amplitude), a noise class / 3
- *                  (0 stone · 1 wood streak · 2 fibre / thatch · 3 smooth)
+ *      structure → r roughness, g metalness, b grain (0..1 noise amplitude), a = noise class × 32 +
+ *                  ground contact (0..31, 31 = free; kit/ao.ts): classes 0 stone (+ coursing) · 1 wood
+ *                  streak · 2 fibre / thatch · 3 smooth · 4 foliage (leaf clumps). The contact term is the
+ *                  ONLY baked darkening applied to the albedo (× mix(1, contact, 0.3) at the foot of a part).
  *      glow      → r strength / GLOW_MAX, g gate code / 3 (0 always · 1 night · 2 dusk · 3 event),
  *                  b flicker depth, a unused
  *
@@ -40,8 +43,8 @@ export type FamilyId =
   | 'lava'
   | 'ithildin';
 
-/** Surface pattern of the structure shader (fwidth-faded world-space noise). */
-export const NOISE = { stone: 0, wood: 1, fibre: 2, smooth: 3 } as const;
+/** Surface pattern of the structure shader (fwidth-faded landmark-space noise). */
+export const NOISE = { stone: 0, wood: 1, fibre: 2, smooth: 3, foliage: 4 } as const;
 export type NoiseClass = (typeof NOISE)[keyof typeof NOISE];
 
 export interface GlowPreset {
@@ -63,16 +66,26 @@ export interface FamilyPreset {
   /** 0..1 noise amplitude on the albedo */
   grain: number;
   noise: NoiseClass;
+  /** floor of the baked hemisphere AO (default AO_MIN; leaf masses transmit light: 0.5) */
+  aoMin?: number;
   /** present → the family renders with the `glow` material */
   glow?: GlowPreset;
 }
+
+/** Default floor of the baked hemisphere AO (kit/ao.ts). */
+export const AO_MIN = 0.35;
+/** Weight of the baked ground-contact term on the albedo: albedo × mix(1, contact, CONTACT_WEIGHT). */
+export const CONTACT_WEIGHT = 0.3;
+/** Bits of `surf.a` holding the contact term (the noise class sits above them). */
+export const CONTACT_LEVELS = 31;
 
 /** Strength encoding range of glow vertices (surf.r × GLOW_MAX). */
 export const GLOW_MAX = 16;
 
 export const FAMILY: Record<FamilyId, FamilyPreset> = {
   stone: { albedo: 0xd9d3c4, roughness: 0.82, metalness: 0, grain: 0.22, noise: NOISE.stone },
-  darkStone: { albedo: 0x1d1c20, roughness: 0.72, metalness: 0.05, grain: 0.35, noise: NOISE.stone },
+  // near-black iron-dark stone (Barad-dûr, the Morannon): roughness 0.5 so edges catch the light
+  darkStone: { albedo: 0x201c1a, roughness: 0.5, metalness: 0.05, grain: 0.3, noise: NOISE.stone },
   weathered: { albedo: 0x8a857a, roughness: 0.9, metalness: 0, grain: 0.3, noise: NOISE.stone },
   plaster: { albedo: 0xe6dfcf, roughness: 0.9, metalness: 0, grain: 0.1, noise: NOISE.smooth },
   wood: { albedo: 0x5a4330, roughness: 0.85, metalness: 0, grain: 0.3, noise: NOISE.wood },
@@ -82,7 +95,7 @@ export const FAMILY: Record<FamilyId, FamilyPreset> = {
   gold: { albedo: 0xb8923a, roughness: 0.45, metalness: 0.5, grain: 0.12, noise: NOISE.smooth },
   obsidian: { albedo: 0x141619, roughness: 0.22, metalness: 0.1, grain: 0.06, noise: NOISE.smooth },
   iron: { albedo: 0x292b25, roughness: 0.5, metalness: 0.6, grain: 0.2, noise: NOISE.stone },
-  foliage: { albedo: 0x3d5a2a, roughness: 0.9, metalness: 0, grain: 0.4, noise: NOISE.stone },
+  foliage: { albedo: 0x3d5a2a, roughness: 0.9, metalness: 0, grain: 0.5, noise: NOISE.foliage, aoMin: 0.5 },
   metal: { albedo: 0x6a6660, roughness: 0.4, metalness: 0.8, grain: 0.2, noise: NOISE.smooth },
   // glow families: lamps / fires light up at night (the Lórien flets no longer glow at noon), lava and
   // Morgul magic always burn, ithildin wakes under the moon
@@ -99,6 +112,11 @@ export type MaterialKey = 'structure' | 'glow';
 export const MATERIAL_KEYS: readonly MaterialKey[] = ['structure', 'glow'];
 
 export const GATE_CODE: Record<LightGate, number> = { always: 0, night: 1, dusk: 2, event: 3 };
+
+/** AO floor of a family's vertices (kit/ao.ts). */
+export function aoFloor(fam: FamilyId): number {
+  return FAMILY[fam].aoMin ?? AO_MIN;
+}
 
 /** Which uber material a family renders with. */
 export function familyKey(fam: FamilyId): MaterialKey {
@@ -141,7 +159,7 @@ export function paintLinear(fam: FamilyId, paint?: number, shade = 1, tint?: num
   return c;
 }
 
-/** Packed per-vertex family data (bytes 0..255): `color` = sRGB paint + AO (255 = open), `surf` = see header. */
+/** Packed per-vertex family data (bytes 0..255): `color` = sRGB paint + AO (255 = open), `surf` = see header (contact 31 = free). */
 export interface FamilyVertex {
   color: [number, number, number, number];
   surf: [number, number, number, number];
@@ -162,7 +180,7 @@ export function familyVertex(fam: FamilyId, paint?: number, shade = 1, tint?: nu
     const gl = { ...p.glow, ...glow };
     return { color: [r, g, b, 255], surf: [u(gl.strength / GLOW_MAX), GATE_CODE[gl.gate] * 85, u(gl.flicker), 0] };
   }
-  return { color: [r, g, b, 255], surf: [u(p.roughness), u(p.metalness), u(p.grain), p.noise * 85] };
+  return { color: [r, g, b, 255], surf: [u(p.roughness), u(p.metalness), u(p.grain), p.noise * 32 + CONTACT_LEVELS] };
 }
 
 // ------------------------------------------------------------------ shaders
@@ -187,14 +205,22 @@ function structureMaterial(): MeshStandardNodeMaterial {
   const m = new MeshStandardNodeMaterial({ roughness: 0.8, metalness: 0 });
   const col = attribute('color', 'vec4');
   const surf = attribute('surf', 'vec4');
-  const ao = col.a;
-  const noise = Fn(() => {
-    const p = positionWorld;
-    const cls = surf.a.mul(3);
-    // anisotropy by class: wood = vertical streaks (planks), fibre = finer streaks (thatch), smooth = faint
-    const isWood = step(0.5, cls).mul(float(1).sub(step(1.5, cls)));
-    const isFibre = step(1.5, cls).mul(float(1).sub(step(2.5, cls)));
-    const isSmooth = step(2.5, cls);
+  // surf.a = noise class × 32 + ground contact (0..31)
+  const sa = surf.a.mul(255).add(0.5);
+  const cls = floor(sa.div(32));
+  const contact = clamp(sa.sub(cls.mul(32)).sub(0.5).div(CONTACT_LEVELS), 0, 1);
+  const isClass = (c: number) => step(c - 0.5, cls).mul(float(1).sub(step(c + 0.5, cls)));
+  const isStone = isClass(NOISE.stone);
+  const isWood = isClass(NOISE.wood);
+  const isFibre = isClass(NOISE.fibre);
+  const isSmooth = isClass(NOISE.smooth);
+  const isFoliage = step(NOISE.foliage - 0.5, cls);
+  const nG = normalGeometry;
+  const pattern = Fn(() => {
+    // landmark-local km (the meshes sit at the landmark origin): small arguments, so the fine octave
+    // never bands on float32 world coordinates of several hundred km
+    const p = positionLocal;
+    // anisotropy by class: wood = vertical streaks (planks), fibre = finer streaks (thatch)
     const ay = float(1).sub(isWood.mul(0.88)).sub(isFibre.mul(0.7));
     const axz = float(1).add(isWood.mul(0.6)).add(isFibre.mul(1.2));
     const q = vec3(p.x.mul(axz), p.y.mul(ay), p.z.mul(axz));
@@ -203,13 +229,30 @@ function structureMaterial(): MeshStandardNodeMaterial {
     const w1 = float(1).sub(smoothstep(0.35, 1, fw.mul(9)));
     const w2 = float(1).sub(smoothstep(0.35, 1, fw.mul(37)));
     const w3 = float(1).sub(smoothstep(0.35, 1, fw.mul(140)));
-    const n = mx_noise_float(q.mul(9)).mul(w1.mul(0.5)).add(mx_noise_float(q.mul(37)).mul(w2.mul(0.3))).add(mx_noise_float(q.mul(140)).mul(w3.mul(0.2)));
-    return n.mul(float(1).sub(isSmooth.mul(0.75)));
+    const n1 = mx_noise_float(q.mul(9));
+    const n2 = mx_noise_float(q.mul(37));
+    const n = n1.mul(w1.mul(0.5)).add(n2.mul(w2.mul(0.3))).add(mx_noise_float(q.mul(140)).mul(w3.mul(0.2)));
+    // stone: masonry coursing on walls — 0.02 km courses of 0.055 km blocks (staggered), a small value
+    // jitter per block, faded where a course gets thinner than ~2 px
+    const cy = p.y.div(0.02);
+    const course = floor(cy);
+    const along = select(abs(nG.x).greaterThan(abs(nG.z)), p.z, p.x);
+    const block = floor(along.div(0.055).add(course.mul(0.5)));
+    const jit = hash(course.mul(97).add(block.mul(7)).add(500000)).sub(0.5);
+    const cw = float(1).sub(smoothstep(0.3, 0.8, fwidth(cy))).mul(float(1).sub(abs(nG.y)));
+    const coursing = jit.mul(cw).mul(isStone).mul(0.6);
+    // foliage: leaf clumps — the two coarse octaves, stronger
+    const leaf = n1.mul(w1.mul(0.7)).add(n2.mul(w2.mul(0.45)));
+    return mix(n.mul(float(1).sub(isSmooth.mul(0.75))).add(coursing), leaf, isFoliage);
   })();
   const albedo = sRGBTransferEOTF(col.rgb);
-  m.colorNode = albedo.mul(float(1).add(noise.mul(surf.b))).mul(mix(float(1), ao, 0.6));
-  m.aoNode = ao;
-  m.roughnessNode = clamp(surf.r.add(noise.mul(0.08)), 0.04, 1);
+  // leaf masses: sun-bleached tops, shaded undersides (like the canopy shader's sub-crown shading)
+  const leafTone = mix(float(1), mix(float(0.78), float(1.12), smoothstep(-0.6, 0.9, nG.y)), isFoliage);
+  // the baked ground-contact term is the only baked darkening on the albedo; the hemisphere AO (col.a)
+  // goes to the AO slot alone (indirect light) — never both (S3 fix: small parts went near-black)
+  m.colorNode = albedo.mul(float(1).add(pattern.mul(surf.b))).mul(leafTone).mul(mix(float(1), contact, CONTACT_WEIGHT));
+  m.aoNode = col.a;
+  m.roughnessNode = clamp(surf.r.add(pattern.mul(0.08)), 0.04, 1);
   m.metalnessNode = surf.g;
   return m;
 }
@@ -224,7 +267,13 @@ function glowMaterial(): MeshStandardNodeMaterial {
     // deterministic flicker from the effect clock + world position (never wall-clock time)
     const phase = positionWorld.x.mul(3.1).add(positionWorld.z.mul(1.7));
     const f = float(1).add(sin(env.tFx.mul(7.3).add(phase)).mul(sin(env.tFx.mul(2.9).add(phase.mul(0.37)))).mul(surf.b));
-    return paint.mul(surf.r.mul(GLOW_MAX)).mul(gateNode(surf.g.mul(3))).mul(max(f, 0.2));
+    // a hotter core where the surface faces the viewer (fire, lava, the Eye), the paint at the rim: the
+    // weaker channels rise towards the strongest one, green most (red fire → orange → yellow)
+    const ndv = clamp(dot(normalView, positionViewDirection), 0, 1);
+    const peak = max(paint.r, max(paint.g, paint.b));
+    const hot = paint.add(vec3(peak).sub(paint).mul(vec3(0.2, 0.6, 0.1)));
+    const c = mix(paint, hot, ndv.mul(ndv).mul(0.6)).mul(ndv.mul(0.4).add(0.8));
+    return c.mul(surf.r.mul(GLOW_MAX)).mul(gateNode(surf.g.mul(3))).mul(max(f, 0.2));
   })();
   return m;
 }
@@ -255,4 +304,3 @@ export function materialFor(key: string): Material {
 export function family(id: FamilyId): Material {
   return sharedMaterial(familyKey(id));
 }
-

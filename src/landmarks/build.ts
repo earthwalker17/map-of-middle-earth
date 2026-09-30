@@ -2,7 +2,7 @@ import { hash32, hashString } from '../core/rng.ts';
 import { hexToLinear } from '../materials/families.ts';
 import type { World } from '../world/World.ts';
 import { landmarkOrigin, rotateLocal } from './frame.ts';
-import { bakeVertexAO } from './kit/ao.ts';
+import { bakeVertexAO, stripBakeAttributes } from './kit/ao.ts';
 import { ProxyKit, type KitLight, type KitOutput } from './kit/ProxyKit.ts';
 import { DEFAULT_GATE, type AuthoredTree, type BuiltLandmark, type ContactRecord, type LightRecord } from './records.ts';
 import type { LandmarkDefinition, TreeDecl } from './types.ts';
@@ -55,7 +55,7 @@ function buildOne(world: World, def: LandmarkDefinition, opts: BuildOptions): Bu
   if (def.proxy) {
     const k = new ProxyKit(seed, localGround);
     def.proxy(k);
-    kit = k.buildLods();
+    kit = k.buildLods({ lod0Only: !keep });
   }
   // TODO(W2): def.model → GLB placements (src/landmarks/model.ts) join the LODs here; Node never parses
   // GLBs, so bounds / checks use `def.model.boundsKm` until then.
@@ -63,10 +63,13 @@ function buildOne(world: World, def: LandmarkDefinition, opts: BuildOptions): Bu
 
   const tris: number[] = [];
   let bytes = 0;
+  const counted = new Set<unknown>(); // a level may reuse the previous level's geometry
   for (const lod of kit.lods) {
     let t = 0;
     for (const geo of lod.values()) {
       t += (geo.index ? geo.index.count : geo.attributes.position.count) / 3;
+      if (counted.has(geo)) continue;
+      counted.add(geo);
       for (const [name, a] of Object.entries(geo.attributes)) if (!name.startsWith('_')) bytes += a.array.byteLength;
       if (geo.index) bytes += geo.index.array.byteLength;
     }
@@ -76,7 +79,7 @@ function buildOne(world: World, def: LandmarkDefinition, opts: BuildOptions): Bu
     const ta = performance.now();
     bakeVertexAO(kit.lods, localGround, { seed });
     buildStats.aoMs += performance.now() - ta;
-  }
+  } else if (keep) stripBakeAttributes(kit.lods);
   if (!keep) for (const lod of kit.lods) for (const g of lod.values()) g.dispose();
 
   // bounds: local bbox → world (centre, horizontal radius about it, height above the origin)
@@ -139,4 +142,3 @@ function buildOne(world: World, def: LandmarkDefinition, opts: BuildOptions): Bu
     stats: { tris, bytes, buildMs: Math.round(performance.now() - t0) },
   };
 }
-

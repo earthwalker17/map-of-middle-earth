@@ -4,16 +4,16 @@
  "shots": [
   {
    "id": "w1a-edoras-hero",
-   "tod": 11,
+   "tod": 9,
    "note": "= the edoras-close bookmark as an explicit shot (pnpm shots --determinism only repeats JSON shots, not page-resolved bookmarks)",
    "camera": {
     "orbit": {
      "place": "edoras",
-     "distanceKm": 15,
-     "elevationDeg": 7,
-     "azimuthDeg": 25,
-     "fov": 35,
-     "lift": -0.3
+     "distanceKm": 16,
+     "elevationDeg": -3,
+     "azimuthDeg": 40,
+     "fov": 38,
+     "lift": 2.2
     }
    },
    "compare": [
@@ -33,6 +33,24 @@
      "azimuthDeg": 45,
      "fov": 35,
      "lift": -0.3
+    }
+   },
+   "compare": [
+    "reference/film/edoras"
+   ]
+  },
+  {
+   "id": "w1a-edoras-nw",
+   "tod": 16.5,
+   "note": "W1-A: the rock band under Meduseld and the town from the north-west, ~6 km (LOD0)",
+   "camera": {
+    "orbit": {
+     "place": "edoras",
+     "distanceKm": 6,
+     "elevationDeg": 12,
+     "azimuthDeg": 320,
+     "fov": 35,
+     "lift": -0.2
     }
    },
    "compare": [
