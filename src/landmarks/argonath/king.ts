@@ -8,7 +8,7 @@ import type { V2, V3 } from '../records.ts';
  * King frame: origin = the pedestal axis at the nominal waterline, x to the king's right (east when he
  * faces north), y up, facing −z (the landmark heading: upstream). He raises his LEFT hand (−x) palm
  * outward in warning; the right hand grips a long axe before his chest. Variants: 'crown' (bearded, a
- * crowned helm, the film's west king) and 'helm' (a full helm with a face guard and a tall crest).
+ * tall, narrow helm-crown, the film's west king) and 'helm' (a full helm with a face guard and a tall crest).
  * Parts are sized for the landmark's LOD rule: coarse cores (lod 2) sit inside the fluted LOD0 shells.
  */
 export const KING = {
@@ -181,20 +181,33 @@ export function kingTS(k: ProxyKit, o: KingOpts): void {
     [0.1, 0.325],
     [0, 0.34],
   ];
-  k.lathe('weathered', helm, { at: F([0, 4.1, -0.02]), seg: 24, color: S, shade: 1.05, lod: 1 });
   if (o.variant === 'crown') {
-    // crown band flaring out, nine tines; a long beard over the chest
+    // a tall, narrow ogival helm-crown (≈ 1.6× the head's height, as the GLB's CROWN_HELM) with a low diadem
+    // at the brow and short upright crenels — never a ring of splayed spikes; a long beard over the chest
+    const tall: V2[] = [
+      [0.232, 0],
+      [0.238, 0.03],
+      [0.229, 0.1],
+      [0.213, 0.18],
+      [0.188, 0.27],
+      [0.155, 0.36],
+      [0.116, 0.45],
+      [0.074, 0.53],
+      [0.036, 0.59],
+      [0, 0.636],
+    ];
+    k.lathe('weathered', tall, { at: F([0, 4.1, -0.02]), seg: 24, color: S, shade: 1.05, lod: 1 });
     k.lathe('weathered', [
       [0.22, 0],
-      [0.25, 0],
-      [0.28, 0.13],
-      [0.255, 0.13],
-      [0.22, 0],
-    ], { at: F([0, 4.13, -0.02]), seg: 24, color: S, shade: 1.08, lod: 0 });
-    for (let i = 0; i < 9; i++) {
-      const a = (i / 9) * Math.PI * 2 - Math.PI / 2;
-      const h = i === 0 ? 0.26 : 0.15 + 0.06 * (i % 2);
-      k.cone('weathered', 0.036, h, { at: F([Math.cos(a) * 0.262, 4.25, -0.02 + Math.sin(a) * 0.262]), rot: [Math.sin(a) * 12, 0, -Math.cos(a) * 12], seg: 6, color: S, shade: 1.08, lod: 0 });
+      [0.258, 0],
+      [0.258, 0.1],
+      [0.25, 0.125],
+      [0.22, 0.125],
+    ], { at: F([0, 4.1, -0.02]), seg: 24, color: S, shade: 1.08, lod: 0 });
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2 - Math.PI / 2;
+      const h = i === 0 ? 0.085 : 0.05 + 0.012 * (i % 2);
+      k.cone('weathered', 0.022, h, { at: F([Math.cos(a) * 0.245, 4.22, -0.02 + Math.sin(a) * 0.245]), seg: 5, color: S, shade: 1.08, lod: 0 });
     }
     const chin: V3 = [0, 3.97, -0.15];
     const tip: V3 = [0, 3.2, -0.33];
@@ -207,6 +220,7 @@ export function kingTS(k: ProxyKit, o: KingOpts): void {
       k.cone('weathered', 0.07, Math.hypot(...sub(b, a)), { at: F(a), rot: aimRot(a, b), seg: 8, color: S, shade: 0.92, lod: 0 });
     }
   } else {
+    k.lathe('weathered', helm, { at: F([0, 4.1, -0.02]), seg: 24, color: S, shade: 1.05, lod: 1 });
     // face guard with a nose bar, cheek plates, a tall crest and two swept wings
     k.box('weathered', 0.25, 0.3, 0.05, { at: F([0, 3.88, -0.2]), color: S, shade: 1.02, lod: 0 });
     k.box('weathered', 0.035, 0.26, 0.04, { at: F([0, 3.92, -0.235]), color: S, shade: 1.1, lod: 0 });

@@ -14,6 +14,8 @@ import type { ModelDecl } from './types.ts';
  * sRGB paint, `surf` comes from `familyVertex`, and `_contactH` / `_aoMin` feed the shared vertex AO bake
  * (kit/ao.ts, run by build.ts over the merged LODs). Every instance (local km `at`, `headingDeg` clockwise
  * from north like the landmark heading, `mirrorX`) is baked into one geometry per material key and LOD.
+ * Variant nodes `<name>_lod0/1/2` are baked only into the instances whose `node` is `<name>` (on top of the
+ * shared `lod<L>` nodes every instance gets); an instance naming a variant the GLB lacks throws.
  */
 
 /** part height used for the model's ground-contact AO term (km): a 0.08·h darkening band at the foot */
@@ -21,16 +23,17 @@ const CONTACT_H_MAX = 1.5;
 export const MODEL_LODS = 3;
 
 type Packed = { pos: number[]; nor: number[]; col: number[]; surf: number[]; ch: number[]; am: number[]; idx: number[] };
+type Instance = NonNullable<ModelDecl['instances']>[number];
 
 /** Instance transform in the landmark's local frame (km). */
-export function instanceMatrix(inst: { at: V3; headingDeg?: number; mirrorX?: boolean }): Matrix4 {
+export function instanceMatrix(inst: Instance): Matrix4 {
   const m = new Matrix4().makeTranslation(inst.at[0], inst.at[1], inst.at[2]);
   m.multiply(new Matrix4().makeRotationY((-(inst.headingDeg ?? 0) * Math.PI) / 180));
   if (inst.mirrorX) m.multiply(new Matrix4().makeScale(-1, 1, 1));
   return m;
 }
 
-export function instancesOf(decl: ModelDecl): { at: V3; headingDeg?: number; mirrorX?: boolean }[] {
+export function instancesOf(decl: ModelDecl): Instance[] {
   return decl.instances?.length ? decl.instances : [{ at: [0, 0, 0] }];
 }
 
@@ -88,16 +91,20 @@ export async function loadModel(decl: ModelDecl): Promise<LodGeometry[]> {
   const root = gltf.scene;
   root.updateMatrixWorld(true);
   const contactH = Math.min(CONTACT_H_MAX, decl.boundsKm.h);
-  const instances = instancesOf(decl).map(instanceMatrix);
+  const instances = instancesOf(decl).map((inst) => ({ m: instanceMatrix(inst), node: inst.node }));
 
   const levels: Map<string, Packed>[] = Array.from({ length: MODEL_LODS }, () => new Map());
-  const seen = new Set<number>();
+  const seen = new Set<string>();
   root.traverse((node: Object3D) => {
-    const lm = /^lod([0-9])$/.exec(node.name);
+    const lm = /^(?:([A-Za-z][A-Za-z0-9]*)_)?lod([0-9])$/.exec(node.name);
     if (!lm) return;
-    const L = Number(lm[1]);
+    const variant = lm[1];
+    const L = Number(lm[2]);
     if (L >= MODEL_LODS) throw new Error(`models/${decl.file}: node '${node.name}' beyond lod${MODEL_LODS - 1}`);
-    seen.add(L);
+    seen.add(`${variant ?? ''}:${L}`);
+    // shared nodes go into every instance, a variant's nodes only into the instances naming it
+    const targets = instances.filter((inst) => !variant || inst.node === variant).map((inst) => inst.m);
+    if (!targets.length) return;
     node.traverse((o: Object3D) => {
       const mesh = o as Mesh;
       if (!mesh.isMesh) return;
@@ -119,7 +126,7 @@ export async function loadModel(decl: ModelDecl): Promise<LodGeometry[]> {
       levels[L].set(key, pk);
       const v = new Vector3();
       const nm = new Matrix3();
-      for (const inst of instances) {
+      for (const inst of targets) {
         const m = new Matrix4().multiplyMatrices(inst, mesh.matrixWorld);
         nm.getNormalMatrix(m);
         const flip = m.determinant() < 0;
@@ -153,7 +160,10 @@ export async function loadModel(decl: ModelDecl): Promise<LodGeometry[]> {
     mesh.geometry.dispose();
     for (const mat of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) mat.dispose();
   });
-  for (let L = 0; L < MODEL_LODS; L++) if (!seen.has(L)) throw new Error(`models/${decl.file}: no node 'lod${L}'`);
+  for (let L = 0; L < MODEL_LODS; L++) {
+    if (!seen.has(`:${L}`)) throw new Error(`models/${decl.file}: no node 'lod${L}'`);
+    for (const inst of instances) if (inst.node && !seen.has(`${inst.node}:${L}`)) throw new Error(`models/${decl.file}: no node '${inst.node}_lod${L}' (instance node '${inst.node}')`);
+  }
   return levels.map((lv) => {
     const out: LodGeometry = new Map();
     for (const key of ['structure', 'glow']) {

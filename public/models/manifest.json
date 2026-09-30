@@ -5,19 +5,31 @@
   {
    "id": "argonath",
    "file": "argonath.glb",
-   "sha256": "14b15855ac8ac7ead39f2451a669619c3bd7fc9c5e3bb0dd9a703f8448f9772d",
-   "bytes": 1109596,
+   "sha256": "7f2bd2a03073d8d9c4133cfcc756f39eae8bce1c2683b3aef64035cb8b5fa026",
+   "bytes": 1146028,
    "script": "tools/blender/argonath.py",
-   "scriptSha256": "43643d4e6089b11a6e26229e95cea6520c9c761ce63288edcc87cffa909c46dd",
+   "scriptSha256": "98b6b4069d94f911b137eabe804ff29d9f6afd04693602ae18191fa4003a56df",
    "blender": "4.5.3 LTS",
    "tris": [
-    38936,
-    8864,
-    1814
+    28944,
+    6364,
+    1284
    ],
+   "variants": {
+    "crown": [
+     4300,
+     950,
+     200
+    ],
+    "helm": [
+     4300,
+     948,
+     200
+    ]
+   },
    "boundsKm": {
-    "r": 1.41,
-    "h": 7.229
+    "r": 1.411,
+    "h": 7.112
    }
   }
  ]

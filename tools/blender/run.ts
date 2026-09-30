@@ -35,6 +35,7 @@ const value = (k: string) => {
 
 interface Stats {
   tris: [number, number, number];
+  variants?: Record<string, [number, number, number]>;
   boundsKm: { r: number; h: number };
   blender: string;
   peakMB?: number;
@@ -147,10 +148,13 @@ try {
         scriptSha256: scriptHash(ROOT, script),
         blender: r.stats.blender,
         tris: r.stats.tris,
+        ...(r.stats.variants ? { variants: r.stats.variants } : {}),
         boundsKm: r.stats.boundsKm,
       };
       console.log(
-        `[models] ${id}: ${(bytes.length / 1048576).toFixed(2)} MB, tris ${entry.tris.join(' / ')}, bounds r ${entry.boundsKm.r} h ${entry.boundsKm.h} km, ` +
+        `[models] ${id}: ${(bytes.length / 1048576).toFixed(2)} MB, tris ${entry.tris.join(' / ')}` +
+          Object.entries(entry.variants ?? {}).map(([k, t]) => ` + ${k} ${t.join(' / ')}`).join('') +
+          `, bounds r ${entry.boundsKm.r} h ${entry.boundsKm.h} km, ` +
           `Blender ${r.ms} ms wall (script ${r.stats.ms ?? '?'} ms), peak ${r.stats.peakMB ?? '?'} MB, sha256 ${entry.sha256.slice(0, 16)}…`,
       );
       if (verify) {

@@ -1,15 +1,301 @@
+import { valueNoise } from '../../core/rng.ts';
+import type { ProxyKit } from '../kit/ProxyKit.ts';
+import type { V2, V3 } from '../records.ts';
 import { defineLandmark } from '../types.ts';
+import type { LocalStamp } from '../types.ts';
+
+/**
+ * Rauros, Tol Brandir and the hills of the south end of Nen Hithoel (research §3; Tolkien's own sketch
+ * "Rauros Falls & the Tindrock" and Nasmith's painting for the topology). Local frame: heading 0 (x east,
+ * −z north); the origin is the lake's outlet, where the Anduin leaves Nen Hithoel (level 0.39 above the
+ * origin ground; the baked lake is ≈ 11 km wide at the Tindrock); the river runs south 3.7 km to the lip of
+ * the falls (a 2.2 drop, the bake's knickpoint) — the cataract itself is an S4 effect, the lip is kept
+ * readable: low rock ledges on both banks, big rocks down both sides of the drop into the plunge pool (the
+ * channel bed beside the sheet would show black) and three low rocks breaking the lip line.
+ *
+ * - **Tol Brandir** (the Tindrock), a sheer pinnacle standing out of the open lake above the outlet — the
+ *   tallest thing at the south end (its point clears both hills and the Argonath from the hero camera): a
+ *   ragged fluted body in tilted strata bands (V flutes, flat vertical facets like columnar jointing) up to
+ *   a moss ledge a little over half-way up with a few conifers on it, an upper mass set off-centre on it, a
+ *   shoulder and a needle leaning to a sharp point at ≈ 13, a lesser horn beside it. A plateau stamp (inside
+ *   the 5 km onRiver footprint the lake keeps no guard) only seats the ledge's trees; terrain inside the
+ *   lake mask renders as channel bed, so the rock hides all of it.
+ * - **Amon Hen** (west) and **Amon Lhaw** (east): each a massif with an off-centre summit and a lower
+ *   shoulder towards the lake (no witch-hat cones), set back from the shores — the river guard lets stamped
+ *   ground rise only 2 units per km from a shore — forested on the lower and mid slopes by clumps of
+ *   tapered conifers (two stacked crown tiers where silhouettes read: a broad lower crown and a narrow
+ *   pointed top) over a dark forest floor (looks.json spots), thinning upwards to a bald rocky crown. On Amon Hen's summit the **Seat of Seeing**: a stone table on columns on
+ *   a levelled dais, a dark crown-like finial (#232932).
+ * Brightest summery light (tod 15); lake #5f6f71, stone #48463f.
+ */
+const LAKE_Y = 0.39;
+
+const TOL: V2 = [0.6, -3.3];
+/** Amon Hen: main summit (the Seat) and a lower shoulder towards the lake (NE) */
+const HEN: V2 = [-8.3, 1.0];
+const HEN_SHOULDER: V2 = [-6.6, -0.9];
+/** Amon Lhaw: main summit and its shoulder towards the lake and the falls (SW) */
+const LHAW: V2 = [12.1, -1.5];
+const LHAW_SHOULDER: V2 = [10.2, 0.5];
+/** the Seat of Seeing on Amon Hen's summit, its front facing the lake (NE: seat-frame +z, yaw 135°) */
+const SEAT: V2 = [-8.3, 1.05];
+const SEAT_YAW = 135;
+/** height of Tol Brandir's tree ledge (local y) */
+const LEDGE_Y = 7.45;
+
+const STAMPS: LocalStamp[] = [
+  {
+    kind: 'massif',
+    at: HEN,
+    radius: 3.5,
+    summit: 8.7,
+    base: 3.5,
+    exponent: 1.1,
+    dome: 1,
+    spurs: [
+      { azimuthDeg: 335, lengthKm: 5, widthKm: 2.0, heightFrac: 0.55, rootFrac: 0.85 },
+      { azimuthDeg: 150, lengthKm: 4.6, widthKm: 1.8, heightFrac: 0.38, rootFrac: 0.7 },
+      { azimuthDeg: 215, lengthKm: 5.8, widthKm: 2.3, heightFrac: 0.5, rootFrac: 0.8 },
+      { azimuthDeg: 270, lengthKm: 4.2, widthKm: 1.8, heightFrac: 0.32, rootFrac: 0.66 },
+    ],
+    flankSlope: 1.9,
+    rough: { amp: 0.55, scaleKm: 2.0, ridged: true, seed: 11 },
+    surface: 'turf',
+  },
+  {
+    kind: 'massif',
+    at: HEN_SHOULDER,
+    radius: 2.0,
+    summit: 7.0,
+    base: 3.5,
+    exponent: 1.25,
+    dome: 0.5,
+    spurs: [
+      { azimuthDeg: 40, lengthKm: 2.8, widthKm: 1.6, heightFrac: 0.42, rootFrac: 0.75 },
+      { azimuthDeg: 110, lengthKm: 2.4, widthKm: 1.4, heightFrac: 0.36, rootFrac: 0.7 },
+    ],
+    flankSlope: 2.1,
+    rough: { amp: 0.4, scaleKm: 1.8, ridged: true, seed: 12 },
+    surface: 'turf',
+  },
+  {
+    kind: 'massif',
+    at: LHAW,
+    radius: 3.4,
+    summit: 8.2,
+    base: 3.5,
+    exponent: 1.1,
+    dome: 1,
+    spurs: [
+      { azimuthDeg: 10, lengthKm: 5, widthKm: 2.0, heightFrac: 0.5, rootFrac: 0.8 },
+      { azimuthDeg: 100, lengthKm: 4.5, widthKm: 2.0, heightFrac: 0.4, rootFrac: 0.75 },
+      { azimuthDeg: 175, lengthKm: 4.6, widthKm: 1.9, heightFrac: 0.44, rootFrac: 0.78 },
+    ],
+    flankSlope: 2.0,
+    rough: { amp: 0.55, scaleKm: 2.0, ridged: true, seed: 13 },
+    surface: 'turf',
+  },
+  {
+    kind: 'massif',
+    at: LHAW_SHOULDER,
+    radius: 2.0,
+    summit: 6.6,
+    base: 3.5,
+    exponent: 1.25,
+    dome: 0.45,
+    spurs: [
+      { azimuthDeg: 235, lengthKm: 2.8, widthKm: 1.6, heightFrac: 0.4, rootFrac: 0.72 },
+      { azimuthDeg: 300, lengthKm: 2.2, widthKm: 1.4, heightFrac: 0.34, rootFrac: 0.7 },
+    ],
+    flankSlope: 2.1,
+    rough: { amp: 0.4, scaleKm: 1.8, ridged: true, seed: 14 },
+    surface: 'turf',
+  },
+  // the Seat's dais: a small level clearing on the summit dome
+  { kind: 'flatten', at: SEAT, radius: 0.3, falloff: 0.35, height: 'auto' },
+  // Tol Brandir: the lake bed lifted into a column that seats the ledge's conifers; everything seen of it
+  // is kit rock (terrain inside the lake mask renders as channel bed)
+  { kind: 'plateau', at: TOL, radius: 0.6, height: LEDGE_Y, rim: 0.1 },
+];
+
+/** the film's stone (#48463f lit in shade; painted lighter, the family shades it), the Seat's dark finial */
+const STONE = 0x86837a;
+const ROCK = 0x7b7e78;
+const TOL_ROCK = 0x6a6c67;
+const FINIAL = 0x232932;
+/** conifer crowns: lifted from near-black so they get form shading (the grade darkens them) */
+const CONIFER = [0x26351f, 0x2b3a23, 0x223020, 0x2e3f27];
+
+/**
+ * Tol Brandir's section at height `y`: an irregular round (lobes wandering with height) of radius `R`, cut
+ * by V flutes of seeded depth `fl` whose depth and rim wander with height too — jointed rock, not a turned
+ * column. Worst case ≈ 0.62·R (a deep flute in a lobe's waist).
+ */
+function tolOutline(R: number, y: number, fl: number[], seed: number): V2[] {
+  const out: V2[] = [];
+  const n = 2 * fl.length;
+  for (let j = 0; j < n; j++) {
+    const a = (2 * Math.PI * j) / n;
+    const shape = 1 + 0.08 * Math.cos(2 * (a - 0.6)) + 0.1 * (0.55 * Math.sin(2 * a + 0.9 + 0.11 * y) + 0.3 * Math.sin(3 * a + 2.1 - 0.08 * y) + 0.15 * Math.sin(5 * a + 0.4 + 0.17 * y));
+    const jit = 1 + 0.1 * (valueNoise(j * 0.61, y * 0.45, seed) - 0.5);
+    const groove = j % 2 === 0 ? 1 : 1 - fl[j >> 1] * (0.5 + valueNoise(j * 0.83, y * 0.6, seed + 1));
+    const rr = R * shape * jit * groove;
+    out.push([rr * Math.cos(a), rr * Math.sin(a)]);
+  }
+  return out;
+}
+
+/** a plain n-gon (the coarse cores of the LOD1/2 Tol) */
+function ngon(R: number, n: number): V2[] {
+  return Array.from({ length: n }, (_, j): V2 => [R * Math.cos((2 * Math.PI * j) / n), R * Math.sin((2 * Math.PI * j) / n)]);
+}
+
+/**
+ * One Tol Brandir rock mass: a loft through fluted sections at the profile's heights [y, R], its axis
+ * wandering ±`wander` km (the foot stays put) and each section's radius ±7 % — ragged edges and bulges, not a
+ * turned column
+ */
+function tolLoft(k: ProxyKit, at: V3, rot: V3, prof: [number, number][], fl: number[], seed: number, shade: number, wander: number): void {
+  const sections = prof.map(([y, R], i) => {
+    const f = Math.min(1, i / 2);
+    const wx = f * wander * (2 * valueNoise(i * 0.9, 0.3, seed + 5) - 1);
+    const wz = f * wander * (2 * valueNoise(0.4, i * 0.9, seed + 6) - 1);
+    const rr = R * (1 + 0.14 * (valueNoise(i * 1.3, 2.1, seed + 7) - 0.5));
+    return { outline: tolOutline(rr, at[1] + y, fl, seed).map(([x, z]): V2 => [x + wx, z + wz]), y };
+  });
+  k.loft('weathered', sections, { at, rot, color: TOL_ROCK, shade, lod: 0 });
+}
+
+/**
+ * A tapered conifer as two stacked authored crowns (the conifer recipe is one tall capsule: a broad lower
+ * crown and a narrow pointed top half its radius, overlapping) — crown radius `c` km. The recipe's crown is
+ * ≈ 3.8·radius tall, so the tree is ≈ 4.8·c + 0.05 tall.
+ */
+function conifer(k: ProxyKit, x: number, z: number, c: number, color: number): void {
+  const h = 4.81 * c + 0.05;
+  k.tree('conifer', x, z, { crownKm: c, heightKm: h - 1.04 * c, color });
+  k.tree('conifer', x, z, { crownKm: 0.5 * c, heightKm: h, color });
+}
 
 export default defineLandmark({
   id: 'rauros',
   placeId: 'rauros',
   tier: 'B',
+  stamps: STAMPS,
   proxy: (k) => {
-    // Tol Brandir, the unclimbable island-pinnacle above the falls
-    k.blob('weathered', 1.1, { at: [0.6, 1.8, -4.5], squash: 2.6, tint: 0x7a766e });
-    // the Seat of Seeing on Amon Hen
-    k.box('weathered', 0.3, 0.3, 0.3, { at: [-1.8, 0.8, 1.4], tint: 0x9a968c });
+    // ---- Tol Brandir: a fluted body in three strata bands, each tilted a little and turned (its flutes
+    // offset at the joint, its foot tucked under the band below: a dipping strata line) and bulging
+    // irregularly; above the moss ledge (with conifers on its south-west side) an upper mass set off to the
+    // north-east, a shoulder, and a needle leaning on it to a sharp point at ≈ 13; a lesser horn on the ledge
+    const flutes = Array.from({ length: 20 }, (_, i) => 0.04 + 0.08 * k.r(500 + i));
+    const bands: { y0: number; prof: [number, number][]; shade: number; rot: V3 }[] = [
+      { y0: -1.6, prof: [[0, 1.55], [0.14, 1.62], [0.8, 1.65], [1.5, 1.6], [2.2, 1.64], [3.0, 1.57], [4.0, 1.52]], shade: 0.95, rot: [1.6, 0, -1.1] },
+      { y0: 2.1, prof: [[0, 1.42], [0.14, 1.49], [0.8, 1.51], [1.5, 1.45], [2.2, 1.48], [2.9, 1.4]], shade: 1.06, rot: [-1.4, -35, 1.5] },
+      { y0: 4.7, prof: [[0, 1.33], [0.14, 1.4], [0.8, 1.42], [1.5, 1.36], [2.2, 1.38], [LEDGE_Y - 4.75, 1.32]], shade: 0.9, rot: [1.1, 60, 0.9] },
+    ];
+    bands.forEach((b, n) => tolLoft(k, [TOL[0], b.y0, TOL[1]], b.rot, b.prof, flutes, 31 + n, b.shade, 0.08));
+    const UP_AT: V3 = [TOL[0] + 0.35, LEDGE_Y - 0.15, TOL[1] - 0.3];
+    tolLoft(k, UP_AT, [2, 15, -2.5], [[0, 0.78], [0.6, 0.81], [1.3, 0.77], [2.0, 0.71], [2.6, 0.67], [3.0, 0.6]], flutes, 41, 1.0, 0.06);
+    const NEEDLE_AT: V3 = [UP_AT[0] + 0.12, UP_AT[1] + 2.9, UP_AT[2] - 0.06];
+    const NEEDLE_ROT: V3 = [-5, 25, -6];
+    tolLoft(k, NEEDLE_AT, NEEDLE_ROT, [[0, 0.5], [0.7, 0.47], [1.4, 0.39], [2.0, 0.29], [2.5, 0.18], [2.85, 0.08], [3.05, 0.012]], flutes, 42, 1.04, 0.04);
+    tolLoft(k, [TOL[0] - 0.45, LEDGE_Y - 0.15, TOL[1] - 0.6], [5, 50, 6], [[0, 0.42], [0.7, 0.38], [1.4, 0.26], [2.0, 0.13], [2.4, 0.03], [2.55, 0.008]], flutes.slice(0, 8), 43, 0.97, 0.03);
+    // coarse cores for LOD1/2 (hidden inside the fluted shells at LOD0)
+    k.loft('weathered', [{ outline: ngon(1.35, 12), y: -1.6 }, { outline: ngon(1.15, 12), y: LEDGE_Y - 0.1 }], { at: [TOL[0], 0, TOL[1]], color: TOL_ROCK, lod: 2 });
+    k.loft('weathered', [{ outline: ngon(0.66, 10), y: 0 }, { outline: ngon(0.5, 10), y: 2.9 }, { outline: ngon(0.02, 10), y: 5.9 }], { at: UP_AT, color: TOL_ROCK, lod: 2 });
+    // the ledge: moss over the body's top, a few conifers on its south-west side (towards the falls)
+    k.lathe('foliage', [[1.3, LEDGE_Y - 0.16], [1.28, LEDGE_Y - 0.02], [1.12, LEDGE_Y + 0.06], [0.9, LEDGE_Y + 0.1], [0.001, LEDGE_Y + 0.12]], { at: [TOL[0], 0, TOL[1]], seg: 24, color: 0x2e3d29, lod: 1 });
+    k.scatter({ annulus: { at: TOL, r0: 0.36, r1: 0.62, a0: 180, a1: 290 } }, 7, (_i, x, z, u) => conifer(k, x, z, 0.05 + 0.03 * u, CONIFER[Math.floor(u * 4) % 4]), { minSpacing: 0.1 });
+
+    // ---- the lip of the falls (the cataract is S4): low rock ledges on both banks facing downstream
+    const lip = { at: [0, -0.4, 0] as V3, followGround: false, depth: 0.5, rough: 0.35, strata: 0.5, soft: 0.5, color: ROCK, lod: 0 as const };
+    k.cliff('weathered', [[-3.3, 3.8], [-2.6, 3.72], [-1.95, 3.7]], [1.4, 1.9, 1.7], lip);
+    k.cliff('weathered', [[3.45, 3.78], [4.1, 3.8], [4.8, 3.9]], [1.7, 1.9, 1.3], { ...lip, shade: 0.95 });
+    // big rocks down both sides of the drop and in the plunge pool (the channel bed beside the sheet would
+    // show black there), and three low rocks standing in the lip, breaking its straight line
+    const plunge: [number, number, number, number][] = [
+      [-1.25, -0.45, 3.72, 0.4], [-1.05, -1.15, 3.98, 0.38], [-1.3, -1.65, 4.35, 0.34], [-1.7, -1.0, 4.05, 0.36],
+      [3.05, -0.5, 3.72, 0.38], [2.85, -1.25, 4.0, 0.34], [3.05, -1.7, 4.38, 0.3], [3.45, -1.0, 4.05, 0.34],
+    ];
+    for (const [x, y, z, r] of plunge) k.rock('weathered', r, { at: [x, y, z], squash: 0.85, lump: 0.32, color: ROCK, shade: 0.88, detail: 1, lod: 0 });
+    const lipRocks: [number, number, number][] = [[-0.7, 3.66, 0.22], [0.95, 3.6, 0.3], [2.25, 3.7, 0.2]];
+    for (const [x, z, r] of lipRocks)
+      k.rock('weathered', r, { at: [x, LAKE_Y - 0.1, z], squash: 0.55, lump: 0.35, color: ROCK, shade: 0.85, detail: 1, lod: 0 });
+
+    // ---- the Seat of Seeing: a dais, a stone table on four columns with a solid block under one end, the
+    // dark crown-like finial of blade spires, steps up to it, a weathered beast on a plinth beside it. The
+    // dais stands on the flattened clearing, its top a little above the highest ground under it
+    const c = Math.cos((SEAT_YAW * Math.PI) / 180);
+    const sn = Math.sin((SEAT_YAW * Math.PI) / 180);
+    // seat frame (x along the table, z out of its front) → local, the kit's yaw convention (rot y)
+    const S = (x: number, z: number): V2 => [SEAT[0] + x * c + z * sn, SEAT[1] - x * sn + z * c];
+    const foot: V2[] = [[-0.2, -0.12], [0.2, -0.12], [-0.2, 0.12], [0.2, 0.12], [0, 0]];
+    const g = Math.max(...foot.map(([x, z]) => k.ground(...S(x, z))));
+    const P = (x: number, y: number, z: number): V3 => {
+      const [lx, lz] = S(x, z);
+      return [lx, g + y, lz];
+    };
+    const rot: V3 = [0, SEAT_YAW, 0];
+    k.box('weathered', 0.4, 0.26, 0.24, { at: P(0, -0.2, 0), rot, color: STONE, shade: 0.92 });
+    k.box('weathered', 0.34, 0.035, 0.14, { at: P(0, 0.15, -0.01), rot, color: STONE, shade: 1.05 });
+    for (const [x, z] of [[-0.13, 0.05], [-0.04, 0.05], [0.05, 0.05], [-0.13, -0.05]] as V2[]) k.cylinder('weathered', 0.014, 0.017, 0.11, { at: P(x, 0.04, z), color: STONE, seg: 8 });
+    k.box('weathered', 0.1, 0.11, 0.13, { at: P(0.11, 0.04, -0.01), rot, color: STONE, shade: 0.95 });
+    k.cylinder('darkStone', 0.045, 0.05, 0.03, { at: P(0, 0.185, -0.01), color: FINIAL, seg: 10 });
+    const spires: [number, number, number][] = [[0, -0.01, 0.13], [-0.03, -0.015, 0.09], [0.03, -0.005, 0.1], [-0.012, 0.02, 0.08], [0.015, -0.035, 0.085]];
+    for (const [x, z, h] of spires) k.cone('darkStone', 0.017, h, { at: P(x, 0.215, z), color: FINIAL, seg: 6 });
+    for (let i = 0; i < 3; i++) k.box('weathered', 0.12, 0.02, 0.03, { at: P(-0.04, 0.04 - 0.02 * (i + 1), 0.13 + 0.03 * i), rot, color: STONE, shade: 0.9 });
+    k.box('weathered', 0.07, 0.05, 0.05, { at: P(-0.26, -0.02, 0.06), rot, color: STONE, shade: 0.9 });
+    k.rock('weathered', 0.028, { at: P(-0.26, 0.055, 0.06), squash: 0.7, color: STONE, detail: 1 });
+    // the bald rocky crown round the Seat: outcrops and boulders in the turf
+    for (let i = 0; i < 9; i++) {
+      const a = (2 * Math.PI * (i + 0.6 * k.r(700 + i))) / 9;
+      const r = 0.22 + 0.2 * k.r(720 + i);
+      k.rock('weathered', 0.035 + 0.04 * k.r(740 + i), { at: [SEAT[0] + Math.cos(a) * r, 0, SEAT[1] + Math.sin(a) * r], seat: true, squash: 0.6, color: ROCK, shade: 0.9, detail: 1, lod: 0 });
+    }
+
+    // ---- conifers: a forest on the lower and mid slopes of both hills (inside 4.2–5.9 km of the summit —
+    // further down the southern spurs — or 2.4 of the shoulder): crowns packed closer than their diameter,
+    // opened by clearings where a seeded clumping noise falls under a threshold that rises up the slopes —
+    // dense stands low down, thinning to a bald rocky crown (≈ 0.45 km round the summit); never in water. Two-tier tapered crowns where
+    // silhouettes read (the upper slopes, against the bald crown and the sky, and a sixth of the rest);
+    // one crown in the canopy below (≈ 1350 records for both hills: the candidate count trades canopy cover
+    // against the global authored-tree cap)
+    let seq = 0;
+    for (const [hill, shoulder, seed] of [[HEN, HEN_SHOULDER, 61], [LHAW, LHAW_SHOULDER, 67]] as [V2, V2, number][]) {
+      const mid: V2 = [(hill[0] + shoulder[0]) / 2, (hill[1] + shoulder[1]) / 2];
+      k.scatter({ circle: { at: mid, r: 6.2 } }, 1120, (i, x, z) => {
+        const s = seq++;
+        const dh = Math.hypot(x - hill[0], z - hill[1]);
+        const ds = Math.hypot(x - shoulder[0], z - shoulder[1]);
+        // the forest runs further down the long southern spurs (towards the falls and the hero camera)
+        const reach = 4.2 + 1.7 * Math.max(0, (z - hill[1]) / Math.max(dh, 1e-3));
+        if ((dh > reach && ds > 2.4) || dh < 0.45 || ds < 0.3) return;
+        // how far up the hill (0 at the forest's foot, 1 at the bald crown)
+        const up = Math.max(1 - (dh - 0.45) / (reach - 0.45), 1 - ds / 2.4);
+        const clump = 0.65 * valueNoise(x / 0.9, z / 0.9, seed) + 0.35 * valueNoise(x / 0.35, z / 0.35, seed + 1);
+        if (clump < 0.28 + 0.3 * Math.max(0, up - 0.4) / 0.6) return;
+        if (k.ground(x, z) < LAKE_Y + 0.35) return;
+        const j = k.r(2000 + 2 * s);
+        const crown = 0.19 * (0.65 + 0.7 * j);
+        const color = CONIFER[(i + Math.floor(4 * k.r(2001 + 2 * s))) % 4];
+        if (up > 0.55 || k.r(2001 + 2 * s) < 0.15) conifer(k, x, z, crown, color);
+        else k.tree('conifer', x, z, { crownKm: crown, heightKm: 3.9 * crown + 0.05, color });
+      }, { minSpacing: 0.25 });
+    }
   },
-  waterFeatures: [{ kind: 'waterfall', path: [[0, 1.5, 0], [0, 0, 0.6]], width: 3.5 }],
+  waterFeatures: [{ kind: 'waterfall', path: [[0.74, LAKE_Y, 3.7], [0.76, -1.81, 3.95]] as V3[], width: 5.2 }],
   annotation: { title: 'Rauros', subtitle: 'Falls of Rauros and Amon Hen', blurb: 'Where the Great River thunders over the falls, and the Fellowship was broken.' },
+  bookmarks: [
+    {
+      id: 'rauros-close',
+      distanceKm: 38,
+      elevationDeg: 22,
+      azimuthDeg: 195,
+      fov: 38,
+      lift: 5.5,
+      aimKm: [0.6, 1.0],
+      tod: 15,
+      note: 'from the south, high over the lip of the falls: Tol Brandir towering out of the open lake between Amon Hen (left) and Amon Lhaw (right), its point clear of both hills and of the Argonath far up Nen Hithoel',
+    },
+  ],
 });

@@ -6,7 +6,9 @@ Conventions every build follows:
   -Z — the landmark's heading (src/landmarks/types.ts local frame: x east, y up, -z = heading).
 - determinism: fixed seeds only (`reset(seed)` seeds `random` and `mathutils.noise`); no time, no hash()
   of strings, no dict-order dependence; every generator is plain Python over lists.
-- output: three nodes `lod0`, `lod1`, `lod2` (one mesh each, triangles ≤ the script's budget), materials
+- output: three nodes `lod0`, `lod1`, `lod2` (one mesh each, triangles ≤ the script's budget), plus
+  optional variant nodes `<name>_lod0/1/2` that an instance adds on top (ModelDecl instances[].node — e.g.
+  two different helms on one shared body), materials
   named `fam:<FamilyId>` (src/materials/families.ts — the runtime maps the name to a family and never uses
   the GLB material), paint in the point-domain colour attribute `Color` (-> COLOR_0, linear RGB; the
   runtime packs it as the absolute family paint), smooth normals. NO UVs, textures, animations, extras,
@@ -399,15 +401,22 @@ def decimate(src, name, target_tris):
     return ob
 
 
-def cavity(ob):
-    """Per-vertex concavity in [-1, 1] (+ = crevice): mean offset of the neighbours along the normal,
-    scaled by the mean edge length."""
+def neighbours(ob):
+    """Vertex adjacency lists (by edges)."""
     me = ob.data
     nb = [[] for _ in me.vertices]
     for e in me.edges:
         a, b = e.vertices
         nb[a].append(b)
         nb[b].append(a)
+    return nb
+
+
+def cavity(ob, nb=None):
+    """Per-vertex concavity in [-1, 1] (+ = crevice): mean offset of the neighbours along the normal,
+    scaled by the mean edge length."""
+    me = ob.data
+    nb = nb or neighbours(ob)
     out = []
     for i, v in enumerate(me.vertices):
         if not nb[i]:
@@ -424,15 +433,26 @@ def cavity(ob):
     return out
 
 
-def paint(ob, fn):
+def diffuse(values, nb, iterations):
+    """`iterations` rounds of neighbour averaging of a per-vertex field (broad cavity: fold valleys)."""
+    v = list(values)
+    for _ in range(iterations):
+        v = [(v[i] + sum(v[j] for j in nb[i])) / (1 + len(nb[i])) for i in range(len(v))]
+    return v
+
+
+def paint(ob, fn, broad=0):
     """Point-domain linear colour attribute `Color` (the model's COLOR_0 paint): fn(co, normal, cavity) →
-    linear (r, g, b)."""
+    linear (r, g, b); with `broad` > 0, fn(co, normal, cavity, broad cavity) where the broad cavity is the
+    fine one diffused over `broad` neighbour rings (fold valleys, not just creases)."""
     me = ob.data
     me.update()
-    cav = cavity(ob)
+    nb = neighbours(ob)
+    cav = cavity(ob, nb)
+    cavb = diffuse(cav, nb, broad) if broad else None
     attr = me.color_attributes.new('Color', 'FLOAT_COLOR', 'POINT')
     for i, v in enumerate(me.vertices):
-        r, g, b = fn(v.co, v.normal, cav[i])
+        r, g, b = fn(v.co, v.normal, cav[i], cavb[i]) if broad else fn(v.co, v.normal, cav[i])
         attr.data[i].color = (r, g, b, 1.0)
     me.color_attributes.active_color = attr
     me.color_attributes.render_color_index = me.color_attributes.find('Color')
@@ -514,15 +534,18 @@ def peak_mb():
         return None
 
 
-def report(lods):
-    """Print MOME_STATS: tris per LOD, bounds of lod0 in the model frame (km, glTF axes: r about +Y, h = max
-    height), Blender version, peak MB, time."""
+def report(lods, variants=None):
+    """Print MOME_STATS: tris per LOD, bounds of lod0 (with every variant's lod0) in the model frame (km,
+    glTF axes: r about +Y, h = max height), Blender version, peak MB, time. `variants` = {name: [lod0, lod1,
+    lod2]} — the optional `<name>_lod<L>` nodes an instance adds to the shared `lod<L>` (ModelDecl
+    instances[].node); their tris are reported per variant."""
     r = 0.0
     h = 0.0
-    for v in lods[0].data.vertices:
-        co = lods[0].matrix_world @ v.co
-        r = max(r, math.hypot(co.x, co.y))
-        h = max(h, co.z)
+    for ob in [lods[0]] + [v[0] for v in (variants or {}).values()]:
+        for v in ob.data.vertices:
+            co = ob.matrix_world @ v.co
+            r = max(r, math.hypot(co.x, co.y))
+            h = max(h, co.z)
     stats = {
         'tris': [tri_count(o) for o in lods],
         'boundsKm': {'r': round(r, 3), 'h': round(h, 3)},
@@ -530,4 +553,6 @@ def report(lods):
         'peakMB': peak_mb(),
         'ms': round((time.perf_counter() - T0) * 1000),
     }
+    if variants:
+        stats['variants'] = {name: [tri_count(o) for o in obs] for name, obs in sorted(variants.items())}
     print('MOME_STATS ' + json.dumps(stats), flush=True)
