@@ -44,6 +44,9 @@ export default defineConfig({
   // only crawl the app entry: the default **/*.html scan would walk agent worktrees (.claude/) and venvs
   optimizeDeps: {
     entries: ['index.html'],
+    // loaded by a dynamic import (src/landmarks/model.ts): pre-bundle it so a fresh dependency cache never
+    // answers the first capture with "504 Outdated Optimize Dep"
+    include: ['three/addons/loaders/GLTFLoader.js'],
   },
   server: {
     port: Number(process.env.PORT ?? 5173),
