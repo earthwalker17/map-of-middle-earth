@@ -14,7 +14,7 @@ import { archedBridge, hall, LAMP, spireTower, STONE, STONE2 } from './parts.ts'
 
 const SEED = hashString('rivendell-halls');
 /** warm grey-brown rock of the gorge (research §4 palette: #876950 / #634935 / #ada182, lit gold) */
-const ROCK = 0x7b766b;
+const ROCK = 0x77746c;
 /** autumn crowns (#b5702a / #d19a3a and between), a few still green-gold */
 const AUTUMN = [0xb5702a, 0xd19a3a, 0xc4822f, 0xa8602a, 0xd6a646, 0x9c8a3a];
 
@@ -25,7 +25,6 @@ const onS = (u: number, v: number): V2 => [LEDGE_S.at[0] + u, LEDGE_S.at[1] + v]
 /** halls on the two up-valley shelves: position, yaw, width, lit window slots per side */
 const SHELF_HALLS: { at: V2; yaw: number; w: number; lit: number }[] = [
   { at: [LEDGE_NE.at[0] - 0.12, LEDGE_NE.at[1] + 0.12], yaw: -15, w: 0.3, lit: 2 },
-  { at: [LEDGE_NE.at[0] + 0.22, LEDGE_NE.at[1] - 0.12], yaw: -20, w: 0.24, lit: 1 },
   { at: [LEDGE_SE.at[0] + 0.05, LEDGE_SE.at[1] - 0.1], yaw: 162, w: 0.3, lit: 2 },
   { at: [LEDGE_SE.at[0] - 0.22, LEDGE_SE.at[1] + 0.12], yaw: 170, w: 0.22, lit: 1 },
 ];
@@ -35,8 +34,8 @@ export function buildRivendell(k: ProxyKit): void {
   buildNorthLedge(k);
   buildSouthLedge(k);
   // the two up-valley shelves: their lips, halls, a tower and a pavilion each
-  ledgeLip(k, LEDGE_NE, 120, 250, LEDGE_NE.r + 0.02);
-  ledgeLip(k, LEDGE_SE, 290, 410, LEDGE_SE.r + 0.02);
+  ledgeLip(k, LEDGE_NE, 120, 250, LEDGE_NE.r + 0.08);
+  ledgeLip(k, LEDGE_SE, 290, 410, LEDGE_SE.r + 0.08);
   for (const h of SHELF_HALLS) hall(k, { at: h.at, yaw: h.yaw, w: h.w, d: 0.15, h: 0.1, windows: h.lit });
   gazebo(k, [LEDGE_NE.at[0] - 0.25, LEDGE_NE.at[1] + 0.3], 0.04, false);
   gazebo(k, [LEDGE_SE.at[0] - 0.05, LEDGE_SE.at[1] - 0.32], 0.04, false);
@@ -64,8 +63,9 @@ function arc(l: Ledge, from: number, to: number, rim: number, n: number): V2[] {
 }
 
 /**
- * The sheer lip of a ledge: a faceted rock band from the ground below up to the ledge's level along its
- * gorge-side rim (clockwise round the ledge, so the face looks outward).
+ * The rim rock of a ledge: a faceted band of grey rock, at most 0.4 km tall, along the upper edge of the
+ * ledge's gorge-side slope up to its level (clockwise round the ledge, so the face looks outward) — a
+ * crisp stone edge under the terraces; the terrain's steep face carries it on down to the gorge floor.
  */
 function ledgeLip(k: ProxyKit, l: Ledge, from: number, to: number, rim: number): void {
   // an irregular rim (±12 %), so the lip reads as a rock outcrop rather than a drum
@@ -76,8 +76,8 @@ function ledgeLip(k: ProxyKit, l: Ledge, from: number, to: number, rim: number):
   k.cliff(
     'weathered',
     pts,
-    pts.map(([x, z]) => Math.max(0.25, l.h + 0.02 - k.ground(x, z))),
-    { color: ROCK, rough: 0.6, strata: 0.55, depth: 0.4, soft: 0.3, taper: 0.18 },
+    pts.map(([x, z]) => Math.min(0.4, Math.max(0.12, l.h + 0.03 - k.ground(x, z)))),
+    { color: ROCK, rough: 0.5, strata: 0.5, depth: 0.25, soft: 0.35, taper: 0.12 },
   );
 }
 
@@ -115,7 +115,7 @@ function gazebo(k: ProxyKit, at: V2, r: number, lit: boolean): void {
 function buildNorthLedge(k: ProxyKit): void {
   const l = LEDGE_N;
   const y = l.h;
-  ledgeLip(k, l, 100, 262, l.r + 0.02);
+  ledgeLip(k, l, 100, 262, l.r + 0.08);
   // the house: a long main hall facing the gorge, two wings running back, a hall closing the court behind
   hall(k, { at: onN(-0.05, 0.22), yaw: 0, w: 0.52, d: 0.2, h: 0.14, pitch: 58, windows: 3 });
   hall(k, { at: onN(-0.42, -0.02), yaw: 90, w: 0.34, d: 0.16, h: 0.12, windows: 2 });
@@ -157,7 +157,7 @@ function buildNorthLedge(k: ProxyKit): void {
 /** the halls on the south ledge, across the gorge */
 function buildSouthLedge(k: ProxyKit): void {
   const l = LEDGE_S;
-  ledgeLip(k, l, 290, 420, l.r + 0.02);
+  ledgeLip(k, l, 290, 420, l.r + 0.08);
   hall(k, { at: onS(0.05, -0.12), yaw: 180, w: 0.42, d: 0.18, h: 0.13, pitch: 57, windows: 2 });
   hall(k, { at: onS(-0.3, 0.14), yaw: 95, w: 0.3, d: 0.15, h: 0.11, windows: 1 });
   hall(k, { at: onS(0.3, 0.18), yaw: 85, w: 0.28, d: 0.15, h: 0.11, roof: 'hip', pitch: 50, windows: 1 });

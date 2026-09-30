@@ -8,10 +8,10 @@ import type { V2, V3 } from '../types.ts';
  */
 
 /** pale elven stone, slate roofs, warm lamp light */
-export const STONE = 0xd6c7a1;
+export const STONE = 0xe0d3b0;
 export const STONE2 = 0xcdbd96;
-export const SLATE = 0x6e6a5c;
-export const SLATE2 = 0x75705f;
+export const SLATE = 0x5e5b50;
+export const SLATE2 = 0x66625a;
 export const LAMP = 0xffc27a;
 
 /**
@@ -79,7 +79,7 @@ export function hall(k: ProxyKit, o: HallOpts): void {
     overhang: Math.min(o.w, o.d) * 0.1,
     dig: 0.3,
     color: STONE,
-    shade: o.shade,
+    shade: o.shade ?? 1.12,
     roofColor: roof === 'hip' ? SLATE2 : SLATE,
     roofGrain: 0.35,
     plinthFam: 'stone',
