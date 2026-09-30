@@ -14,7 +14,7 @@ import { kingTS } from './king.ts';
  * (tools/blender/argonath.py → public/models/argonath.glb, same proportions). `USE_GLB` picks one; the
  * other stays one edit away.
  */
-const USE_GLB = false;
+const USE_GLB = true;
 
 const HEADING = 15;
 /** nominal waterline at the kings, local y (river level ≈ 4.94 vs the origin ground 4.64) */
@@ -46,7 +46,7 @@ export default defineLandmark({
           file: 'argonath.glb',
           // the same king twice, NOT mirrored: both raise the left hand (the film / the book)
           instances: KINGS.map((kg) => ({ at: kg.at })),
-          boundsKm: { r: 1.35, h: 6.95 },
+          boundsKm: { r: 1.42, h: 7.25 },
         },
       }
     : {

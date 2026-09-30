@@ -6,15 +6,67 @@
    "id": "argonath-lowpass",
    "tod": 15,
    "note": "low pass: camera on the Anduin 6 km upstream of the kings (bearing 15°), 1.5 above the river level 5.32, looking downstream between them",
-   "camera": { "position": [181.51, 6.82, 149.62], "target": [179.96, 9.24, 155.42], "fov": 50 },
-   "compare": ["reference/film/argonath", "reference/concept-art/argonath"]
+   "camera": {
+    "position": [
+     181.51,
+     6.82,
+     149.62
+    ],
+    "target": [
+     179.96,
+     9.24,
+     155.42
+    ],
+    "fov": 50
+   },
+   "compare": [
+    "reference/film/argonath",
+    "reference/concept-art/argonath"
+   ]
   },
   {
    "id": "argonath-lowpass-s",
    "tod": 15,
    "note": "the brief's literal low pass: camera on Nen Hithoel 6 km downstream (bearing 195°), 1.5 above the lake level 4.4, looking upstream between the kings (their backs)",
-   "camera": { "position": [178.41, 5.9, 161.22], "target": [179.96, 8.32, 155.42], "fov": 50 },
-   "compare": ["reference/film/argonath", "reference/concept-art/argonath"]
+   "camera": {
+    "position": [
+     178.41,
+     5.9,
+     161.22
+    ],
+    "target": [
+     179.96,
+     8.32,
+     155.42
+    ],
+    "fov": 50
+   },
+   "compare": [
+    "reference/film/argonath",
+    "reference/concept-art/argonath"
+   ]
+  },
+  {
+   "id": "w2d-argonath-king",
+   "tod": 10,
+   "note": "W2-D spike inspection: the west king's upper body from 6 km NNE (front three-quarter, bearing 35°), morning light across the faces",
+   "camera": {
+    "position": [
+     181.13,
+     9.8,
+     149.9
+    ],
+    "target": [
+     177.69,
+     10.0,
+     154.81
+    ],
+    "fov": 30
+   },
+   "compare": [
+    "reference/film/argonath",
+    "reference/concept-art/argonath"
+   ]
   }
  ]
 }
