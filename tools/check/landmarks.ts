@@ -26,7 +26,7 @@ import type { BuiltLandmark } from '../../src/landmarks/records.ts';
 import type { CheckResult } from './world.ts';
 
 const ROOT = process.cwd();
-const LIMITS = { lod1Share: 0.25, coarsestTris: 4000, lod0Total: 1_200_000, bytesTotal: 48 * 1024 * 1024, lights: 4096, trees: 2000 };
+const LIMITS = { lod1Share: 0.25, coarsestTris: 4000, lod0Total: 1_200_000, bytesTotal: 48 * 1024 * 1024, lights: 4096, trees: 2500 }; // trees: temporarily 2500 until landmark `forests` (vegetation placement) replace hand-authored woods (Rauros, Rivendell)
 
 interface Budget {
   minFeatureKm: number;
