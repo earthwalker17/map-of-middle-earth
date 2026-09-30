@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "notes": "S3 W3-E review shots: Mount Doom and Barad-dûr at night (the lava, crater, door and Eye glows; = their -close bookmarks at tod 21), the Dark Tower's crown and Eye up close, Doom's flank (flows, door, path) from the east, and the Black Gate at dusk (braziers, tower slits). Landmark bookmarks (mount-doom / barad-dur / black-gate -close and -wide) live in the landmark definitions.",
+  "shots": [
+    {"id": "w3e-doom-night", "tod": 21.0, "camera": {"orbit": {"place": "mount-doom", "distanceKm": 52, "elevationDeg": 0, "azimuthDeg": 166, "fov": 42, "lift": 1, "aimKm": [6, -6]}}, "compare": ["reference/film/mount-doom/mount-doom-plume-lava-fotr.jpg"], "note": "= mount-doom-close at night: crater lip, flows, the Sammath Naur glow; the Eye on the horizon"},
+    {"id": "w3e-barad-night", "tod": 21.0, "camera": {"orbit": {"place": "barad-dur", "distanceKm": 50, "elevationDeg": 1.5, "azimuthDeg": 145, "fov": 38, "lift": 4}}, "compare": ["reference/film/barad-dur/barad-dur-eye-rotk.jpg"], "note": "= barad-dur-close at night: the Eye, the lit inner faces of the horns, the red slits"},
+    {"id": "w3e-barad-crown", "tod": 18.5, "camera": {"orbit": {"place": "barad-dur", "distanceKm": 16, "elevationDeg": 4, "azimuthDeg": 160, "fov": 32, "lift": 17}}, "compare": ["reference/film/barad-dur/barad-dur-eye-rotk.jpg", "reference/concept-art/barad-dur/howe-eye-of-sauron.jpg"], "note": "the crown up close: the crescent horns, the Eye (almond, core, slit pupil, corona), the spiked crown and the upper fin bundles"},
+    {"id": "w3e-doom-east", "tod": 17.0, "camera": {"orbit": {"place": "mount-doom", "distanceKm": 28, "elevationDeg": 12, "azimuthDeg": 70, "fov": 38, "lift": -4}}, "compare": ["reference/concept-art/mount-doom/lee-mount-doom.jpg"], "note": "the east flank from Barad-dûr's side: the Sammath Naur door, the winding path, the rim"},
+    {"id": "w3e-gate-dusk", "tod": 19.9, "camera": {"orbit": {"place": "black-gate", "distanceKm": 30, "elevationDeg": 4, "azimuthDeg": 22, "fov": 38, "lift": 3}}, "compare": ["reference/film/black-gate/black-gate-rotk-4k.webp"], "note": "= black-gate-close at dusk: the braziers and the Towers' slits"},
+    {"id": "w3e-gate-near", "tod": 6.6, "camera": {"orbit": {"place": "black-gate", "distanceKm": 9, "elevationDeg": 6, "azimuthDeg": 12, "fov": 38, "lift": 1.8}}, "compare": ["reference/film/black-gate/black-gate-rotk-4k.webp", "reference/concept-art/black-gate/howe-the-black-gates.jpg"], "note": "the gate from 9 km: the leaves, the pylons, the spiked plates, the east tower"}
+  ]
+}
