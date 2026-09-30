@@ -12,9 +12,13 @@ import { LEDGE_N, LEDGE_NE, LEDGE_S, LEDGE_SE, NORTH_FOOT, SOUTH_FOOT } from './
  * Local frame: x east, z south (heading 0), km round the display point, heights relative to the base
  * ground there. The baked stream runs east → west through the valley (level ≈ 0 at the display point),
  * falling at x ≈ −4.5 … −6 into the deep Bruinen valley to the west. The gorge is built by RAISING its
- * walls beside the stream (scarps either side; the river guard keeps the stream and its banks), with a
- * ledge cut into each wall for the halls; the sheer upper walls are kit cliffs (halls.ts), with notches
- * where the S4 waterfalls will fall.
+ * walls beside the stream (scarps either side; the river guard keeps the stream and its banks): a high,
+ * sunlit north wall and a lower south side, four ledges cut into them for the halls (the main one, the
+ * Last Homely House, on the north wall), each terrace edged with rim rock (kit cliffs, halls.ts); the
+ * steep scarp faces themselves are the terrain's rock. Waterfalls are declared for S4.
+ *
+ * Seen down the gorge axis the walls hide the ledges, so the hero bookmark looks across the valley from
+ * the south-south-east over the low south rim with a long lens (fov 22), into the afternoon sun.
  */
 
 const STAMPS: LocalStamp[] = [

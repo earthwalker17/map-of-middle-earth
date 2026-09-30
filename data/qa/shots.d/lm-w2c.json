@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "notes": "S3 W2-C review shots: Hobbiton at night (windows) and from above, the Moria West-gate by day and from above, Rivendell's gorge from above. Landmark bookmarks (hobbiton / rivendell / moria -close and -wide) live in the landmark definitions.",
+  "notes": "S3 W2-C review shots: Hobbiton at night (windows) and from above, the Moria West-gate by day and from above, Rivendell's valley from above and the Last Homely House close up. Landmark bookmarks (hobbiton / rivendell / moria -close and -wide) live in the landmark definitions.",
   "shots": [
     {"id": "w2c-hobbiton-night", "tod": 21.0, "camera": {"orbit": {"place": "hobbiton", "distanceKm": 9, "elevationDeg": 9, "azimuthDeg": 215, "fov": 35, "lift": 0.8}}, "compare": ["reference/photos/hobbiton/bag-end-hill-set.jpg"], "note": "night: warm round windows and lamps in the Hill, the Green Dragon and the mill"},
     {"id": "w2c-hobbiton-top", "tod": 12.0, "camera": {"orbit": {"place": "hobbiton", "distanceKm": 9, "elevationDeg": 45, "azimuthDeg": 200, "fov": 35, "lift": 0}}, "compare": ["reference/film/hobbiton/hobbiton-wide-fotr.jpg"], "note": "high oblique: the Hill, Bagshot Row, the gardens and hedges, the pond, the mill and the bridge over the Water"},

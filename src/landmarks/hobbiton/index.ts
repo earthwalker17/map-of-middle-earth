@@ -127,6 +127,7 @@ export default defineLandmark({
     { kind: 'raise', at: HILL, radius: 2.5, amount: 1.55, surface: 'turf' },
     // the mill pond's bed cut into the Hill's foot (lowerOnly)
     { kind: 'flatten', at: POND, radius: 0.45, falloff: 0.3, height: POND_REL - 0.25, lowerOnly: true, surface: 'turf' },
+    { kind: 'flatten', at: [POND[0], POND[1] - 0.1], radius: 0.22, falloff: 0.2, height: POND_REL - 0.55, lowerOnly: true, surface: 'turf' },
     // the Party Field: a level green at the Hill's south-west foot
     { kind: 'flatten', at: [-2.0, -0.2], radius: 0.5, falloff: 0.45, height: -0.05, lowerOnly: true, surface: 'turf' },
   ],
@@ -147,6 +148,8 @@ export default defineLandmark({
   waterFeatures: [{ kind: 'pool', ring: POND_RING, level: POND_LEVEL }],
   proxy: (k) => {
     buildDam(k);
+    // a hedge along the dam's crest (the pond's south bank)
+    buildHedge(k, DAM, 0.075);
     buildHill(k);
     buildMillAndBridge(k);
     buildBywater(k);
