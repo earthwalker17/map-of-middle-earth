@@ -5,14 +5,24 @@ import type { World } from '../world/World.ts';
 import type { BuiltLandmark } from './records.ts';
 
 /**
- * Realizes built landmarks (build.ts) as meshes with shared family materials. Each landmark has ONE
- * fixed design scale (S3 readability policy: silhouette / emission / contrast, never size boosts).
- * LOD selection is a pure function of the camera (projected bounding radius in px, no hysteresis).
+ * Realizes built landmarks (build.ts) as meshes with the shared family materials (two uber materials:
+ * 'structure' casts and receives shadows, 'glow' neither). Each landmark has ONE fixed design scale
+ * (S3 readability policy: silhouette / emission / contrast, never size boosts).
+ *
+ * LOD: per landmark, the projected bounding radius in px at the viewport height —
+ * `rad · (H / (2·tan(fov/2))) / max(1, |camera − bounds.center|)` with rad = hypot(bounds.r, bounds.h/2)
+ * (the bounding sphere, so tall towers are not undersized) — picks LOD0 if ≥ lodPx[0], LOD1 if ≥ lodPx[1],
+ * else the coarsest. Exactly one LOD is visible; a pure function of the camera (no hysteresis), so it is
+ * safe per accumulation sub-sample.
  */
 export class LandmarkSystem implements System {
   readonly id = 'landmarks';
   readonly root = new Group();
   readonly groups = new Map<string, Group>();
+  /** diagnostics: selected LOD per landmark and the visible triangle count */
+  readonly stats: { lod: Record<string, number>; tris: number } = { lod: {}, tris: 0 };
+  private readonly lodGroups = new Map<string, Group[]>();
+  private readonly lodTris = new Map<string, number[]>();
 
   constructor(
     private readonly world: World,
@@ -24,27 +34,61 @@ export class LandmarkSystem implements System {
     for (const b of this.built) {
       const g = new Group();
       g.name = `landmark:${b.id}`;
-      const lod0 = b.lods[0];
-      if (lod0)
-        for (const [key, geo] of lod0) {
+      const levels: Group[] = [];
+      const tris: number[] = [];
+      b.lods.forEach((lod, L) => {
+        const lg = new Group();
+        lg.name = `${b.id}:lod${L}`;
+        let t = 0;
+        for (const [key, geo] of lod) {
           const mesh = new Mesh(geo, materialFor(key));
-          mesh.castShadow = !key.startsWith('emissive') && key !== 'lava';
-          mesh.receiveShadow = true;
-          mesh.name = `${b.id}:${key}`;
-          g.add(mesh);
+          const glow = key === 'glow';
+          mesh.castShadow = !glow;
+          mesh.receiveShadow = !glow;
+          mesh.name = `${b.id}:${key}:lod${L}`;
+          lg.add(mesh);
+          t += (geo.index ? geo.index.count : geo.attributes.position.count) / 3;
         }
+        lg.visible = L === 0;
+        g.add(lg);
+        levels.push(lg);
+        tris.push(t);
+      });
       g.scale.setScalar(b.scale);
       g.rotation.y = (-b.headingDeg * Math.PI) / 180;
       g.position.set(...b.origin);
       g.updateMatrixWorld(true);
       this.root.add(g);
       this.groups.set(b.id, g);
+      this.lodGroups.set(b.id, levels);
+      this.lodTris.set(b.id, tris);
     }
     void this.world;
     ctx.scene.add(this.root);
   }
 
-  evaluate(_frame: FrameContext): void {
-    // fixed design scale; projected-px LOD selection arrives with kit v2 (W1)
+  /** LOD index for a landmark seen from `cam` (pure: camera position, vertical fov, viewport height). */
+  static selectLod(b: BuiltLandmark, cam: { x: number; y: number; z: number }, fovDeg: number, viewportH: number, levels: number): number {
+    if (levels <= 1) return 0;
+    const [cx, cy, cz] = b.bounds.center;
+    const d = Math.max(1, Math.hypot(cam.x - cx, cam.y - cy, cam.z - cz));
+    const rad = Math.hypot(b.bounds.r, b.bounds.h / 2);
+    const px = (rad * (viewportH / (2 * Math.tan((fovDeg * Math.PI) / 360)))) / d;
+    const L = px >= b.lodPx[0] ? 0 : px >= b.lodPx[1] ? 1 : 2;
+    return Math.min(L, levels - 1);
+  }
+
+  evaluate(frame: FrameContext): void {
+    const cam = frame.camera;
+    let tris = 0;
+    for (const b of this.built) {
+      const levels = this.lodGroups.get(b.id);
+      if (!levels?.length) continue;
+      const L = LandmarkSystem.selectLod(b, cam.position, cam.fov, frame.viewport.height, levels.length);
+      for (let k = 0; k < levels.length; k++) levels[k].visible = k === L;
+      this.stats.lod[b.id] = L;
+      tris += this.lodTris.get(b.id)![L];
+    }
+    this.stats.tris = tris;
   }
 }
