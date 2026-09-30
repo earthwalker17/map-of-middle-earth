@@ -1,0 +1,20 @@
+{
+ "version": 1,
+ "notes": "W2-D (Blender GLB spike) shots. The kings face upstream (NNE, heading 15°), so the film framing — low on the water, looking up at their faces and raised palms, backlit by the afternoon sun — is taken from UPSTREAM looking downstream: argonath-lowpass (6 km NNE on the Anduin, 1.5 above the water). argonath-lowpass-s is the brief's literal placement (6 km SSW on Nen Hithoel looking north): it sees the kings' backs, front-lit.",
+ "shots": [
+  {
+   "id": "argonath-lowpass",
+   "tod": 15,
+   "note": "low pass: camera on the Anduin 6 km upstream of the kings (bearing 15°), 1.5 above the river level 5.32, looking downstream between them",
+   "camera": { "position": [181.51, 6.82, 149.62], "target": [179.96, 9.24, 155.42], "fov": 50 },
+   "compare": ["reference/film/argonath", "reference/concept-art/argonath"]
+  },
+  {
+   "id": "argonath-lowpass-s",
+   "tod": 15,
+   "note": "the brief's literal low pass: camera on Nen Hithoel 6 km downstream (bearing 195°), 1.5 above the lake level 4.4, looking upstream between the kings (their backs)",
+   "camera": { "position": [178.41, 5.9, 161.22], "target": [179.96, 8.32, 155.42], "fov": 50 },
+   "compare": ["reference/film/argonath", "reference/concept-art/argonath"]
+  }
+ ]
+}
