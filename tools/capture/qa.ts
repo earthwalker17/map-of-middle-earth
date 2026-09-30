@@ -11,8 +11,11 @@
  *  - compare-<shot>.png        the render next to reference images: the shot's `compare` list, then
  *                              reference/manifest.json items whose `subject` is the shot's place /
  *                              landmark (one per kind: film → bigature → photo → concept)
- *  - blind/ + contact-blind.png  anonymised copies of the `blind` set for recognizability critics
- *                              (the key is blind-key.json in the run folder, never inside blind/)
+ *  - blind/ + contact-blind.png  anonymised copies of the `blind` set (or `--blind <set>`) for
+ *                              recognizability critics (the key is blind-key.json in the run folder,
+ *                              never inside blind/)
+ * Reference images are gitignored: agent worktrees point MOME_REFERENCE_DIR at the main checkout's
+ * reference/ folder (manifest paths `reference/…` resolve against it).
  *  - manifest.json             merged per-batch manifests (timings, memory, footprints)
  */
 import { spawnSync } from 'node:child_process';
@@ -80,8 +83,11 @@ interface RefItem {
   subject: string;
   kind: string;
 }
-const refManifest = existsSync(join('reference', 'manifest.json'))
-  ? (JSON.parse(readFileSync(join('reference', 'manifest.json'), 'utf8')) as { items: RefItem[] }).items
+const REF_DIR = process.env.MOME_REFERENCE_DIR ?? 'reference';
+/** a manifest / compare path `reference/…` under the (possibly overridden) reference root */
+const refPath = (p: string) => p.replace(/\\/g, '/').replace(/^reference\//, `${REF_DIR.replace(/\\/g, '/')}/`);
+const refManifest = existsSync(join(REF_DIR, 'manifest.json'))
+  ? (JSON.parse(readFileSync(join(REF_DIR, 'manifest.json'), 'utf8')) as { items: RefItem[] }).items.map((r) => ({ ...r, file: refPath(r.file) }))
   : [];
 const KIND_ORDER = ['film', 'bigature', 'photo', 'concept'];
 /** one reference per kind for the subject (deterministic: manifest order), existing files only */
@@ -95,11 +101,15 @@ function subjectRefs(subject: string | undefined): string[] {
   }
   return picked;
 }
-/** subject id of a shot: orbit place of a JSON shot, or the landmark of a `<id>-close` bookmark */
+/** landmark ids (folders under src/landmarks), longest first — bookmark ids are `<landmarkId>-<suffix>` */
+const LANDMARK_IDS = readdirSync(join('src', 'landmarks'))
+  .filter((f) => existsSync(join('src', 'landmarks', f, 'index.ts')))
+  .sort((a, b) => b.length - a.length);
+/** subject id of a shot: orbit place of a JSON shot, or the landmark of a `<id>-close` / `<id>-wide` bookmark */
 function shotSubject(id: string): string | undefined {
   const s = shots.find((x) => x.id === id);
   if (s && 'orbit' in s.camera) return s.camera.orbit.place;
-  if (!s && id.endsWith('-close')) return id.slice(0, -'-close'.length);
+  if (!s) return LANDMARK_IDS.find((l) => id.startsWith(`${l}-`));
   return undefined;
 }
 
@@ -134,7 +144,7 @@ tiles.length = 0;
 let compares = 0;
 for (const id of rendered) {
   const s = shots.find((x) => x.id === id);
-  const refs = [...new Set([...(s?.compare ?? []).flatMap(refImages), ...subjectRefs(shotSubject(id))])].slice(0, 3);
+  const refs = [...new Set([...(s?.compare ?? []).map(refPath).flatMap(refImages), ...subjectRefs(shotSubject(id))])].slice(0, 3);
   if (!refs.length) continue;
   const parts = [await tile(shotFile(id), TW, TH, `${id} (render)`)];
   for (const r of refs) parts.push(await tile(r, TW, TH, r.replace(/\\/g, '/').split('/').slice(-2).join('/')));
@@ -148,7 +158,8 @@ const fnv = (s: string) => {
   for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193) >>> 0;
   return h;
 };
-const blindIds = (setsDoc.sets.blind ?? []).filter((id) => rendered.includes(id)).sort((a, b) => fnv(stamp + a) - fnv(stamp + b));
+const blindSet = arg('blind', 'blind')!;
+const blindIds = (setsDoc.sets[blindSet] ?? []).filter((id) => rendered.includes(id)).sort((a, b) => fnv(stamp + a) - fnv(stamp + b));
 if (blindIds.length) {
   const blindDir = join(out, 'blind');
   mkdirSync(blindDir, { recursive: true });
