@@ -55,6 +55,18 @@ files are saved without the upstream `[wght]` brackets in the filename; content 
 | [snow_field_aerial](https://polyhaven.com/a/snow_field_aerial) | diffuse, nor_gl, rough, ao, disp | Snow field — Caradhras / high peaks |
 | [withered_grass](https://polyhaven.com/a/withered_grass) | diffuse, nor_gl, rough, ao, disp | Dry golden grass — Rohan plains / Pelennor |
 
+## Models
+
+Shipped in `public/models/` (committed; manifest `public/models/manifest.json` with the sha256 of every
+file and of the script that built it). **Original work of this project**, generated headless in Blender 4.5
+by the scripts in this repository (`pnpm models` → `tools/blender/run.ts`, shared helpers
+`tools/blender/lib.py`); no third-party meshes, scans, textures or film assets are used. Same licence as the
+project's code.
+
+| File | Built by | Content |
+|---|---|---|
+| `argonath.glb` | `tools/blender/argonath.py` | One king of the Argonath (robed, left hand raised, axe, crowned helm, pedestal), `lod0` / `lod1` / `lod2`; placed twice by `src/landmarks/argonath` |
+
 ## Geography data
 
 The terrain and map layers are derived from community Middle-earth GIS work. Source files live in

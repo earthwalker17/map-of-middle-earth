@@ -4,7 +4,8 @@ import type { World } from '../world/World.ts';
 import { landmarkOrigin, rotateLocal } from './frame.ts';
 import { bakeVertexAO, stripBakeAttributes } from './kit/ao.ts';
 import { ProxyKit, type KitLight, type KitOutput } from './kit/ProxyKit.ts';
-import { DEFAULT_GATE, type AuthoredTree, type BuiltLandmark, type ContactRecord, type LightRecord } from './records.ts';
+import { canLoadModels, loadModel, mergeLods, modelFootprint, unionBox } from './model.ts';
+import { DEFAULT_GATE, type AuthoredTree, type BuiltLandmark, type ContactRecord, type LightRecord, type LodGeometry } from './records.ts';
 import type { LandmarkDefinition, TreeDecl } from './types.ts';
 
 export interface BuildOptions {
@@ -18,7 +19,7 @@ export interface BuildOptions {
 export const DEFAULT_LOD_PX: [number, number] = [160, 40];
 
 /** Build-wide diagnostics of the last buildLandmarks run (never drives rendering). */
-export const buildStats = { aoMs: 0, kitMs: 0, total: 0 };
+export const buildStats = { aoMs: 0, kitMs: 0, modelMs: 0, total: 0 };
 
 /**
  * ONE pure build run for all landmarks: geometry LODs (kit v2: indexed, merged per material key, vertex
@@ -29,13 +30,19 @@ export const buildStats = { aoMs: 0, kitMs: 0, total: 0 };
 export async function buildLandmarks(world: World, defs: LandmarkDefinition[], opts: BuildOptions = {}): Promise<BuiltLandmark[]> {
   buildStats.aoMs = 0;
   buildStats.kitMs = 0;
+  buildStats.modelMs = 0;
   const t0 = performance.now(); // diagnostics only
-  const out = [...defs].sort((a, b) => a.id.localeCompare(b.id)).map((d) => buildOne(world, d, opts));
+  // Blender GLBs (model.ts): loaded in the browser only — Node checks / the probe use ModelDecl.boundsKm
+  const models = new Map<string, LodGeometry[]>();
+  if (opts.geometry !== false && canLoadModels())
+    for (const d of defs) if (d.model) models.set(d.id, await loadModel(d.model));
+  buildStats.modelMs = Math.round(performance.now() - t0);
+  const out = [...defs].sort((a, b) => a.id.localeCompare(b.id)).map((d) => buildOne(world, d, opts, models.get(d.id)));
   buildStats.total = Math.round(performance.now() - t0);
   return out;
 }
 
-function buildOne(world: World, def: LandmarkDefinition, opts: BuildOptions): BuiltLandmark {
+function buildOne(world: World, def: LandmarkDefinition, opts: BuildOptions, model?: LodGeometry[]): BuiltLandmark {
   const t0 = performance.now(); // diagnostics only
   const origin = landmarkOrigin(world, def);
   const hd = def.headingDeg ?? 0;
@@ -57,8 +64,12 @@ function buildOne(world: World, def: LandmarkDefinition, opts: BuildOptions): Bu
     def.proxy(k);
     kit = k.buildLods({ lod0Only: !keep });
   }
-  // TODO(W2): def.model → GLB placements (src/landmarks/model.ts) join the LODs here; Node never parses
-  // GLBs, so bounds / checks use `def.model.boundsKm` until then.
+  if (def.model) {
+    // GLB instances join the kit LODs level by level (browser); bounds and seating contacts come from the
+    // declared ModelDecl.boundsKm everywhere, so Node checks / the probe and the renderer agree
+    const fp = modelFootprint(def.model, localGround);
+    kit = { ...kit, lods: model ? mergeLods(kit.lods, model) : kit.lods, bbox: unionBox(kit.bbox, fp), contacts: [...kit.contacts, ...fp.contacts] };
+  }
   buildStats.kitMs += performance.now() - t0;
 
   const tris: number[] = [];
@@ -89,7 +100,7 @@ function buildOne(world: World, def: LandmarkDefinition, opts: BuildOptions): Bu
     const [cx, cz] = toWorld((bb.min[0] + bb.max[0]) / 2, (bb.min[2] + bb.max[2]) / 2);
     const r = (Math.hypot(bb.max[0] - bb.min[0], bb.max[2] - bb.min[2]) / 2) * s;
     bounds = { center: [cx, origin[1] + ((bb.min[1] + bb.max[1]) / 2) * s, cz], r, h: bb.max[1] * s };
-  } else if (def.model) bounds = { center: [origin[0], origin[1] + (def.model.boundsKm.h / 2) * s, origin[2]], r: def.model.boundsKm.r * s, h: def.model.boundsKm.h * s };
+  }
 
   // lights: definition first, then kit records (seeds follow that order)
   const decl: KitLight[] = (def.lights ?? []).map((l) => ({ at: l.at, color: l.color, intensity: l.intensity, radius: l.radius, kind: l.kind ?? 'window', gate: l.gate, flicker: l.flicker ?? 0 }));
