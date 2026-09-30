@@ -130,7 +130,7 @@ function buildNorthLedge(k: ProxyKit): void {
   hall(k, { at: onN(0.62, 0.36), yaw: -25, w: 0.26, d: 0.14, h: 0.1, roof: 'hip', pitch: 50, windows: 1 });
   hall(k, { at: onN(0.25, -0.62), yaw: 10, w: 0.24, d: 0.13, h: 0.1, windows: 1 });
   // the colonnade along the ledge's lip, open to the gorge, and a gazebo at its east end
-  k.arcade('stone', onN(-0.35, 0.55), onN(0.4, 0.58), { count: 9, h: 0.075, archH: 0.055, pier: 0.012, depth: 0.03, deck: true, color: STONE });
+  k.arcade('stone', onN(-0.35, 0.55), onN(0.4, 0.58), { count: 9, h: 0.075, archH: 0.055, pier: 0.012, depth: 0.03, deck: true, color: STONE, lod: 0 });
   gazebo(k, onN(0.52, 0.52), 0.045, true);
   // the round Council court on the ledge's western lip: a pale floor, a ring of slender pillars and their
   // ring beam, open to the sky
@@ -165,7 +165,7 @@ function buildSouthLedge(k: ProxyKit): void {
   spireTower(k, onS(0.28, -0.3), 0.045, 0.4, { lit: 2 });
   spireTower(k, onS(-0.35, -0.25), 0.04, 0.28, { roof: 'dome', lit: 2 });
   gazebo(k, onS(-0.12, -0.42), 0.05, true);
-  k.arcade('stone', onS(-0.45, -0.45), onS(0.35, -0.5), { count: 7, h: 0.07, archH: 0.05, pier: 0.012, depth: 0.03, deck: true, color: STONE });
+  k.arcade('stone', onS(-0.45, -0.45), onS(0.35, -0.5), { count: 7, h: 0.07, archH: 0.05, pier: 0.012, depth: 0.03, deck: true, color: STONE, lod: 0 });
   balustrade(k, l, 290, 420, l.r - 0.12, 3);
 }
 

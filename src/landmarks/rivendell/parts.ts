@@ -88,6 +88,14 @@ export function hall(k: ProxyKit, o: HallOpts): void {
     ...(roof === 'gable' ? { ridge: { fam: 'stone' as const, color: 0xe2d6b4, size: 0.012 }, gableBoards: { fam: 'stone' as const, color: 0xe6dcc0, size: 0.01, horn: 0.03 } } : {}),
     ...(o.windows ? { windows: { count: o.windows, on: 0.85, sides: 2 as const, size: 0.014, color: LAMP, intensity: 1.2 } } : {}),
   });
+  // a slender balcony along each long side at half height (close-range detail, LOD0 only)
+  const c = Math.cos((o.yaw * Math.PI) / 180);
+  const s = Math.sin((o.yaw * Math.PI) / 180);
+  const ground = Math.min(k.ground(o.at[0], o.at[1]), k.ground(o.at[0] + s * o.d * 0.5, o.at[1] + c * o.d * 0.5));
+  for (const side of [1, -1]) {
+    const off = side * (o.d / 2 + 0.012);
+    k.box('stone', o.w * 0.8, 0.008, 0.024, { at: [o.at[0] + s * off, ground + o.h * 0.5, o.at[1] + c * off], rot: [0, o.yaw, 0], color: 0xe8ddc2, lod: 0 });
+  }
 }
 
 /** a slender elven tower: pale shaft, a slate spire or a pale dome, a ring of lit windows */
