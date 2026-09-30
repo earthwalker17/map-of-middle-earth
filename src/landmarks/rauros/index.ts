@@ -2,7 +2,7 @@ import { valueNoise } from '../../core/rng.ts';
 import type { ProxyKit } from '../kit/ProxyKit.ts';
 import type { V2, V3 } from '../records.ts';
 import { defineLandmark } from '../types.ts';
-import type { LocalStamp } from '../types.ts';
+import type { ForestDecl, LocalStamp } from '../types.ts';
 
 /**
  * Rauros, Tol Brandir and the hills of the south end of Nen Hithoel (research §3; Tolkien's own sketch
@@ -177,6 +177,39 @@ function conifer(k: ProxyKit, x: number, z: number, c: number, color: number): v
   k.tree('conifer', x, z, { crownKm: 0.5 * c, heightKm: h, color });
 }
 
+/**
+ * The conifer forests of Amon Hen and Amon Lhaw (landmark forests, placed by the vegetation system): the
+ * lower and mid slopes within 4.2 km of each summit — 5.9 km down the long southern spurs, towards the falls
+ * and the hero camera — in dense clumped stands (crowns packed closer than their diameter) with clearings,
+ * a bald rocky crown round the summit (the Seat on Amon Hen) and none on the shore; tapered two-tier firs.
+ */
+function hillArea(hill: V2): V2[] {
+  const out: V2[] = [];
+  for (let a = 0; a < 360; a += 10) {
+    const t = (a * Math.PI) / 180;
+    // local z points south: the reach grows towards the south
+    const reach = 4.2 + 1.7 * Math.max(0, Math.cos(t));
+    out.push([hill[0] + Math.sin(t) * reach, hill[1] + Math.cos(t) * reach]);
+  }
+  return out;
+}
+const HILL_FORESTS: ForestDecl[] = [
+  [HEN, HEN_SHOULDER],
+  [LHAW, LHAW_SHOULDER],
+].map(([hill, shoulder]) => ({
+  area: { polygon: hillArea(hill) },
+  density: 9.3,
+  species: [{ kind: 'conifer', share: 1, crownKm: [0.124, 0.257], heightFactor: [4.1, 4.9], colors: CONIFER }],
+  clump: { scaleKm: 0.9, amount: 0.55 },
+  edgeKm: 0.4,
+  maxSlopeDeg: 80,
+  avoid: [
+    { at: hill, r: 0.45 },
+    { at: shoulder, r: 0.3 },
+  ],
+  minY: LAKE_Y + 0.35,
+}));
+
 export default defineLandmark({
   id: 'rauros',
   placeId: 'rauros',
@@ -252,37 +285,8 @@ export default defineLandmark({
       const r = 0.22 + 0.2 * k.r(720 + i);
       k.rock('weathered', 0.035 + 0.04 * k.r(740 + i), { at: [SEAT[0] + Math.cos(a) * r, 0, SEAT[1] + Math.sin(a) * r], seat: true, squash: 0.6, color: ROCK, shade: 0.9, detail: 1, lod: 0 });
     }
-
-    // ---- conifers: a forest on the lower and mid slopes of both hills (inside 4.2–5.9 km of the summit —
-    // further down the southern spurs — or 2.4 of the shoulder): crowns packed closer than their diameter,
-    // opened by clearings where a seeded clumping noise falls under a threshold that rises up the slopes —
-    // dense stands low down, thinning to a bald rocky crown (≈ 0.45 km round the summit); never in water. Two-tier tapered crowns where
-    // silhouettes read (the upper slopes, against the bald crown and the sky, and a sixth of the rest);
-    // one crown in the canopy below (≈ 1350 records for both hills: the candidate count trades canopy cover
-    // against the global authored-tree cap)
-    let seq = 0;
-    for (const [hill, shoulder, seed] of [[HEN, HEN_SHOULDER, 61], [LHAW, LHAW_SHOULDER, 67]] as [V2, V2, number][]) {
-      const mid: V2 = [(hill[0] + shoulder[0]) / 2, (hill[1] + shoulder[1]) / 2];
-      k.scatter({ circle: { at: mid, r: 6.2 } }, 1120, (i, x, z) => {
-        const s = seq++;
-        const dh = Math.hypot(x - hill[0], z - hill[1]);
-        const ds = Math.hypot(x - shoulder[0], z - shoulder[1]);
-        // the forest runs further down the long southern spurs (towards the falls and the hero camera)
-        const reach = 4.2 + 1.7 * Math.max(0, (z - hill[1]) / Math.max(dh, 1e-3));
-        if ((dh > reach && ds > 2.4) || dh < 0.45 || ds < 0.3) return;
-        // how far up the hill (0 at the forest's foot, 1 at the bald crown)
-        const up = Math.max(1 - (dh - 0.45) / (reach - 0.45), 1 - ds / 2.4);
-        const clump = 0.65 * valueNoise(x / 0.9, z / 0.9, seed) + 0.35 * valueNoise(x / 0.35, z / 0.35, seed + 1);
-        if (clump < 0.28 + 0.3 * Math.max(0, up - 0.4) / 0.6) return;
-        if (k.ground(x, z) < LAKE_Y + 0.35) return;
-        const j = k.r(2000 + 2 * s);
-        const crown = 0.19 * (0.65 + 0.7 * j);
-        const color = CONIFER[(i + Math.floor(4 * k.r(2001 + 2 * s))) % 4];
-        if (up > 0.55 || k.r(2001 + 2 * s) < 0.15) conifer(k, x, z, crown, color);
-        else k.tree('conifer', x, z, { crownKm: crown, heightKm: 3.9 * crown + 0.05, color });
-      }, { minSpacing: 0.25 });
-    }
   },
+  forests: HILL_FORESTS,
   waterFeatures: [{ kind: 'waterfall', path: [[0.74, LAKE_Y, 3.7], [0.76, -1.81, 3.95]] as V3[], width: 5.2 }],
   annotation: { title: 'Rauros', subtitle: 'Falls of Rauros and Amon Hen', blurb: 'Where the Great River thunders over the falls, and the Fellowship was broken.' },
   bookmarks: [

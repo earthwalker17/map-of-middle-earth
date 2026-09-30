@@ -1,6 +1,6 @@
 import type { LocalStamp } from '../types.ts';
 import { defineLandmark } from '../types.ts';
-import { buildRivendell, TREES } from './halls.ts';
+import { buildRivendell, FORESTS, TREES } from './halls.ts';
 import { FALLS, LEDGE_N, LEDGE_NE, LEDGE_S, LEDGE_SE, NORTH_FOOT, PAVILION, RAVINE_X, SOUTH_FOOT, STREAM } from './layout.ts';
 
 /**
@@ -51,6 +51,7 @@ export default defineLandmark({
   // belong in the gorge; the authored woods stay)
   vegetationExclusion: [...[LEDGE_N, LEDGE_S, LEDGE_NE, LEDGE_SE].map((l) => ({ at: l.at, r: l.r + 0.2 })), ...STREAM.filter((_, i) => i % 2 === 0).map((at) => ({ at, r: 1.0 }))],
   trees: TREES,
+  forests: FORESTS,
   // ribbon falls for S4 (EffectsSystem); pale static streaks stand in for them today (halls.ts)
   waterFeatures: FALLS.map((f) => ({ kind: 'waterfall' as const, path: f.path, width: f.width })),
   proxy: (k) => buildRivendell(k),

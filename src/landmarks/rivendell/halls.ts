@@ -1,6 +1,6 @@
 import { hashString, rand } from '../../core/rng.ts';
 import type { ProxyKit } from '../kit/ProxyKit.ts';
-import type { TreeDecl, V2 } from '../types.ts';
+import type { ForestDecl, TreeDecl, V2 } from '../types.ts';
 import { FALLS, FLOOR, LEDGE_N, LEDGE_NE, LEDGE_S, LEDGE_SE, PAVILION, RAVINE_X, STREAM_WE } from './layout.ts';
 import { archedBridge, fallStreak, hall, LAMP, offsetPath, spireTower, STONE, STONE2 } from './parts.ts';
 
@@ -296,15 +296,39 @@ function along(path: V2[], t: number): { p: V2; n: V2 } {
   return { p: [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f], n: [dz, -dx] };
 }
 
+/** the ledge bands (round the halls: characterful individuals, always drawn) vs the woods (forests) */
+const LEDGE_BANDS = BANDS.slice(0, 4);
+const WOOD_BANDS = BANDS.slice(4);
+
+const pathLength = (p: V2[]) => p.slice(1).reduce((a, q, i) => a + Math.hypot(q[0] - p[i][0], q[1] - p[i][1]), 0);
+
 /**
- * ~550 authored trees (VegetationSystem hero clusters) massed in overlapping clumps of 3–7 along the
- * wooded bands: autumn broadleaves (#b5702a / #d19a3a and between) with ~40 % dark conifers, crowns
- * 0.06–0.16 km — pure function of the seed.
+ * The woods of the gorge floor, the wall faces and the rims as landmark forests (placed by the vegetation
+ * system: chunked, LOD-capped, thinned with the quality density): the same bands, species mix and crown
+ * ranges as the authored clumps they replace — ≈ 5 trees per clump, clumped by stand noise, never inside
+ * the halls' keep-out circles.
+ */
+export const FORESTS: ForestDecl[] = WOOD_BANDS.map((b) => ({
+  area: { band: { path: b.path, halfWidth: b.hw } },
+  density: (b.n * 5) / Math.max(0.05, pathLength(b.path) * 2 * b.hw * 0.45),
+  species: [
+    { kind: 'autumn', share: 1 - b.conifer, crownKm: [0.1 * b.scale[0], 0.1 * b.scale[1]], heightFactor: [2.1, 2.1], colors: AUTUMN },
+    { kind: 'conifer', share: b.conifer, crownKm: [0.08 * b.scale[0], 0.08 * b.scale[1]], heightFactor: [3.75, 3.75], colors: CONIFER },
+  ],
+  clump: { scaleKm: 0.3, amount: 0.75 },
+  edgeKm: 0.05,
+  avoid: KEEP_OUT,
+}));
+
+/**
+ * ~100 authored trees (VegetationSystem hero clusters) massed in overlapping clumps of 3–7 along the ledge
+ * bands round the halls: autumn broadleaves (#b5702a / #d19a3a and between) with a few dark conifers,
+ * crowns 0.05–0.12 km — pure function of the seed. The woods beyond are FORESTS.
  */
 export const TREES: TreeDecl[] = (() => {
   const out: TreeDecl[] = [];
   let id = 0;
-  BANDS.forEach((b, bi) => {
+  LEDGE_BANDS.forEach((b, bi) => {
     for (let c = 0; c < b.n; c++) {
       const key = bi * 100 + c;
       const { p, n } = along(b.path, (c + 0.25 + 0.5 * rand(SEED, key, 0)) / b.n);

@@ -72,6 +72,50 @@ export interface AuthoredTree {
   id: number;
 }
 
+/**
+ * A forest area — local km in a landmark definition (`ForestDecl.area`), world km in a `ForestRecord`.
+ * circle · annulus (a ring around a summit: forested flanks, bald crown) · polygon (closed ring) · band
+ * (a strip of `halfWidth` either side of a polyline: valley floors, ledges, rims).
+ */
+export type ForestArea =
+  | { circle: { at: V2; r: number } }
+  | { annulus: { at: V2; r0: number; r1: number } }
+  | { polygon: V2[] }
+  | { band: { path: V2[]; halfWidth: number } };
+
+/** One species of a landmark forest. */
+export interface ForestSpecies {
+  kind: TreeKind;
+  /** relative share of the stand */
+  share: number;
+  /** crown radius range, km */
+  crownKm: [number, number];
+  /** total height as a multiple of the crown radius (default: the kind's recipe) */
+  heightFactor?: [number, number];
+  /** sRGB hex palette (default: the kind's recipe) */
+  colors?: number[];
+}
+
+/**
+ * A landmark forest in WORLD space: VegetationSystem places it like the natural forests (chunked,
+ * LOD-capped, thinned with the quality density), deterministic per (seed, cell).
+ */
+export interface ForestRecord {
+  landmark: string;
+  area: ForestArea;
+  /** trees per km² at quality density 1 */
+  density: number;
+  species: ForestSpecies[];
+  clump?: { scaleKm: number; amount: number };
+  edgeKm: number;
+  maxSlopeDeg: number;
+  /** clearings (world km) */
+  avoid: { at: V2; r: number }[];
+  /** lowest ground (world height) that carries trees */
+  minY: number;
+  seed: number;
+}
+
 export interface ExclusionCircle {
   x: number;
   z: number;
@@ -120,6 +164,8 @@ export interface BuiltLandmark {
   lodPx: [number, number];
   lights: LightRecord[];
   trees: AuthoredTree[];
+  /** woods placed by the vegetation system (masses of trees; `trees` are the individuals) */
+  forests: ForestRecord[];
   /** world-space bounds: centre, horizontal radius (km), height above the origin (km) */
   bounds: { center: V3; r: number; h: number };
   contacts: ContactRecord[];

@@ -200,7 +200,27 @@ const RECIPES: Record<TreeKind, Recipe> = {
  */
 export function authoredRecords(trees: readonly AuthoredTree[], seed: number): InstanceList {
   const out = new InstanceList();
-  for (const t of trees) {
+  for (const t of trees) pushTree(out, t, seed);
+  return out;
+}
+
+/** The tree fields the record recipes need (an AuthoredTree, or one tree of a landmark forest). */
+type TreeSpec = Pick<AuthoredTree, 'x' | 'z' | 'kind' | 'crownKm' | 'heightKm' | 'color' | 'yaw' | 'id'>;
+
+/**
+ * One tree of a landmark forest (forests.ts) → instance record(s). Conifers are two stacked clusters — a
+ * broad lower crown and a narrow top — so masses of them read as tapered firs, not capsules.
+ */
+export function pushForestTree(out: InstanceList, t: TreeSpec, seed: number): void {
+  if (t.kind !== 'conifer') return pushTree(out, t, seed);
+  const c = t.crownKm;
+  const h = t.heightKm ?? 4.8 * c + 0.05;
+  pushTree(out, { ...t, heightKm: h - 1.04 * c }, seed);
+  pushTree(out, { ...t, crownKm: 0.5 * c, heightKm: h, yaw: t.yaw + 1.3, id: t.id ^ 0x5bd1e995 }, seed);
+}
+
+function pushTree(out: InstanceList, t: TreeSpec, seed: number): void {
+  {
     const rec = RECIPES[t.kind];
     const r = (k: number) => rand(seed, t.id, k);
     const hr = Math.max(0.02, t.crownKm);
@@ -222,9 +242,8 @@ export function authoredRecords(trees: readonly AuthoredTree[], seed: number): I
         const shape = { spread: TIER_SPREAD + 0.04 * (r(10 + k) - 0.5), gap: k === 0 ? 0.06 : 0.14, hVar: 0.3 };
         out.push(t.x, t.z, tier.hr, tier.vr, tier.trunk, rec.kind, t.yaw + k * 0.93, 0.92 + 0.16 * r(20 + k), [rgb[0] * lift, rgb[1] * lift, rgb[2] * lift], shape);
       });
-      continue;
+      return;
     }
     out.push(t.x, t.z, c.hr, c.vr, trunk, rec.kind, t.yaw, 0.9 + 0.2 * r(6), rgb, c.shape);
   }
-  return out;
 }

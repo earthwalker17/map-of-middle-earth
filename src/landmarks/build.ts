@@ -5,7 +5,7 @@ import { landmarkOrigin, rotateLocal } from './frame.ts';
 import { bakeVertexAO, stripBakeAttributes } from './kit/ao.ts';
 import { ProxyKit, type KitLight, type KitOutput } from './kit/ProxyKit.ts';
 import { canLoadModels, loadModel, mergeLods, modelFootprint, unionBox } from './model.ts';
-import { DEFAULT_GATE, type AuthoredTree, type BuiltLandmark, type ContactRecord, type LightRecord, type LodGeometry } from './records.ts';
+import { DEFAULT_GATE, type AuthoredTree, type BuiltLandmark, type ContactRecord, type ForestArea, type ForestRecord, type LightRecord, type LodGeometry, type V2 } from './records.ts';
 import type { LandmarkDefinition, TreeDecl } from './types.ts';
 
 export interface BuildOptions {
@@ -133,6 +133,26 @@ function buildOne(world: World, def: LandmarkDefinition, opts: BuildOptions, mod
       id: hash32(seed, 1000 + i),
     };
   });
+  // forests: areas to world space (radii and crowns scale with the design scale)
+  const w2 = (p: V2): V2 => toWorld(p[0], p[1]);
+  const areaWorld = (a: ForestArea): ForestArea => {
+    if ('circle' in a) return { circle: { at: w2(a.circle.at), r: a.circle.r * s } };
+    if ('annulus' in a) return { annulus: { at: w2(a.annulus.at), r0: a.annulus.r0 * s, r1: a.annulus.r1 * s } };
+    if ('polygon' in a) return { polygon: a.polygon.map(w2) };
+    return { band: { path: a.band.path.map(w2), halfWidth: a.band.halfWidth * s } };
+  };
+  const forests: ForestRecord[] = (def.forests ?? []).map((f, i) => ({
+    landmark: def.id,
+    area: areaWorld(f.area),
+    density: f.density / (s * s),
+    species: f.species.map((sp) => ({ ...sp, crownKm: [sp.crownKm[0] * s, sp.crownKm[1] * s] as [number, number] })),
+    clump: f.clump ? { scaleKm: f.clump.scaleKm * s, amount: f.clump.amount } : undefined,
+    edgeKm: (f.edgeKm ?? 0.15) * s,
+    maxSlopeDeg: f.maxSlopeDeg ?? 70,
+    avoid: (f.avoid ?? []).map((c) => ({ at: w2(c.at), r: c.r * s })),
+    minY: f.minY === undefined ? -Infinity : origin[1] + f.minY * s,
+    seed: hash32(seed, 5000 + i),
+  }));
   const contacts: ContactRecord[] = kit.contacts.map((c) => {
     const [x, z] = toWorld(c.x, c.z);
     return { x, z, baseY: origin[1] + c.baseY * s, groundY: origin[1] + c.groundY * s, h: c.h * s };
@@ -148,6 +168,7 @@ function buildOne(world: World, def: LandmarkDefinition, opts: BuildOptions, mod
     lodPx: def.lodPx ?? DEFAULT_LOD_PX,
     lights,
     trees,
+    forests,
     bounds,
     contacts,
     stats: { tris, bytes, buildMs: Math.round(performance.now() - t0) },

@@ -11,12 +11,13 @@ import {
 } from 'three/webgpu';
 import type { FrameContext, InitContext, System } from '../core/types.ts';
 import type { World } from '../world/World.ts';
-import type { AuthoredTree } from '../landmarks/records.ts';
+import type { AuthoredTree, ForestRecord } from '../landmarks/records.ts';
 import { createClumpGeometry, CROWN_TOP } from './clumpGeometry.ts';
 import { createFoamTexture } from './foamTexture.ts';
 import { createFoliageMaterial, type FoliageMaterialParts } from './foliageMaterial.ts';
 import { FLOATS_PER_INSTANCE, placeVegetation, type ExclusionCircle } from './placement.ts';
 import { authoredRecords, crownReach } from './authored.ts';
+import { landmarkForestRecords } from './forests.ts';
 
 /** Spatial chunk size (km) for culling / LOD selection. */
 const CHUNK = 32;
@@ -80,6 +81,8 @@ export interface VegetationStats {
   fine: number;
   /** authored landmark trees (hero list) */
   hero: number;
+  /** trees of landmark forests (part of `coarse`) */
+  forest: number;
   chunks: number;
   drawn: number[];
   bandRadius: number;
@@ -114,6 +117,7 @@ export class VegetationSystem implements System {
   private scene: InitContext['scene'] | null = null;
   private exclusions: ExclusionCircle[] = [];
   private authored: AuthoredTree[] = [];
+  private forests: ForestRecord[] = [];
   private placedDensity = -1;
   private placedExclusions = -1;
   private exclusionsVersion = 0;
@@ -128,7 +132,7 @@ export class VegetationSystem implements System {
   private lastKey = '';
   /** diagnostics (probe): force every instance into one LOD bucket, or drop the fine band */
   debug: { forceLod: number | null; noFine: boolean } = { forceLod: null, noFine: false };
-  readonly stats: VegetationStats = { coarse: 0, fine: 0, hero: 0, chunks: 0, drawn: [], bandRadius: 0 };
+  readonly stats: VegetationStats = { coarse: 0, fine: 0, hero: 0, forest: 0, chunks: 0, drawn: [], bandRadius: 0 };
 
   constructor(private readonly world: World) {}
 
@@ -175,6 +179,16 @@ export class VegetationSystem implements System {
     this.stats.hero = n;
   }
 
+  /**
+   * Landmark forests (world space, from buildLandmarks): placed with the natural vegetation (chunked,
+   * LOD-capped, thinned with the quality density; forests.ts). Call before init (later calls re-place).
+   */
+  setForests(forests: ForestRecord[]): void {
+    this.forests = forests.map((f) => ({ ...f }));
+    this.exclusionsVersion++;
+    if (this.placedDensity > 0) this.place(this.placedDensity);
+  }
+
   getAuthored(): readonly AuthoredTree[] {
     return this.authored;
   }
@@ -201,6 +215,10 @@ export class VegetationSystem implements System {
 
   private place(density: number): void {
     const res = placeVegetation(this.world, { density, seed: this.world.spec.json.seeds.world, exclusions: this.exclusions });
+    // landmark forests join the always-drawn coarse list (chunked and LOD-selected like any stand)
+    const woods = landmarkForestRecords(this.world, this.forests, density);
+    for (const v of woods.data) res.coarse.data.push(v);
+    this.stats.forest = woods.count;
     const spec = this.world.spec;
     const ncx = Math.ceil(spec.width / CHUNK);
     const ncz = Math.ceil(spec.depth / CHUNK);

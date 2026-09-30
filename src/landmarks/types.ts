@@ -2,9 +2,9 @@ import type { OrbitSpec } from '../camera/shots.ts';
 import type { WeatherState } from '../core/types.ts';
 import type { Stamp } from '../world/stamps.ts';
 import type { ProxyKit } from './kit/ProxyKit.ts';
-import type { LightGate, LightKind, TreeKind, V2, V3 } from './records.ts';
+import type { ForestArea, ForestSpecies, LightGate, LightKind, TreeKind, V2, V3 } from './records.ts';
 
-export type { LightGate, LightKind, TreeKind, V2, V3 } from './records.ts';
+export type { ForestArea, ForestSpecies, LightGate, LightKind, TreeKind, V2, V3 } from './records.ts';
 
 /**
  * A landmark is a declarative bundle. One pure build run (build.ts) turns it into world-space records
@@ -69,6 +69,28 @@ export interface TreeDecl {
   yawDeg?: number;
 }
 
+/**
+ * A wood of many trees, placed by the vegetation system like the natural forests (chunked, LOD-capped,
+ * thinned with the quality density) — for masses of trees (forested hills, wooded gorges). A few
+ * characterful individuals stay `trees` (always drawn, never thinned). Local km, landmark frame.
+ */
+export interface ForestDecl {
+  area: ForestArea;
+  /** trees per km² at quality density 1 */
+  density: number;
+  species: ForestSpecies[];
+  /** clumping: value-noise stands of about `scaleKm`; `amount` 0 = uniform … 1 = clear gaps between stands */
+  clump?: { scaleKm: number; amount: number };
+  /** density ramps up over this distance inside the area's edge, km (default 0.15) */
+  edgeKm?: number;
+  /** no trees on slopes steeper than this (default 70° — the relief is exaggerated ×12, forested flanks are steep) */
+  maxSlopeDeg?: number;
+  /** clearings: no trees inside these circles (halls, a bald summit, the Seat) */
+  avoid?: { at: V2; r: number }[];
+  /** no trees where the ground is lower than this local height (km above the origin): shores, flood plains */
+  minY?: number;
+}
+
 /** A Blender-built GLB (tools/blender → public/models). Materials are named `fam:<FamilyId>`. */
 export interface ModelDecl {
   /** file name under public/models/ */
@@ -117,6 +139,7 @@ export interface LandmarkDefinition {
   lodPx?: [number, number];
   lights?: LightDecl[];
   trees?: TreeDecl[];
+  forests?: ForestDecl[];
   emitters?: EmitterDecl[];
   waterFeatures?: WaterFeatureDecl[];
   /** km radius cleared of forest around the origin (default: the place footprint), or explicit local circles */

@@ -26,7 +26,7 @@ import type { BuiltLandmark } from '../../src/landmarks/records.ts';
 import type { CheckResult } from './world.ts';
 
 const ROOT = process.cwd();
-const LIMITS = { lod1Share: 0.25, coarsestTris: 4000, lod0Total: 1_200_000, bytesTotal: 48 * 1024 * 1024, lights: 4096, trees: 2500 }; // trees: temporarily 2500 until landmark `forests` (vegetation placement) replace hand-authored woods (Rauros, Rivendell)
+const LIMITS = { lod1Share: 0.25, coarsestTris: 4000, lod0Total: 1_200_000, bytesTotal: 48 * 1024 * 1024, lights: 4096, trees: 2000, forestTrees: 30000 };
 
 interface Budget {
   minFeatureKm: number;
@@ -115,7 +115,11 @@ export async function checkLandmarks(world: World, landmarks: LandmarkDefinition
   if (lod0 > LIMITS.lod0Total) out.errors.push(`landmarks: total LOD0 ${lod0} tris > ${LIMITS.lod0Total}`);
   if (bytes > LIMITS.bytesTotal) out.errors.push(`landmarks: geometry ${(bytes / 1048576).toFixed(1)} MB > ${LIMITS.bytesTotal / 1048576} MB`);
   if (lights > LIMITS.lights) out.errors.push(`landmarks: ${lights} lights > ${LIMITS.lights}`);
-  if (trees > LIMITS.trees) out.errors.push(`landmarks: ${trees} authored trees > ${LIMITS.trees}`);
+  if (trees > LIMITS.trees) out.errors.push(`landmarks: ${trees} authored trees > ${LIMITS.trees} (masses of trees belong in \`forests\`)`);
+  // landmark forests at full quality density (the vegetation system places them; preview holds fewer)
+  const { landmarkForestRecords } = await import('../../src/vegetation/forests.ts');
+  const forestTrees = landmarkForestRecords(world, built.flatMap((b) => b.forests), 1).count;
+  if (forestTrees > LIMITS.forestTrees) out.errors.push(`landmarks: ${forestTrees} forest tree records > ${LIMITS.forestTrees}`);
   dispose(built);
 
   // determinism: a second, independent build must hash identically
@@ -184,7 +188,7 @@ export async function checkLandmarks(world: World, landmarks: LandmarkDefinition
 
   out.info.push(
     `landmarks: ${built.length} built (${rebuilt} rebuilt v2), LOD0 ${Math.round(lod0 / 1000)}k tris (LOD1 ${Math.round(lod1 / 1000)}k, coarsest ${Math.round(lodN / 1000)}k), ` +
-      `geometry ${(bytes / 1048576).toFixed(1)} MB, ${lights} lights, ${trees} authored trees, ${contacts} contacts, build ${buildMs} ms (AO ${aoMs} ms), ` +
+      `geometry ${(bytes / 1048576).toFixed(1)} MB, ${lights} lights, ${trees} authored trees, ${forestTrees} forest tree records, ${contacts} contacts, build ${buildMs} ms (AO ${aoMs} ms), ` +
       `determinism ${mismatch ? 'FAILED' : 'identical'}` +
       (models ? `, ${models} GLB model(s) ${(modelBytes / 1048576).toFixed(2)} MB` : ''),
   );

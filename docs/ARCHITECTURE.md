@@ -158,6 +158,11 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
    hero list BEFORE the chunks (they win the LOD0 cap; never excluded, barren-ruled or thinned) with a
    dedicated hero trunk geometry (flared, tapered, limbs) at LOD0; `mallornFrame()` gives landmarks the
    trunk / tier geometry to seat flets and lamps. Visible chunks are filled nearest-first.
+   **Landmark forests** (S3, forests.ts): `setForests(records)` — landmark `ForestDecl`s (area: circle /
+   annulus / polygon / band; density per km²; species mix with crown / height ranges and palettes; stand
+   clumping; edge feather; clearings; slope and lowest-ground limits) placed as ordinary coarse instances
+   (chunked, LOD-capped, thinned with the quality density), deterministic per (seed, world cell);
+   conifers as two-tier firs. Masses of trees go here; `trees` stay for a few characterful individuals.
 5. `DioramaSystem` (diorama/) — the slab: strata cut faces following the terrain edge profile (tier-aware:
    the preview variant moves fold/undulation to the vertex stage), glassy sea cross-section, satin-stone
    plinth.
@@ -182,7 +187,7 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
 
 ## Landmarks (src/landmarks)
 `defineLandmark({ id, placeId, tier, headingDeg, scale, anchor, stamps[], proxy(kit), model, lodPx,
-lights[], trees[], emitters[], waterFeatures[], vegetationExclusion, contrast, lookOverride, annotation,
+lights[], trees[], forests[], emitters[], waterFeatures[], vegetationExclusion, contrast, lookOverride, annotation,
 bookmarks[], cameraConstraints, audioHooks })` (types.ts). Folders are auto-discovered
 (`import.meta.glob`). Landmarks never create materials, particle systems or render loops — shared systems
 realize their declarations.
