@@ -76,7 +76,7 @@
     }
   },
   "rivers": {
-    "notes": "Exaggerated channel widths (km) for readability at diorama scale. Bake v2: every canon line gets a processed centreline (smoothKm corner smoothing, sampleKm spacing); a tributary ends (a distributary starts) at the edge of its parent's channel core, at the parent's level; lines joined end-to-start form one stem with a monotone water level (profile.*: asymmetric isotonic fit to min(thalweg + depth[class], lower bank - bankFreeboard) - the river is incised into its floodplain; filling costs fillWeight x cutting; a sill is cut at most maxCut deep unless that would hold back a pool deeper than maxPool; the level never exceeds the banks' spill level + fillCap (no perched water: the sill downstream is cut instead; a side feeder whose own valley lies below its parent's level ends at its valley bottom); boundary ramps at most rampGrade steep; maxCutOverrides for gorges; smoothKmByClass; free sources in a hollow below a sill within trimSourceKm start at the sill, continuation starts are fed and never trimmed). falls are the only places the surface may drop steeply. sinks = endorheic lakes (bake lake keys). bankKm / bankSlope (by class) ease valley walls beside the channel to at most that slope out to half the easing width (for great/major rivers widened where the cut is deep, at most easeMaxFactor x), the cap steepening smoothly beyond (its slope grows by 2 x wallRise over the second half) while the cut fades out (a continuous envelope, no crease); the walls are never lowered more than the ground at the water's edge stands above the water, tapering over edgeEaseKm (widened so the taper adds at most edgeRise units/km) - a V valley keeps its natural walls, no excavation; each sample's wall cone fades out coneFadeKm beyond the cell's own foot point; bankOverrides keep steeper walls in declared gorges (no other gorge walls). Short pits along the thalweg (pitKmByClass) are closed before the fit (the river pools over them); the fit's smoothing (by each line's class) stays within smoothLower below / smoothRaise above the fit. Hollows beside a river that its water surface closes off fill to its level within marshBandKm of the ribbon edge, following the river's level (marsh, up to marshMaxKm2 / marshMaxDepth; an allowance gated by pnpm check). The runtime ribbon half width is ribbonScale x widthKm/2 but at least ribbonMarginKm beyond the carved core (max(widthKm/2, 0.5)); landmark stamps beside the water are clamped to banks rising at most stampBankSlope units/km from the ribbon edge (HeightField RiverGuard).",
+    "notes": "Exaggerated channel widths (km) for readability at diorama scale. Bake v2: every canon line gets a processed centreline (smoothKm corner smoothing, sampleKm spacing); a tributary ends (a distributary starts) at the edge of its parent's channel core, at the parent's level; lines joined end-to-start form one stem with a monotone water level (profile.*: asymmetric isotonic fit to min(thalweg + depth[class], lower bank - bankFreeboard) - the river is incised into its floodplain; filling costs fillWeight x cutting; a sill is cut at most maxCut deep unless that would hold back a pool deeper than maxPool; the level never exceeds the banks' spill level + fillCap (no perched water: the sill downstream is cut instead; a side feeder whose own valley lies below its parent's level ends at its valley bottom); boundary ramps at most rampGrade steep; maxCutOverrides for gorges; smoothKmByClass; free sources in a hollow below a sill start at the sill, moved at most trimSourceKm - up to trimSourceMaxKm only where the hollow lies more than trimHollowCut below the sill (canon length kept) - continuation starts are fed and never trimmed). falls are the only places the surface may drop steeply. sinks = endorheic lakes (bake lake keys). bankKm / bankSlope (by class) ease valley walls beside the channel to at most that slope out to half the easing width (for great/major rivers widened where the cut is deep, at most easeMaxFactor x), the cap steepening smoothly beyond (its slope grows by 2 x wallRise over the second half) while the cut fades out (a continuous envelope, no crease); the walls are never lowered more than the ground at the water's edge stands above the water, tapering over edgeEaseKm (widened so the taper adds at most edgeRise units/km) - a V valley keeps its natural walls, no excavation; each sample's wall cone fades out coneFadeKm beyond the cell's own foot point; bankOverrides keep steeper walls in declared gorges (no other gorge walls). Short pits along the thalweg (pitKmByClass) are closed before the fit (the river pools over them), each pool at the level that moves the least terrain: lowering it saves fill and costs pitCutCost x the cut of the sill below it (at most maxCut: a short sill is notched, a long one keeps the pool); the fit's smoothing (by each line's class) stays within smoothLower below / smoothRaise above the fit. Hollows beside a river that its water surface closes off fill to its level within marshBandKm of the ribbon edge, following the river's level (marsh, up to marshMaxKm2 / marshMaxDepth; an allowance gated by pnpm check). The runtime ribbon half width is ribbonScale x widthKm/2 but at least ribbonMarginKm beyond the carved core (max(widthKm/2, 0.5)); landmark stamps beside the water are clamped to banks rising at most stampBankSlope units/km from the ribbon edge (HeightField RiverGuard).",
     "widthKm": {
       "great": 4.0,
       "major": 2.2,
@@ -126,7 +126,7 @@
     "sampleKm": 0.25,
     "smoothKm": 0.6,
     "snap": {
-      "notes": "Thalweg snap (tools/bake/bake/snap.py): before profiling, each processed centreline moves onto the DEM valley floor within windowKm of its ME-GIS course (Viterbi path over lateral offsets of stepKm, at most maxStep steps per sampleKm; cost = h_pre + offsetCost x |offset| per km, bendCost x offset change^2 / sampleKm); continuations are snapped with their main feeder as one path; ends at the sea, a lake, the frame or a shared node are pinned (window tapering over pinTaper x window), tributary ends / distributary starts are re-attached to the snapped parent; other lines' channels (core + otherMarginKm) are avoided outside joinZoneKm of the joins; the offsets are smoothed over smoothKm.",
+      "notes": "Thalweg snap (tools/bake/bake/snap.py): before profiling, each processed centreline moves onto the DEM valley floor within windowKm of its ME-GIS course (Viterbi path over lateral offsets of stepKm, at most maxStep steps per sampleKm; cost = h_pre + offsetCost x |offset| per km, bendCost x offset change^2 / sampleKm); continuations are snapped with their main feeder as one path (the junction sample moves as one point with one normal, eased over jointFrameKm, default 1.5; the feeder ends exactly at its continuation's start); ends at the sea, a lake, the frame or a shared node are pinned (window tapering over pinTaper x window), tributary ends / distributary starts are re-attached to the snapped parent; other lines' channels (core + otherMarginKm) are avoided outside joinZoneKm of the joins; the offsets are smoothed over smoothKm.",
       "windowKm": {
         "great": 6.0,
         "major": 4.0,
@@ -156,6 +156,7 @@
       },
       "smoothLower": 0.5,
       "smoothRaise": 0.3,
+      "pitCutCost": 1.0,
       "pitKmByClass": {
         "great": 12.0,
         "major": 12.0,
@@ -165,7 +166,9 @@
       "minGrade": 0.002,
       "rampKm": 3.0,
       "rampGrade": 0.4,
-      "trimSourceKm": 25.0,
+      "trimSourceKm": 5.0,
+      "trimSourceMaxKm": 25.0,
+      "trimHollowCut": 4.0,
       "bankFreeboard": 0.05,
       "fillCap": 0.4,
       "conflictTol": 0.3
@@ -287,13 +290,14 @@
     ]
   },
   "lakes": {
-    "notes": "Lake levels (keys = bake lake keys, as in lakes.json): levels{} authored override; else fitted with the rivers of its stem around the shorePercentile of the shore ring (low enough that little of the shore lies below the water). Beds are deepened below the level; shores above it are graded down to level + shoreEpsilon over gradeKm (default 0.3*sqrt(area), 1.5-5 km). Low shore connected to the water below the level within deltaKm of the polygon is filled flat to the level (a delta / marsh flat the inlets run across); elsewhere a lip rimFlatKm wide at the level hides the lake's edge and falls back to the natural shore at rimSlope (units/km) - no broad embankments. The bed is deepened inside the polygon only (coverage >= 0.5: the runtime surface); its antialiased edge pixels belong to the graded shore.",
+    "notes": "Lake levels (keys = bake lake keys, as in lakes.json): levels{} authored override; else fitted with the rivers of its stem around the shorePercentile of the shore ring (low enough that little of the shore lies below the water). Beds are deepened below the level; shores above it are graded down to level + shoreEpsilon over gradeKm (default 0.3*sqrt(area), 1.5-5 km). Low shore connected to the water below the level within deltaKm of the polygon is filled flat to the level (a delta / marsh flat the inlets run across); elsewhere a lip rimFlatKm wide at the level hides the lake's edge and falls back to the natural shore at rimSlope (units/km) - no broad embankments; no shore is raised more than rimMaxRaise (a deeper basin stays a basin). The bed is deepened inside the polygon only (coverage >= 0.5: the runtime surface); its antialiased edge pixels belong to the graded shore.",
     "shorePercentile": 25,
     "shoreEpsilon": 0.03,
     "rimFlatKm": 0.6,
     "rimSlope": 1.5,
     "deltaKm": 6.0,
     "riverKeepKm": 2.0,
+    "rimMaxRaise": 4.5,
     "gradeKm": {
       "long lake": 8.0
     },

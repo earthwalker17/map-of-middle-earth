@@ -6,10 +6,12 @@ export default defineLandmark({
   tier: 'B',
   // Meduseld's green hill standing alone on the plain before the White Mountains: display offset
   // (2, 5.5) km puts it on a natural knoll north of the Snowbourn, which runs past its southern foot
-  // ~3 km out, between the hill and the mountain front; a level crown carries Meduseld and its ring
+  // ~3 km out, between the hill and the mountain front. A broad, gentle raise (r 3.8, +2 over the knoll:
+  // grassy flanks, not a rock cone) and a level crown at full strength, wider than the r 1.35 ring
+  // (r 1.7 + 0.6 falloff), that carries Meduseld and its houses
   stamps: [
-    { kind: 'raise', at: [0, 0], radius: 2.2, amount: 2.8 },
-    { kind: 'flatten', at: [0, 0], radius: 1.4, falloff: 0.5, height: 'auto', strength: 0.85 },
+    { kind: 'raise', at: [0, 0], radius: 3.8, amount: 2.0 },
+    { kind: 'flatten', at: [0, 0], radius: 1.7, falloff: 0.6, height: 'auto' },
   ],
   proxy: (k) => {
     k.box('wood', 1.2, 0.45, 0.45, { at: [0, 0, -0.3], tint: 0x7a5a38 });
