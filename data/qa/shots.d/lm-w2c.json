@@ -2,10 +2,89 @@
   "version": 1,
   "notes": "S3 W2-C review shots: Hobbiton at night (windows) and from above, the Moria West-gate by day and from above, Rivendell's gorge from above. Landmark bookmarks (hobbiton / rivendell / moria -close and -wide) live in the landmark definitions.",
   "shots": [
-    { "id": "w2c-hobbiton-night", "tod": 21.0, "camera": { "orbit": { "place": "hobbiton", "distanceKm": 9, "elevationDeg": 9, "azimuthDeg": 215, "fov": 35, "lift": 0.8 } }, "compare": ["reference/photos/hobbiton/bag-end-hill-set.jpg"], "note": "night: warm round windows and lamps in the Hill, the Green Dragon and the mill" },
-    { "id": "w2c-hobbiton-top", "tod": 12.0, "camera": { "orbit": { "place": "hobbiton", "distanceKm": 9, "elevationDeg": 45, "azimuthDeg": 200, "fov": 35, "lift": 0 } }, "compare": ["reference/film/hobbiton/hobbiton-wide-fotr.jpg"], "note": "high oblique: the Hill, Bagshot Row, the gardens and hedges, the pond, the mill and the bridge over the Water" },
-    { "id": "w2c-moria-day", "tod": 14.0, "camera": { "orbit": { "place": "moria", "distanceKm": 9, "elevationDeg": 12, "azimuthDeg": 262, "fov": 35, "lift": 1.2 } }, "compare": ["reference/concept-art/moria/moria-gate-john-howe.jpg"], "note": "by day: the cliff, the pool, the door wall (no ithildin) and the hollies" },
-    { "id": "w2c-moria-top", "tod": 13.0, "camera": { "orbit": { "place": "moria", "distanceKm": 10, "elevationDeg": 50, "azimuthDeg": 250, "fov": 35, "lift": 0 } }, "note": "high oblique: the cliff wrapping the pool, the scarp behind, the shelf, the dry bed and the stair" },
-    { "id": "w2c-rivendell-top", "tod": 13.0, "camera": { "orbit": { "place": "rivendell", "distanceKm": 16, "elevationDeg": 55, "azimuthDeg": 150, "fov": 35, "lift": 0 } }, "note": "high oblique: the gorge walls, the ledges, the halls, the bridge and the autumn trees" }
+    {
+      "id": "w2c-hobbiton-night",
+      "tod": 21.0,
+      "camera": {
+        "orbit": {
+          "place": "hobbiton",
+          "distanceKm": 9,
+          "elevationDeg": 9,
+          "azimuthDeg": 215,
+          "fov": 35,
+          "lift": 0.8
+        }
+      },
+      "compare": [
+        "reference/photos/hobbiton/bag-end-hill-set.jpg"
+      ],
+      "note": "night: warm round windows and lamps in the Hill, the Green Dragon and the mill"
+    },
+    {
+      "id": "w2c-hobbiton-top",
+      "tod": 12.0,
+      "camera": {
+        "orbit": {
+          "place": "hobbiton",
+          "distanceKm": 9,
+          "elevationDeg": 45,
+          "azimuthDeg": 200,
+          "fov": 35,
+          "lift": 0
+        }
+      },
+      "compare": [
+        "reference/film/hobbiton/hobbiton-wide-fotr.jpg"
+      ],
+      "note": "high oblique: the Hill, Bagshot Row, the gardens and hedges, the pond, the mill and the bridge over the Water"
+    },
+    {
+      "id": "w2c-moria-day",
+      "tod": 14.0,
+      "camera": {
+        "orbit": {
+          "place": "moria",
+          "distanceKm": 9,
+          "elevationDeg": 12,
+          "azimuthDeg": 262,
+          "fov": 35,
+          "lift": 1.2
+        }
+      },
+      "compare": [
+        "reference/concept-art/moria/moria-gate-john-howe.jpg"
+      ],
+      "note": "by day: the cliff, the pool, the door wall (no ithildin) and the hollies"
+    },
+    {
+      "id": "w2c-moria-top",
+      "tod": 13.0,
+      "camera": {
+        "orbit": {
+          "place": "moria",
+          "distanceKm": 10,
+          "elevationDeg": 50,
+          "azimuthDeg": 250,
+          "fov": 35,
+          "lift": 0
+        }
+      },
+      "note": "high oblique: the cliff wrapping the pool, the scarp behind, the shelf, the dry bed and the stair"
+    },
+    {
+      "id": "w2c-rivendell-top",
+      "tod": 13.0,
+      "camera": {
+        "orbit": {
+          "place": "rivendell",
+          "distanceKm": 16,
+          "elevationDeg": 55,
+          "azimuthDeg": 150,
+          "fov": 35,
+          "lift": 0
+        }
+      },
+      "note": "high oblique: the gorge walls, the ledges, the halls, the bridge and the autumn trees"
+    }
   ]
 }
