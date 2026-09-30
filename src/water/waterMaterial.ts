@@ -357,8 +357,11 @@ export function createWaterMaterial(opts: WaterMaterialOptions): MeshStandardNod
   // waterline anti-aliasing: ~1 pixel of depth (rivers: their edges fade by the across coordinate)
   let alpha: N = isRiver ? smoothstep(0, 0.02, depth0) : smoothstep(0, gradLen.mul(footprint).mul(1.5).add(0.004), depth0);
   if (P.kind === 'lake') {
+    // baked lakes fade out by the baked lake mask; landmark pools (lakes.ts poolInfos, attribute
+    // waterPool = 1) have no baked lake under them and keep only their waterline anti-aliasing
     const lakeMask = texture(world.water, uv0).g;
-    alpha = alpha.mul(smoothstep(0.12, 0.4, lakeMask));
+    const pool = attribute('waterPool', 'float');
+    alpha = alpha.mul(max(smoothstep(0.12, 0.4, lakeMask), pool));
   }
   if (isRiver) {
     const edge = float(1).sub(smoothstep(0.72, 1.0, abs(flow!.y)));

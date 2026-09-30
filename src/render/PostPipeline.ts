@@ -50,6 +50,12 @@ export const gradeUniforms = {
   lift: uniform(new Vector3(0, 0, 0)),
   /** 0..1 hue-selective saturation: reds/oranges (lava, fire, the Eye) keep their colour */
   redKeep: uniform(0),
+  /**
+   * 0..1 luminance-keyed (hue-agnostic) exemption from the saturation step: bright emitters (amber
+   * windows, blue-white elven lamps, Morgul green) keep their colour through the night
+   * desaturation. RegionLook sets it ≈ 0.9·max(night, twilight); 0 by day.
+   */
+  glowKeep: uniform(0),
   vignette: uniform(0.35),
   bloomStrength: uniform(0.12),
   bloomRadius: uniform(0.55),
@@ -121,13 +127,17 @@ export class PostPipeline {
       const ex = g.exposure.mul(g.exposureBias);
       const c = input.rgb.mul(ex).toVar();
       if (bloomNode) c.addAssign(bloomNode.rgb.mul(ex));
+      // emitter key: luminance before the grade (lights and their bloom halo are the only things
+      // this bright at night; by day glowKeep is 0)
+      const glow = smoothstep(1.2, 4.0, dot(c, vec3(0.2126, 0.7152, 0.0722))).mul(g.glowKeep);
       c.assign(c.mul(g.tint).add(g.lift));
       // saturation around luminance; reds/oranges can be exempt (Lesnie's "desaturated, with
       // strong reds providing colour separation" for Mordor and Doom)
       const luma = dot(c, vec3(0.2126, 0.7152, 0.0722));
       // only strongly chromatic reds/oranges (lava, fire, embers), never brown earth or rock
       const redness = smoothstep(0.5, 0.8, c.r.sub(max(c.g, c.b)).div(max(c.r, 1e-4)));
-      const sat = mix(g.saturation, max(g.saturation, 1.15), redness.mul(g.redKeep));
+      const satRed = mix(g.saturation, max(g.saturation, 1.15), redness.mul(g.redKeep));
+      const sat = mix(satRed, max(satRed, 1.1), glow);
       c.assign(max(mix(vec3(luma), c, sat), vec3(0))); // saturation > 1 extrapolates: clamp (pow of negatives = NaN)
       // contrast pivot at mid-grey (log-ish, gentle)
       const pivot = float(0.18);

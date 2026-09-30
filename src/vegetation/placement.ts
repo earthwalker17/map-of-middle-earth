@@ -306,7 +306,7 @@ export interface PlacementResult {
 type RGB = [number, number, number];
 
 /** Colour pick: palette entry by hash, brightness/hue jitter, regional low-frequency variation. */
-function pickColor(kind: Kind, seed: number, id: number, x: number, z: number, pal: RGB[] = PAL_RGB[kind]): RGB {
+export function pickColor(kind: Kind, seed: number, id: number, x: number, z: number, pal: RGB[] = PAL_RGB[kind]): RGB {
   const r0 = rand(seed, id, 11);
   if (kind === Kind.Mirkwood) {
     // older bronze-olive stands in coherent patches (never isolated red crowns)
@@ -357,7 +357,7 @@ function fertility(s: WorldSampler, x: number, z: number): number {
   return f;
 }
 
-interface Crown {
+export interface Crown {
   hr: number;
   vr: number;
   trunk: number;
@@ -411,7 +411,7 @@ function canopyTop(c: Crown): number {
  * One broadleaf tree: oak (broad, spreading, short bole), beech (round dome) or elm (tall, narrow
  * vase), scaled by `size` (≈ horizontal crown radius, km).
  */
-function broadleaf(seed: number, id: number, size: number): Crown {
+export function broadleaf(seed: number, id: number, size: number): Crown {
   const t = rand(seed, id, 31);
   const a = rand(seed, id, 32);
   const b = rand(seed, id, 33);
@@ -428,6 +428,18 @@ function broadleaf(seed: number, id: number, size: number): Crown {
   const hr = size * (0.62 + 0.14 * a);
   const vr = hr * (1.4 + 0.35 * b);
   return { hr, vr, trunk: vr * (0.34 + 0.1 * a), shape: { spread: 0.42, gap: 0.08, hVar: 0.34 } };
+}
+
+/**
+ * The mallorn recipe (emergent Lórien mallorns and the authored ones of Caras Galadhon): a broad
+ * golden crown (horizontal radius `hr`, km) lifted on a silver trunk to `trunk` km above the ground
+ * (tall stacked columns read as sandstone pillars); `r` in [0, 1) varies the crown height. `hero`
+ * (the great trees of the city) fuses the sub-crowns into one tall, full crown that reads as a
+ * single giant tree rather than a lifted canopy patch.
+ */
+export function mallornShape(hr: number, trunk: number, r: number, hero = false): Crown {
+  if (hero) return { hr, vr: hr * (1.2 + 0.25 * r), trunk, shape: { spread: 0.5, gap: 0.02, hVar: 0.3 } };
+  return { hr, vr: hr * (1.05 + 0.25 * r), trunk, shape: { spread: 0.75, gap: 0.04, hVar: 0.35 } };
 }
 
 /** base of the tree line (world units; the alpine zone of the terrain starts ≈ 20) */
@@ -511,14 +523,8 @@ export function placeVegetation(world: World, opts: PlacementOptions): Placement
     const z = p.z + (rand(seed, id, 3) - 0.5) * coarseCell * 0.6;
     const hr = coarseCell * (0.42 + 0.14 * rand(seed, id, 4));
     if (excluded(ex, x, z, hr)) continue;
-    // broad golden crowns lifted on silver trunks (tall stacked columns read as sandstone pillars)
-    const vr = hr * (1.05 + 0.25 * rand(seed, id, 5));
-    const trunk = p.top * (1.25 + 0.25 * rand(seed, id, 6));
-    coarse.push(x, z, hr, vr, trunk, Kind.Lorien, rand(seed, id, 7) * TAU, 0.9 + 0.2 * rand(seed, id, 8), pickColor(Kind.Lorien, seed, id, x, z), {
-      spread: 0.75,
-      gap: 0.04,
-      hVar: 0.35,
-    });
+    const m = mallornShape(hr, p.top * (1.25 + 0.25 * rand(seed, id, 6)), rand(seed, id, 5));
+    coarse.push(x, z, m.hr, m.vr, m.trunk, Kind.Lorien, rand(seed, id, 7) * TAU, 0.9 + 0.2 * rand(seed, id, 8), pickColor(Kind.Lorien, seed, id, x, z), m.shape);
   }
 
   // ------------------------------------------------------------------ Shire & Bree-land hedgerows + field trees

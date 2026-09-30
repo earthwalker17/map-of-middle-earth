@@ -333,6 +333,11 @@ export class HeightField {
     return this.stamps.length;
   }
 
+  /** The composited stamp layer (read-only; groundMaps reads each stamp's `surface`). */
+  get stampList(): readonly Stamp[] {
+    return this.stamps;
+  }
+
   private applyOne(s: Stamp): void {
     const [x0, z0, x1, z1] = stampBounds(s);
     const c0 = Math.max(0, Math.floor((x0 - this.spec.xMin) / this.texel));
@@ -340,7 +345,7 @@ export class HeightField {
     const r0 = Math.max(0, Math.floor((z0 - this.spec.zMin) / this.texel));
     const r1 = Math.min(this.height - 1, Math.ceil((z1 - this.spec.zMin) / this.texel));
     let auto = 0;
-    if (s.kind === 'flatten' && (s.height === undefined || s.height === 'auto')) {
+    if ((s.kind === 'flatten' && (s.height === undefined || s.height === 'auto')) || (s.kind === 'basin' && s.floor === 'auto')) {
       const vals: number[] = [];
       for (let r = r0; r <= r1; r++)
         for (let c = c0; c <= c1; c++) {

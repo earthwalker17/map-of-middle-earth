@@ -49,7 +49,7 @@
     },
     "lorien": {
       "ground": {"ecotone": 0.2, "grass": "#7c9747", "dry": "#bba85a", "soil": "#6c5c3c", "rock": "#6a6a62", "dryness": 0.35, "pattern": 0.4},
-      "grade": {"tint": "#fbf8e6", "saturation": 0.98, "contrast": 0.93, "lift": [0.002, 0.0022, 0.0018], "bloom": 0.65},
+      "grade": {"tint": "#fbf8e6", "saturation": 0.98, "contrast": 0.93, "lift": [0.002, 0.0022, 0.0018], "bloom": 0.65, "spots": [{"place": "lothlorien", "radiusKm": 30, "tint": "#fff2d2", "saturation": 1.08, "contrast": 0.96, "exposure": 0.22, "lift": [0.0024, 0.0022, 0.0014], "bloom": 0.65}]},
       "atmo": {"tint": [1.16, 1.14, 1.0], "density": 1.35, "sky": [1.04, 1.04, 0.98]}
     },
     "fangorn": {

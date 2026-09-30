@@ -67,6 +67,11 @@ export const env = {
   /** cloud shadows: 0..1 darkening of the key light under a cloud, height of the cloud deck */
   cloudShadow: uniform(0.5),
   cloudHeight: uniform(58),
+  // ---- added by S3 emission (src/emission) ----
+  /** screen pixels per km at 1 km view depth: viewportHeight / (2·tan(fov/2)) — projected sizes in px */
+  pxPerKm: uniform(1000),
+  /** render-target height in pixels (the frame's viewport, not the canvas CSS size) */
+  viewportH: uniform(720),
 };
 
 export type EnvUniforms = typeof env;
