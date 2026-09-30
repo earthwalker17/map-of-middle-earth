@@ -26,8 +26,8 @@ const PIN_TOP = 3.4;
 /** the sheer rock pedestal the tower stands on rises this far above the pinnacle's crown */
 const PEDESTAL = 1.1;
 /** tower palette: the film's #161916 (under a dim sky), lifted so the fins keep shading in moonlight */
-const TOWER = 0x454c47;
-const TOWER_DARK = 0x3a403c;
+const TOWER = 0x5b635d;
+const TOWER_DARK = 0x4d544f;
 const ROCK = 0x4d514c;
 const STAIR_GLOW = 0x0f2a1c;
 const RED = 0xff3b1c;
@@ -127,7 +127,7 @@ function buildTower(k: ProxyKit, at: V2, y0: number): number {
         { outline: ring(t.r * (t.k + 0.1) * (1 - 0.14 * b0), 20), y: t.h * b0, rotDeg: t.rot + 9 },
         { outline: ring(t.r * (t.k + 0.1) * (1 - 0.14 * b1), 20), y: t.h * b1, rotDeg: t.rot + 9 },
       ],
-      { at: [at[0], y, at[1]], color: EMBER, glow: { strength: 0.9 } },
+      { at: [at[0], y, at[1]], color: EMBER, glow: { strength: 0.9 }, lod: 0 },
     );
     // the ledge where the next tier steps back: a flat parapet ring
     if (i < tiers.length - 1) {
@@ -139,7 +139,7 @@ function buildTower(k: ProxyKit, at: V2, y0: number): number {
           [t.r * 0.9, 0.06],
           [t.r * 0.4, 0.06],
         ],
-        { at: [at[0], y + t.h - 0.02, at[1]], seg: 10, color: TOWER_DARK },
+        { at: [at[0], y + t.h - 0.02, at[1]], seg: 10, color: TOWER_DARK, lod: 0 },
       );
     }
     y += t.h;
@@ -154,7 +154,7 @@ function buildTower(k: ProxyKit, at: V2, y0: number): number {
     const lean = 6 + 8 * k.r(320 + j);
     const ax = Math.cos(a);
     const az = Math.sin(a);
-    k.cone('darkStone', 0.06, h, { at: [at[0] + ax * R * 0.95, y - 0.04, at[1] + az * R * 0.95], rot: [lean * az, 0, -lean * ax], seg: 4, color: TOWER });
+    k.cone('darkStone', 0.06, h, { at: [at[0] + ax * R * 0.95, y - 0.04, at[1] + az * R * 0.95], rot: [lean * az, 0, -lean * ax], seg: 4, color: TOWER, lod: 0 });
   }
   return y;
 }
@@ -198,8 +198,8 @@ export default defineLandmark({
     // its platform's flat top stands 0.2 above the highest ground under it (extrude followGround)
     const courtTop = Math.max(...court.map(([x, z]) => k.ground(x, z))) + 0.2;
     k.extrude('darkStone', court, 0.2, { followGround: true, color: TOWER_DARK });
-    k.wallPath('darkStone', court, 0.12, 0.05, { closed: true, at: [0, courtTop - 0.01, 0], color: TOWER, crenel: { w: 0.03, h: 0.04, gap: 0.03, lod: 0 } });
-    k.tower('darkStone', 0.13, 0.42, { at: [bc[0] + 0.3, courtTop - 0.01, bc[1] - 0.12], sides: 8, roof: 'crenel', color: TOWER });
+    k.wallPath('darkStone', court, 0.12, 0.05, { closed: true, at: [0, courtTop - 0.01, 0], color: TOWER, crenel: { w: 0.03, h: 0.04, gap: 0.03, lod: 0 }, lod: 0 });
+    k.tower('darkStone', 0.13, 0.42, { at: [bc[0] + 0.3, courtTop - 0.01, bc[1] - 0.12], sides: 8, roof: 'crenel', color: TOWER, lod: 0 });
     // ---- the tower, stepped on the pedestal
     const topY = buildTower(k, PIN, foot);
     // ---- the Stairs: straight, then winding, up the western flank of the crest to the Cleft; cut dark
@@ -228,10 +228,10 @@ export default defineLandmark({
   bookmarks: [
     {
       id: 'cirith-ungol-close',
-      distanceKm: 35,
-      elevationDeg: 24,
+      distanceKm: 30,
+      elevationDeg: 23,
       azimuthDeg: 250,
-      fov: 28,
+      fov: 26,
       lift: 2,
       aimKm: [1.0, -0.5],
       tod: 21.0,

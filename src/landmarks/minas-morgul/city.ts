@@ -87,7 +87,7 @@ function wallSeg(k: ProxyKit, a: V2, b: V2, h: number, t: number, tt: number, sh
 }
 
 /** a glowing faceted wall tower with a dark slate spire, seated */
-function wallTower(k: ProxyKit, p: V2, r: number, h: number, spireH: number): void {
+function wallTower(k: ProxyKit, p: V2, r: number, h: number, spireH: number, lod?: 0 | 1 | 2): void {
   const pts: V2[] = Array.from({ length: 6 }, (_, j): V2 => [p[0] + Math.cos((j / 6) * Math.PI * 2) * r, p[1] + Math.sin((j / 6) * Math.PI * 2) * r]);
   const base = Math.min(...[...pts, p].map(([x, z]) => k.ground(x, z))) - SINK;
   k.lathe(
@@ -96,9 +96,9 @@ function wallTower(k: ProxyKit, p: V2, r: number, h: number, spireH: number): vo
       [r, 0],
       [r * 0.86, h],
     ],
-    { at: [p[0], 0, p[1]], seg: 6, seat: true, color: WALL_PAINT, shade: 1.08, glow: { strength: WALL_STRENGTH } },
+    { at: [p[0], 0, p[1]], seg: 6, seat: true, color: WALL_PAINT, shade: 1.08, glow: { strength: WALL_STRENGTH }, lod },
   );
-  k.cone('slate', r * 1.06, spireH, { at: [p[0], base + h, p[1]], seg: 6, color: SLATE });
+  k.cone('slate', r * 1.06, spireH, { at: [p[0], base + h, p[1]], seg: 6, color: SLATE, lod });
 }
 
 /**
@@ -185,7 +185,7 @@ export function buildCity(k: ProxyKit, maxWindows: number): void {
   });
   inner.forEach((p, i) => {
     wallSeg(k, p, inner[(i + 1) % inner.length], 0.5, 0.14, 0.09, 0.9 + 0.12 * k.r(60 + i), true);
-    if (i % 3 === 0) wallTower(k, p, 0.08, 0.8, 0.4);
+    if (i % 3 === 0) wallTower(k, p, 0.08, 0.8, 0.4, 0);
   });
 
   // ---- houses: tall, steep-roofed, packed and rising towards the keep; the street from the gate to the
@@ -203,7 +203,7 @@ export function buildCity(k: ProxyKit, maxWindows: number): void {
   let lit = 0;
   k.scatter(
     { polygon: inset },
-    170,
+    260,
     (i, x, z, u) => {
       const dT = Math.hypot(x - TOWER[0], z - TOWER[1]);
       const near = Math.max(0, 1 - (dT - 0.85) / 0.9);
@@ -232,16 +232,16 @@ export function buildCity(k: ProxyKit, maxWindows: number): void {
         lit++;
       }
     },
-    { minSpacing: 0.15, avoid: [street, { at: TOWER, r: 0.95 }] },
+    { minSpacing: 0.125, avoid: [street, { at: TOWER, r: 0.95 }] },
   );
   // a few slender spires among the houses
   k.scatter(
     { polygon: inset },
-    9,
+    14,
     (i, x, z, u) => {
       k.tower('stone', 0.05 + 0.03 * u, 0.6 + 0.45 * u, { at: [x, 0, z], seat: true, sides: 6, taper: 0.2, roof: 'spire', roofFam: 'slate', roofColor: SLATE, roofH: 0.35 + 0.2 * u, color: HOUSE[i % HOUSE.length], lod: 0 });
     },
-    { minSpacing: 0.55, avoid: [street, { at: TOWER, r: 0.95 }] },
+    { minSpacing: 0.45, avoid: [street, { at: TOWER, r: 0.95 }] },
   );
 }
 

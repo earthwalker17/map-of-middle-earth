@@ -103,9 +103,9 @@ export default defineLandmark({
       [EAST_KEYS, 1],
       [WEST_KEYS, -1],
     ] as [typeof EAST_KEYS, number][]) {
-      keys.gate.forEach((p, i) => brokenTower(k, p, 0.15, i ? 0.62 : 0.95, 8, STONE[i]));
-      brokenDome(k, keys.dome, sgn > 0 ? 0.33 : 0.4, sgn > 0 ? 0.34 : 0.42, sgn > 0 ? 230 : 250, STONE[2]);
-      brokenTower(k, keys.tall, 0.13, sgn > 0 ? 1.25 : 1.5, 12, STONE[3]);
+      keys.gate.forEach((p, i) => brokenTower(k, p, 0.17, i ? 0.85 : 1.3, 8, STONE[i]));
+      brokenDome(k, keys.dome, sgn > 0 ? 0.36 : 0.44, sgn > 0 ? 0.5 : 0.6, sgn > 0 ? 230 : 250, STONE[2]);
+      brokenTower(k, keys.tall, 0.15, sgn > 0 ? 1.7 : 2.0, 12, STONE[3]);
     }
 
     // ---- the city blocks: halls, towers and domes on a street grid parallel to the river
@@ -138,13 +138,13 @@ export default defineLandmark({
           const yaw = (u < 0.5 ? 0 : 90) + (k.r(seed + 100 + i) - 0.5) * 12;
           const color = STONE[i % STONE.length];
           if (kind < 0.7) {
-            const w = 0.28 + 0.32 * k.r(seed + 200 + i);
-            const d = 0.2 + 0.2 * k.r(seed + 300 + i);
-            ruinHall(k, [x, z], yaw, w, d, 0.22 + 0.24 * k.r(seed + 400 + i), seed + 500 + i * 70, color);
+            const w = 0.34 + 0.4 * k.r(seed + 200 + i);
+            const d = 0.24 + 0.22 * k.r(seed + 300 + i);
+            ruinHall(k, [x, z], yaw, w, d, 0.3 + 0.3 * k.r(seed + 400 + i), seed + 500 + i * 70, color);
           } else if (kind < 0.9) {
-            brokenTower(k, [x, z], 0.07 + 0.05 * u, 0.35 + 0.55 * k.r(seed + 600 + i), u < 0.5 ? 8 : 12, color, 0);
+            brokenTower(k, [x, z], 0.07 + 0.05 * u, 0.55 + 0.7 * k.r(seed + 600 + i), u < 0.5 ? 8 : 12, color, 0);
           } else {
-            brokenDome(k, [x, z], 0.16 + 0.08 * u, 0.2 + 0.1 * u, 200 + 60 * u, color);
+            brokenDome(k, [x, z], 0.18 + 0.1 * u, 0.28 + 0.14 * u, 200 + 60 * u, color);
           }
         },
         { minSpacing: 0.34, avoid: [...keyAvoid, ...fireAvoid, ...roads] },

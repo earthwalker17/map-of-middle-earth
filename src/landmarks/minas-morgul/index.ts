@@ -54,7 +54,19 @@ export default defineLandmark({
   lookOverride: 'mordor',
   annotation: { title: 'Minas Morgul', subtitle: 'The Tower of Sorcery', blurb: 'Once Minas Ithil, Tower of the Rising Moon — now the stronghold of the Nazgûl.' },
   bookmarks: [
-    { id: 'minas-morgul-close', distanceKm: 26, elevationDeg: 8, azimuthDeg: 238, fov: 28, lift: 3, aimKm: [0.3, -1.9], tod: 21.0 },
-    { id: 'minas-morgul-wide', distanceKm: 70, elevationDeg: 22, azimuthDeg: 255, fov: 35, lift: 9, tod: 21.0 },
+    {
+      id: 'minas-morgul-close',
+      distanceKm: 19,
+      elevationDeg: 9,
+      azimuthDeg: 238,
+      fov: 30,
+      lift: 2.5,
+      aimKm: [0.3, -1.9],
+      tod: 21.0,
+      dayOfYear: 78,
+      compare: ['reference/film/minas-morgul/minas-morgul-gate-bridge-film.jpg', 'reference/concept-art/minas-morgul/nasmith-tower-of-the-moon.jpg'],
+      note: 'night up the Morgul vale from Ithilien (west-south-west): the green-lit walled city on its shelf, the twisted tower, the bridge over the Morgulduin; a March moon 55° up in the south-south-west lights the vale (Frodo passed here on 10 March); Mount Doom and Barad-dûr beyond the Ephel Dúath on the right',
+    },
+    { id: 'minas-morgul-wide', distanceKm: 70, elevationDeg: 22, azimuthDeg: 255, fov: 35, lift: 9, tod: 21.0, dayOfYear: 78, note: 'the Morgul vale in the Ephel Dúath at night from over Ithilien, the city a green spark on the vale side, Mordor beyond' },
   ],
 });

@@ -79,7 +79,7 @@
     },
     "mordor": {
       "ground": {"ecotone": 0.15, "grass": "#2a3038", "dry": "#353a40", "soil": "#232427", "rock": "#2b2b2d", "dryness": 0.5, "pattern": 0.6, "volcanic": 1, "snowline": 14, "spots": [{"atKm": [1245, 668], "radiusKm": 45, "grass": "#282b30", "dry": "#323438"}, {"place": "minas-morgul", "radiusKm": 12, "grass": "#3a463f", "dry": "#454e49"}]},
-      "grade": {"tint": "#eaeff7", "saturation": 0.55, "contrast": 1.1, "exposure": -0.2, "redKeep": 0.9, "spots": [{"place": "minas-morgul", "radiusKm": 22, "tint": "#d4f5dd", "saturation": 1.4, "contrast": 1.08, "exposure": -0.1, "lift": [0.0006, 0.0014, 0.0009], "redKeep": 0.5}]},
+      "grade": {"tint": "#eaeff7", "saturation": 0.55, "contrast": 1.1, "exposure": -0.2, "redKeep": 0.9, "spots": [{"place": "minas-morgul", "radiusKm": 22, "tint": "#d4f5dd", "saturation": 1.4, "contrast": 1.08, "exposure": -0.1, "lift": [0.0006, 0.0014, 0.0009], "redKeep": 0.5}, {"place": "cirith-ungol", "radiusKm": 10, "tint": "#eef0f2", "saturation": 0.6, "contrast": 1.02, "exposure": 0.15}]},
       "atmo": {"tint": [0.36, 0.36, 0.4], "density": 2.8, "sky": [0.36, 0.37, 0.42], "spots": [{"place": "mount-doom", "radiusKm": 32, "tint": [1.0, 0.38, 0.18], "density": 2.9}, {"place": "minas-morgul", "radiusKm": 14, "tint": [0.55, 0.78, 0.62], "density": 2.8}]}
     },
     "nurn": {

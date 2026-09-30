@@ -144,7 +144,7 @@ export function buildTower(k: ProxyKit, s: TowerSpec): { crownY: number; topY: n
     const [ax, az] = turned(j * 22.5, tw, 1);
     const yaw = -Math.atan2(az, ax) / D2R;
     const len = rr - cr * 0.6;
-    k.box('stone', len, LH, 0.04, { at: [x + ax * (cr * 0.6 + len / 2), shaftTop, z + az * (cr * 0.6 + len / 2)], rot: [0, yaw, 0], color: CROWN_STONE });
+    k.box('stone', len, LH, 0.04, { at: [x + ax * (cr * 0.6 + len / 2), shaftTop, z + az * (cr * 0.6 + len / 2)], rot: [0, yaw, 0], color: CROWN_STONE, lod: 0 });
   }
   for (let j = 0; j < 8; j++) {
     const [px, pz] = turned(22.5 + 45 * j, tw, cr * 0.7 + 0.012);
@@ -171,7 +171,7 @@ export function buildTower(k: ProxyKit, s: TowerSpec): { crownY: number; topY: n
     const lean = big ? 13 : 20;
     // lean outwards: tilt the tip towards (ax, az) (Euler x tilts +y towards +z, z tilts it towards −x)
     const rot: V3 = [lean * az, 0, -lean * ax];
-    k.cone('darkStone', big ? 0.075 : 0.05, h, { at: [x + ax * R, rimY - 0.05, z + az * R], rot, seg: 4, color: 0x2b3f3c });
+    k.cone('darkStone', big ? 0.075 : 0.05, h, { at: [x + ax * R, rimY - 0.05, z + az * R], rot, seg: 4, color: 0x2b3f3c, lod: big ? 1 : 0 });
   }
   // the central spire, faceted
   const spireH = 1.05;
