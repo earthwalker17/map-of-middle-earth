@@ -357,7 +357,10 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     const wetCover = smoothstep(0.02, 0.15, max(pal.wetland, lc.g));
     const wetEdge = max(pal.wetland.mul(1.25), lc.g.mul(0.55)).add(n2.mul(0.2)).add(n3.mul(0.16)).add(n4.mul(0.08)).mul(wetCover);
     const wetW = smoothstep(0.35, 0.7, wetEdge).mul(float(1).sub(smoothstep(WET_SLOPE[0], WET_SLOPE[1], slope)));
-    const poolFade = float(1).sub(smoothstep(0.03, 0.2, fp));
+    // pools fade into the mat from regional distances on (at 20–40 km a hard-edged pool of a few hundred
+    // metres printed as a graphic 'leopard' blotch), and their edges soften with the pixel footprint
+    const poolFade = float(1).sub(smoothstep(0.015, 0.15, fp));
+    const poolSoft = fp.mul(3);
     // fine pool noise in a stretched frame bent by a gentle domain warp: bog pools lie in a grain
     // (along the mire's slope and drainage) that wanders, not as round blobs (a fixed rotation —
     // a position-dependent angle on world-scale coordinates would swirl into moiré)
@@ -371,8 +374,8 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     const tL = mix(float(0.72), float(0.42), poolDens);
     const nS = n5.add(n4.mul(0.3));
     const nL = n4.add(n3.mul(0.35));
-    const poolS = smoothstep(tS, tS.add(0.07), nS);
-    const poolL = smoothstep(tL, tL.add(0.1), nL);
+    const poolS = smoothstep(tS, tS.add(poolSoft.add(0.07)), nS);
+    const poolL = smoothstep(tL, tL.add(poolSoft.add(0.1)), nL);
     const pools = mix(poolDens.mul(0.16).add(0.04), max(poolS, poolL), poolFade).mul(wetW);
     // a wetter, darker moss rim around each pool
     const poolRim = max(smoothstep(tS.sub(0.14), tS, nS), smoothstep(tL.sub(0.16), tL, nL)).mul(poolFade);

@@ -22,6 +22,7 @@ import { spawnSync } from 'node:child_process';
 import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import { loadShots } from './shotList.ts';
+import { loadLandmarks } from '../check/baked.ts';
 import { fmtMem, hostMemory } from './host.ts';
 
 function arg(name: string, def?: string): string | undefined {
@@ -141,10 +142,15 @@ for (const id of rendered) tiles.push(await tile(shotFile(id), TW, TH, id));
 if (tiles.length) await grid(tiles, 3, TW, TH, join(out, 'contact.png'));
 tiles.length = 0;
 
+// landmark bookmarks carry their own `compare` lists (the page resolves them; read them from the definitions)
+const bookmarkCompare = new Map<string, string[]>();
+for (const def of await loadLandmarks()) for (const b of def.bookmarks ?? []) if (b.compare?.length) bookmarkCompare.set(b.id, b.compare);
+
 let compares = 0;
 for (const id of rendered) {
   const s = shots.find((x) => x.id === id);
-  const refs = [...new Set([...(s?.compare ?? []).map(refPath).flatMap(refImages), ...subjectRefs(shotSubject(id))])].slice(0, 3);
+  const own = s?.compare ?? bookmarkCompare.get(id) ?? [];
+  const refs = [...new Set([...own.map(refPath).flatMap(refImages), ...subjectRefs(shotSubject(id))])].slice(0, 3);
   if (!refs.length) continue;
   const parts = [await tile(shotFile(id), TW, TH, `${id} (render)`)];
   for (const r of refs) parts.push(await tile(r, TW, TH, r.replace(/\\/g, '/').split('/').slice(-2).join('/')));
