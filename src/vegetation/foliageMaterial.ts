@@ -2,7 +2,8 @@ import { MeshStandardNodeMaterial, PhysicalLightingModel, type Data3DTexture } f
 import { tsl, type TslNode } from '../materials/tsl.ts';
 import { env } from '../materials/environment.ts';
 import type { World } from '../world/World.ts';
-import { RING, RNOM } from './clumpGeometry.ts';
+import { RING, RNOM, TRUNK_LIMB, TRUNK_RING } from './clumpGeometry.ts';
+import { HERO_TRUNK } from './authored.ts';
 import { createFoamTexture, FOAM_PERIOD } from './foamTexture.ts';
 import { Kind, KIND_COUNT, LORIEN_TRUNK_K } from './placement.ts';
 
@@ -15,6 +16,7 @@ const {
   cameraViewMatrix,
   clamp,
   cos,
+  cross,
   diffuseColor,
   dot,
   float,
@@ -24,6 +26,7 @@ const {
   int,
   length,
   max,
+  min,
   mix,
   normalView,
   normalize,
@@ -206,6 +209,8 @@ export function createFoliageMaterial(world: World, opts: FoliageOptions = {}): 
   // trunk radius / horizontal crown radius (mallorns: stout silver columns)
   const trunkK = perKind({ [Kind.Lorien]: LORIEN_TRUNK_K, [Kind.Hedge]: 0 }, 0.085);
 
+  const foam = taps > 0 ? (opts.foam ?? createFoamTexture(world.spec.json.seeds.world + 71)) : null;
+
   // ---------------------------------------------------------------- vertex
   const uvI = vec2(iA.x.sub(spec.xMin).div(spec.width), iA.y.sub(spec.zMin).div(spec.depth));
   const ground = texture(hTex, uvI).level(0).r;
@@ -228,13 +233,50 @@ export function createFoliageMaterial(world: World, opts: FoliageOptions = {}): 
   const cy = R.mul(sy).mul(0.55).add(h(3).sub(0.5).mul(hVar));
   const jit = spread.mul(0.16);
   const centreU = vec3(sub.x.mul(spread).add(h(4).sub(0.5).mul(jit)), cy, sub.y.mul(spread).add(h(5).sub(0.5).mul(jit)));
-  const u = centreU.add(vec3(lp.x, lp.y.mul(sy), lp.z).mul(R));
+  // silhouette breakup: the sub-crown surface displaced +-8 % radially by a lump field of about half its
+  // radius (each sub-crown its own lumps; stable per instance, never swimming with the wind)
+  let lpS: N = lp;
+  if (foam) {
+    const sil = texture3D(foam, lp.mul(2.2).add(vec3(seed.mul(37.1), subIdx.mul(5.3), seed.mul(11.3))).div(FOAM_PERIOD)).level(0).a;
+    lpS = lp.mul(float(1).add(sil.sub(0.5).mul(0.16)));
+  }
+  const u = centreU.add(vec3(lpS.x, lpS.y.mul(sy), lpS.z).mul(R));
   const crownLocal = vec3(u.x.mul(hr), u.y.mul(vr).add(trunk), u.z.mul(hr).mul(aspect));
   // trunks only where the crown is lifted off the ground (forest canopy hides its stems)
   const tr = select(trunk.greaterThan(vr.mul(0.04)), hr.mul(trunkK.element(ik)), float(0));
   const trunkTop = trunk.add(vr.mul(kSpread).mul(0.42 * 0.5));
   const trunkLocal = vec3(lp.x.mul(tr), mix(float(-0.25), trunkTop, lp.y), lp.z.mul(tr));
-  const local = select(isTrunk, trunkLocal, crownLocal);
+
+  // hero geometry (authored trees near the camera, clumpGeometry TRUNK_RING / TRUNK_LIMB):
+  // a ringed trunk with the hero profile (authored.ts HERO_TRUNK / heroTrunkRadius) - ring codes: < -1.5
+  // the deep foot, -1..0 a flare ring at that fraction of the flare height, > 0 a fraction of the trunk top
+  const isRing = isTrunk.and(abs(sub.w.sub(TRUNK_RING)).lessThan(0.5));
+  const isLimb = isTrunk.and(abs(sub.w.sub(TRUNK_LIMB)).lessThan(0.5));
+  const fh = max(min(float(HERO_TRUNK.flareKm), trunk.div(20)), 1e-3);
+  const foot = tr.mul(2.2).add(HERO_TRUNK.sink);
+  const hRing = select(lp.y.lessThan(-1.5), foot.negate(), select(lp.y.lessThan(0), lp.y.negate().mul(fh), lp.y.mul(trunkTop)));
+  const taper = float(1)
+    .sub(clamp(hRing.div(max(trunk, 1e-3)), 0, 1).mul(1 - HERO_TRUNK.taper))
+    .sub(clamp(hRing.sub(trunk).div(max(trunkTop.sub(trunk), 1e-3)), 0, 1).mul(HERO_TRUNK.taper - HERO_TRUNK.taperTop));
+  const flareF = float(1).sub(clamp(hRing.div(fh), 0, 1));
+  const rRing = tr.mul(taper).mul(flareF.mul(flareF).mul(HERO_TRUNK.flare).add(1));
+  const ringLocal = vec3(lp.x.mul(rRing), hRing, lp.z.mul(rRing));
+  // the flare's surface faces up as well as out (dr/dh)
+  const ringUp = clamp(tr.mul(2 * HERO_TRUNK.flare).mul(flareF).div(fh).mul(taper).mul(select(hRing.greaterThan(0), float(1), float(0))), 0, 3);
+  const ringN = normalize(vec3(lp.x, ringUp, lp.z));
+  // primary limbs: from the upper trunk (about 0.8 of its height, never more than 0.6 vr below the crown
+  // base) out and up into the lower crown, tapering
+  const az = sub.x;
+  const limbS = vec3(0, trunk.sub(min(trunk.mul(0.2), vr.mul(0.6))), 0);
+  const limbE = vec3(cos(az).mul(hr).mul(0.55), trunk.add(vr.mul(0.15)), sin(az).mul(hr).mul(0.55).mul(aspect));
+  const limbD = normalize(limbE.sub(limbS));
+  const limbU = normalize(vec3(limbD.z.negate(), 0, limbD.x));
+  const limbW = cross(limbU, limbD);
+  const limbN = limbU.mul(lp.x).add(limbW.mul(lp.z));
+  const limbLocal = mix(limbS, limbE, lp.y).add(limbN.mul(mix(tr.mul(0.34), tr.mul(0.12), lp.y)));
+
+  const trunkAny = select(isLimb, limbLocal, select(isRing, ringLocal, trunkLocal));
+  const local = select(isTrunk, trunkAny, crownLocal);
 
   // wind: gentle bend growing with height inside the crown (miniature → slow, small)
   const bend = clamp(local.y.sub(trunk).div(vr.mul(1.3)), 0, 1);
@@ -254,14 +296,14 @@ export function createFoliageMaterial(world: World, opts: FoliageOptions = {}): 
   // a leaf mass scatters light from leaves of every orientation: soften the sphere shading of each
   // sub-crown towards the canopy's up (more for canopy patches than for single trees)
   const nCrownW = normalize(mix(nGeo, vec3(0, 1, 0), spread.mul(0.42)));
-  const nL = select(isTrunk, normalize(ln), nCrownW);
+  const nL = select(isTrunk, select(isLimb, limbN, select(isRing, ringN, normalize(ln))), nCrownW);
   const nW = vec3(nL.x.mul(cs).add(nL.z.mul(sn)), nL.y, nL.z.mul(cs).sub(nL.x.mul(sn)));
 
   // foam clumps: size follows the sub-crown (small trees get small clumps); one field shared by
   // the vertex relief and the fragment micro structure
-  const foam = taps > 0 ? (opts.foam ?? createFoamTexture(world.spec.json.seeds.world + 71)) : null;
   const CLUMP_RELIEF = false;
-  const grainOf = (subR: N, kIdx: N) => clamp(subR.mul(0.4), 0.022, 0.28).mul(grainK.element(kIdx));
+  // clump grain: about a third of the sub-crown radius (about 1/12 of a clustered crown), at most 0.24 km
+  const grainOf = (subR: N, kIdx: N) => clamp(subR.mul(0.3), 0.02, 0.24).mul(grainK.element(kIdx));
   const foamOff = (sd: N) => vec3(sd.mul(37.1), sd.mul(5.3), sd.mul(11.3));
   let worldPos: N = basePos;
   // Vertex clump relief is off: the finest LOD's sub-crown vertex spacing is as large as the foam
@@ -290,10 +332,18 @@ export function createFoliageMaterial(world: World, opts: FoliageOptions = {}): 
   // (crowns hung low by the height jitter may reach below 0: clamp, negative marks the trunk)
   const vCrownH = varying(select(isTrunk, float(-1), max(u.y.div(uTop), 0)), 'vFolCrownH');
   const vSubH = varying(lp.y, 'vFolSubH');
-  const vCavity = varying(cavity, 'vFolCavity');
+  // cavities: the creases between a sub-crown's own lobes (baked), the saddles of its surface (distance
+  // to the lobe centre: a crease lies inside the lobe tops) and the inner faces of the cluster (distance to
+  // its centre: where sub-crowns meet, deep in the crown)
+  const lobeCav = float(1).sub(smoothstep(0.74, 0.93, length(lp)));
+  const uMid = uTop.mul(0.45);
+  const dC = length(vec3(u.x, u.y.sub(uMid).div(max(uTop.mul(0.55), 0.2)), u.z));
+  const clusterCav = float(1).sub(smoothstep(0.35, 0.8, dC));
+  const vCavity = varying(select(isTrunk, float(0), max(cavity, max(lobeCav.mul(0.85), clusterCav.mul(0.75)))), 'vFolCavity');
   const vKind = varying(kind, 'vFolKind');
   const vSeed = varying(seed, 'vFolSeed');
-  const vSubR = varying(R.mul(hr), 'vFolSubR');
+  // micro-structure scale: the sub-crown radius (crowns), a fraction of the trunk radius (bark)
+  const vSubR = varying(select(isTrunk, tr.mul(0.6), R.mul(hr)), 'vFolSubR');
 
   // ---------------------------------------------------------------- fragment
   const nMacro = normalize(vNormal);
@@ -306,25 +356,30 @@ export function createFoliageMaterial(world: World, opts: FoliageOptions = {}): 
   let bumpG: N = vec3(0);
   let creaseA: N = float(1);
   let creaseAO: N = float(1);
+  let barkN: N = float(1);
   if (foam) {
     const grain = grainOf(vSubR, ikF);
     const grainPx = grain.mul(pxPerKm).div(dist);
     const off = foamOff(vSeed);
     const fade1 = smoothstep(1.0, 4.0, grainPx).mul(crownF);
-    const t1 = texture3D(foam, p.div(grain).add(off).div(FOAM_PERIOD));
+    // bark: the same tap stretched 10x along the trunk (vertical streaks)
+    const aniso = select(isTrunkF, vec3(1, 0.1, 1), vec3(1, 1, 1));
+    const t1 = texture3D(foam, p.mul(aniso).div(grain).add(off).div(FOAM_PERIOD));
     const g1 = t1.rgb.sub(0.5).mul(8);
-    bumpG = g1.mul(fade1.mul(0.12));
-    creaseA = mix(float(1), mix(float(0.82), float(1), t1.a), fade1);
-    creaseAO = mix(float(1), mix(float(0.55), float(1), t1.a), fade1);
+    // leaf clumps shade with their own normals (lit tops, shaded undersides) more than by albedo spots
+    bumpG = g1.mul(fade1.mul(0.28));
+    creaseA = mix(float(1), mix(float(0.88), float(1.02), t1.a), fade1);
+    creaseAO = mix(float(1), mix(float(0.72), float(1), t1.a), fade1);
+    barkN = mix(float(1), mix(float(0.78), float(1.1), t1.a), smoothstep(1.0, 4.0, grainPx).mul(float(1).sub(crownF)));
     if (taps > 1) {
       // fine porosity: the same field 2.6× smaller, axes swizzled so the two scales never align
       const g2s = grain.mul(0.34);
       const fade2 = smoothstep(1.0, 4.0, grainPx.mul(0.34)).mul(crownF);
       const t2 = texture3D(foam, p.zxy.div(g2s).add(off.yzx).div(FOAM_PERIOD));
       // leaf clusters: lit tips and dark holes, their normals scattered (sun speckle)
-      bumpG = bumpG.add(t2.rgb.sub(0.5).mul(8).zxy.mul(fade2.mul(0.13)));
-      creaseA = creaseA.mul(mix(float(1), mix(float(0.66), float(1.1), t2.a), fade2));
-      creaseAO = creaseAO.mul(mix(float(1), mix(float(0.6), float(1), t2.a), fade2));
+      bumpG = bumpG.add(t2.rgb.sub(0.5).mul(8).zxy.mul(fade2.mul(0.2)));
+      creaseA = creaseA.mul(mix(float(1), mix(float(0.8), float(1.05), t2.a), fade2));
+      creaseAO = creaseAO.mul(mix(float(1), mix(float(0.78), float(1), t2.a), fade2));
     }
   }
   // tilt the macro normal away from the clump centre (tangential part of the field gradient)
@@ -338,15 +393,15 @@ export function createFoliageMaterial(world: World, opts: FoliageOptions = {}): 
   let alb: N = vAlbedo.mul(densK.element(ikF)).mul(mix(float(0.7), float(1), subLit)).mul(mix(float(0.8), float(1), clusterLit));
   // warm, sun-bleached crown tops
   alb = mix(alb, alb.mul(vec3(1.1, 1.06, 0.86)), smoothstep(0.6, 1.0, crownH).mul(0.3));
-  alb = alb.mul(float(1).sub(vCavity.mul(0.35))).mul(creaseA);
-  // trunks: dark bark, silver mallorn trunks in Lórien, pale sick trunks in Mirkwood
-  const bark = select(kindIs(vKind, Kind.Lorien), srgb(0xa7aca6), select(kindIs(vKind, Kind.Mirkwood), srgb(0x5e5a4e), srgb(0x3b3026)));
-  const albedo = select(isTrunkF, bark, alb);
+  alb = alb.mul(float(1).sub(vCavity.mul(0.4))).mul(creaseA);
+  // trunks: dark bark, warm silver mallorn trunks in Lórien, pale sick trunks in Mirkwood
+  const bark = select(kindIs(vKind, Kind.Lorien), srgb(0xcfc8b8), select(kindIs(vKind, Kind.Mirkwood), srgb(0x5e5a4e), srgb(0x3b3026)));
+  const albedo = select(isTrunkF, bark.mul(barkN), alb);
 
   const ao = select(
     isTrunkF,
     float(0.7),
-    mix(float(0.5), float(1), subLit).mul(mix(float(0.6), float(1), clusterLit)).mul(float(1).sub(vCavity.mul(0.4))).mul(creaseAO),
+    mix(float(0.5), float(1), subLit).mul(mix(float(0.6), float(1), clusterLit)).mul(float(1).sub(vCavity.mul(0.55))).mul(creaseAO),
   );
 
   const material = new FoliageNodeMaterial();
@@ -359,10 +414,13 @@ export function createFoliageMaterial(world: World, opts: FoliageOptions = {}): 
   // the fill matters most when the key light is weak: moonlit night, blue hour, dawn
   material.skyFillNode = select(isTrunkF, float(0.3), fillK.element(ikF)).mul(float(1).add(env.night.mul(2.6)).add(env.twilight.mul(0.9)));
   material.transColorNode = select(isTrunkF, vec3(0), vAlbedo.mul(vec3(1.1, 1.3, 0.6)).mul(transK.element(ikF)).mul(0.85));
-  // Lórien: faintly luminous gold (stronger at night); mallorn bark catches a little of it
+  // Lórien: faintly luminous gold (stronger at night), with a warm-gold sheen through twilight (the wood
+  // keeps its gold at blue hour); mallorn bark catches a little of it
+  const sheen = select(isTrunkF, vec3(0), vAlbedo.mul(vec3(1.15, 0.98, 0.62))).mul(env.twilight.mul(0.075));
   material.emissiveNode = select(isTrunkF, bark.mul(0.2), vAlbedo)
-    .mul(glowK.element(ikF))
     .mul(float(0.012).add(env.night.mul(0.024)))
+    .add(sheen)
+    .mul(glowK.element(ikF))
     .mul(select(isTrunkF, float(1), crownH.mul(0.6).add(0.4)));
   // Guard against the post grade: its saturation (>1) extrapolates away from luma and a saturated
   // gold with little blue went negative → pow() → NaN → black crowns. Keep every channel above

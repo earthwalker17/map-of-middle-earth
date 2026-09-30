@@ -16,11 +16,21 @@ import { valueNoise } from '../core/rng.ts';
  * below it: the guard keeps the channel and lake cells at their baked height and clamps stamped
  * ground to a natural bank next to them.
  *
+ * `snowCap` (massif, cone) keeps snow on the stamped mountain above that fraction of its height on all
+ * but its sheerest faces (terrainMaterial reads `stampSnowCaps`): at the terrain's 12× exaggeration a
+ * lone peak is steeper everywhere than the slope the regional snow rules hold snow on.
+ *
  * `rough` (ridge, scarp, massif, raise, cone) adds deterministic value noise (src/core/rng.ts) in
- * WORLD coordinates, faded with the stamp's own profile. `surface` overrides the terrain's stamp
- * turf rule inside the stamp's influence (terrain/groundMaps.ts): 'turf' forces grass/soil on the
- * stamped faces, 'rock' leaves them to the terrain's slope / alpine rock rules, 'auto' (default)
- * decides from the pre-stamp slope and the stamp height.
+ * WORLD coordinates, faded with the stamp's own profile; octaves finer than ROUGH_MIN_KM (four texels)
+ * are dropped — finer ridged noise aliases into regular teeth on the 0.4 km texels. Crest lines of
+ * massifs are rounded over at least two texels for the same reason.
+ *
+ * `surface` overrides the terrain's stamp turf rule inside the stamp's influence (terrain/groundMaps.ts):
+ * 'turf' forces grass/soil on the stamped faces, 'rock' leaves them to the terrain's slope / alpine rock
+ * rules, 'auto' (default) decides from the pre-stamp slope and the stamp height.
+ *
+ * Stamps are immutable data: derived per-stamp data (the massif crest lines) is memoised by object
+ * identity, so a tool that edits a stamp must replace the object, never mutate it in place.
  */
 export type Vec2 = [number, number];
 
@@ -28,7 +38,7 @@ export type Vec2 = [number, number];
 export interface Rough {
   /** amplitude, world height units */
   amp: number;
-  /** feature size of the first octave, km (≥ ~1.2 km: the heightfield resolution) */
+  /** feature size of the first octave, km (≥ ROUGH_MIN_KM: octaves finer than that are dropped) */
   scaleKm: number;
   ridged?: boolean;
   seed?: number;
@@ -80,6 +90,8 @@ export interface ConeStamp extends StampBase {
   craterRadius?: number;
   craterDepth?: number;
   rough?: Rough;
+  /** snow above this fraction of (summit − base) on all but the sheerest faces (see the module doc) */
+  snowCap?: number;
 }
 
 /** Plateau/mesa: raise to at least `height` with a steep rim. */
@@ -160,10 +172,10 @@ export interface MassifSpur {
  * Optional ridged roughness and a crater. Like `cone`, it never lowers the ground; the foot blends
  * out as the profile approaches `base`.
  *
- * Example (Erebor): `{ kind: 'massif', at: [2.5, −8.3], radius: 7, summit: 21, base: 1.2, exponent: 1.5,
- * flankSlope: 2, spurs: [{ azimuthDeg: 78, lengthKm: 23, widthKm: 4, heightFrac: 0.36 }, …],
- * rough: { amp: 1.3, scaleKm: 3.6, ridged: true } }` (heights local: relative to the ground at the
- * landmark origin).
+ * Example (Erebor): `{ kind: 'massif', at: [2.5, −8.3], radius: 8, summit: 27.5, base: 1.2, exponent: 1.2,
+ * dome: 0.6, flankSlope: 2.3, spurs: [{ azimuthDeg: 238, lengthKm: 23, widthKm: 5, heightFrac: 0.5,
+ * rootFrac: 0.66 }, …], rough: { amp: 1, scaleKm: 3.6, ridged: true }, snowCap: 0.7 }` (heights local:
+ * relative to the ground at the landmark origin).
  */
 export interface MassifStamp extends StampBase {
   kind: 'massif';
@@ -175,6 +187,11 @@ export interface MassifStamp extends StampBase {
   base?: number;
   /** body profile exponent (default 1.3) */
   exponent?: number;
+  /**
+   * convex summit 0..1 (default 0): the body is (1 − (d/radius)^(1 + dome))^exponent — 0 a pointed concave
+   * peak, higher a broad, heavy crown that holds its height (and its snow) before the flanks fall away
+   */
+  dome?: number;
   spurs: MassifSpur[];
   /** mean flank slope of the spurs, height units per km (default 1.5): steeper = narrower spurs and
    * deeper valleys between them */
@@ -182,6 +199,8 @@ export interface MassifStamp extends StampBase {
   rough?: Rough;
   craterRadius?: number;
   craterDepth?: number;
+  /** snow above this fraction of (summit − base) on all but the sheerest faces (see the module doc) */
+  snowCap?: number;
 }
 
 /**
@@ -253,17 +272,22 @@ function nearestOnPath(path: Vec2[], x: number, z: number): PathHit {
   return hit;
 }
 
+/** finest roughness octave, km: four heightfield texels (finer ridged noise aliases into teeth) */
+export const ROUGH_MIN_KM = 1.6;
+
 /**
- * fBm value noise in [−1, 1] at world (x, z) (three octaves; ridged: sharp crests at +1). Each octave is
- * rotated (0.61 rad per octave) so the value-noise lattice never lines up into regular teeth.
+ * fBm value noise in [−1, 1] at world (x, z) (up to three octaves, none finer than ROUGH_MIN_KM; ridged:
+ * sharp crests at +1). Each octave is rotated (0.61 rad per octave) so the value-noise lattice never lines
+ * up into regular teeth.
  */
 export function roughNoise(r: Rough, x: number, z: number): number {
   const seed = r.seed ?? 0;
-  let f = 1 / Math.max(1e-3, r.scaleKm);
+  let f = 1 / Math.max(ROUGH_MIN_KM, r.scaleKm);
   let a = 1;
   let sum = 0;
   let norm = 0;
   for (let o = 0; o < 3; o++) {
+    if (o > 0 && 1 / f < ROUGH_MIN_KM) break;
     const c = Math.cos(o * 0.61);
     const sn = Math.sin(o * 0.61);
     const n = valueNoise((x * c - z * sn) * f + o * 17.31, (x * sn + z * c) * f - o * 9.17, seed + o * 101);
@@ -296,6 +320,25 @@ function massifReach(s: MassifStamp): number {
   let r = s.radius;
   for (const sp of s.spurs) r = Math.max(r, Math.hypot(sp.lengthKm, 1.3 * (sp.widthKm * 0.75 + (1.1 * H) / flank)));
   return r + MASSIF_WARP_MAX;
+}
+
+/** A stamp's snow cap (world): centre, horizontal reach (km) and the absolute snow line. */
+export interface SnowCap {
+  x: number;
+  z: number;
+  reach: number;
+  line: number;
+}
+
+/** The snow caps declared by cone / massif stamps (`snowCap`), in stamp order. */
+export function stampSnowCaps(stamps: readonly Stamp[]): SnowCap[] {
+  const out: SnowCap[] = [];
+  for (const s of stamps) {
+    if ((s.kind !== 'massif' && s.kind !== 'cone') || s.snowCap === undefined) continue;
+    const base = s.base ?? 0;
+    out.push({ x: s.at[0], z: s.at[1], reach: s.kind === 'massif' ? massifReach(s) : s.radius, line: base + s.snowCap * (s.summit - base) });
+  }
+  return out;
 }
 
 /** World-space bounding box [minX, minZ, maxX, maxZ] of a stamp's influence. */
@@ -408,7 +451,16 @@ function ridgeDelta(s: RidgeStamp, x: number, z: number): number {
   if (hw <= 0 || hit.d >= hw) return 0;
   const u = hit.d / hw;
   const prof = s.profile === 'sharp' ? (1 - u) * (1 - u) : Math.cos(u * Math.PI * 0.5) ** 2;
-  const H = typeof s.height === 'number' ? s.height : s.height[hit.seg] + (s.height[hit.seg + 1] - s.height[hit.seg]) * hit.t;
+  let H: number;
+  if (typeof s.height === 'number') H = s.height;
+  else {
+    // per-vertex heights (a short array holds its last value: never NaN)
+    const hs = s.height;
+    const n = hs.length - 1;
+    if (n < 0) return 0;
+    const a = hs[Math.min(hit.seg, n)];
+    H = a + (hs[Math.min(hit.seg + 1, n)] - a) * hit.t;
+  }
   let v = H * prof;
   if (s.rough) v += s.rough.amp * roughNoise(s.rough, x, z) * prof;
   return v;
@@ -447,6 +499,8 @@ function scarpDelta(s: ScarpStamp, x: number, z: number): number {
 const SPUR_FLANK = 1.5;
 /** largest domain-warp offset of a massif, km (curving spurs, irregular valleys; 0 at the summit) */
 const MASSIF_WARP_MAX = 2.5;
+/** feature size of the domain warp, km (≥ 3× the largest offset × the value noise's peak slope 1.5) */
+const MASSIF_WARP_KM = 14;
 
 /**
  * One crest line of a massif, in coordinates relative to the summit: from the root (rx, rz) out along
@@ -468,17 +522,33 @@ interface MassifCrest {
   k: number;
 }
 
+/** crest lines per stamp OBJECT (stamps are immutable data; see the module doc) */
 const crestCache = new WeakMap<MassifStamp, MassifCrest[]>();
 /** crest exponent of the arête between the summit and a spur's shoulder (falls to ⅓ within 20 % of the spur) */
 const ARETE_EXP = 5;
+/**
+ * Crest rounding (km): the cross profile uses the soft distance √(d² + c²) − c, so every crest is rounded
+ * over ≥ 2 texels (0.8 km) where a spur runs on below its shoulder — a sharp V crest meandering across the
+ * 0.4 km texels read as regular sawteeth — and a little tighter on the arête above the shoulder.
+ */
+const CREST_ROUND_KM = 0.8;
+const ARETE_ROUND_KM = 0.45;
+/** smallest half-width of a crest's flanks, km (two texels) */
+const CREST_MIN_HALF_KM = 0.8;
+/** largest undulation of a crest's flank edge, km */
+const EDGE_KM = 0.9;
+/** the crest fades to the tip over this last fraction of a spur (heavy shoulders run out gently, no isolated nose) */
+const TIP_FADE = 0.5;
+/** smooth union of neighbouring crest profiles (fraction of the height): valley bottoms round over */
+const VALLEY_BLEND = 0.04;
 
 /** crest exponent for a spur whose crest falls from `root` to `frac` (fractions of the height) halfway out */
 const crestExp = (frac: number, root: number) => Math.log(Math.min(0.95, Math.max(0.05, frac / Math.max(1e-3, root)))) / Math.log(0.5);
 
 /**
  * The massif's crest lines: each spur from the summit, plus two side ridges branching off it (at about
- * 30 % and 55 % of its length, 55–75° off its axis, alternating sides, a little lower than the spur
- * there and half as long as what remains of it) — the dendritic ridges of a real mountain rather than
+ * 30 % and 55 % of its length, 55–75° off its axis, alternating sides, well below the spur there and
+ * about two-thirds as long as what remains of it, on broad flanks) — the dendritic ridges of a real mountain rather than
  * a star of planar faces. Pure function of the stamp (seeded by its roughness seed).
  */
 function massifCrests(s: MassifStamp): MassifCrest[] {
@@ -502,8 +572,10 @@ function massifCrests(s: MassifStamp): MassifCrest[] {
       const turn = side * (55 + 20 * q(2)) * (Math.PI / 180);
       const bx = ux * Math.cos(turn) - uz * Math.sin(turn);
       const bz = ux * Math.sin(turn) + uz * Math.cos(turn);
-      const hRoot = root * Math.pow(1 - fb, ex) * (0.78 + 0.1 * q(3));
-      out.push({ rx: ux * fb * sp.lengthKm, rz: uz * fb * sp.lengthKm, ux: bx, uz: bz, len: (1 - fb) * sp.lengthKm * (0.42 + 0.14 * q(4)), h0: hRoot, ex: 1.25, arete: false, width: sp.widthKm * 0.7, k: 100 + i * 2 + j });
+      // well below the spur there and long for their height, on broad flanks: buttresses that run out into
+      // the plain, never fins or isolated cones
+      const hRoot = root * Math.pow(1 - fb, ex) * (0.55 + 0.1 * q(3));
+      out.push({ rx: ux * fb * sp.lengthKm, rz: uz * fb * sp.lengthKm, ux: bx, uz: bz, len: (1 - fb) * sp.lengthKm * (0.55 + 0.2 * q(4)), h0: hRoot, ex: 1.25, arete: false, width: sp.widthKm * 0.95, k: 100 + i * 2 + j });
     }
   });
   crestCache.set(s, out);
@@ -522,17 +594,20 @@ function massifApply(s: MassifStamp, x: number, z: number, h: number, w: number)
   const flank = s.flankSlope ?? SPUR_FLANK;
   // domain warp: low-frequency offsets growing from 0 at the summit — spurs curve, valleys wander
   const wa = Math.min(MASSIF_WARP_MAX, 0.16 * d0);
-  const dx = dx0 + (valueNoise(x / 7, z / 7, seed + 301) - 0.5) * 2 * wa;
-  const dz = dz0 + (valueNoise(x / 7 + 5.2, z / 7 - 3.1, seed + 302) - 0.5) * 2 * wa;
+  // (cells of MASSIF_WARP_KM: the warp's slope stays well below 1, so it never folds space into creases)
+  const dx = dx0 + (valueNoise(x / MASSIF_WARP_KM, z / MASSIF_WARP_KM, seed + 301) - 0.5) * 2 * wa;
+  const dz = dz0 + (valueNoise(x / MASSIF_WARP_KM + 5.2, z / MASSIF_WARP_KM - 3.1, seed + 302) - 0.5) * 2 * wa;
   const d = Math.hypot(dx, dz);
   const e = s.exponent ?? 1.3;
   // the body: a concave peak of radius `radius`
-  let prof = Math.pow(Math.max(0, 1 - d / s.radius), e);
+  let prof = Math.pow(Math.max(0, 1 - Math.pow(Math.min(1, d / s.radius), 1 + (s.dome ?? 0))), e);
   // crest lines (spurs from the summit and their side ridges): each crest's height follows its own
   // profile (knobs and cols, a soft tip), with concave flanks whose width grows with the crest height
   // (a constant mean flank slope) and whose edge undulates — V valleys where neighbouring flanks meet.
   // The highest profile wins (spurs never add up).
-  const edge = 1 + 0.3 * (valueNoise(x / 2.8, z / 2.8, seed + 401) - 0.5) * 2;
+  // undulating flank edges: ±30 % of the distance near a crest, at most ±EDGE_KM far out (a relative
+  // wobble of the 15–18 km summit flanks folded them into radial fins)
+  const edgeN = (valueNoise(x / 3.5, z / 3.5, seed + 401) - 0.5) * 2;
   for (const c of massifCrests(s)) {
     const px = dx - c.rx;
     const pz = dz - c.rz;
@@ -541,15 +616,22 @@ function massifApply(s: MassifStamp, x: number, z: number, h: number, w: number)
     const along = Math.min(c.len, Math.max(0, alongRaw));
     const sn = along / c.len;
     const u = 1 - sn;
-    const knobs = 1 + 0.16 * (valueNoise(along / 2.6, c.k * 3.17, seed + 223) - 0.5) * 2 * sn;
-    const line = c.arete ? Math.max(Math.pow(u, ARETE_EXP), c.h0 * Math.pow(u, c.ex)) : c.h0 * Math.pow(u, c.ex);
-    const crest = line * knobs * smooth(0, 0.3, u);
+    // knobs and cols along the crest, fading out toward the tip (a long, even nose into the plain)
+    const knobs = 1 + 0.16 * (valueNoise(along / 2.6, c.k * 3.17, seed + 223) - 0.5) * 2 * sn * smooth(0, 0.4, u);
+    const shoulder = c.h0 * Math.pow(u, c.ex);
+    const areteH = c.arete ? Math.pow(u, ARETE_EXP) : 0;
+    const line = Math.max(areteH, shoulder);
+    const crest = line * knobs * smooth(0, TIP_FADE, u);
     if (crest <= 0) continue;
     const wander = (valueNoise(along / 3.2, c.k * 7.31, seed + 211) - 0.5) * c.width * 0.45 * sn;
-    const perp = Math.hypot(px * -c.uz + pz * c.ux - wander, alongRaw - along) * edge;
-    const half = (c.width / 2) * (1 - 0.3 * sn) + (crest * H) / flank;
-    if (perp >= half) continue;
-    prof = Math.max(prof, crest * Math.pow(1 - perp / half, 1.6));
+    const perp0 = Math.hypot(px * -c.uz + pz * c.ux - wander, alongRaw - along);
+    const perp = Math.max(0, perp0 + 0.3 * edgeN * Math.min(perp0, EDGE_KM / 0.3));
+    // a round crest below the shoulder, a tighter one on the arête above it
+    const cr = CREST_ROUND_KM + (ARETE_ROUND_KM - CREST_ROUND_KM) * smooth(-0.04, 0.04, areteH - shoulder);
+    const perpS = Math.sqrt(perp * perp + cr * cr) - cr;
+    const half = Math.max(CREST_MIN_HALF_KM, (c.width / 2) * (1 - 0.3 * sn) + (crest * H) / flank);
+    if (perpS >= half) continue;
+    prof = smax(prof, crest * Math.pow(1 - perpS / half, 1.6), VALLEY_BLEND * crest);
   }
   let m = base + H * prof;
   const rel = Math.min(1, Math.max(0, prof));

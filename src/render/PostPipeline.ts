@@ -30,6 +30,8 @@ import {
   dot,
   max,
   select,
+  exp,
+  step,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 
@@ -61,6 +63,15 @@ export const gradeUniforms = {
   bloomRadius: uniform(0.55),
   bloomThreshold: uniform(2.2),
 };
+
+/**
+ * Emitter highlight compress (graded linear HDR, night / twilight only): soft knee from GLOW_KNEE towards
+ * GLOW_LIMIT on the largest channel. AgX's log encoding flattens channel ratios of bright values (an
+ * orange core at 30 renders white), so emitter cores are held low enough for their hue to survive; the
+ * bloom (taken before) still carries their energy.
+ */
+const GLOW_KNEE = 1.5;
+const GLOW_LIMIT = 3;
 
 /**
  * HDR scene target → (optional) jittered accumulation → one post pass
@@ -145,6 +156,13 @@ export class PostPipeline {
       // vignette
       const d = length(screenUV.sub(0.5).mul(vec3(1.0, 0.8, 0).xy));
       c.assign(c.mul(float(1).sub(smoothstep(0.35, 0.95, d).mul(g.vignette))));
+      // hue-preserving highlight compress at night (glowKeep): scaling the whole colour by its largest
+      // channel (soft knee GLOW_KNEE → GLOW_LIMIT) keeps the hue of Morgul green, fire and windows instead
+      // of AgX's white; identity below the knee
+      const peakCh = max(c.r, max(c.g, c.b));
+      const over = max(peakCh.sub(GLOW_KNEE), 0);
+      const squeezed = float(GLOW_KNEE).add(float(GLOW_LIMIT - GLOW_KNEE).mul(float(1).sub(exp(over.div(-(GLOW_LIMIT - GLOW_KNEE))))));
+      c.assign(c.mul(mix(float(1), squeezed.div(max(peakCh, 1e-4)), g.glowKeep.mul(step(GLOW_KNEE, peakCh)))));
       return c;
     })();
     const display = renderOutput(vec4(graded, 1), AgXToneMapping, SRGBColorSpace);

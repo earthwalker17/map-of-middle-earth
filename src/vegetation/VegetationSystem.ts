@@ -16,7 +16,7 @@ import { createClumpGeometry, CROWN_TOP } from './clumpGeometry.ts';
 import { createFoamTexture } from './foamTexture.ts';
 import { createFoliageMaterial, type FoliageMaterialParts } from './foliageMaterial.ts';
 import { FLOATS_PER_INSTANCE, placeVegetation, type ExclusionCircle } from './placement.ts';
-import { authoredRecords } from './authored.ts';
+import { authoredRecords, crownReach } from './authored.ts';
 
 /** Spatial chunk size (km) for culling / LOD selection. */
 const CHUNK = 32;
@@ -37,6 +37,13 @@ const LODS: { detail: number; trunkSides: number; relief: number; whole?: boolea
   // a cluster of a few pixels (whole-slab views): one octahedron blob, no trunk
   { detail: -1, trunkSides: 0, relief: 0, whole: true, minPx: 0, cap: Infinity },
 ];
+
+/**
+ * Hero geometry: authored landmark trees at LOD0 are drawn with the finest crowns plus a ringed,
+ * 12-sided trunk (root flare, taper, deep foot) and four primary limbs — one extra draw (+ its shadow
+ * twin), only ever holding the hero list.
+ */
+const HERO_GEOMETRY = { detail: 2, trunkSides: 12, relief: 1, hero: true } as const;
 
 /** spread from a record's packed shape field (spread + 2·gapQ) */
 function spreadOf(shape: number): number {
@@ -129,6 +136,8 @@ export class VegetationSystem implements System {
     this.scene = ctx.scene;
     this.useMaterial(ctx.quality.id);
     this.lodGeometries = LODS.map((l) => createClumpGeometry({ detail: l.detail, trunkSides: l.trunkSides, relief: l.relief, whole: l.whole }));
+    // the last bucket: hero geometry (authored trees at LOD0)
+    this.lodGeometries.push(createClumpGeometry(HERO_GEOMETRY));
     this.place(ctx.quality.density);
   }
 
@@ -270,9 +279,11 @@ export class VegetationSystem implements System {
       b.geometry.dispose();
     }
     this.buckets = [];
-    // the high LOD never needs every instance (it only covers the few chunks next to the camera)
+    // the high LOD never needs every instance (it only covers the few chunks next to the camera); the
+    // hero bucket holds at most the hero list
+    const heroCount = this.hero.length / FLOATS_PER_INSTANCE;
     this.lodGeometries.forEach((base, lod) => {
-      const cap = Math.max(1, Math.min(total, LODS[lod].cap));
+      const cap = Math.max(1, lod >= LODS.length ? heroCount : Math.min(total, LODS[lod].cap));
       const geometry = base.clone() as InstancedBufferGeometry;
       const a = new InstancedBufferAttribute(new Float32Array(cap * 4), 4);
       const b = new InstancedBufferAttribute(new Float32Array(cap * 4), 4);
@@ -285,7 +296,7 @@ export class VegetationSystem implements System {
       geometry.setAttribute('iB', b);
       geometry.instanceCount = 0;
       const mesh = new Mesh(geometry, this.parts.material);
-      mesh.name = `vegetation-lod${lod}`;
+      mesh.name = lod >= LODS.length ? 'vegetation-hero' : `vegetation-lod${lod}`;
       mesh.frustumCulled = false;
       mesh.castShadow = true;
       mesh.receiveShadow = true;
@@ -332,10 +343,8 @@ export class VegetationSystem implements System {
     for (const b of this.buckets) b.count = 0;
     const F = FLOATS_PER_INSTANCE;
     const last = LODS.length - 1;
-    /** append record `s` of `src` to the bucket of `lod` (or the next one with room), crowns scaled by `sc` */
-    const emit = (src: Float32Array, s: number, lod: number, sc: number) => {
-      while (lod < last && this.buckets[lod].count >= this.buckets[lod].cap) lod++;
-      const bk = this.buckets[lod];
+    /** append record `s` of `src` to bucket `bk` (when it has room), crowns scaled by `sc` */
+    const write = (bk: Bucket, src: Float32Array, s: number, sc: number) => {
       if (bk.count >= bk.cap) return;
       const A = bk.a.array as Float32Array;
       const B = bk.b.array as Float32Array;
@@ -356,23 +365,32 @@ export class VegetationSystem implements System {
       C[o + 3] = Math.round(src[s + 9] * 255);
       bk.count++;
     };
+    /** append record `s` of `src` to the bucket of `lod` (or the next one with room), crowns scaled by `sc` */
+    const emit = (src: Float32Array, s: number, lod: number, sc: number) => {
+      while (lod < last && this.buckets[lod].count >= this.buckets[lod].cap) lod++;
+      write(this.buckets[lod], src, s, sc);
+    };
     /** LOD from the projected size of the sub-crowns (clustered trees have larger ones than canopy patches) */
     const lodOf = (src: Float32Array, s: number, dist: number, sc: number) =>
       this.debug.forceLod ?? lodFor((2 * src[s + 2] * sc * (2 - spreadOf(src[s + 8])) * pxPerKm) / Math.max(1, dist));
 
-    // hero list first: authored landmark trees win the LOD0 cap (sphere test with the shadow margin)
+    // hero list first: authored landmark trees (sphere test with the shadow margin); at LOD0 they take
+    // the hero geometry (its own bucket), farther out they win the regular LOD caps
+    const heroBucket = this.buckets[LODS.length];
     for (let k = 0; k < this.heroY.length; k++) {
       const s = k * F;
       const hr = this.hero[s + 2];
       const vr = this.hero[s + 3];
-      // bounding sphere of the whole tree: trunk foot (0.25 below the ground) to the crown top
-      // (trunk + 1.3·vr), crown radius hr
-      const half = (Math.max(0, this.hero[s + 4]) + 1.3 * vr + 0.25) / 2;
-      const cy = this.heroY[k] - 0.25 + half;
+      // bounding sphere of the whole tree: trunk foot (1 km below the ground, the deep hero foot) to the
+      // crown top (trunk + crownReach(spread)·vr), crown radius hr
+      const half = (Math.max(0, this.hero[s + 4]) + crownReach(spreadOf(this.hero[s + 8])) * vr + 1) / 2;
+      const cy = this.heroY[k] - 1 + half;
       _sphere.set(_v.set(this.hero[s], cy, this.hero[s + 1]), Math.hypot(hr, half) + SHADOW_MARGIN);
       if (!_frustum.intersectsSphere(_sphere)) continue;
       const dist = _v.set(this.hero[s] - camPos.x, this.heroY[k] + this.hero[s + 4] - camPos.y, this.hero[s + 1] - camPos.z).length();
-      emit(this.hero, s, lodOf(this.hero, s, dist, 1), 1);
+      const lod = lodOf(this.hero, s, dist, 1);
+      if (lod === 0 && this.debug.forceLod === null && heroBucket.count < heroBucket.cap) write(heroBucket, this.hero, s, 1);
+      else emit(this.hero, s, lod, 1);
     }
 
     // visible chunks nearest-first (ties by chunk order), so the capped fine LODs fill from the camera out

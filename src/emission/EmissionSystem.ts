@@ -3,7 +3,7 @@ import type { FrameContext, InitContext, SceneState, System } from '../core/type
 import type { LightRecord } from '../landmarks/records.ts';
 import type { World } from '../world/World.ts';
 import { createEmissionMaterial } from './emissionMaterial.ts';
-import { EMISSION_STRIDE, packLight } from './lightKinds.ts';
+import { aggregates, EMISSION_STRIDE, groupKey, packAggregate, packLight, ROLE, type EmissionArrays } from './lightKinds.ts';
 
 /** instance capacity of the one sprite draw (static landmark lights + S4 dynamic ones) */
 export const MAX_LIGHTS = 4096;
@@ -15,16 +15,22 @@ export const MAX_LIGHTS = 4096;
  * (night / twilight / golden); flicker reads env.tFx. No per-light three.js lights.
  *
  * Records are static (built once by buildLandmarks) and packed at init (lightKinds.ts: colour
- * defaults, size caps, flicker rates); evaluate() does no per-frame CPU work
+ * defaults, size caps, flicker rates, halo by kind); evaluate() does no per-frame CPU work
  * unless S4 dynamic lights are registered (a pure function of the state, re-packed per frame).
+ *
+ * Settlement aggregation: the windows / lamps / fires of one landmark (per gate) also get ONE aggregate
+ * sprite at their energy-weighted centroid carrying their summed energy. The shader crossfades members →
+ * aggregate as the group's projected diameter falls below ~12 → 6 px (a pure function of the camera), and
+ * the aggregate has a visibility floor, so every lit settlement stays a small, stable spark in overviews
+ * instead of a smudge of sub-threshold dots.
  */
 export class EmissionSystem implements System {
   readonly id = 'emission';
-  readonly stats = { count: 0, drawn: 0, dynamic: 0 };
+  readonly stats = { count: 0, drawn: 0, dynamic: 0, aggregates: 0 };
   private dynamic: ((s: SceneState) => LightRecord[]) | null = null;
   private mesh: Mesh | null = null;
   private material: NodeMaterial | null = null;
-  private attrs: { pos: InstancedBufferAttribute; col: InstancedBufferAttribute; aux: InstancedBufferAttribute } | null = null;
+  private attrs: { pos: InstancedBufferAttribute; col: InstancedBufferAttribute; aux: InstancedBufferAttribute; grp: InstancedBufferAttribute } | null = null;
   private geometry: InstancedBufferGeometry | null = null;
   private staticCount = 0;
 
@@ -51,13 +57,14 @@ export class EmissionSystem implements System {
       a.setUsage(DynamicDrawUsage);
       return a;
     };
-    const attrs = { pos: mk(), col: mk(), aux: mk() };
+    const attrs = { pos: mk(), col: mk(), aux: mk(), grp: mk() };
     g.setAttribute('emPos', attrs.pos);
     g.setAttribute('emCol', attrs.col);
     g.setAttribute('emAux', attrs.aux);
+    g.setAttribute('emGrp', attrs.grp);
     this.attrs = attrs;
     this.geometry = g;
-    this.staticCount = this.pack(this.records, 0);
+    this.staticCount = this.packStatic(this.records);
     g.instanceCount = this.staticCount;
     this.stats.drawn = this.staticCount;
 
@@ -75,22 +82,71 @@ export class EmissionSystem implements System {
     this.mesh = mesh;
   }
 
-  /** Pack records from instance `start` on; returns the next free instance index. */
-  private pack(records: LightRecord[], start: number): number {
+  private arrays(): EmissionArrays {
     const a = this.attrs!;
-    const pos = a.pos.array as Float32Array;
-    const col = a.col.array as Float32Array;
-    const aux = a.aux.array as Float32Array;
-    let n = start;
+    return { pos: a.pos.array as Float32Array, col: a.col.array as Float32Array, aux: a.aux.array as Float32Array, grp: a.grp.array as Float32Array };
+  }
+
+  /**
+   * Static landmark lights: every record, grouped per (landmark, gate, wide class) for the aggregate
+   * sprites (a group of one is its own aggregate: always drawn, with the visibility floor). Record order
+   * is kept; aggregates follow the records. Returns the instance count.
+   */
+  private packStatic(records: LightRecord[]): number {
+    const arr = this.arrays();
+    const groups = new Map<string, number[]>();
+    const keys: string[] = [];
+    let n = 0;
     for (const r of records) {
       if (n >= MAX_LIGHTS) break;
-      if (packLight(r, pos, col, aux, n * EMISSION_STRIDE)) n++;
+      const o = n * EMISSION_STRIDE;
+      if (!packLight(r, arr, o)) continue;
+      n++;
+      if (!aggregates(r)) continue;
+      const key = groupKey(r);
+      let g = groups.get(key);
+      if (!g) {
+        g = [];
+        groups.set(key, g);
+        keys.push(key);
+      }
+      g.push(o);
     }
-    for (const attr of [a.pos, a.col, a.aux]) {
+    for (const key of keys) {
+      const g = groups.get(key)!;
+      if (g.length === 1) {
+        arr.grp[g[0]] = 0;
+        arr.grp[g[0] + 1] = ROLE.aggregate;
+        continue;
+      }
+      if (n >= MAX_LIGHTS) break;
+      for (const o of g) arr.grp[o + 1] = ROLE.member;
+      packAggregate(arr, g, n * EMISSION_STRIDE);
+      n++;
+    }
+    this.stats.aggregates = keys.length;
+    this.flag(0, n);
+    return n;
+  }
+
+  private flag(start: number, n: number): void {
+    const a = this.attrs!;
+    for (const attr of [a.pos, a.col, a.aux, a.grp]) {
       attr.clearUpdateRanges();
       attr.addUpdateRange(start * EMISSION_STRIDE, Math.max(1, (n - start) * EMISSION_STRIDE));
       attr.needsUpdate = true;
     }
+  }
+
+  /** Pack (dynamic, standalone) records from instance `start` on; returns the next free instance index. */
+  private pack(records: LightRecord[], start: number): number {
+    const arr = this.arrays();
+    let n = start;
+    for (const r of records) {
+      if (n >= MAX_LIGHTS) break;
+      if (packLight(r, arr, n * EMISSION_STRIDE)) n++;
+    }
+    this.flag(start, n);
     return n;
   }
 
