@@ -6,7 +6,7 @@ import type { LodGeometry } from '../records.ts';
  * Vertex ambient occlusion for landmark geometry (kit v2; reusable for GLB landmarks, W2).
  *
  * One voxel occupancy grid per landmark (surface-voxelised LOD0 + the ground below the local terrain,
- * ≤ 64 cells on the longest axis), then a few cosine-weighted Halton hemisphere rays (hashed rotation,
+ * ~40 cells on the longest axis), then a few cosine-weighted Halton hemisphere rays (hashed rotation,
  * one-voxel march) per (cell in front of the surface × quantised normal) — memoised, so the cost follows
  * the occupied volume, not the vertex count — and per vertex a ground-contact darkening term
  * `mix(contact, 1, smoothstep(0, 0.08·h, y − ground))` (h = the part's height from `_contactH`, else
@@ -14,7 +14,7 @@ import type { LodGeometry } from '../records.ts';
  * deleted afterwards. Pure and deterministic (no Math.random): same input → identical bytes.
  */
 export interface AOOptions {
-  /** voxel cells along the longest bbox axis (default 48, clamped 8..64) */
+  /** voxel cells along the longest bbox axis (default 40, clamped 8..64) */
   res?: number;
   /** hemisphere rays per vertex (default 6) */
   rays?: number;
@@ -58,7 +58,7 @@ export function bakeVertexAO(lods: LodGeometry[], groundLocal: (x: number, z: nu
         if (p[k + a] > max[a]) max[a] = p[k + a];
       }
   }
-  const res = Math.min(64, Math.max(8, Math.round(opts.res ?? 48)));
+  const res = Math.min(64, Math.max(8, Math.round(opts.res ?? 40)));
   const ext = Math.max(max[0] - min[0], max[1] - min[1], max[2] - min[2], 1e-3);
   const vs = ext / res;
   for (let a = 0; a < 3; a++) {

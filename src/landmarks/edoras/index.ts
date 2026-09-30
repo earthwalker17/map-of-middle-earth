@@ -12,21 +12,24 @@ import { defineLandmark } from '../types.ts';
 /** local point at compass bearing `b` (deg), radius `r` km from the summit */
 const polar = (b: number, r: number): V2 => [Math.sin((b * Math.PI) / 180) * r, -Math.cos((b * Math.PI) / 180) * r];
 
-const TIMBER = 0x5a3f28;
-const THATCH = [0x8d7a4f, 0x7d6c48, 0x9a8656, 0x6f6446, 0x857352];
+const TIMBER = 0x6b5238;
+const TURF = 0x8a8554; // terrace banks, close to the Rohan tussock of the hill
+const THATCH = [0x9c8f68, 0x8f8460, 0xa39470, 0x8a7f5c, 0x978a62];
 const GATE = 90; // compass bearing of the gate (east)
-const RING = 1.5; // palisade radius, km
+const RING = 1.75; // palisade radius, km
 
 export default defineLandmark({
   id: 'edoras',
   placeId: 'edoras',
   tier: 'B',
-  // the knoll: a broad dome, extra bulk to the north-west (the steep, rocky side) and a small summit
-  // terrace for Meduseld — no longer the S1 truncated cone (r 1.7 flatten)
+  // the knoll: a dome (extra bulk to the north-west: the steep, rocky side), a saddle cut between it and
+  // the foothill spur to the south so it stands alone on the plain, and a gently levelled summit for
+  // Meduseld (strength 0.9: rounded, not the S1 truncated cone)
   stamps: [
-    { kind: 'raise', at: [0.2, 0], radius: 3.6, amount: 1.9 },
-    { kind: 'raise', at: [-0.5, -0.25], radius: 1.8, amount: 0.55 },
-    { kind: 'flatten', at: [-0.1, 0.1], radius: 0.62, falloff: 0.45, height: 'auto' },
+    { kind: 'raise', at: [0.2, -0.1], radius: 3.2, amount: 1.6 },
+    { kind: 'raise', at: [-0.5, -0.25], radius: 1.8, amount: 0.4 },
+    { kind: 'raise', at: [0.3, 2.35], radius: 1.4, amount: -1.0 },
+    { kind: 'flatten', at: [-0.1, 0.1], radius: 0.6, falloff: 0.7, height: 'auto', strength: 0.9 },
   ],
   lodPx: [110, 30],
   vegetationExclusion: 2.4,
@@ -55,6 +58,11 @@ export default defineLandmark({
       windows: { count: 3, on: 0.67, sides: 2, color: 0xe2a452 },
     });
     k.house('wood', 'gold', 0.1, 0.2, 0.09, { at: [hx + 0.5, 0.018, hz], pitch: 50, overhang: 0.015, color: 0x6a4a2e, rot: [0, 90, 0] });
+    // the louvre lantern on the ridge and the crossed horse-head gable horns
+    k.house('wood', 'gold', 0.12, 0.08, 0.035, { at: [hx - 0.1, 0.018 + 0.12 + 0.13 * 1.28, hz], seat: false, pitch: 50, color: 0x6a4a2e });
+    for (const sx of [-1, 1])
+      for (const s of [-1, 1])
+        k.box('wood', 0.012, 0.09, 0.012, { at: [hx + sx * 0.46, 0.018 + 0.12 + 0.13 * 1.28 - 0.03, hz + s * 0.02], rot: [s * 28, 0, 0], color: 0x5a3f28 });
     k.house('wood', 'thatch', 0.42, 0.14, 0.08, { at: [hx - 0.08, 0, hz - 0.3], pitch: 48, roofColor: 0x8a7650, color: TIMBER });
     // ---- the rocky north-west face: cliffs below the terrace (walked anticlockwise so they face out)
     const face: V2[] = [];
@@ -76,20 +84,26 @@ export default defineLandmark({
     // ---- the town: thatched halls on the slopes (ridges along the contours), avoiding the stair
     let lit = 0;
     k.scatter(
-      { annulus: { at: [0, 0], r0: 0.68, r1: RING - 0.12, a0: 342, a1: 232 } },
-      56,
+      { annulus: { at: [0, 0], r0: 0.66, r1: RING - 0.12, a0: 342, a1: 232 } },
+      84,
       (i, x, z, u) => {
         const b = (Math.atan2(x, -z) * 180) / Math.PI;
-        const w = 0.13 + u * 0.1;
-        const d = 0.085 + ((i * 7) % 5) * 0.008;
-        const h = 0.055 + ((i * 3) % 4) * 0.007;
-        const yaw = -b + (((i * 37) % 23) - 11);
+        const w = 0.15 + u * 0.12;
+        const d = 0.1 + ((i * 7) % 5) * 0.01;
+        const h = 0.045 + ((i * 3) % 4) * 0.006;
+        // ridge along the contour; local +z (the window side) faces out, downhill
+        const yaw = 180 - b + (((i * 37) % 23) - 11);
         const window = lit < 24 && i % 2 === 0;
         if (window) lit++;
         k.house('wood', 'thatch', w, d, h, {
           at: [x, 0, z],
           rot: [0, yaw, 0],
-          pitch: 46 + ((i * 5) % 9),
+          pitch: 52 + ((i * 5) % 9),
+          overhang: 0.014,
+          dig: 0.85,
+          plinthFam: 'foliage',
+          plinthColor: TURF,
+          plinthGrow: 1.25,
           color: TIMBER,
           shade: 0.85 + ((i * 13) % 7) * 0.05,
           roofColor: THATCH[i % THATCH.length],
@@ -97,7 +111,7 @@ export default defineLandmark({
           ...(window ? { windows: { count: 1, on: 1, sides: 1 as const, size: 0.01 } } : {}),
         });
       },
-      { minSpacing: 0.19, avoid: [[[0.45, -0.12], [RING + 0.3, -0.12], [RING + 0.3, 0.2], [0.45, 0.2]]] },
+      { minSpacing: 0.2, avoid: [[[0.45, -0.12], [RING + 0.3, -0.12], [RING + 0.3, 0.2], [0.45, 0.2]]] },
     );
 
     // ---- palisade round the hill (open at the gate), gate towers
@@ -134,14 +148,14 @@ export default defineLandmark({
   bookmarks: [
     {
       id: 'edoras-close',
-      distanceKm: 20,
-      elevationDeg: 9,
-      azimuthDeg: 45,
+      distanceKm: 15,
+      elevationDeg: 7,
+      azimuthDeg: 25,
       fov: 35,
-      lift: 0.3,
+      lift: -0.3,
       tod: 11,
       compare: ['reference/film/edoras', 'reference/photos/edoras'],
-      note: 'hero (mid, ~20 km): from the north-east across the braided valley, the knoll against the White Mountains',
+      note: 'hero (mid, 15 km): from the north-north-east across the plain, the knoll and its town against the White Mountains',
     },
   ],
 });

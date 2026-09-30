@@ -99,8 +99,14 @@ export interface HouseOpts extends PartOpts {
   roofShade?: number;
   /** family of the gable-end triangles (default: the walls) */
   gableFam?: FamilyId;
-  /** foundation family on slopes (default 'weathered') */
+  /** foundation family on slopes (default 'weathered', shaded 0.72) */
   plinthFam?: FamilyId;
+  /** absolute foundation paint (e.g. turf, so a steep-slope plinth reads as a terrace bank) */
+  plinthColor?: number;
+  /** foundation footprint scale vs the walls (default 1.03; > 1 = a terrace ledge round the house) */
+  plinthGrow?: number;
+  /** how deep the body may dig into the uphill side, in wall heights (default 0.5) */
+  dig?: number;
   /** window lights on the long sides */
   windows?: WindowOpts & { sides?: 1 | 2 };
   /** a stone chimney on the roof */
@@ -681,8 +687,9 @@ export class ProxyKit {
    * A house: walls box `w` (local x, the ridge direction) × `d` × `h` with a roof — gable (default),
    * hip, flat, dome, cone (pyramid) or round (barrel) — at `pitch`° with `overhang`. SEATED by default
    * (`seat: false` to place it at `at[1]`): the body stands on the minimum ground under its corners or,
-   * on steep ground, is lifted to at most 35 % buried on the uphill side, with a ground-following stone
-   * plinth below. `windows` records window lights on the long sides; `chimney` adds a stone stack.
+   * on steep ground, is dug in at most `dig` (default 50 %) of its wall height on the uphill side,
+   * with a ground-following plinth below the downhill side (`plinthFam` / `plinthColor` — stone, or turf
+   * with `plinthGrow` > 1 for a terrace ledge). `windows` records window lights on the long sides; `chimney` adds a stone stack.
    */
   house(walls: FamilyId, roof: FamilyId, w: number, d: number, h: number, o: HouseOpts = {}): this {
     const p = this.begin();
@@ -702,15 +709,16 @@ export class ProxyKit {
       const gc = this.ground(at[0], at[2]);
       const gMin = Math.min(...gs, gc);
       const gMax = Math.max(...gs, gc);
-      base = Math.max(gMin, gMax - 0.35 * h) - SINK + at[1];
+      base = Math.max(gMin, gMax - (o.dig ?? 0.5) * h) - SINK + at[1];
       if (base - (gMin - SINK) > 0.004) {
         // ground-following plinth (every corner reaches into the ground)
         const pf = o.plinthFam ?? 'weathered';
-        const grow = 1.03;
+        const grow = o.plinthGrow ?? 1.03;
         const pl: V2[] = [loc((-w / 2) * grow, (-d / 2) * grow), loc((w / 2) * grow, (-d / 2) * grow), loc((w / 2) * grow, (d / 2) * grow), loc((-w / 2) * grow, (d / 2) * grow)];
         const topY = base + SINK;
         // LOD0 only: from LOD1 on the walls themselves reach down to the ground
-        this.addPart(pf, () => prismGeo(pl, topY, { bottomAt: (x, z) => this.ground(x, z) - SINK }), null, { ...common, shade: 0.9 }, { cap: 0 });
+        const pp: PartOpts = o.plinthColor !== undefined ? { ...common, color: o.plinthColor } : { ...common, shade: 0.72 };
+        this.addPart(pf, () => prismGeo(pl, topY, { bottomAt: (x, z) => this.ground(x, z) - SINK }), null, pp, { cap: 0 });
       }
       // the plinth (when there is one) is a ground-following foundation: the solid reaches the ground
       const plinth = base - (gMin - SINK) > 0.004;

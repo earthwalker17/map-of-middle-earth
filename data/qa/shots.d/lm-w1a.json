@@ -1,0 +1,96 @@
+{
+ "shots": [
+  {
+   "id": "w1a-edoras-near",
+   "tod": 11,
+   "note": "W1-A kit v2 inspection: Edoras town and Meduseld from ~5 km (LOD0 detail, seating, AO)",
+   "camera": {
+    "orbit": {
+     "place": "edoras",
+     "distanceKm": 5,
+     "elevationDeg": 22,
+     "azimuthDeg": 45,
+     "fov": 35,
+     "lift": -0.3
+    }
+   },
+   "compare": [
+    "reference/film/edoras"
+   ]
+  },
+  {
+   "id": "w1a-edoras-far",
+   "tod": 11,
+   "note": "W1-A LOD check: Edoras from ~70 km (LOD1/LOD2, silhouette)",
+   "camera": {
+    "orbit": {
+     "place": "edoras",
+     "distanceKm": 70,
+     "elevationDeg": 14,
+     "azimuthDeg": 40,
+     "fov": 35
+    }
+   }
+  },
+  {
+   "id": "w1a-dbg",
+   "tod": 11,
+   "camera": {
+    "orbit": {
+     "place": "edoras",
+     "distanceKm": 2.2,
+     "elevationDeg": 18,
+     "azimuthDeg": 20,
+     "fov": 35,
+     "aimKm": [
+      0.3,
+      0.9
+     ],
+     "lift": -0.6
+    }
+   }
+  },
+  {
+   "id": "w1a-fr0",
+   "tod": 11,
+   "camera": {
+    "orbit": {
+     "place": "edoras",
+     "distanceKm": 15,
+     "elevationDeg": 7,
+     "azimuthDeg": 20,
+     "fov": 35,
+     "lift": -0.3
+    }
+   }
+  },
+  {
+   "id": "w1a-fr1",
+   "tod": 11,
+   "camera": {
+    "orbit": {
+     "place": "edoras",
+     "distanceKm": 16,
+     "elevationDeg": 8,
+     "azimuthDeg": 40,
+     "fov": 35,
+     "lift": -0.5
+    }
+   }
+  },
+  {
+   "id": "w1a-fr2",
+   "tod": 11,
+   "camera": {
+    "orbit": {
+     "place": "edoras",
+     "distanceKm": 15,
+     "elevationDeg": 6,
+     "azimuthDeg": 5,
+     "fov": 35,
+     "lift": -0.3
+    }
+   }
+  }
+ ]
+}

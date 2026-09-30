@@ -1,5 +1,4 @@
 import { BufferAttribute, BufferGeometry, Matrix3, Matrix4, ShapeUtils, Vector2 } from 'three/webgpu';
-import { hash32 } from '../../core/rng.ts';
 
 /**
  * Geometry core of the landmark kit (ProxyKit v2): an indexed, growable triangle mesh in local km and
@@ -166,31 +165,46 @@ export const norm3 = (a: V3): V3 => {
 };
 
 /**
- * Add a flat convex polygon with its own vertices. The points may come in any order around the face:
- * they are sorted counter-clockwise around the outward normal `n` (robust winding by construction).
+ * Add a flat convex polygon with its own vertices. The points must be in order around the face (either
+ * direction): the winding is flipped when needed so the face looks along the outward normal `n`.
  */
 export function face(g: Geo, pts: V3[], n: V3): void {
-  const nn = norm3(n);
-  const c: V3 = [0, 0, 0];
-  for (const q of pts) for (let a = 0; a < 3; a++) c[a] += q[a] / pts.length;
-  // in-plane basis
-  const ref: V3 = Math.abs(nn[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
-  const u = norm3(cross3(ref, nn));
-  const w = cross3(nn, u);
-  const ang = pts.map((q) => {
-    const d = sub3(q, c);
-    return Math.atan2(dot3(d, w), dot3(d, u));
-  });
-  const order = pts.map((_, k) => k).sort((a, b) => ang[a] - ang[b]);
-  const base = order.map((k) => g.v(pts[k][0], pts[k][1], pts[k][2], nn[0], nn[1], nn[2]));
-  for (let k = 1; k + 1 < base.length; k++) g.tri(base[0], base[k], base[k + 1]);
+  const l = Math.hypot(n[0], n[1], n[2]) || 1;
+  const nx = n[0] / l;
+  const ny = n[1] / l;
+  const nz = n[2] / l;
+  // Newell normal of the given order
+  let ax = 0;
+  let ay = 0;
+  let az = 0;
+  const m = pts.length;
+  for (let k = 0; k < m; k++) {
+    const a = pts[k];
+    const b = pts[k + 1 === m ? 0 : k + 1];
+    ax += (a[1] - b[1]) * (a[2] + b[2]);
+    ay += (a[2] - b[2]) * (a[0] + b[0]);
+    az += (a[0] - b[0]) * (a[1] + b[1]);
+  }
+  const flip = ax * nx + ay * ny + az * nz < 0;
+  const base = g.vertexCount;
+  for (let k = 0; k < m; k++) {
+    const q = pts[flip ? m - 1 - k : k];
+    g.v(q[0], q[1], q[2], nx, ny, nz);
+  }
+  for (let k = 1; k + 1 < m; k++) g.tri(base, base + k, base + k + 1);
 }
 
 /** Triangle with its winding fixed so its geometric normal agrees with `n`. */
 export function triFacing(g: Geo, a: number, b: number, c: number, n: V3): void {
-  const P = (k: number): V3 => [g.p[k * 3], g.p[k * 3 + 1], g.p[k * 3 + 2]];
-  const fn = cross3(sub3(P(b), P(a)), sub3(P(c), P(a)));
-  if (dot3(fn, n) >= 0) g.tri(a, b, c);
+  const p = g.p;
+  const ux = p[b * 3] - p[a * 3];
+  const uy = p[b * 3 + 1] - p[a * 3 + 1];
+  const uz = p[b * 3 + 2] - p[a * 3 + 2];
+  const vx = p[c * 3] - p[a * 3];
+  const vy = p[c * 3 + 1] - p[a * 3 + 1];
+  const vz = p[c * 3 + 2] - p[a * 3 + 2];
+  const d = (uy * vz - uz * vy) * n[0] + (uz * vx - ux * vz) * n[1] + (ux * vy - uy * vx) * n[2];
+  if (d >= 0) g.tri(a, b, c);
   else g.tri(a, c, b);
 }
 
@@ -345,8 +359,27 @@ export function latheGeo(profile: V2[], o: LatheOpts = {}): Geo {
   return g;
 }
 
+const icoCache = new Map<number, { p: number[]; i: number[] }>();
+
 /** Unit icosphere (shared vertices, outward winding), `detail` subdivisions (0 → 20 tris, 1 → 80, 2 → 320). */
 export function icoGeo(detail: number): Geo {
+  const d = Math.max(0, Math.round(detail));
+  let hit = icoCache.get(d);
+  if (!hit) {
+    const g = icoBuild(d);
+    hit = { p: g.p, i: g.i };
+    icoCache.set(d, hit);
+  }
+  const g = new Geo();
+  for (let k = 0; k < hit.p.length; k++) {
+    g.p.push(hit.p[k]);
+    g.n.push(hit.p[k]);
+  }
+  for (const x of hit.i) g.i.push(x);
+  return g;
+}
+
+function icoBuild(detail: number): Geo {
   const t = (1 + Math.sqrt(5)) / 2;
   let verts: V3[] = [
     [-1, t, 0], [1, t, 0], [-1, -t, 0], [1, -t, 0],
@@ -389,7 +422,15 @@ export function icoGeo(detail: number): Geo {
   return g;
 }
 
-/** Stateless smooth 3D value noise in [0, 1) (lattice hashed with hash32). */
+/** integer lattice hash → [0, 1) (deterministic, allocation-free) */
+function lattice(seed: number, x: number, y: number, z: number): number {
+  let h = seed ^ Math.imul(x, 0x27d4eb2d) ^ Math.imul(y, 0x165667b1) ^ Math.imul(z, 0x9e3779b1);
+  h = Math.imul(h ^ (h >>> 15), 0x85ebca6b);
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+/** Stateless smooth 3D value noise in [0, 1) (hashed integer lattice, smoothstep interpolation). */
 export function noise3(x: number, y: number, z: number, seed: number): number {
   const xi = Math.floor(x);
   const yi = Math.floor(y);
@@ -400,13 +441,22 @@ export function noise3(x: number, y: number, z: number, seed: number): number {
   const u = fx * fx * (3 - 2 * fx);
   const v = fy * fy * (3 - 2 * fy);
   const w = fz * fz * (3 - 2 * fz);
-  const h = (a: number, b: number, c: number) => hash32(seed, xi + a, yi + b, zi + c) / 4294967296;
-  const l = (a: number, b: number, t: number) => a + (b - a) * t;
-  return l(
-    l(l(h(0, 0, 0), h(1, 0, 0), u), l(h(0, 1, 0), h(1, 1, 0), u), v),
-    l(l(h(0, 0, 1), h(1, 0, 1), u), l(h(0, 1, 1), h(1, 1, 1), u), v),
-    w,
-  );
+  const s = seed | 0;
+  const c000 = lattice(s, xi, yi, zi);
+  const c100 = lattice(s, xi + 1, yi, zi);
+  const c010 = lattice(s, xi, yi + 1, zi);
+  const c110 = lattice(s, xi + 1, yi + 1, zi);
+  const c001 = lattice(s, xi, yi, zi + 1);
+  const c101 = lattice(s, xi + 1, yi, zi + 1);
+  const c011 = lattice(s, xi, yi + 1, zi + 1);
+  const c111 = lattice(s, xi + 1, yi + 1, zi + 1);
+  const x00 = c000 + (c100 - c000) * u;
+  const x10 = c010 + (c110 - c010) * u;
+  const x01 = c001 + (c101 - c001) * u;
+  const x11 = c011 + (c111 - c011) * u;
+  const y0 = x00 + (x10 - x00) * v;
+  const y1 = x01 + (x11 - x01) * v;
+  return y0 + (y1 - y0) * w;
 }
 
 /** Signed area of a 2D polygon (x, z): > 0 when counter-clockwise in the (x, z) plane. */
@@ -457,9 +507,11 @@ export function prismGeo(outline: V2[], h: number, o: PrismOpts = {}): Geo {
       const el = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
       const nx = (sgn * (b[1] - a[1])) / el;
       const nz = (sgn * -(b[0] - a[0])) / el;
-      // a tapered wall leans inwards: tilt the normal up by the inset over the height
+      // a tapered wall leans inwards: tilt the normal up by the inset over the wall's own height (h is
+      // the absolute top — with bottomAt it may be negative, so never scale the normal by it)
       const inset = (1 - s) * Math.hypot((a[0] + b[0]) / 2 - cx, (a[1] + b[1]) / 2 - cz);
-      const n = norm3([nx * h, inset, nz * h] as V3);
+      const wallH = Math.max(1e-6, h - (bot(a) + bot(b)) / 2);
+      const n = norm3([nx, inset / wallH, nz] as V3);
       face(g, [[a[0], bot(a), a[1]], [b[0], bot(b), b[1]], [tb[0], h, tb[1]], [ta[0], h, ta[1]]], n);
     }
   });
