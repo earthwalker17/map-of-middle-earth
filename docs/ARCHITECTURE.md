@@ -59,9 +59,16 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
   is clamped to the water level ± a natural bank (`world.json rivers.stampBankSlope`) — no blend back to baked
   walls. `places.json onRiver` landmarks are exempt; `stampLoss()` reports how much of each landmark's stamp
   the guard removed (validated in `pnpm check`).
-- Stamps (`stamps.ts`): `flatten | raise | cone | plateau | carve` — declared as data by landmarks, relative
-  to the landmark's base ground (a cone's profile applies to the height above `base`; `flatten lowerOnly`
-  only cuts ground above its target, e.g. the Osgiliath terrace).
+- Stamps (`stamps.ts`): `flatten | raise | cone | plateau | carve` and (S3) `ridge | scarp | massif | basin`
+  — declared as data by landmarks, relative to the landmark's base ground (a cone's / massif's profile
+  applies to the height above `base`; `flatten lowerOnly` only cuts ground above its target, e.g. the
+  Osgiliath terrace). `ridge` (polyline crest, per-vertex heights, round/sharp profile, asymmetry),
+  `scarp` (one side raised into a plateau with a steep face), `massif` (mountain body with arête-to-shoulder
+  spurs + side ridges, dome, flank slope, crater, `snowCap`; never lowers), `basin` (flattened floor + rim).
+  `rough` (deterministic value noise; octaves < 1.6 km dropped) on raise / cone / v2 kinds; `surface:
+  'turf' | 'rock'` overrides the stamp-turf mask (groundMaps `surfaceOverride`). **Resolution rule:** the
+  heightfield is 0.4 km/texel — stamps shape forms ≥ ~1.2 km; sheer faces narrower than that are kit
+  `cliff` geometry seated on the stamp; beside rivers, walls are raised, never carved below the water.
 - `World.places` — `places.json` resolved to world coordinates (display = canonical + `displayOffsetKm`).
 - Mask textures (RGBA8, linear): `water` (riverChannel, lake, land, riverValley), `landcover` (forest,
   wetland, vulcanism, road), `forests` (mirkwood, fangorn, lorien, oldForest), `look` (array texture: 4
@@ -133,7 +140,8 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
    stale detail fails loudly in capture / review / final (`terrainDetailError`, capture assertion). Raw sources
    live in `data/textures-src` (never shipped; `pnpm data:fetch` syncs + derives).
 3. `WaterSystem` (water/) — one material family (presets sea/lake/river): depth absorption, sky+heightfield
-   reflection, env.tFx waves, shore foam; sea plane, earcut lakes at manifest levels, merged river ribbons
+   reflection, env.tFx waves, shore foam; sea plane, earcut lakes at manifest levels (+ landmark pools from
+   `setPools`, merged into the lake mesh with a `waterPool` attribute), merged river ribbons
    built from the baked v2 points/levels as-is (flat across; whitewater only at declared falls or steep baked
    grades; the v1 heuristic stays as a fallback). Waterfalls → effects (S4).
 4. `VegetationSystem` (vegetation/) — hashed world-grid placement from forest/look/water masks, forest types
@@ -142,8 +150,14 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
    lattice. Every instance is a **cluster of 7 sub-crowns** (10-float records); per-instance LOD (5 levels, a
    single blob below ~5 px), 32 km chunks, near-camera fill band. Foliage material: wrap + translucency +
    per-kind sky fill, micro-structure from a precomputed tileable 48³ foam texture (preview 1 tap, review/final
-   2). Note the WebGPU limit of 8 vertex buffers (all used — pack new attributes) and that `meta` is a
-   reserved WGSL word. `setExclusions(circles)` (landmark footprints).
+   2). Note the WebGPU limit of 8 vertex buffers and that `meta` is a reserved WGSL word.
+   `setExclusions(circles)` (landmark footprints, several circles per landmark allowed).
+   **Authored hero trees** (S3, authored.ts): `setAuthored(trees)` — landmark `AuthoredTree` records
+   mapped onto the existing kinds/records (mallorn → tiered Lórien crowns, oak/party → Oak, holly → Dark,
+   autumn → Oak in autumn colours, conifer → Generic, poplar/willow → River, scrub → Scrub), emitted as a
+   hero list BEFORE the chunks (they win the LOD0 cap; never excluded, barren-ruled or thinned) with a
+   dedicated hero trunk geometry (flared, tapered, limbs) at LOD0; `mallornFrame()` gives landmarks the
+   trunk / tier geometry to seat flets and lamps. Visible chunks are filled nearest-first.
 5. `DioramaSystem` (diorama/) — the slab: strata cut faces following the terrain edge profile (tier-aware:
    the preview variant moves fold/undulation to the vertex stage), glassy sea cross-section, satin-stone
    plinth.
@@ -152,7 +166,18 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
    `hypot(bounds.r, bounds.h/2) · (H / (2·tan(fov/2))) / max(1, |camera − bounds.center|)` against
    `lodPx` (default [160, 40]); a pure function of the camera (no hysteresis), evaluated per
    accumulation sub-sample. Fixed design scale — never distance-dependent size (S3 readability policy).
-7. `EmissionSystem` (emission/) — landmark lights as one instanced additive sprite draw (S3, see Landmarks).
+7. `EmissionSystem` (emission/) — every landmark `LightRecord` as ONE instanced additive sprite draw in the
+   main HDR target (5 vertex buffers, ≤ 4096 instances, depth test on, no depth write, no fog): an
+   energy-normalised Gaussian core (σ ≥ 0.6 px, exact per-instance energy) + a per-kind halo, so sub-pixel
+   lights stay stable sparkles under jittered accumulation; transmittance `exp(−extinction ·
+   atmosphere.opticalDepth)` (no in-scatter squares); capped distance gain for window / lamp / fire; gates
+   from env (window / lamp / ithildin at night + twilight, fire from dusk, lava / eye / magic always,
+   beacon / event off until the S4 timeline via `setDynamic(fn(state))`); deterministic `env.tFx` flicker.
+   **Settlement aggregation:** a landmark's windows / lamps / fires (per gate) crossfade into one aggregate
+   spark at their energy-weighted centroid as the group shrinks below ~12 → 6 px (pure function of the
+   camera), with a visibility floor. `gradeUniforms.glowKeep` (RegionLook: 0.9·max(night, twilight)) exempts
+   bright glows from the night desaturation and soft-compresses their peak (hue kept); 0 by day.
+   `env.pxPerKm` / `env.viewportH` are written by EnvironmentSystem.
 8. (later) `EffectsSystem`, `RouteSystem`, `AnnotationSystem`.
 
 ## Landmarks (src/landmarks)
@@ -182,6 +207,15 @@ realize their declarations.
   geometry only; ≈ 0.3 s for all 24 landmarks at boot.
 - **Readability policy (S3):** one fixed design scale per landmark; wide-shot readability from terrain
   silhouette (stamps), value contrast and emission; framing gates in tools/check/bookmarks.ts.
+- **Blender GLBs** (close-up heroes only, after the S3 spike): `pnpm models [--only id] [--verify]`
+  (tools/blender/run.ts: memory guard ≥ 1.5 GB → the GPU lock → Blender 4.5 headless without a shell, 10 min
+  timeout; `--verify` rebuilds and requires identical bytes) runs `tools/blender/<id>.py` (lib.py: 1 BU =
+  1 km, fixed seeds, remesh / decimate into nodes lod0/1/2, materials named `fam:<FamilyId>`, COLOR_0
+  paint, no UVs / textures / Draco) → `public/models/<id>.glb` + `public/models/manifest.json` (sha256,
+  script hash, tris, bounds). Runtime (model.ts): GLTFLoader → families by material name (unknown names
+  throw), COLOR_0 → paint, the kit's packing + AO; GLB materials are never used. `ModelDecl {file,
+  instances[{at, headingDeg, mirrorX}], boundsKm}`; Node never parses GLBs (bounds from the decl).
+  `pnpm check` verifies manifest sha256, CREDITS coverage and script staleness.
 
 ## Capture & QA (tools/capture)
 - The readback target stores bytes as-is (NoColorSpace): the post pass already encodes sRGB.

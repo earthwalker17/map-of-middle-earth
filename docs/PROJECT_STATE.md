@@ -143,8 +143,13 @@ south edge is a clean diorama cut through the Bay of Belfalas; a squarer board w
   cut-face / top-void classes, subject px) + bookmark / shot-list gates (strict per landmark once its
   shot-list `status` is `s3`); S3 QA sets; region shots reframed (mordor, erebor-long-lake, misty-moria);
   `tools/capture/exportCameras.ts` for the final S2-vs-S3 A/B.
-- **W1 (agents):** A = kit v2 / families v2 / LOD / landmark gates + Edoras (merged); B = emission /
-  authored trees / stamps v2 / pools + Lothlórien + Erebor massif.
+- **W1 (merged):** A = kit v2 / families v2 (2 uber materials) / vertex AO / projected-px LOD / landmark
+  gates + Edoras (s3); B = emission sprites (halos, settlement aggregation, glowKeep) / authored hero trees
+  (tiered mallorns, hero trunks) / stamps v2 (ridge, scarp, massif, basin, rough, surface, snow caps) /
+  pools + Lothlórien (s3) + Erebor massif. Perf gate after W1 (preview 1280×720): overview 46.8–56.5 ms,
+  shire 49.8–50.1, anduin-gondor 50.4 (one noisy run 75.6, p95 spikes ~96), **compile 5.2–5.9 s (was
+  7.3 s)**. Recheck after W3.
+- **W2 (running):** C = Hobbiton, Rivendell, Moria; D phase 2 = Argonath gorge + GLB refinements, Rauros.
 - **Blender spike (W2-D phase 1, merged): GO.** `pnpm models` (headless Blender 4.5 under the lock, 10 min
   timeout, `--verify` byte-identical), runtime GLB loader (families by `fam:<id>`, shared AO). Argonath king
   GLB (39k tris/king, 1.06 MB) vs the TS-v2 figure: 3/3 blind critics preferred the GLB in every readable
