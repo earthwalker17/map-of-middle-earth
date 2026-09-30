@@ -65,7 +65,7 @@ project's code.
 
 | File | Built by | Content |
 |---|---|---|
-| `argonath.glb` | `tools/blender/argonath.py` | One king of the Argonath (robed, left hand raised, axe, crowned helm, pedestal), `lod0` / `lod1` / `lod2`; placed twice by `src/landmarks/argonath` |
+| `argonath.glb` | `tools/blender/argonath.py` | The kings of the Argonath: one shared robed body (left hand raised, open palm, axe, chipped pedestal) `lod0` / `lod1` / `lod2` and two head variants `crown_lod0..2` (bearded, crowned helm) / `helm_lod0..2` (full helm with face guard); placed twice by `src/landmarks/argonath` |
 
 ## Geography data
 

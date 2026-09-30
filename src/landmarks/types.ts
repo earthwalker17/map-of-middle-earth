@@ -73,8 +73,11 @@ export interface TreeDecl {
 export interface ModelDecl {
   /** file name under public/models/ */
   file: string;
-  /** placements in local km (default: one at the origin) */
-  instances?: { at: V3; headingDeg?: number; mirrorX?: boolean }[];
+  /**
+   * placements in local km (default: one at the origin); `node` names a variant: that instance adds the
+   * GLB's `<node>_lod0/1/2` nodes to the shared `lod0/1/2` (e.g. two different helms on one body)
+   */
+  instances?: { at: V3; headingDeg?: number; mirrorX?: boolean; node?: string }[];
   /** declared local bounds (km) for CPU checks and probes — Node never parses GLBs */
   boundsKm: { r: number; h: number };
 }

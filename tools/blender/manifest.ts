@@ -18,8 +18,10 @@ export interface ModelEntry {
   scriptSha256: string;
   /** Blender version string of the build */
   blender: string;
-  /** triangles of the lod0 / lod1 / lod2 nodes */
+  /** triangles of the shared lod0 / lod1 / lod2 nodes */
   tris: [number, number, number];
+  /** optional variant nodes `<name>_lod0/1/2` an instance adds on top (ModelDecl instances[].node): tris per LOD */
+  variants?: Record<string, [number, number, number]>;
   /** model-space bounds (km): horizontal radius about the origin, height above it */
   boundsKm: { r: number; h: number };
 }

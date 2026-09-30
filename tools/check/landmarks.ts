@@ -10,7 +10,8 @@
  *  - Blender GLB models (`ModelDecl`): the file exists in public/models/ with a matching entry and sha256 in
  *    public/models/manifest.json and is covered by the CREDITS.md "Models" section (errors); a changed build
  *    script / tools/blender/lib.py (script hash) or declared bounds smaller than the built model → warning;
- *    the manifest's per-LOD tris × instances join the budget gates (Node never parses GLBs)
+ *    the manifest's per-LOD tris per instance (shared nodes + the instance's `node` variant, which must
+ *    exist in the manifest) join the budget gates (Node never parses GLBs)
  *
  * Rebuilt vs legacy rule: a landmark counts as REBUILT (kit v2, hard gates) once its data/tour/shotlist.json
  * entry has `"status": "s3"` (the same switch makes its bookmark gates strict, tools/check/bookmarks.ts) or
@@ -158,15 +159,20 @@ export async function checkLandmarks(world: World, landmarks: LandmarkDefinition
     else if (scriptHash(ROOT, entry.script) !== entry.scriptSha256) out.warnings.push(`models: ${file} is stale — ${entry.script} or tools/blender/lib.py changed since it was built (pnpm models --only ${entry.id})`);
     const bk = d.model.boundsKm;
     if (bk.r < entry.boundsKm.r - 1e-3 || bk.h < entry.boundsKm.h - 1e-3) out.warnings.push(`models: ${d.id} ModelDecl.boundsKm {r ${bk.r}, h ${bk.h}} is smaller than the built model {r ${entry.boundsKm.r}, h ${entry.boundsKm.h}} (LOD / probe bounds too small)`);
-    // budgets: kit LODs (built in Node) + manifest tris × instances
-    const n = d.model.instances?.length || 1;
+    // budgets: kit LODs (built in Node) + per instance the manifest's shared tris + its variant's tris
+    const insts: { node?: string }[] = d.model.instances?.length ? d.model.instances : [{}];
+    const n = insts.length;
+    for (const inst of insts)
+      if (inst.node && !entry.variants?.[inst.node])
+        out.errors.push(`models: ${d.id} instance node '${inst.node}' is not a variant of ${file} (manifest variants: ${Object.keys(entry.variants ?? {}).join(', ') || 'none'})`);
     const kt = built.find((b) => b.id === d.id)?.stats.tris ?? [];
-    const lv = (L: number) => (kt.length ? kt[Math.min(L, kt.length - 1)] : 0) + n * entry.tris[Math.min(L, 2)];
+    const perInst = (L: number) => insts.reduce((s, inst) => s + entry.tris[Math.min(L, 2)] + (inst.node ? (entry.variants?.[inst.node]?.[Math.min(L, 2)] ?? 0) : 0), 0);
+    const lv = (L: number) => (kt.length ? kt[Math.min(L, kt.length - 1)] : 0) + perInst(L);
     const v2 = shotlist.landmarks[d.id]?.status === 's3' || !!d.lodPx;
     const sev = v2 ? out.errors : out.warnings;
     const budget = shotlist.landmarks[d.id]?.budget;
     const [m0, m1, m2] = [lv(0), lv(1), lv(2)];
-    if (budget && m0 > budget.lod0Tris) sev.push(`models: ${d.id} LOD0 ${m0} tris (kit + ${n} × ${entry.tris[0]}) > budget ${budget.lod0Tris}`);
+    if (budget && m0 > budget.lod0Tris) sev.push(`models: ${d.id} LOD0 ${m0} tris (kit + ${n} instance(s) ${perInst(0)}) > budget ${budget.lod0Tris}`);
     if (m1 > LIMITS.lod1Share * m0) sev.push(`models: ${d.id} LOD1 ${m1} tris > ${LIMITS.lod1Share * 100} % of LOD0 ${m0}`);
     if (m2 > LIMITS.coarsestTris) sev.push(`models: ${d.id} coarsest LOD ${m2} tris > ${LIMITS.coarsestTris}`);
   }
