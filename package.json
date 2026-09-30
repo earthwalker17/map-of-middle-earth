@@ -19,7 +19,8 @@
     "qa": "node --import tsx tools/capture/qa.ts",
     "check": "node --import tsx tools/check/run.ts",
     "perf": "node --import tsx tools/capture/perf.ts",
-    "host": "node --import tsx tools/host.ts"
+    "host": "node --import tsx tools/host.ts",
+    "models": "node --import tsx tools/blender/run.ts"
   },
   "dependencies": {
     "lil-gui": "0.21.0",
