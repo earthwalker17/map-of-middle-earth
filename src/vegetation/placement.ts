@@ -60,7 +60,8 @@ const PALETTE: Record<number, string[]> = {
   [Kind.Dark]: ['#2d4124', '#34472b', '#2a3b22', '#3a4a29', '#304227', '#283820'],
   [Kind.Ithilien]: ['#3f5c2a', '#4b652f', '#375327', '#58693a', '#46632f', '#2f4a26', '#52693a'],
   [Kind.Oak]: ['#3f5421', '#4b5e27', '#38491d', '#475a27', '#36481d', '#53652b', '#5a6a30'],
-  [Kind.Hedge]: ['#34481f', '#3b5023', '#2f431d', '#40552a', '#374b22'],
+  // mid greens: near-black hedges read as cracks / drawn linework at regional range
+  [Kind.Hedge]: ['#4a6330', '#526b35', '#44592b', '#58723a', '#4d6531'],
   [Kind.River]: ['#4a5e2b', '#405229', '#56633e', '#3a4f28', '#4f5f36'],
   [Kind.Scrub]: ['#3f5427', '#495d2c', '#364c26', '#50602f', '#425226'],
 };

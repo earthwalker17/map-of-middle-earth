@@ -19,7 +19,7 @@
     },
     "shire": {
       "ground": {"ecotone": 0.3, "grass": "#4f9a3a", "dry": "#95ad50", "soil": "#6b5536", "rock": "#736d62", "dryness": 0.2, "pattern": 0.5, "spots": [{"place": "hobbiton", "radiusKm": 5, "turf": 1}]},
-      "grade": {"tint": "#fff1da", "saturation": 0.95, "contrast": 0.97, "lift": [0.0015, 0.0012, 0.0004], "bloom": 0.12},
+      "grade": {"tint": "#fff4e4", "saturation": 1.03, "contrast": 0.98, "lift": [0.0015, 0.0012, 0.0004], "bloom": 0.12},
       "atmo": {"tint": [1.07, 1.03, 0.92], "density": 0.85, "sky": [1.02, 1.0, 0.97]}
     },
     "enedwaith": {
@@ -35,11 +35,11 @@
     "mirkwood": {
       "ground": {"ecotone": 0.25, "grass": "#4a5a33", "dry": "#626441", "soil": "#3a3528", "rock": "#55565a", "dryness": 0.4, "pattern": 0.5},
       "grade": {"tint": "#f1f7ea", "saturation": 0.84, "contrast": 1.05, "exposure": -0.25},
-      "atmo": {"tint": [0.78, 0.88, 0.76], "density": 1.35, "sky": [0.9, 0.95, 0.88]}
+      "atmo": {"tint": [0.84, 0.9, 0.83], "density": 1.3, "sky": [0.93, 0.96, 0.91]}
     },
     "wilderland": {
       "ground": {"grass": "#5a8452", "dry": "#7f9068", "soil": "#665e4c", "rock": "#666769", "dryness": 0.36, "pattern": 0.5, "spots": [{"place": "erebor", "radiusKm": 26, "snowline": -4, "grass": "#6c6f66", "dry": "#7a7c74", "dryness": 0.7, "rock": "#63646a", "turf": 0}]},
-      "grade": {"tint": "#eff6ef", "saturation": 0.97, "contrast": 1.04},
+      "grade": {"tint": "#f6f4ee", "saturation": 0.97, "contrast": 1.04},
       "atmo": {"tint": [0.96, 1.0, 1.02], "density": 1.05}
     },
     "brown-lands": {
