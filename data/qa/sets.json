@@ -1,24 +1,16 @@
 {
   "version": 1,
-  "notes": "Named QA shot sets for `pnpm qa --set <name>`. Ids are data/qa shots or landmark bookmarks (resolved in the page). 's1' is the milestone set: 10 overview/region shots + 14 landmark close-ups.",
+  "notes": "Named QA shot sets for `pnpm qa --set <name>`. Ids are data/qa shots or landmark bookmarks (resolved in the page). 's1' (S1/S2 milestone): 11 overview/region shots + the 14 S1 landmark close-ups. S3: 's3-heroes' (the 7 hero pauses, close + wide), 'landmarks-s3' (24 hero close-ups), 'wides-s3' (10 context shots), 's3' (milestone: overview + regions + closes + wides), 'blind-landmarks' (24 close-ups for blind recognizability: pnpm qa --set s3 --blind blind-landmarks).",
   "sets": {
     "overview": ["overview-day", "overview-golden", "overview-night", "overview-low-west", "overview-top"],
     "regions": ["shire", "misty-moria", "rohan-isengard", "anduin-gondor", "mordor", "erebor-long-lake"],
-    "landmarks": [
-      "minas-tirith-close", "barad-dur-close", "mount-doom-close", "black-gate-close", "minas-morgul-close",
-      "argonath-close", "isengard-close", "helms-deep-close", "moria-close", "rivendell-close",
-      "hobbiton-close", "erebor-close", "lake-town-close", "lothlorien-close"
-    ],
-    "s1": [
-      "overview-day", "overview-golden", "overview-night", "overview-low-west", "overview-top",
-      "shire", "misty-moria", "rohan-isengard", "anduin-gondor", "mordor", "erebor-long-lake",
-      "minas-tirith-close", "barad-dur-close", "mount-doom-close", "black-gate-close", "minas-morgul-close",
-      "argonath-close", "isengard-close", "helms-deep-close", "moria-close", "rivendell-close",
-      "hobbiton-close", "erebor-close", "lake-town-close", "lothlorien-close"
-    ],
-    "blind": [
-      "overview-day", "overview-top", "overview-low-west",
-      "shire", "misty-moria", "rohan-isengard", "anduin-gondor", "mordor", "erebor-long-lake"
-    ]
+    "landmarks": ["minas-tirith-close", "barad-dur-close", "mount-doom-close", "black-gate-close", "minas-morgul-close", "argonath-close", "isengard-close", "helms-deep-close", "moria-close", "rivendell-close", "hobbiton-close", "erebor-close", "lake-town-close", "lothlorien-close"],
+    "s1": ["overview-day", "overview-golden", "overview-night", "overview-low-west", "overview-top", "shire", "misty-moria", "rohan-isengard", "anduin-gondor", "mordor", "erebor-long-lake", "minas-tirith-close", "barad-dur-close", "mount-doom-close", "black-gate-close", "minas-morgul-close", "argonath-close", "isengard-close", "helms-deep-close", "moria-close", "rivendell-close", "hobbiton-close", "erebor-close", "lake-town-close", "lothlorien-close"],
+    "blind": ["overview-day", "overview-top", "overview-low-west", "shire", "misty-moria", "rohan-isengard", "anduin-gondor", "mordor", "erebor-long-lake"],
+    "s3-heroes": ["hobbiton-close", "hobbiton-wide", "rivendell-close", "rivendell-wide", "moria-close", "moria-wide", "argonath-close", "argonath-wide", "black-gate-close", "black-gate-wide", "minas-morgul-close", "minas-morgul-wide", "mount-doom-close", "mount-doom-wide"],
+    "landmarks-s3": ["argonath-close", "barad-dur-close", "black-gate-close", "bree-close", "cirith-ungol-close", "dale-close", "dol-guldur-close", "edoras-close", "erebor-close", "grey-havens-close", "helms-deep-close", "henneth-annun-close", "hobbiton-close", "isengard-close", "lake-town-close", "lothlorien-close", "minas-morgul-close", "minas-tirith-close", "moria-close", "mount-doom-close", "osgiliath-close", "rauros-close", "rivendell-close", "weathertop-close"],
+    "wides-s3": ["argonath-wide", "black-gate-wide", "erebor-wide", "hobbiton-wide", "lothlorien-wide", "minas-morgul-wide", "minas-tirith-wide", "moria-wide", "mount-doom-wide", "rivendell-wide"],
+    "s3": ["overview-day", "overview-golden", "overview-night", "overview-low-west", "overview-top", "shire", "misty-moria", "rohan-isengard", "anduin-gondor", "mordor", "erebor-long-lake", "argonath-close", "barad-dur-close", "black-gate-close", "bree-close", "cirith-ungol-close", "dale-close", "dol-guldur-close", "edoras-close", "erebor-close", "grey-havens-close", "helms-deep-close", "henneth-annun-close", "hobbiton-close", "isengard-close", "lake-town-close", "lothlorien-close", "minas-morgul-close", "minas-tirith-close", "moria-close", "mount-doom-close", "osgiliath-close", "rauros-close", "rivendell-close", "weathertop-close", "argonath-wide", "black-gate-wide", "erebor-wide", "hobbiton-wide", "lothlorien-wide", "minas-morgul-wide", "minas-tirith-wide", "moria-wide", "mount-doom-wide", "rivendell-wide"],
+    "blind-landmarks": ["argonath-close", "barad-dur-close", "black-gate-close", "bree-close", "cirith-ungol-close", "dale-close", "dol-guldur-close", "edoras-close", "erebor-close", "grey-havens-close", "helms-deep-close", "henneth-annun-close", "hobbiton-close", "isengard-close", "lake-town-close", "lothlorien-close", "minas-morgul-close", "minas-tirith-close", "moria-close", "mount-doom-close", "osgiliath-close", "rauros-close", "rivendell-close", "weathertop-close"]
   }
 }
