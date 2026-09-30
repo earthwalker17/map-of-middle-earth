@@ -35,7 +35,13 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
 - `SceneState` — complete description of a frame: `t`, `tFx` (effect clock), `tod`, `dayOfYear`, `camera`,
   `lens`, `routeProgress`, `annotations`, `lookOverride`, `weather {cloudCoverage, wind}`, `quality`.
   Bookmark shots carry their landmark's `lookOverride`.
-- `Timeline.evaluate(t) → SceneState`. `StaticTimeline` for stills/bookmarks; the tour timeline (S8) is data.
+- `Timeline.evaluate(t) → SceneState`. `StaticTimeline` for stills/bookmarks; the tour timeline (S4) is data
+  (`data/tour/timeline.json`), drafted by the S3 shot list `data/tour/shotlist.json` (film segments,
+  per-landmark role, hero / context framing, detail budgets).
+- Shots: explicit `{position, target, fov, roll}` or `{orbit: {place | targetKm, distanceKm, elevationDeg,
+  azimuthDeg, fov, lift, aimKm [east, north], roll}}` (src/camera/shots.ts). Landmark bookmarks
+  (`<id>-close` hero, `<id>-wide` context) carry tod, dayOfYear, weather, fStop, compare, note and the
+  landmark's lookOverride.
 - `System { id, init?(ctx), evaluate(frame), dispose? }` — `evaluate` must be a pure function of
   `frame.state` + static data (random access to any frame). Stateful sims are documented exceptions that
   pre-roll from shot start.
@@ -92,8 +98,20 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
   contrast, exposure, lift, redKeep, bloom, spots[] per place), `atmo` (tint, density (> 1 = local haze),
   sky, spots[]).
 - Shader code imports TSL through the `tsl` facade (`src/materials/tsl.ts`) — typed loosely on purpose.
-- Material families: terrain (terrain/terrainMaterial.ts), water, foliage, stone, obsidian/metal, emissive,
-  particle, text — one factory per family; per-instance parameters instead of new materials.
+- Material families: terrain (terrain/terrainMaterial.ts), water, foliage, landmark structures
+  (families.ts), emission sprites (src/emission), particle, text — one factory per family; per-instance /
+  per-vertex parameters instead of new materials.
+- **Landmark families v2** (families.ts): TWO uber materials for every landmark mesh — `structure`
+  (opaque; casts and receives shadows) and `glow` (neither). Family presets are data (`FAMILY`:
+  stone, darkStone, weathered, plaster, wood, thatch, slate, roofTile, gold, obsidian, iron, foliage, metal,
+  emissive, emissiveGreen, lava, ithildin) packed per vertex: `color` u8×4 = absolute sRGB paint + baked
+  hemisphere AO in `a` (→ the material's AO slot only); `surf` u8×4 = roughness, metalness, grain,
+  `a` = noise class × 32 + ground-contact term (0..31; class 4 = foliage) — for glow: strength/16, gate
+  code, flicker. Contact is the only baked term on the albedo (`× mix(1, contact, 0.3)`). Landmark-local
+  fwidth-faded noise (≈9, 37, 140 /km) + stone coursing on walls. Glow = paint × strength × gate × flicker
+  (gates from env: always · night = clamp(smoothstep(0.2, 0.7, night) + 0.4·twilight) · dusk =
+  0.25 + 0.75·max(night, golden) · event = 0 until S4). `materialFor(key)` resolves geometry keys;
+  `familyVertex(fam, paint?, shade?, tint?, glow?)` packs a vertex (also used for GLBs).
 
 ## Systems (registration order in src/app/boot.ts)
 1. `EnvironmentSystem(world)` (environment/) — time of day → keyframed daylight (by sun elevation), own TSL
@@ -129,14 +147,41 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
 5. `DioramaSystem` (diorama/) — the slab: strata cut faces following the terrain edge profile (tier-aware:
    the preview variant moves fold/undulation to the vertex stage), glassy sea cross-section, satin-stone
    plinth.
-6. `LandmarkSystem` (landmarks/) — realizes `defineLandmark` bundles.
-7. (later) `EffectsSystem`, `RouteSystem`, `AnnotationSystem`.
+6. `LandmarkSystem` (landmarks/) — realizes the built landmarks (see Landmarks): one group per LOD,
+   exactly one visible, chosen per landmark from the projected bounding radius
+   `hypot(bounds.r, bounds.h/2) · (H / (2·tan(fov/2))) / max(1, |camera − bounds.center|)` against
+   `lodPx` (default [160, 40]); a pure function of the camera (no hysteresis), evaluated per
+   accumulation sub-sample. Fixed design scale — never distance-dependent size (S3 readability policy).
+7. `EmissionSystem` (emission/) — landmark lights as one instanced additive sprite draw (S3, see Landmarks).
+8. (later) `EffectsSystem`, `RouteSystem`, `AnnotationSystem`.
 
 ## Landmarks (src/landmarks)
-`defineLandmark({ id, placeId, tier, stamps[], model, lodDistances, lights[], emitters[], waterFeatures[],
-vegetationExclusion, lookOverride, night, annotation, bookmarks[], cameraConstraints, audioHooks })`.
-Folders are auto-discovered (`import.meta.glob`). Landmarks never create materials, particle systems or
-render loops — shared systems realize their declarations. Proxies (S1) → Blender GLB LODs (S4+).
+`defineLandmark({ id, placeId, tier, headingDeg, scale, anchor, stamps[], proxy(kit), model, lodPx,
+lights[], trees[], emitters[], waterFeatures[], vegetationExclusion, contrast, lookOverride, annotation,
+bookmarks[], cameraConstraints, audioHooks })` (types.ts). Folders are auto-discovered
+(`import.meta.glob`). Landmarks never create materials, particle systems or render loops — shared systems
+realize their declarations.
+- **One pure build run** (build.ts `buildLandmarks(world, defs, {geometry})`, after the stamp layer, before
+  vegetation / water init) → `BuiltLandmark` records (records.ts): geometry LODs (`Map<materialKey,
+  BufferGeometry>` per LOD), world-space `LightRecord`s (def.lights + kit records; gate by kind
+  `DEFAULT_GATE`), `AuthoredTree`s, contacts (seating gate), bounds, stats. `geometry: false` (Node checks,
+  probe) builds LOD0 records only. Local-frame helpers in frame.ts; stamps / exclusions / pools in world.ts.
+  Kit `proxy` callbacks must not mutate module-level state (the build runs more than once).
+- **Kit v2** (kit/ProxyKit.ts, geom.ts, ao.ts): indexed geometry merged per material key per LOD; parts
+  placed by base centre; `PartOpts {at, rot, color (absolute paint), shade, tint (legacy), lod, seat, glow,
+  grain}`; two random streams (`k.r()` = the author's; kit internals `rand(hash32(seed, 'kit2'), part, k)`).
+  Primitives: house (roofs, windows, dig, bank, ridge caps, gable boards), wallPath (crenels / stakes,
+  batter, followGround, towers), tower, lathe, extrude, loft, cliff (faceted band, taper, soft), rock
+  (leafy crowns for foliage ≥ 0.3 km), mound, scatter, stairs, bridge, arcade; v1 box / cylinder / cone /
+  sphere / blob / ring / torus / wall kept. Records: `light`, `windows`, `tree`. LOD membership by
+  part-group extent (≥ 8 % of the bbox diagonal → LOD2, ≥ 2 % → LOD1; nested composites join the
+  outermost group; LOD1/2 regenerate with ½ / ¼ segments; a level identical to the previous one reuses
+  its geometry). Seating helpers sink parts 0.02 km and record contacts (centre, lowest and uphill corners).
+- **Vertex AO** (ao.ts): absolute 0.025 km voxels (coarser only past 2.5 M cells), 6 cosine Halton rays ×
+  16 steps starting 1.5 voxels out, exact terrain height test (weight 0.5), per-family floors; structure
+  geometry only; ≈ 0.3 s for all 24 landmarks at boot.
+- **Readability policy (S3):** one fixed design scale per landmark; wide-shot readability from terrain
+  silhouette (stamps), value contrast and emission; framing gates in tools/check/bookmarks.ts.
 
 ## Capture & QA (tools/capture)
 - The readback target stores bytes as-is (NoColorSpace): the post pass already encodes sRGB.
@@ -154,6 +199,11 @@ render loops — shared systems realize their declarations. Proxies (S1) → Ble
   orphaned capture Chrome of the checkout is swept while the lock is held.
 - `pnpm perf [--gate]` — preview-tier boot/compile/frame-latency probe vs `data/qa/perf-baseline.json`.
 - `tools/capture/probe.ts "<expr>"` evaluates an expression against `window.__app` for diagnostics.
+- `tools/capture/exportCameras.ts --set <set> --out <file>` — resolved cameras as explicit shots, so another
+  checkout (e.g. the previous session's code) can render exactly the current framings for A/B.
+- Reference images are gitignored: agent worktrees set `MOME_REFERENCE_DIR` to the main checkout's
+  `reference/`. `qa.ts --blind <set>` picks the anonymised set; bookmark ids `<landmarkId>-<suffix>` pair
+  with references by the longest landmark-id prefix.
 - `tools/capture/pair.ts --a <run> --b <run>` — blind A/B sheets (left/right shuffled; key outside the folder).
 
 ## Validation (tools/check, CPU only)
@@ -164,5 +214,16 @@ render loops — shared systems realize their declarations. Proxies (S1) → Ble
   areas and a fixed fill-depth cap, ribbon-edge float, new steep steps, source trims).
 - `tools/check/geometry.ts` (`MOME_BASELINE_DIR`): coast IoU, lake wetted areas, channel alignment, landmark
   ground and named-peak changes, snowline/treeline area moved, steepness — vs a frozen bake.
-- `tools/check/cameras.ts` — CPU camera probe (sky/foreground/line of sight/subject NDC, lakes, slab
-  framing) for designing bookmarks and shot lists without rendering.
+- **Landmark gates** (tools/check/landmarks.ts) — per landmark LOD0 tris / lights vs the shot-list budget,
+  LOD1 ≤ 25 % of LOD0, coarsest ≤ 4k tris; totals (LOD0 ≤ 1.2 M tris, ≤ 48 MB, ≤ 4096 lights, ≤ 2000
+  authored trees); seating (no floating, ≤ 50 % buried); valid material keys; double-build determinism.
+- **Bookmark + shot-list gates** (tools/check/bookmarks.ts) — `data/tour/shotlist.json` coverage and film
+  length (180–240 s); per landmark `<id>-close` within ±35 % of heroKm with subject ≥ 25 % of frame height,
+  ≥ 60 % visible, top-of-frame void ≤ 1 %, void ≤ 3 %, sky ≤ 45 %, clear line of sight; `<id>-wide` when
+  contextKm is set (extent ≥ places.json wideShotPxTarget). Both gate files are ERRORS for landmarks at
+  shot-list `"status": "s3"` (or declaring `lodPx`), warnings otherwise.
+- **Camera probe v2** (tools/check/probe.ts + the cameras.ts CLI) — ray classes terrain / water / sky /
+  void (studio backdrop) / edge (strata cut face), top-of-frame void, near foreground, line of sight, and
+  the subject's projected px (build bounds ∪ the landmark's raising stamps) with visibility. CLI modes:
+  ONLY / OVR / SEARCH / OTHERS / SHOT / SHOTS (file or set) / JSON / LAKES / RINGS / SLAB. Node world loads
+  wait for ≥ 1 GB free RAM.
