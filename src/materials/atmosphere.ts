@@ -349,8 +349,12 @@ export class Atmosphere {
     const layers = ground.add(env.airDensity.mul(layer(env.airFalloff)));
     // distance ramps (see the class doc): the air fades in far from the camera, local haze early
     const r = env.hazeRamp;
-    const air = smoothstep(r.x, r.y, d).mul(min(density, 1));
-    const local = smoothstep(r.z, r.w, d).mul(max(density.sub(1), 0));
+    // whole-table views: seen from far above the slab (overview cameras at 1000–7000 km) the model
+    // should read crisp and vivid, as a physical miniature does — relax the air and local haze with
+    // the eye height (regional and close shots, and reflections from the water, are unaffected)
+    const table = float(1).sub(smoothstep(350, 1400, from.y).mul(0.65));
+    const air = smoothstep(r.x, r.y, d).mul(min(density, 1)).mul(table);
+    const local = smoothstep(r.z, r.w, d).mul(max(density.sub(1), 0)).mul(table);
     // valley mist is a local feature too (short ramp): the ground layer thickened over the dales
     const mist = ground.mul(valley).mul(smoothstep(r.z, r.w, d));
     return layers.mul(air.add(local)).add(mist).add(env.fogDensity.mul(d.mul(frac)));
