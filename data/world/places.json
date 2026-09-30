@@ -28,7 +28,7 @@
     { "id": "emyn-muil", "name": "Emyn Muil", "kind": "feature", "canonical": [1114.633, 787.316], "src": "L" },
     { "id": "dead-marshes", "name": "The Dead Marshes", "kind": "feature", "canonical": [1142.7, 753.8], "src": "G" },
     { "id": "black-gate", "name": "The Black Gate", "kind": "landmark", "tier": "A", "canonical": [1181.537, 723.163], "src": "P", "displayOffsetKm": [0, 0], "footprintKm": 9, "region": "dagorlad" },
-    { "id": "henneth-annun", "name": "Henneth Annûn", "kind": "landmark", "tier": "B", "canonical": [1140.324, 678.923], "src": "L", "displayOffsetKm": [-1.0, 1.0], "footprintKm": 3, "region": "ithilien" },
+    { "id": "henneth-annun", "name": "Henneth Annûn", "kind": "landmark", "tier": "B", "canonical": [1140.324, 678.923], "src": "L", "displayOffsetKm": [-1.0, 2.2], "footprintKm": 3, "region": "ithilien" },
     { "id": "osgiliath", "name": "Osgiliath", "kind": "landmark", "tier": "B", "canonical": [1138.6, 629.458], "src": "P", "displayOffsetKm": [-4.44, 3.73], "footprintKm": 6.5, "region": "gondor" },
     { "id": "minas-tirith", "name": "Minas Tirith", "kind": "landmark", "tier": "A", "canonical": [1120.738, 618.877], "src": "P", "displayOffsetKm": [-4, 9.5], "footprintKm": 11, "region": "gondor" },
     { "id": "minas-morgul", "name": "Minas Morgul", "kind": "landmark", "tier": "A", "canonical": [1169.735, 637.427], "src": "P", "displayOffsetKm": [0, 5.3], "footprintKm": 7, "region": "mordor" },
