@@ -3,6 +3,7 @@ import { hash32, rand } from '../core/rng.ts';
 import { fieldWeightAt, shireFieldGrid } from '../world/fields.ts';
 import { lookNoise } from '../materials/looks.ts';
 import type { World } from '../world/World.ts';
+import { applyStamp, stampBounds } from '../world/stamps.ts';
 
 /**
  * CPU-built ground masks for the terrain material (init-time, pure functions of the world data +
@@ -141,6 +142,7 @@ function buildStampMask(world: World): DataTexture {
     blur(a, W, H, 1, b);
   };
   stampField(true);
+  surfaceOverride(world, a, W, H);
   put(a, 0);
   stampField(false);
   put(a, 1);
@@ -173,6 +175,39 @@ function buildStampMask(world: World): DataTexture {
   band(0, 1, 2.5);
   put(a, 3);
   return makeTexture(data, W, H, false, 'terrain-stamp-mask');
+}
+
+/**
+ * Stamp `surface` overrides on the turf field `a` (half resolution, after dilate + blur): inside the
+ * influence of a stamp declaring 'turf' the field goes to 1, for 'rock' to 0 (the terrain's own slope /
+ * alpine rock rules then decide), weighted by how much that stamp alone changes the base ground there.
+ * Stamps without `surface` (or 'auto') leave the automatic rule untouched — bit-identical masks.
+ */
+function surfaceOverride(world: World, a: Float32Array, W: number, H: number): void {
+  const hf = world.heights;
+  const list = hf.stampList.filter((st) => st.surface === 'turf' || st.surface === 'rock');
+  if (!list.length) return;
+  const spec = world.spec;
+  const cell = hf.texel * 2;
+  for (const st of list) {
+    const [x0, z0, x1, z1] = stampBounds(st);
+    const c0 = Math.max(0, Math.floor((x0 - spec.xMin) / cell));
+    const c1 = Math.min(W - 1, Math.ceil((x1 - spec.xMin) / cell));
+    const r0 = Math.max(0, Math.floor((z0 - spec.zMin) / cell));
+    const r1 = Math.min(H - 1, Math.ceil((z1 - spec.zMin) / cell));
+    const target = st.surface === 'turf' ? 1 : 0;
+    // 'auto' flatten / basin targets: the base ground at the stamp centre (influence only)
+    const at = 'at' in st ? st.at : st.path[0];
+    const auto = hf.sample(at[0], at[1], 'base');
+    for (let r = r0; r <= r1; r++)
+      for (let c = c0; c <= c1; c++) {
+        const x = spec.xMin + (c + 0.5) * cell;
+        const z = spec.zMin + (r + 0.5) * cell;
+        const b = hf.sample(x, z, 'base');
+        const k = smooth(0.02, 0.25, Math.abs(applyStamp(st, x, z, b, { auto }) - b));
+        if (k > 0) a[r * W + c] += (target - a[r * W + c]) * k;
+      }
+  }
 }
 
 /** Crop colours of the Shire patchwork (sRGB) and their shares. */

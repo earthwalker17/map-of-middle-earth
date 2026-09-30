@@ -30,6 +30,8 @@ import {
   dot,
   max,
   select,
+  exp,
+  step,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 
@@ -50,11 +52,26 @@ export const gradeUniforms = {
   lift: uniform(new Vector3(0, 0, 0)),
   /** 0..1 hue-selective saturation: reds/oranges (lava, fire, the Eye) keep their colour */
   redKeep: uniform(0),
+  /**
+   * 0..1 luminance-keyed (hue-agnostic) exemption from the saturation step: bright emitters (amber
+   * windows, blue-white elven lamps, Morgul green) keep their colour through the night
+   * desaturation. RegionLook sets it ≈ 0.9·max(night, twilight); 0 by day.
+   */
+  glowKeep: uniform(0),
   vignette: uniform(0.35),
   bloomStrength: uniform(0.12),
   bloomRadius: uniform(0.55),
   bloomThreshold: uniform(2.2),
 };
+
+/**
+ * Emitter highlight compress (graded linear HDR, night / twilight only): soft knee from GLOW_KNEE towards
+ * GLOW_LIMIT on the largest channel. AgX's log encoding flattens channel ratios of bright values (an
+ * orange core at 30 renders white), so emitter cores are held low enough for their hue to survive; the
+ * bloom (taken before) still carries their energy.
+ */
+const GLOW_KNEE = 1.5;
+const GLOW_LIMIT = 3;
 
 /**
  * HDR scene target → (optional) jittered accumulation → one post pass
@@ -121,13 +138,17 @@ export class PostPipeline {
       const ex = g.exposure.mul(g.exposureBias);
       const c = input.rgb.mul(ex).toVar();
       if (bloomNode) c.addAssign(bloomNode.rgb.mul(ex));
+      // emitter key: luminance before the grade (lights and their bloom halo are the only things
+      // this bright at night; by day glowKeep is 0)
+      const glow = smoothstep(1.2, 4.0, dot(c, vec3(0.2126, 0.7152, 0.0722))).mul(g.glowKeep);
       c.assign(c.mul(g.tint).add(g.lift));
       // saturation around luminance; reds/oranges can be exempt (Lesnie's "desaturated, with
       // strong reds providing colour separation" for Mordor and Doom)
       const luma = dot(c, vec3(0.2126, 0.7152, 0.0722));
       // only strongly chromatic reds/oranges (lava, fire, embers), never brown earth or rock
       const redness = smoothstep(0.5, 0.8, c.r.sub(max(c.g, c.b)).div(max(c.r, 1e-4)));
-      const sat = mix(g.saturation, max(g.saturation, 1.15), redness.mul(g.redKeep));
+      const satRed = mix(g.saturation, max(g.saturation, 1.15), redness.mul(g.redKeep));
+      const sat = mix(satRed, max(satRed, 1.1), glow);
       c.assign(max(mix(vec3(luma), c, sat), vec3(0))); // saturation > 1 extrapolates: clamp (pow of negatives = NaN)
       // contrast pivot at mid-grey (log-ish, gentle)
       const pivot = float(0.18);
@@ -135,6 +156,13 @@ export class PostPipeline {
       // vignette
       const d = length(screenUV.sub(0.5).mul(vec3(1.0, 0.8, 0).xy));
       c.assign(c.mul(float(1).sub(smoothstep(0.35, 0.95, d).mul(g.vignette))));
+      // hue-preserving highlight compress at night (glowKeep): scaling the whole colour by its largest
+      // channel (soft knee GLOW_KNEE → GLOW_LIMIT) keeps the hue of Morgul green, fire and windows instead
+      // of AgX's white; identity below the knee
+      const peakCh = max(c.r, max(c.g, c.b));
+      const over = max(peakCh.sub(GLOW_KNEE), 0);
+      const squeezed = float(GLOW_KNEE).add(float(GLOW_LIMIT - GLOW_KNEE).mul(float(1).sub(exp(over.div(-(GLOW_LIMIT - GLOW_KNEE))))));
+      c.assign(c.mul(mix(float(1), squeezed.div(max(peakCh, 1e-4)), g.glowKeep.mul(step(GLOW_KNEE, peakCh)))));
       return c;
     })();
     const display = renderOutput(vec4(graded, 1), AgXToneMapping, SRGBColorSpace);

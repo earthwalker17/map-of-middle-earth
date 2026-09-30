@@ -22,6 +22,12 @@ import { rand } from '../core/rng.ts';
  * 1 trunk; cavity: 0 open … 1 deep crease within the sub-crown's own lumps; relief: how much clump
  * displacement this tessellation can carry, 1 on the finest LOD, 0 on coarse ones) — packed, as
  * WebGPU allows only eight vertex buffers including the three instance attributes.
+ *
+ * Trunk parts (part 1) come in three types, `sub.w`: TRUNK_PLAIN (a prism baked with its 0.7 top taper,
+ * y 0..1), TRUNK_RING (hero geometry: rings of unit circles at ring parameter y; the shader gives them the
+ * hero trunk profile — root flare, taper, deep foot) and TRUNK_LIMB (hero geometry: primary limbs, unit
+ * circle (x, z) at parameter y along the limb, `sub.x` = limb azimuth; the shader lays each limb from the
+ * upper trunk out into the crown).
  */
 
 /** sub-crowns per cluster (index 0 = centre crown) */
@@ -33,6 +39,20 @@ export const RNOM = 0.4;
 export const WHOLE = 0.95;
 /** Height of the canonical crown (bottom 0 → top, in units of the vertical crown radius), for bounds. */
 export const CROWN_TOP = 1.3;
+
+/** trunk part types (`sub.w` of part-1 vertices) */
+export const TRUNK_PLAIN = 0;
+export const TRUNK_RING = 1;
+export const TRUNK_LIMB = 2;
+/**
+ * ring codes of the hero trunk (foliageMaterial.ts): −2 the deep foot below the ground, −1…0 flare rings
+ * at that fraction of the flare height above the ground (dense where the root flare curves), 0…1 a
+ * fraction of the trunk top
+ */
+const HERO_RINGS = [-2, -0.0001, -0.2, -0.45, -0.72, -1, 0.1, 0.3, 0.55, 0.8, 1];
+/** primary limbs of the hero geometry: azimuths (radians, before the instance yaw) and rings along each */
+const HERO_LIMBS = [0.35, 1.95, 3.3, 4.75];
+const LIMB_RINGS = [0, 0.35, 0.7, 1];
 
 export interface SubCrown {
   cx: number;
@@ -239,6 +259,11 @@ export interface ClumpGeometryOptions {
    */
   whole?: boolean;
   seed?: number;
+  /**
+   * hero geometry (authored landmark trees near the camera): a ringed trunk (`trunkSides` sides, HERO_RINGS)
+   * with the hero profile, and four primary limbs
+   */
+  hero?: boolean;
 }
 
 /**
@@ -269,24 +294,52 @@ export function createClumpGeometry(opts: ClumpGeometryOptions): InstancedBuffer
 
   // trunk: prism, unit radius, y 0..1 (the shader maps it from below ground up into the crown)
   const sides = opts.trunkSides;
-  if (sides > 0) {
+  /** a tube of `sides` sides through rings at parameters `rings` (unit circles, y = ring parameter) */
+  const tube = (rings: number[], type: number, azimuth: number, taper: (v: number) => number) => {
     const base = P.length / 3;
-    for (let s = 0; s < sides; s++) {
-      const a = (s / sides) * Math.PI * 2;
-      const x = Math.cos(a);
-      const z = Math.sin(a);
-      P.push(x, 0, z, x * 0.7, 1, z * 0.7);
-      N.push(x, 0.1, z, x, 0.1, z);
-      S.push(0, 0, 0.42, 0, 0, 0, 0.42, 0);
-      part.push(1, 1);
-      cavity.push(0, 0);
-    }
-    for (let s = 0; s < sides; s++) {
-      const a0 = base + s * 2;
-      const a1 = base + ((s + 1) % sides) * 2;
-      // outward-facing winding (CCW seen from outside)
-      idx.push(a0, a0 + 1, a1, a1, a0 + 1, a1 + 1);
-    }
+    for (const v of rings)
+      for (let s = 0; s < sides; s++) {
+        const a = (s / sides) * Math.PI * 2;
+        const x = Math.cos(a);
+        const z = Math.sin(a);
+        const t = taper(v);
+        P.push(x * t, v, z * t);
+        N.push(x, type === TRUNK_PLAIN ? 0.1 : 0, z);
+        S.push(azimuth, 0, 0.42, type);
+        part.push(1);
+        cavity.push(0);
+      }
+    for (let r = 0; r + 1 < rings.length; r++)
+      for (let s = 0; s < sides; s++) {
+        const a0 = base + r * sides + s;
+        const a1 = base + r * sides + ((s + 1) % sides);
+        // outward-facing winding (CCW seen from outside)
+        idx.push(a0, a0 + sides, a1, a1, a0 + sides, a1 + sides);
+      }
+  };
+  if (sides > 0) {
+    if (opts.hero) {
+      tube(HERO_RINGS, TRUNK_RING, 0, () => 1);
+      const limbSides = Math.max(5, Math.round(sides / 2));
+      for (const az of HERO_LIMBS) {
+        const base = P.length / 3;
+        for (const v of LIMB_RINGS)
+          for (let s = 0; s < limbSides; s++) {
+            const a = (s / limbSides) * Math.PI * 2;
+            P.push(Math.cos(a), v, Math.sin(a));
+            N.push(Math.cos(a), 0, Math.sin(a));
+            S.push(az, 0, 0.42, TRUNK_LIMB);
+            part.push(1);
+            cavity.push(0);
+          }
+        for (let r = 0; r + 1 < LIMB_RINGS.length; r++)
+          for (let s = 0; s < limbSides; s++) {
+            const a0 = base + r * limbSides + s;
+            const a1 = base + r * limbSides + ((s + 1) % limbSides);
+            idx.push(a0, a0 + limbSides, a1, a1, a0 + limbSides, a1 + limbSides);
+          }
+      }
+    } else tube([0, 1], TRUNK_PLAIN, 0, (v) => 1 - 0.3 * v);
   }
 
   const g = new InstancedBufferGeometry();

@@ -91,6 +91,10 @@ export class EnvironmentSystem implements System {
     env.wind.value.set(state.weather.wind[0], state.weather.wind[1]);
     env.tod.value = state.tod;
     env.cameraPos.value.copy(camera.position);
+    // projected-size scale shared by every system that sizes things in pixels (emission sprites,
+    // vegetation LOD): px per km at 1 km view depth for the render target being drawn
+    env.viewportH.value = frame.viewport.height;
+    env.pxPerKm.value = frame.viewport.height / (2 * Math.tan((camera.fov * Math.PI) / 360));
 
     // ---- sun & daylight
     const sunDir = sunDirection(state.tod, state.dayOfYear, env.sunDir.value);

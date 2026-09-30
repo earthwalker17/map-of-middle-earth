@@ -6,6 +6,7 @@ import {
   type InstancedBufferGeometry,
   Matrix4,
   Mesh,
+  Sphere,
   Vector3,
 } from 'three/webgpu';
 import type { FrameContext, InitContext, System } from '../core/types.ts';
@@ -15,6 +16,7 @@ import { createClumpGeometry, CROWN_TOP } from './clumpGeometry.ts';
 import { createFoamTexture } from './foamTexture.ts';
 import { createFoliageMaterial, type FoliageMaterialParts } from './foliageMaterial.ts';
 import { FLOATS_PER_INSTANCE, placeVegetation, type ExclusionCircle } from './placement.ts';
+import { authoredRecords, crownReach } from './authored.ts';
 
 /** Spatial chunk size (km) for culling / LOD selection. */
 const CHUNK = 32;
@@ -35,6 +37,13 @@ const LODS: { detail: number; trunkSides: number; relief: number; whole?: boolea
   // a cluster of a few pixels (whole-slab views): one octahedron blob, no trunk
   { detail: -1, trunkSides: 0, relief: 0, whole: true, minPx: 0, cap: Infinity },
 ];
+
+/**
+ * Hero geometry: authored landmark trees at LOD0 are drawn with the finest crowns plus a ringed,
+ * 12-sided trunk (root flare, taper, deep foot) and four primary limbs — one extra draw (+ its shadow
+ * twin), only ever holding the hero list.
+ */
+const HERO_GEOMETRY = { detail: 2, trunkSides: 12, relief: 1, hero: true } as const;
 
 /** spread from a record's packed shape field (spread + 2·gapQ) */
 function spreadOf(shape: number): number {
@@ -69,6 +78,8 @@ interface Bucket {
 export interface VegetationStats {
   coarse: number;
   fine: number;
+  /** authored landmark trees (hero list) */
+  hero: number;
   chunks: number;
   drawn: number[];
   bandRadius: number;
@@ -79,6 +90,7 @@ const _vp = new Matrix4();
 const _frustum = new Frustum();
 const _box = new Box3();
 const _v = new Vector3();
+const _sphere = new Sphere();
 
 /**
  * Forests and scatter: instanced clump-foliage trees (one material, one instanced mesh per LOD —
@@ -109,11 +121,14 @@ export class VegetationSystem implements System {
   private fine = new Float32Array(0);
   private fineY = new Float32Array(0);
   private coarseY = new Float32Array(0);
+  /** authored landmark trees as instance records (+ their ground heights): the hero list */
+  private hero = new Float32Array(0);
+  private heroY = new Float32Array(0);
   private chunks: Chunk[] = [];
   private lastKey = '';
   /** diagnostics (probe): force every instance into one LOD bucket, or drop the fine band */
   debug: { forceLod: number | null; noFine: boolean } = { forceLod: null, noFine: false };
-  readonly stats: VegetationStats = { coarse: 0, fine: 0, chunks: 0, drawn: [], bandRadius: 0 };
+  readonly stats: VegetationStats = { coarse: 0, fine: 0, hero: 0, chunks: 0, drawn: [], bandRadius: 0 };
 
   constructor(private readonly world: World) {}
 
@@ -121,6 +136,8 @@ export class VegetationSystem implements System {
     this.scene = ctx.scene;
     this.useMaterial(ctx.quality.id);
     this.lodGeometries = LODS.map((l) => createClumpGeometry({ detail: l.detail, trunkSides: l.trunkSides, relief: l.relief, whole: l.whole }));
+    // the last bucket: hero geometry (authored trees at LOD0)
+    this.lodGeometries.push(createClumpGeometry(HERO_GEOMETRY));
     this.place(ctx.quality.density);
   }
 
@@ -135,11 +152,27 @@ export class VegetationSystem implements System {
   }
 
   /**
-   * Authored landmark hero trees (world space, from buildLandmarks). Call before init.
-   * W0a stub: stored only — W1 realizes them as a hero list that wins the LOD0 cap.
+   * Authored landmark hero trees (world space, from buildLandmarks). Realized as a hero list
+   * (authored.ts records) emitted before the placed vegetation every frame, so they win the LOD0
+   * cap; never subject to exclusions, the barren rule or density thinning (preview matches final).
+   * Call before init (later calls rebuild the list).
    */
   setAuthored(trees: AuthoredTree[]): void {
     this.authored = trees.map((t) => ({ ...t }));
+    if (this.placedDensity > 0) {
+      this.buildHero();
+      this.allocateBuckets(this.stats.coarse + this.stats.fine);
+      this.lastKey = '';
+    }
+  }
+
+  private buildHero(): void {
+    const list = authoredRecords(this.authored, this.world.spec.json.seeds.world + 97);
+    this.hero = Float32Array.from(list.data);
+    const n = list.count;
+    this.heroY = new Float32Array(n);
+    for (let k = 0; k < n; k++) this.heroY[k] = this.world.heights.sample(this.hero[k * FLOATS_PER_INSTANCE], this.hero[k * FLOATS_PER_INSTANCE + 1]);
+    this.stats.hero = n;
   }
 
   getAuthored(): readonly AuthoredTree[] {
@@ -233,20 +266,24 @@ export class VegetationSystem implements System {
     this.stats.coarse = res.coarse.count;
     this.stats.fine = res.fine.count;
     this.stats.chunks = this.chunks.length;
+    this.buildHero();
     this.allocateBuckets(res.coarse.count + res.fine.count);
     this.lastKey = '';
   }
 
-  private allocateBuckets(total: number): void {
+  private allocateBuckets(placed: number): void {
     const scene = this.scene!;
+    const total = placed + this.hero.length / FLOATS_PER_INSTANCE;
     for (const b of this.buckets) {
       scene.remove(b.mesh);
       b.geometry.dispose();
     }
     this.buckets = [];
-    // the high LOD never needs every instance (it only covers the few chunks next to the camera)
+    // the high LOD never needs every instance (it only covers the few chunks next to the camera); the
+    // hero bucket holds at most the hero list
+    const heroCount = this.hero.length / FLOATS_PER_INSTANCE;
     this.lodGeometries.forEach((base, lod) => {
-      const cap = Math.max(1, Math.min(total, LODS[lod].cap));
+      const cap = Math.max(1, lod >= LODS.length ? heroCount : Math.min(total, LODS[lod].cap));
       const geometry = base.clone() as InstancedBufferGeometry;
       const a = new InstancedBufferAttribute(new Float32Array(cap * 4), 4);
       const b = new InstancedBufferAttribute(new Float32Array(cap * 4), 4);
@@ -259,7 +296,7 @@ export class VegetationSystem implements System {
       geometry.setAttribute('iB', b);
       geometry.instanceCount = 0;
       const mesh = new Mesh(geometry, this.parts.material);
-      mesh.name = `vegetation-lod${lod}`;
+      mesh.name = lod >= LODS.length ? 'vegetation-hero' : `vegetation-lod${lod}`;
       mesh.frustumCulled = false;
       mesh.castShadow = true;
       mesh.receiveShadow = true;
@@ -306,10 +343,8 @@ export class VegetationSystem implements System {
     for (const b of this.buckets) b.count = 0;
     const F = FLOATS_PER_INSTANCE;
     const last = LODS.length - 1;
-    /** append record `s` of `src` to the bucket of `lod` (or the next one with room), crowns scaled by `sc` */
-    const emit = (src: Float32Array, s: number, lod: number, sc: number) => {
-      while (lod < last && this.buckets[lod].count >= this.buckets[lod].cap) lod++;
-      const bk = this.buckets[lod];
+    /** append record `s` of `src` to bucket `bk` (when it has room), crowns scaled by `sc` */
+    const write = (bk: Bucket, src: Float32Array, s: number, sc: number) => {
       if (bk.count >= bk.cap) return;
       const A = bk.a.array as Float32Array;
       const B = bk.b.array as Float32Array;
@@ -330,14 +365,44 @@ export class VegetationSystem implements System {
       C[o + 3] = Math.round(src[s + 9] * 255);
       bk.count++;
     };
+    /** append record `s` of `src` to the bucket of `lod` (or the next one with room), crowns scaled by `sc` */
+    const emit = (src: Float32Array, s: number, lod: number, sc: number) => {
+      while (lod < last && this.buckets[lod].count >= this.buckets[lod].cap) lod++;
+      write(this.buckets[lod], src, s, sc);
+    };
     /** LOD from the projected size of the sub-crowns (clustered trees have larger ones than canopy patches) */
     const lodOf = (src: Float32Array, s: number, dist: number, sc: number) =>
       this.debug.forceLod ?? lodFor((2 * src[s + 2] * sc * (2 - spreadOf(src[s + 8])) * pxPerKm) / Math.max(1, dist));
 
-    for (const ch of this.chunks) {
+    // hero list first: authored landmark trees (sphere test with the shadow margin); at LOD0 they take
+    // the hero geometry (its own bucket), farther out they win the regular LOD caps
+    const heroBucket = this.buckets[LODS.length];
+    for (let k = 0; k < this.heroY.length; k++) {
+      const s = k * F;
+      const hr = this.hero[s + 2];
+      const vr = this.hero[s + 3];
+      // bounding sphere of the whole tree: trunk foot (1 km below the ground, the deep hero foot) to the
+      // crown top (trunk + crownReach(spread)·vr), crown radius hr
+      const half = (Math.max(0, this.hero[s + 4]) + crownReach(spreadOf(this.hero[s + 8])) * vr + 1) / 2;
+      const cy = this.heroY[k] - 1 + half;
+      _sphere.set(_v.set(this.hero[s], cy, this.hero[s + 1]), Math.hypot(hr, half) + SHADOW_MARGIN);
+      if (!_frustum.intersectsSphere(_sphere)) continue;
+      const dist = _v.set(this.hero[s] - camPos.x, this.heroY[k] + this.hero[s + 4] - camPos.y, this.hero[s + 1] - camPos.z).length();
+      const lod = lodOf(this.hero, s, dist, 1);
+      if (lod === 0 && this.debug.forceLod === null && heroBucket.count < heroBucket.cap) write(heroBucket, this.hero, s, 1);
+      else emit(this.hero, s, lod, 1);
+    }
+
+    // visible chunks nearest-first (ties by chunk order), so the capped fine LODs fill from the camera out
+    const visible: { ch: Chunk; d: number; i: number }[] = [];
+    this.chunks.forEach((ch, i) => {
       _box.copy(ch.box).expandByScalar(SHADOW_MARGIN);
-      if (!_frustum.intersectsBox(_box)) continue;
-      const d = Math.max(1, ch.box.distanceToPoint(camPos));
+      if (!_frustum.intersectsBox(_box)) return;
+      visible.push({ ch, d: Math.max(1, ch.box.distanceToPoint(camPos)), i });
+    });
+    visible.sort((a, b) => a.d - b.d || a.i - b.i);
+
+    for (const { ch, d } of visible) {
       // coarse: per-instance LOD, or the whole chunk at the far LOD when even its largest crown is small
       if (ch.coarseCount > 0) {
         const farChunk = this.debug.forceLod === null && lodFor((2 * ch.coarseMaxR * pxPerKm) / d) === last;
