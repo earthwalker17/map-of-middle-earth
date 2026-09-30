@@ -6,7 +6,6 @@ export default defineLandmark({
   placeId: 'isengard',
   tier: 'A',
   // tallest proxies: barely grow in wide shots (they already out-top the ranges)
-  wideBoost: { refKm: 160, max: 1.2 },
   // a partial levelling of Nan Curunír at Orthanc's own ground (≈ the Isen's level ~3 km east): a full
   // pad at the valley median lifted the Isen onto it; the river corridor itself stays as baked
   stamps: [{ kind: 'flatten', at: [0, 0], radius: 7.5, falloff: 2.5, height: 0, strength: 0.7 }],

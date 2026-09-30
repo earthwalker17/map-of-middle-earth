@@ -83,3 +83,11 @@ export function family(id: FamilyId): Material {
   cache.set(id, m);
   return m;
 }
+
+/**
+ * Material for a landmark geometry key (records.ts LodGeometry). Every landmark mesh goes through here,
+ * so the family set can be consolidated (W1: structure + glow) without touching LandmarkSystem.
+ */
+export function materialFor(key: string): Material {
+  return family(key as FamilyId);
+}

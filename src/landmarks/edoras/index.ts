@@ -27,6 +27,5 @@ export default defineLandmark({
       k.cone('thatch', 0.16, 0.15, { at: [x, y + 0.16, z], seg: 4, rot: [0, 45, 0] });
     }
   },
-  night: { windows: 15, flicker: 0.3 },
   annotation: { title: 'Edoras', subtitle: 'Meduseld, the Golden Hall', blurb: 'Court of the Kings of Rohan upon its green hill below the White Mountains.' },
 });

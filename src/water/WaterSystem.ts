@@ -1,6 +1,7 @@
 import { Mesh, PlaneGeometry, type DataTexture } from 'three/webgpu';
 import type { FrameContext, InitContext, System } from '../core/types.ts';
 import type { World } from '../world/World.ts';
+import type { PoolRecord } from '../landmarks/records.ts';
 import { createNoiseTexture, createWaveSlopeTexture } from './waveTexture.ts';
 import { createWaterMaterial, waterDebug } from './waterMaterial.ts';
 import { buildLakeGeometry, lakeInfos, type LakeInfo } from './lakes.ts';
@@ -30,7 +31,21 @@ export class WaterSystem implements System {
   private includeStreams = true;
   private heightsVersion = -1;
 
+  private pools: PoolRecord[] = [];
+
   constructor(private readonly world: World) {}
+
+  /**
+   * Landmark still-water pools (world space, from landmarkPools). Call before init.
+   * W0a stub: stored only — W1 builds them with the lake preset.
+   */
+  setPools(pools: PoolRecord[]): void {
+    this.pools = pools.map((p) => ({ ...p, ring: p.ring.map((q) => [q[0], q[1]] as [number, number]) }));
+  }
+
+  getPools(): readonly PoolRecord[] {
+    return this.pools;
+  }
 
   init(ctx: InitContext): void {
     const { world } = this;

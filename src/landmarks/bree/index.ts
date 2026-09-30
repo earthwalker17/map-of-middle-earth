@@ -15,6 +15,5 @@ export default defineLandmark({
     }
     k.ring('foliage', 1.5, 0.15, 0.25, { tint: 0x4f6a38 });
   },
-  night: { windows: 20, flicker: 0.3 },
   annotation: { title: 'Bree', subtitle: 'The Prancing Pony', blurb: 'Crossroads village of Men and Hobbits, where Strider waited in the corner.' },
 });

@@ -39,7 +39,6 @@ export default defineLandmark({
     }
   },
   lights: [{ at: [0, 15, 0], color: 0xfff1d6, intensity: 2, radius: 3, kind: 'beacon' }],
-  night: { windows: 300, flicker: 0.1 },
   annotation: { title: 'Minas Tirith', subtitle: 'The White City of Gondor', blurb: 'Seven-tiered city of the kings, carved into the flank of Mount Mindolluin, facing the shadow in the east.' },
   bookmarks: [{ id: 'minas-tirith-close', distanceKm: 55, elevationDeg: 18, azimuthDeg: 110, fov: 35, tod: 7.5 }],
 });

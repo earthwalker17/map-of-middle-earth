@@ -9,6 +9,7 @@ import type { BakedManifest } from '../../src/world/WorldSpec.ts';
 import type { World } from '../../src/world/World.ts';
 import type { LandmarkDefinition } from '../../src/landmarks/types.ts';
 import type { Stamp } from '../../src/world/stamps.ts';
+import { waitForMemory } from '../capture/host.ts';
 
 export const ROOT = process.cwd();
 
@@ -76,9 +77,11 @@ export async function loadLandmarks(): Promise<LandmarkDefinition[]> {
 
 /** The runtime World for a bake directory, with the landmark stamp layer composited. */
 export async function loadWorld(dir: string): Promise<{ world: World; landmarks: LandmarkDefinition[]; stamps: Stamp[] }> {
+  // a Node world load is a medium-RAM job (~0.5 GB): wait politely while a capture batch holds memory
+  await waitForMemory({ minAvailMB: 1000, minCommitMB: 800, label: 'world load (check / probe)' });
   installFetch(dir);
   const { World } = (await import(pathToFileURL(join(ROOT, 'src/world/World.ts')).href)) as typeof import('../../src/world/World.ts');
-  const { landmarkStamps } = (await import(pathToFileURL(join(ROOT, 'src/landmarks/LandmarkSystem.ts')).href)) as typeof import('../../src/landmarks/LandmarkSystem.ts');
+  const { landmarkStamps } = (await import(pathToFileURL(join(ROOT, 'src/landmarks/world.ts')).href)) as typeof import('../../src/landmarks/world.ts');
   const world = await World.load();
   const landmarks = await loadLandmarks();
   const stamps = landmarkStamps(world, landmarks);

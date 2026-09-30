@@ -19,7 +19,6 @@ export default defineLandmark({
     k.box('wood', 0.8, 0.6, 0.5, { at: [0, 0.3, 0], tint: 0x6e5438 });
     k.box('wood', 0.3, 0.1, 2.6, { at: [0, 0.16, -2.6], tint: 0x5a4632 });
   },
-  night: { windows: 60, flicker: 0.4 },
   annotation: { title: 'Lake-town', subtitle: 'Esgaroth upon the Long Lake', blurb: 'A town of Men built out on the waters, in the shadow of the Lonely Mountain.' },
   bookmarks: [{ id: 'lake-town-close', distanceKm: 30, elevationDeg: 35, azimuthDeg: 180, fov: 35, tod: 17.2 }],
 });

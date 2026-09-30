@@ -28,7 +28,6 @@ export default defineLandmark({
       k.blob('foliage', 0.18 + k.r(1) * 0.1, { at: [x, k.ground(x, z) + 0.08, z], squash: 0.7, tint: 0x4f7a34 });
     }
   },
-  night: { windows: 30, flicker: 0.3 },
   annotation: { title: 'Hobbiton', subtitle: 'The Shire', blurb: 'Where the journey begins: Bag End, under the Hill, home of Bilbo and Frodo Baggins.' },
   bookmarks: [{ id: 'hobbiton-close', distanceKm: 10, elevationDeg: 15, azimuthDeg: 190, fov: 35, lift: 0.6, tod: 16.5 }],
 });

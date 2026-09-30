@@ -9,7 +9,7 @@ import { bakedDir, loadWorld, ROOT } from './baked.ts';
 
 const ids = process.argv.slice(2);
 const { world, landmarks } = await loadWorld(bakedDir());
-const { landmarkStamps } = (await import(pathToFileURL(join(ROOT, 'src/landmarks/LandmarkSystem.ts')).href)) as typeof import('../../src/landmarks/LandmarkSystem.ts');
+const { landmarkStamps } = (await import(pathToFileURL(join(ROOT, 'src/landmarks/world.ts')).href)) as typeof import('../../src/landmarks/world.ts');
 const hf = world.heights;
 
 function nearestLine(x: number, z: number): { d: number; id: string; level: number } {

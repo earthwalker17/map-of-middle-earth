@@ -13,6 +13,10 @@ export interface OrbitSpec {
   fov?: number;
   /** extra height of the look-at point above ground */
   lift?: number;
+  /** aim offset from the place / target, ME-GIS km [east, north] (off-centre framing, rule of thirds) */
+  aimKm?: [number, number];
+  /** camera roll around the view axis, degrees */
+  roll?: number;
 }
 
 export type ShotCamera = CameraState | { orbit: OrbitSpec };
@@ -31,6 +35,10 @@ export function orbitCamera(world: World, o: OrbitSpec): CameraState {
   } else if (o.targetKm) {
     [x, z] = world.spec.kmToWorld(o.targetKm[0], o.targetKm[1]);
   } else throw new Error('orbit needs place or targetKm');
+  if (o.aimKm) {
+    x += o.aimKm[0];
+    z -= o.aimKm[1];
+  }
   const ty = Math.max(0, world.heights.sample(x, z)) + (o.lift ?? 0);
   const el = (o.elevationDeg * Math.PI) / 180;
   const az = (o.azimuthDeg * Math.PI) / 180;
@@ -39,6 +47,7 @@ export function orbitCamera(world: World, o: OrbitSpec): CameraState {
     position: [x + Math.sin(az) * hd, ty + o.distanceKm * Math.sin(el), z - Math.cos(az) * hd],
     target: [x, ty, z],
     fov: o.fov ?? 35,
+    ...(o.roll ? { roll: o.roll } : {}),
   };
 }
 

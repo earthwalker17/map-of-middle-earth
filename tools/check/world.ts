@@ -108,7 +108,7 @@ export const LOSS_MIN = 0.5;
 
 export async function checkStampLoss(world: World, landmarks: LandmarkDefinition[]): Promise<CheckResult & { rows: { id: string; cells: number; share: number; lost: number; maxLost: number }[] }> {
   const r: CheckResult = { errors: [], warnings: [], info: [] };
-  const { landmarkStamps } = (await import(pathToFileURL(join(ROOT, 'src/landmarks/LandmarkSystem.ts')).href)) as typeof import('../../src/landmarks/LandmarkSystem.ts');
+  const { landmarkStamps } = (await import(pathToFileURL(join(ROOT, 'src/landmarks/world.ts')).href)) as typeof import('../../src/landmarks/world.ts');
   const rows: { id: string; cells: number; share: number; lost: number; maxLost: number }[] = [];
   for (const d of landmarks) {
     if (!d.stamps?.length) continue;
@@ -311,7 +311,17 @@ export async function checkBakedWorld(dir: string): Promise<CheckResult> {
   const rivers = JSON.parse(readFileSync(join(dir, m.files.rivers.file), 'utf8')) as RiverLine[];
   const lakes = JSON.parse(readFileSync(join(dir, m.files.lakes.file), 'utf8')) as LakePoly[];
   const { world, landmarks } = await loadWorld(dir);
-  for (const part of [checkRiverLevels(rivers, lakes), checkContinuations(dir, rivers), await checkRiversWin(dir, world), await checkStampLoss(world, landmarks), checkHydroReport(dir)]) {
+  const { checkLandmarks } = await import('./landmarks.ts');
+  const { checkBookmarks } = await import('./bookmarks.ts');
+  for (const part of [
+    checkRiverLevels(rivers, lakes),
+    checkContinuations(dir, rivers),
+    await checkRiversWin(dir, world),
+    await checkStampLoss(world, landmarks),
+    checkHydroReport(dir),
+    await checkLandmarks(world, landmarks),
+    await checkBookmarks(world, landmarks),
+  ]) {
     out.errors.push(...part.errors);
     out.warnings.push(...part.warnings);
     out.info.push(...part.info);

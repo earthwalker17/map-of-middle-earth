@@ -6,7 +6,6 @@ export default defineLandmark({
   placeId: 'barad-dur',
   tier: 'A',
   // tallest proxies: barely grow in wide shots (they already out-top the ranges)
-  wideBoost: { refKm: 160, max: 1.2 },
   stamps: [{ kind: 'raise', at: [0, 0], radius: 9, amount: 2.5 }],
   proxy: (k) => {
     const segs = 9;

@@ -10,6 +10,7 @@ import {
 } from 'three/webgpu';
 import type { FrameContext, InitContext, System } from '../core/types.ts';
 import type { World } from '../world/World.ts';
+import type { AuthoredTree } from '../landmarks/records.ts';
 import { createClumpGeometry, CROWN_TOP } from './clumpGeometry.ts';
 import { createFoamTexture } from './foamTexture.ts';
 import { createFoliageMaterial, type FoliageMaterialParts } from './foliageMaterial.ts';
@@ -100,6 +101,7 @@ export class VegetationSystem implements System {
   private buckets: Bucket[] = [];
   private scene: InitContext['scene'] | null = null;
   private exclusions: ExclusionCircle[] = [];
+  private authored: AuthoredTree[] = [];
   private placedDensity = -1;
   private placedExclusions = -1;
   private exclusionsVersion = 0;
@@ -130,6 +132,18 @@ export class VegetationSystem implements System {
     this.exclusions = circles.map((c) => ({ x: c.x, z: c.z, r: c.r }));
     this.exclusionsVersion++;
     if (this.placedDensity > 0) this.place(this.placedDensity);
+  }
+
+  /**
+   * Authored landmark hero trees (world space, from buildLandmarks). Call before init.
+   * W0a stub: stored only — W1 realizes them as a hero list that wins the LOD0 cap.
+   */
+  setAuthored(trees: AuthoredTree[]): void {
+    this.authored = trees.map((t) => ({ ...t }));
+  }
+
+  getAuthored(): readonly AuthoredTree[] {
+    return this.authored;
   }
 
   getExclusions(): readonly ExclusionCircle[] {

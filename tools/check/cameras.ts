@@ -37,7 +37,7 @@ for (const d of readdirSync(ROOT + '/src/landmarks')) {
   const f = ROOT + '/src/landmarks/' + d + '/index.ts';
   if (existsSync(f)) LANDMARKS.push((await import(pathToFileURL(f).href)).default);
 }
-const { landmarkStamps } = await import(mod('src/landmarks/LandmarkSystem.ts'));
+const { landmarkStamps } = await import(mod('src/landmarks/world.ts'));
 const { orbitCamera } = await import(mod('src/camera/shots.ts'));
 const { ProxyKit } = await import(mod('src/landmarks/kit/ProxyKit.ts'));
 const { hashString } = await import(mod('src/core/rng.ts'));
