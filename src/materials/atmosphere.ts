@@ -13,12 +13,12 @@ import {
 } from 'three/webgpu';
 import { tsl, type TslNode } from './tsl.ts';
 import { env } from './environment.ts';
-import { atmoLook, lookColor, sampleRegionWeights } from './looks.ts';
+import { atmoLook, lookColor, lookField } from './looks.ts';
 import type { World } from '../world/World.ts';
 import { SLAB } from '../diorama/slabSpec.ts';
 
 type N = TslNode;
-const { Fn, abs, atan, clamp, dot, exp, float, length, max, min, mix, output, positionWorld, select, smoothstep, sqrt, texture, uniform, vec2, vec3, vec4 } = tsl;
+const { Fn, If, abs, atan, clamp, dot, exp, float, length, max, min, mix, output, positionWorld, select, smoothstep, sqrt, texture, uniform, vec2, vec3, vec4 } = tsl;
 
 /** In-scatter LUT: azimuth × depression (rows at −dir.y = (j / (ROWS − 1))²). */
 const LUT_AZ = 96;
@@ -27,8 +27,13 @@ const LUT_ROWS = 16;
  * Valley mist: the ground haze layer thickens over valleys (World.terrainMask G < 0.5) when the sun
  * is low (env.golden, env.twilight) — golden-hour and dawn mist in the dales. Multiplier on the
  * ground layer at full strength (a clearly valley-bottom endpoint, golden hour).
+ * Reviewed (terrain look round 2) at veg-shire-golden, env-shadow-golden, overview-golden and the
+ * dawn minas-tirith-close, mist on vs off: the wave-2 value 3.5 whitened distant hollows into
+ * snow-like patches; 1.4 reads as a translucent veil in the dales that trees stand in.
  */
-const VALLEY_MIST = 3.5;
+export const VALLEY_MIST = 1.4;
+/** above this height (world units; ~4.5 e-folds of the ground layer) no fragment can gather mist */
+const VALLEY_MIST_TOP = 28;
 
 /** Regional haze texture over the map frame (≈ 6.3 km per texel before the blur). */
 const HAZE_W = 256;
@@ -62,8 +67,10 @@ const _c = new Color();
  *    Dagorlad ash, marsh damp, elven luminous haze) and fades in over a much shorter range
  *    (env.hazeRamp.zw), so Mordor keeps its gloom beyond a clear Ithilien at any shot scale.
  *  - Valley mist: at low sun (env.golden / twilight) the ground layer thickens over the valleys of
- *    the baked terrain analysis (World.terrainMask G < 0.5), sampled at the ray endpoint and faded in
- *    like the local haze — mist lies in the dales at golden hour and dawn, the heights stay clear.
+ *    the baked terrain analysis (World.terrainMask G < 0.5) at the ray endpoint, faded in like the
+ *    local haze — mist lies in the dales at golden hour and dawn, the heights stay clear. Tier-gated
+ *    (enableValleyMist: review/final) and pre-tested (low sun, fragment height), so preview and
+ *    midday frames never sample the mask.
  *  - β_rgb is gently Rayleigh-like (blue extincts fastest), so distant land drifts to blue-grey;
  *    the spread is kept small so dark albedos (forests) do not turn teal.
  *  - C∞(dir) is the sky model's single-scattering radiance for the view direction (Preetham with
@@ -80,6 +87,8 @@ export class Atmosphere {
   private hazeWorld: World | null = null;
   /** World.terrainMask (G = valley index, 0.5 flat) — a neutral 1×1 until a world with a mask is bound */
   private readonly valleyTex: N;
+  /** valley-mist strength: 0 (off: preview, or no world yet) until enableValleyMist */
+  private readonly valleyGain = uniform(0);
 
   constructor() {
     this.lut = new DataTexture(this.lutData, LUT_AZ, LUT_ROWS, RGBAFormat, HalfFloatType);
@@ -108,6 +117,14 @@ export class Atmosphere {
     flat.colorSpace = NoColorSpace;
     flat.needsUpdate = true;
     this.valleyTex = texture(flat);
+  }
+
+  /**
+   * Quality-tier gate of the valley mist (static per page, set at init by the terrain system):
+   * review / final on, preview off — the fog then never samples the mask.
+   */
+  enableValleyMist(on: boolean): void {
+    this.valleyGain.value = on ? VALLEY_MIST : 0;
   }
 
   // ---------------------------------------------------------------- CPU (per frame / once)
@@ -168,19 +185,22 @@ export class Atmosphere {
    * Bind the world (static data; the EnvironmentSystem calls this at init, before the first
    * frame) and build its regional haze texture: RGB = in-scatter tint, A = density multiplier.
    * Region weights × looks.json atmo, softly blurred (haze has no hard borders), then the local
-   * spots around places. Until a world is bound the texture is neutral (tint 1, density 1).
+   * spots around places. The weights are the ground look's (LookField: domain-warped, dithered
+   * ecotones), so a region's haze meanders with its ground instead of standing over its polygon as
+   * a box. Until a world is bound the texture is neutral (tint 1, density 1).
    */
   bindWorld(world: World): void {
     if (this.hazeWorld === world) return;
     this.hazeWorld = world;
-    if (world.terrainMask) this.valleyTex.value = world.terrainMask;
     const ids = world.lookRegions;
     const looks = ids.map((id) => atmoLook(id));
     const spec = world.spec;
     const n = ids.length;
+    if (world.terrainMask) this.valleyTex.value = world.terrainMask;
+    const field = lookField(world);
     const w = new Float32Array(n);
     const px = new Float32Array(HAZE_W * HAZE_H * 4);
-    const SS = 3; // 3×3 sub-samples per texel (the look layers are ~4× finer)
+    const SS = 2; // 2×2 sub-samples per texel (the haze is blurred to ~15 km below)
     for (let y = 0; y < HAZE_H; y++)
       for (let x = 0; x < HAZE_W; x++) {
         let r = 0;
@@ -192,7 +212,7 @@ export class Atmosphere {
           for (let sx = 0; sx < SS; sx++) {
             const wx = spec.xMin + ((x + (sx + 0.5) / SS) / HAZE_W) * spec.width;
             const wz = spec.zMin + ((y + (sy + 0.5) / SS) / HAZE_H) * spec.depth;
-            sampleRegionWeights(world, wx, wz, w);
+            field.weights(wx, wz, w);
             let s = 0;
             for (let k = 0; k < n; k++) {
               if (w[k] <= 0) continue;
@@ -264,15 +284,23 @@ export class Atmosphere {
   }
 
   /**
-   * Valley-mist multiplier on the ground layer at world xz: the terrain analysis' valley index
-   * (World.terrainMask G, < 0.5 in valleys) × the low-sun amount (golden hour, dawn twilight).
+   * Valley-mist multiplier on the ground layer at world point `to`: the terrain analysis' valley
+   * index (World.terrainMask G, < 0.5 in valleys) × the low-sun amount (golden hour, dawn
+   * twilight) × the tier gain. The mask is only fetched behind cheap pre-tests — tier and sun
+   * (uniform: no preview fragment and no midday fragment ever samples it) and the fragment's
+   * height (above VALLEY_MIST_TOP nothing can gather mist) — at explicit LOD, so the branch is
+   * legal anywhere; every surface in a dale (ground, water, trees) gets the same mist.
    */
-  valleyMist(xz: N, explicitLod = false): N {
-    const f = this.hazeFrame;
-    const t = this.valleyTex.sample(vec2(xz.x.sub(f.x).mul(f.z), xz.y.sub(f.y).mul(f.w)));
-    const g = (explicitLod ? t.level(0) : t).g;
+  valleyMist(to: N): N {
     const lowSun = max(env.golden, env.twilight.mul(0.8));
-    return clamp(float(0.44).sub(g).mul(4), 0, 1).mul(lowSun).mul(VALLEY_MIST);
+    const gain = lowSun.mul(this.valleyGain);
+    const out = float(0).toVar();
+    If(gain.greaterThan(0).and(to.y.lessThan(VALLEY_MIST_TOP)), () => {
+      const f = this.hazeFrame;
+      const g = this.valleyTex.sample(vec2(to.x.sub(f.x).mul(f.z), to.z.sub(f.y).mul(f.w))).level(0).g;
+      out.assign(clamp(float(0.44).sub(g).mul(4), 0, 1).mul(gain));
+    });
+    return out;
   }
 
   /** Regional haze at world xz: rgb = in-scatter tint, a = density multiplier. */
@@ -331,10 +359,11 @@ export class Atmosphere {
   /**
    * Aerial perspective of a surface colour seen from `from` at world point `to`:
    * colour · T + C∞ · tint · (1 − T). `inScatter = false` (quality tier) uses grey extinction.
+   * Must run inside a TSL Fn (the valley-mist pre-test is a branch).
    */
   apply(color: N, from: N, to: N, inScatter = true, explicitLod = false): N {
     const reg = this.regional(to.xz, explicitLod);
-    const tau = this.opticalDepth(from, to, reg.a, this.valleyMist(to.xz, explicitLod));
+    const tau = this.opticalDepth(from, to, reg.a, this.valleyMist(to));
     const beta = inScatter ? env.extinction : vec3(1);
     const T = exp(beta.mul(tau).negate());
     const ray = to.sub(from);

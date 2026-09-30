@@ -2,6 +2,7 @@ import { REVISION } from 'three/webgpu';
 import type { Engine, GpuInfo } from '../core/Engine.ts';
 import { StaticTimeline, type ShotSpec, type Timeline } from '../core/Timeline.ts';
 import type { ShotSpecInput } from '../camera/shots.ts';
+import { terrainDetailError } from '../terrain/terrainTextures.ts';
 
 export interface CaptureRequest {
   /** output name (file stem) — the Node harness decides the directory */
@@ -77,6 +78,16 @@ declare global {
   }
 }
 
+/**
+ * Captured frames must show the real terrain look: a tier that wants the CC0 detail layers but did
+ * not get them (missing / failed files) fails the capture instead of silently rendering the
+ * procedural fallback (review/final already fail at boot; this also covers preview captures).
+ */
+function assertTerrainDetail(): void {
+  const err = terrainDetailError();
+  if (err) throw new Error(`capture: ${err}`);
+}
+
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', bytes as BufferSource);
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -104,6 +115,7 @@ export function installCaptureApi(
     registerTimeline: (t) => timelines.set(t.id, t),
     async render(req) {
       await ready;
+      assertTerrainDetail();
       let input = req.shot;
       if (!input && req.shotId) {
         const found = findShot(req.shotId);
@@ -137,6 +149,7 @@ export function installCaptureApi(
     },
     async benchmark(req) {
       await ready;
+      assertTerrainDetail();
       const input = req.shot ?? (req.shotId ? findShot(req.shotId) : undefined);
       if (!input) throw new Error(`benchmark: unknown shot ${req.shotId ?? req.name}`);
       const base = resolveShot(input);
