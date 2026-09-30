@@ -1,5 +1,5 @@
 import type { V2, V3 } from '../records.ts';
-import type { TreeDecl } from '../types.ts';
+import type { ForestDecl, TreeDecl } from '../types.ts';
 import { defineLandmark } from '../types.ts';
 
 /**
@@ -71,6 +71,49 @@ const TREES: TreeDecl[] = (() => {
   return out;
 })();
 
+/** Ithilien's greens (research §7: olive #51553b, #2a3122, #636a4e — here a little greener: the dry grade greys them) */
+const OLIVE = [0x3f5a2c, 0x2e4424, 0x4a6232, 0x36502a];
+/**
+ * The woods crowding the shelf above the falls and the slopes below the pool (placed by the vegetation
+ * system with the natural forest): holm-oak-like broad crowns and a few cypress-like conifers; the pool,
+ * the alcove and the rock faces stay clear.
+ */
+const WOODS: ForestDecl[] = [
+  {
+    area: {
+      polygon: [
+        [0.6, -2.7],
+        [2.9, -2.6],
+        [3.0, 2.4],
+        [0.6, 2.3],
+        [0.5, 0.9],
+        [0.62, -0.9],
+      ],
+    },
+    density: 16,
+    species: [
+      { kind: 'oak', share: 0.7, crownKm: [0.12, 0.22], colors: OLIVE },
+      { kind: 'conifer', share: 0.3, crownKm: [0.06, 0.1], heightFactor: [4.2, 5.2], colors: [0x2c3b25, 0x33432a] },
+    ],
+    clump: { scaleKm: 0.7, amount: 0.45 },
+    edgeKm: 0.2,
+    avoid: [{ at: [0.3, 0.05], r: 0.45 }],
+  },
+  {
+    area: { annulus: { at: POOL_C, r0: 0.75, r1: 2.3 } },
+    density: 12,
+    species: [{ kind: 'oak', share: 1, crownKm: [0.12, 0.2], colors: OLIVE }],
+    clump: { scaleKm: 0.8, amount: 0.5 },
+    edgeKm: 0.25,
+    // west of the faces only (the shelf has its own wood)
+    avoid: [
+      { at: [1.2, -1.4], r: 1.35 },
+      { at: [1.2, 1.4], r: 1.35 },
+      { at: [1.3, 0], r: 1.2 },
+    ],
+  },
+];
+
 export default defineLandmark({
   id: 'henneth-annun',
   placeId: 'henneth-annun',
@@ -98,10 +141,11 @@ export default defineLandmark({
     { at: [0.1, 1.1], r: 0.55 },
   ],
   trees: TREES,
+  forests: WOODS,
   proxy: (k) => {
     // ---- the two arms of wet, dark slate-blue rock, a little taller than the shelf behind them (their
     // crests round over its rim, their bodies sink into it; the outer ends taper into the slope)
-    const cliff = { depth: 0.7, rough: 0.45, strata: 0.6, soft: 0.45, overhang: 0.04, color: ROCK };
+    const cliff = { depth: 0.7, rough: 0.6, strata: 0.65, soft: 0.35, overhang: 0.04, color: ROCK };
     k.cliff('weathered', ARM_N, [0.9, 1.5, 1.95, 2.1, 2.2], { ...cliff, taper: 0.22 });
     k.cliff('weathered', ARM_S, [2.2, 2.1, 1.95, 1.5, 0.9], { ...cliff, taper: 0.22 });
     // ---- the cave mouth behind the falls: a dark, round-headed recess in the alcove's back wall (the
