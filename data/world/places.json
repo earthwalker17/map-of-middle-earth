@@ -14,7 +14,7 @@
     { "id": "ford-of-bruinen", "name": "Ford of Bruinen", "kind": "poi", "canonical": [866.0, 1047.0], "src": "E" },
     { "id": "rivendell", "name": "Rivendell", "kind": "landmark", "tier": "A", "canonical": [881.105, 1054.42], "src": "P", "displayOffsetKm": [0, 0], "footprintKm": 9, "region": "eriador" },
     { "id": "caradhras", "name": "Caradhras", "kind": "peak", "canonical": [872.0, 934.0], "src": "E" },
-    { "id": "moria", "name": "Moria — the West-gate", "kind": "landmark", "tier": "A", "canonical": [847.291, 920.986], "src": "P", "displayOffsetKm": [0, 0], "footprintKm": 8, "region": "eriador" },
+    { "id": "moria", "name": "Moria — the West-gate", "kind": "landmark", "tier": "A", "canonical": [847.291, 920.986], "src": "P", "displayOffsetKm": [0.7, 0], "footprintKm": 8, "region": "eriador" },
     { "id": "dimrill-dale", "name": "Dimrill Dale", "kind": "poi", "canonical": [887.5, 929.5], "src": "E" },
     { "id": "lothlorien", "name": "Lothlórien", "kind": "landmark", "tier": "A", "canonical": [969.296, 921.786], "src": "P", "displayOffsetKm": [0, 0], "footprintKm": 12, "region": "lorien" },
     { "id": "dol-guldur", "name": "Dol Guldur", "kind": "landmark", "tier": "B", "canonical": [1071.014, 929.617], "src": "P", "displayOffsetKm": [0, 0], "footprintKm": 6, "region": "mirkwood" },
