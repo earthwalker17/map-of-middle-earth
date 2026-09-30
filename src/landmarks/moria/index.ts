@@ -1,4 +1,5 @@
 import type { V2 } from '../records.ts';
+import type { TreeDecl } from '../types.ts';
 import { defineLandmark } from '../types.ts';
 import { buildDoors, DOOR, ITHILDIN_LIGHTS } from './doors.ts';
 
@@ -18,10 +19,11 @@ import { buildDoors, DOOR, ITHILDIN_LIGHTS } from './doors.ts';
  *
  * Stamps (heights relative to the base ground at the display point): the pool bowl cut down below the
  * water (lowerOnly flattens: the baked lake bed stays), a dam across the Sirannon's valley on the
- * south-west, the western rim cut to a low sill (the view from the west runs across the water), the
- * mountain wall behind the cliff line (a scarp, ~75° over 1 km: the upper face is terrain rock), the door
- * sill and two holly knolls just above the water. The sheer lower face rising from the water is kit
- * `cliff` geometry seated on the pool bed.
+ * south-west, the western rim cut to a low sill just above the water (the view from the west runs across
+ * it), the mountain wall behind the cliff line (a scarp, ~75° over 1 km: the upper face is terrain rock),
+ * the door sill and its shoulders (where the hollies stand) a step above the water. The scarp's rock is
+ * the whole sheer wall; the doors are a dressed patch lying in its plane (doors.ts) — no free-standing
+ * door slab, no kit rock bands.
  */
 
 /** water and sill heights relative to the base ground at the display point */
@@ -29,27 +31,6 @@ const LEVEL_REL = -0.38;
 const SILL_REL = -0.28;
 /** pool level in local y (local y = 0 is the sill: the composite ground at the display point) */
 export const POOL_LEVEL = LEVEL_REL - SILL_REL;
-
-/**
- * The lower cliff's face line, walking from the northern ridge to the southern shoulder so the face looks
- * right of the walking direction (toward the pool): the long west-facing wall across the recess with the
- * doors at its deepest point, bending round the pool's corners into the ridge and the shoulder.
- * `top`: the crest (local y) at each point; where the natural slopes stand higher the rock sinks into them.
- */
-const FACE: { at: V2; top: number }[] = [
-  { at: [2.7, -0.62], top: 1.7 },
-  { at: [2.2, -0.24], top: 2.0 },
-  { at: [1.3, 0.1], top: 2.2 },
-  { at: [0.4, 0.2], top: 2.3 },
-  { at: [-0.5, 0.2], top: 2.3 },
-  { at: [-1.4, 0.05], top: 2.4 },
-  { at: [-2.1, -0.45], top: 2.5 },
-  { at: [-2.5, -1.05], top: 2.4 },
-];
-/** cliff rock: blue-grey (the moonlit film still: #1b282b darks, #5f7784 highlights) */
-const ROCK = 0x5a6167;
-/** dressed rock of the door wall: the same stone, smoothed */
-const WALL = 0x687176;
 
 /** pool outline: the bowl in front of the cliff (the waterline is where the ground rises above the water) */
 const POOL: V2[] = [
@@ -69,11 +50,25 @@ const POOL: V2[] = [
   [1.5, 0.3],
 ];
 
-/** the hollies' knolls at the cliff foot either side of the doors */
+/** the hollies either side of the doors, on the sill's shoulders at the cliff foot */
 const HOLLY: V2[] = [
-  [DOOR.x + 0.95, -0.14],
-  [DOOR.x - 0.95, -0.12],
+  [DOOR.at[0] + 0.8, -0.05],
+  [DOOR.at[0] - 0.74, -0.02],
 ];
+
+/**
+ * A holly (the Elves' token at the doors): not one tall ellipsoid but three overlapping broad oak-type
+ * crowns in dark holly green — a lobed, irregular mass reaching low, taller than the doors. `side` = +1
+ * north, −1 south (the upper lobe leans toward the door).
+ */
+function holly(at: V2, side: number, yaw: number): TreeDecl[] {
+  const lean = -side * 0.05;
+  return [
+    { at, kind: 'oak', crownKm: 0.3, heightKm: 0.98, color: 0x1d3322, yawDeg: yaw },
+    { at: [at[0] + lean, at[1] - 0.03], kind: 'oak', crownKm: 0.24, heightKm: 1.22, color: 0x213a26, yawDeg: yaw + 70 },
+    { at: [at[0] - lean * 1.6, at[1] + 0.04], kind: 'oak', crownKm: 0.26, heightKm: 0.72, color: 0x1a2e1f, yawDeg: yaw + 140 },
+  ];
+}
 
 export default defineLandmark({
   id: 'moria',
@@ -87,8 +82,8 @@ export default defineLandmark({
     { kind: 'flatten', at: [1.5, -1.95], radius: 1.35, falloff: 0.8, height: -0.8, lowerOnly: true },
     { kind: 'flatten', at: [0.4, -0.55], radius: 0.8, falloff: 0.5, height: -0.75, lowerOnly: true },
     // the western rim levelled to a low sill just above the water (the view from the west runs across it)
-    { kind: 'flatten', at: [1.0, -4.45], radius: 1.1, falloff: 0.5, height: LEVEL_REL + 0.16 },
-    { kind: 'flatten', at: [-0.5, -4.15], radius: 0.6, falloff: 0.4, height: LEVEL_REL + 0.16 },
+    { kind: 'flatten', at: [1.0, -4.45], radius: 1.1, falloff: 0.5, height: LEVEL_REL + 0.06 },
+    { kind: 'flatten', at: [-0.5, -4.15], radius: 0.6, falloff: 0.4, height: LEVEL_REL + 0.06 },
     // the dam across the Sirannon's valley on the south-west (the pool spills over it in the tale)
     {
       kind: 'ridge',
@@ -107,12 +102,12 @@ export default defineLandmark({
     {
       kind: 'scarp',
       path: [
-        [-3.4, 0.75],
-        [-1.6, 0.25],
-        [0, 0.16],
-        [1.6, 0.2],
-        [3.2, 0.42],
-        [4.5, 1.0],
+        [-3.4, 0.95],
+        [-1.6, 0.5],
+        [0, 0.45],
+        [1.6, 0.48],
+        [3.2, 0.65],
+        [4.5, 1.2],
       ],
       side: 'right',
       height: 3.6,
@@ -122,29 +117,21 @@ export default defineLandmark({
       rough: { amp: 0.35, scaleKm: 2.4 },
       surface: 'rock',
     },
-    // the door sill and the hollies' knolls, a step above the water
-    { kind: 'flatten', at: [0, 0], radius: 0.3, falloff: 0.2, height: SILL_REL },
-    ...HOLLY.map((at) => ({ kind: 'flatten' as const, at, radius: 0.2, falloff: 0.2, height: LEVEL_REL + 0.08 })),
+    // the door sill and its shoulders, where the hollies stand, a step above the water along the cliff foot
+    // (three overlapping discs ≥ 1 km across: the heightfield holds them)
+    { kind: 'flatten', at: [0, -0.02], radius: 0.35, falloff: 0.3, height: SILL_REL },
+    ...HOLLY.map((at) => ({ kind: 'flatten' as const, at: [at[0], at[1] + 0.05] as V2, radius: 0.28, falloff: 0.3, height: SILL_REL - 0.02 })),
   ],
   vegetationExclusion: [{ at: [0.2, -1.8], r: 3.3 }],
-  trees: [
-    // the two hollies flanking the doors (the Elves' tokens), dark, tall and narrow
-    { at: HOLLY[0], kind: 'holly', crownKm: 0.3, heightKm: 1.55, yawDeg: 20 },
-    { at: HOLLY[1], kind: 'holly', crownKm: 0.31, heightKm: 1.6, yawDeg: 200 },
-  ],
+  // the two hollies flanking the doors (the Elves' tokens)
+  trees: [...holly(HOLLY[0], 1, 20), ...holly(HOLLY[1], -1, 200)],
   waterFeatures: [{ kind: 'pool', ring: POOL, level: POOL_LEVEL }],
   lights: ITHILDIN_LIGHTS,
   proxy: (k) => {
-    // ---- the sheer lower cliff rising from the water; the scarp stamp carries the wall on above it
-    const hs = FACE.map(({ at: [x, z], top }) => Math.min(2.8, Math.max(0.4, top + 0.2 - k.ground(x, z))));
-    k.cliff(
-      'weathered',
-      FACE.map((f) => f.at),
-      hs,
-      { color: ROCK, rough: 0.45, strata: 0.45, depth: 1.0, overhang: -0.02, soft: 0.3, taper: 0.6 },
-    );
-    // ---- the door wall with the Doors of Durin
-    buildDoors(k, WALL, POOL_LEVEL);
+    // ---- the Doors of Durin: a dressed patch in the plane of the terrain's rock face, the relief and the
+    // ithildin on it (the terrain scarp is the sheer wall: no kit rock bands, whose facets and skyline
+    // teeth read as folded paper and blades)
+    buildDoors(k, Math.max(k.ground(0, -0.05), POOL_LEVEL + 0.08));
     // ---- the shelf path along the foot of the cliff: a narrow ledge of dressed stone just above the water
     // (only where the foot is at the water; elsewhere the ground itself is the path)
     const shelf: V2[] = [
@@ -166,19 +153,19 @@ export default defineLandmark({
       if (g > POOL_LEVEL + 0.12) continue;
       // the ledge top just above the water, its body reaching down into the pool bed
       const top = Math.max(POOL_LEVEL + 0.035, g + 0.012);
-      k.box('weathered', len + 0.02, 0.4, 0.1, { at: [mx, top - 0.4, mz], rot: [0, yaw, 0], color: 0x646c6c, lod: 0 });
+      k.box('weathered', len + 0.02, 0.4, 0.1, { at: [mx, top - 0.4, mz], rot: [0, yaw, 0], color: 0x565d61, lod: 0 });
     }
     // ---- fallen blocks at the ends of the face, where it meets the shoulders
     k.scatter(
       { polygon: [[2.6, -0.5], [3.1, -1.3], [2.8, -1.7], [2.3, -0.9]] },
       6,
-      (_i, x, z, u) => k.rock('weathered', 0.05 + u * 0.05, { at: [x, 0, z], seat: true, squash: 0.7, lump: 0.3, detail: 1, color: 0x59625f, lod: 0 }),
+      (_i, x, z, u) => k.rock('weathered', 0.05 + u * 0.05, { at: [x, 0, z], seat: true, squash: 0.7, lump: 0.3, detail: 1, color: 0x51585b, lod: 0 }),
       { minSpacing: 0.15 },
     );
     k.scatter(
       { polygon: [[-1.8, -0.6], [-2.4, -1.3], [-2.1, -1.7], [-1.5, -1.0]] },
       6,
-      (_i, x, z, u) => k.rock('weathered', 0.05 + u * 0.05, { at: [x, 0, z], seat: true, squash: 0.7, lump: 0.3, detail: 1, color: 0x59625f, lod: 0 }),
+      (_i, x, z, u) => k.rock('weathered', 0.05 + u * 0.05, { at: [x, 0, z], seat: true, squash: 0.7, lump: 0.3, detail: 1, color: 0x51585b, lod: 0 }),
       { minSpacing: 0.15 },
     );
     // ---- the dry bed of the Sirannon below the dam (pale water-worn boulders) and the stair of the old
@@ -213,15 +200,15 @@ export default defineLandmark({
   bookmarks: [
     {
       id: 'moria-close',
-      distanceKm: 11,
-      elevationDeg: 7,
+      distanceKm: 8.6,
+      elevationDeg: 6,
       azimuthDeg: 270,
       fov: 35,
-      lift: 1.1,
+      lift: 0.9,
       tod: 22.5,
       dayOfYear: 19,
       compare: ['reference/film/moria/moria-west-gate-night-fotr.webp', 'reference/concept-art/moria/moria-gate-john-howe.jpg', 'reference/bigatures/moria/moria-gates-weta-mini.png'],
-      note: 'moonlit mid-January night (13 January: the Fellowship at the gate; waxing gibbous moon 45° up in the WSW behind the camera, deep night: ithildin fully awake), low over the still black pool to the sheer cliff; the doors glow between the hollies, Caradhras above',
+      note: 'moonlit mid-January night (13 January: the Fellowship at the gate; waxing gibbous moon 45° up in the WSW behind the camera, deep night: ithildin fully awake), low over the still black pool (the lower third of the frame, mirroring the doors) to the sheer cliff; the doors glow on the dark dressed face between the hollies',
     },
     {
       id: 'moria-wide',

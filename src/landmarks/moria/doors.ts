@@ -1,78 +1,106 @@
+import { Euler, Matrix4 } from 'three/webgpu';
 import type { ProxyKit } from '../kit/ProxyKit.ts';
-import type { LightDecl, V3 } from '../types.ts';
+import type { LightDecl, V2, V3 } from '../types.ts';
 
 /**
- * The Doors of Durin (local km; heading 270: the door plane faces local −z = west). A smooth dressed
- * panel stands proud of the rough cliff face; carved pillars and arch in faint relief; ithildin lines
- * (glow family 'ithildin', night gate) on its face — pillars with capitals and bases, the arch and the
- * outer line of the inscription band, the crown with seven stars under the arch, the hammer and anvil,
- * the two trees along the pillars and the Star of Fëanor in the middle — simplified to lines ≥ 0.02 km
- * (≥ 2.4 px at the 12 km hero distance), plus five ithildin sparks (EmissionSystem, kind 'ithildin').
+ * The Doors of Durin (local km; heading 270: the door plane faces local −z = west). No slab stands out of
+ * the cliff: a rectangular dressed patch of the cliff's own dark stone, wider than the arch, lies in the
+ * plane of the terrain's rock face (fitted to the scarp around the door: it leans back LEAN km per km of
+ * height and is turned YAW° to follow the face), a hair in front of it — where the rough face bulges
+ * forward it swallows the patch's edge, so the doors sit in a smooth, sheer, dark face. On it: faint
+ * carved pillars and arch (0.008 km relief) and the ithildin lines (glow family 'ithildin', night gate)
+ * — pillars with capitals and bases, the arch and the outer line of the inscription band, the crown with
+ * seven stars under the arch, the hammer and anvil, the two trees along the pillars and the Star of
+ * Fëanor — simplified to lines ≥ 0.02 km (≥ 2 px at the hero distance), plus ONE ithildin spark at the
+ * star (EmissionSystem): a single soft glow from afar.
  *
- * Door-plane coordinates: u along local x (the door's width), v up from the sill.
+ * The ithildin paint is a dim silver whose daytime albedo (glow paint × 0.25) matches the dark stone, so
+ * by day the doors are invisible, as in the tale; at night the glow (paint × strength) is as bright as
+ * full-silver lines.
+ *
+ * Door-plane coordinates: u along the face (toward local +x, north), v up the leaning face from the sill.
  */
 export const DOOR = {
-  /** centre of the doorway along local x */
-  x: 0,
-  /** front face of the door wall (local z) */
-  z: 0.03,
-  /** door wall: width, height (to the crown of its arched head), depth into the cliff, km */
-  w: 1.1,
-  h: 1.35,
-  d: 0.5,
+  /** the face point under the doors' centre at the sill (local x, z): 0.03 km in front of the terrain face */
+  at: [0, 0.193] as V2,
+  /** the terrain face here (least-squares fit, residual ≤ 0.07 km): z = 0.223 + 0.154·x + 0.22·y */
+  lean: 0.22,
+  yawDeg: -8.8,
+  /** the dressed patch: width, height above the sill, depth into the rock */
+  w: 1.45,
+  h: 1.5,
+  d: 0.45,
   /** pillar half-spacing, pillar top, arch radius (centre line) */
   pu: 0.26,
   pv: 0.6,
   ar: 0.26,
 } as const;
 
-/** ithildin silver (research §6: faint silver #dff3ff) */
-const SILVER = 0xdff3ff;
-/** glow slabs sit this far in front of the wall face, this thick */
-const OFF = 0.004;
-const TH = 0.01;
+/** the dressed patch: the cliff's dark blue-grey stone, smooth */
+const FACE_ROCK = 0x575e64;
+/** ithildin: a dim silver (daytime albedo ≈ the dark face), strength raised to keep the night glow */
+const SILVER = 0x818e95;
+const GLOW = { gate: 'night' as const, strength: 7.3, flicker: 0.02 };
+/** carved relief: the face's stone, a shade lighter, this proud of the face */
+const RELIEF = 0x60676d;
+const RELIEF_T = 0.008;
+/** glow lines: their back this far in front of the face (over the relief), this thick (≤ 0.02 in all) */
+const BACK = RELIEF_T + 0.003;
+const TH = 0.008;
 
-/** the five ithildin sparks: the star, the keystone, the crown, the capitals (local km) */
-export const ITHILDIN_LIGHTS: LightDecl[] = (
-  [
-    [0, 0.36, 2.4],
-    [0, DOOR.pv + DOOR.ar + 0.02, 1.4],
-    [0, 0.73, 1.0],
-    [DOOR.pu, DOOR.pv, 0.8],
-    [-DOOR.pu, DOOR.pv, 0.8],
-  ] as [number, number, number][]
-).map(([u, v, i]) => ({ at: [DOOR.x + u, v, DOOR.z - 0.02] as V3, color: SILVER, intensity: i, radius: 0.05, kind: 'ithildin' as const }));
+const DEG = Math.PI / 180;
+const TILT = Math.atan(DOOR.lean);
+const PSI = DOOR.yawDeg * DEG;
+/** the face frame: U along it, N into the rock (horizontal), UP up the leaning face, OUT its outward normal */
+const U: V3 = [Math.cos(PSI), 0, -Math.sin(PSI)];
+const N: V3 = [Math.sin(PSI), 0, Math.cos(PSI)];
+const UP: V3 = [Math.sin(TILT) * N[0], Math.cos(TILT), Math.sin(TILT) * N[2]];
+const OUT: V3 = [-Math.cos(TILT) * N[0], Math.sin(TILT), -Math.cos(TILT) * N[2]];
+/** the frame's rotation: box x → U, y → UP, z → into the rock */
+const FRAME = new Matrix4().makeRotationY(PSI).multiply(new Matrix4().makeRotationX(TILT));
 
-/** The door wall and its ithildin; `level` = the pool's water level (local y): the sill stays above it. */
-export function buildDoors(k: ProxyKit, wall: number, level: number): void {
-  const { x: X, z: Z, w, h, d, pu, pv, ar } = DOOR;
-  // the sill (every part below is placed relative to it; the light records assume it at local y ≈ 0)
-  const y0 = Math.max(k.ground(X, Z), level + 0.08) - 0.02;
-  // the door wall: a smooth dressed face of the cliff's stone with a round-arched head, standing a little
-  // proud of the rough face; an outline in the door plane (u, −v) extruded `d` into the cliff (rot 90° about
-  // x: outline z → −y, extrusion → +z), its foot buried 0.3 below the sill
-  const hw = w / 2;
-  const vs = h - hw;
-  const panel: [number, number][] = [
-    [-hw, 0.3],
-    [hw, 0.3],
-    [hw, -vs],
-  ];
-  for (let i = 1; i < 12; i++) {
-    const a = (i / 12) * Math.PI;
-    panel.push([Math.cos(a) * hw, -(vs + Math.sin(a) * hw)]);
-  }
-  panel.push([-hw, -vs]);
-  k.extrude('weathered', panel, d, { at: [X, y0, Z], rot: [90, 0, 0], color: wall, grain: 0.12 });
-  const zf = Z - OFF - TH;
-  // ---- carved relief (stone, a little lighter than the wall): pillars and the arch round the doorway
-  for (const s of [-1, 1]) k.box('weathered', 0.075, pv, 0.014, { at: [X + s * pu, y0, Z - 0.012], color: 0x66706f, lod: 0 });
-  k.ring('weathered', ar, 0.075, 0.014, { at: [X, y0 + pv, Z - 0.012], rot: [90, 0, 0], arcDeg: 180, seg: 20, color: 0x66706f, lod: 0 });
+/** Euler XYZ degrees of FRAME · extra */
+function rotOf(extra: Matrix4): V3 {
+  const e = new Euler().setFromRotationMatrix(FRAME.clone().multiply(extra), 'XYZ');
+  return [e.x / DEG, e.y / DEG, e.z / DEG];
+}
+/** in-plane turn by `deg` (CCW seen from the pool) */
+const inPlane = (deg: number): V3 => rotOf(new Matrix4().makeRotationZ(deg * DEG));
+/** a flat ring / extrude stood up in the plane (its +y into the rock) */
+const STAND = rotOf(new Matrix4().makeRotationX(Math.PI / 2));
+
+/** a point on the face at door-plane (u, v), `f` km in front of it; `sill` = local y of the sill line */
+function onFace(u: number, v: number, f: number, sill: number): V3 {
+  const [x0, z0] = DOOR.at;
+  return [x0 + U[0] * u + UP[0] * v + OUT[0] * f, sill + UP[1] * v + OUT[1] * f, z0 + U[2] * u + UP[2] * v + OUT[2] * f];
+}
+
+/** the single ithildin spark: the Star of Fëanor (local km; the sill is at local y ≈ 0) */
+export const ITHILDIN_LIGHTS: LightDecl[] = [{ at: onFace(0, 0.36, 0.03, 0), color: 0xdff3ff, intensity: 2.2, radius: 0.04, kind: 'ithildin' }];
+
+/** The dressed patch, the carved relief and the ithildin lines; `sill` = the sill's local y. */
+export function buildDoors(k: ProxyKit, sill: number): void {
+  const { pu, pv, ar, w, h, d } = DOOR;
+  // ---- the dressed patch: a rectangle in the face plane (outline (u, −v)), its foot buried below the sill
+  const foot = 0.35;
+  k.extrude(
+    'weathered',
+    [
+      [-w / 2, foot],
+      [w / 2, foot],
+      [w / 2, -h],
+      [-w / 2, -h],
+    ],
+    d,
+    { at: onFace(0, 0, 0, sill), rot: STAND, color: FACE_ROCK, grain: 0.3 },
+  );
+  // ---- carved relief: pillars and the arch round the doorway (0.008 km proud of the face)
+  for (const s of [-1, 1]) k.box('weathered', 0.075, pv, RELIEF_T, { at: onFace(s * pu, 0, RELIEF_T / 2, sill), rot: inPlane(0), color: RELIEF, lod: 0 });
+  k.ring('weathered', ar, 0.075, RELIEF_T, { at: onFace(0, pv, RELIEF_T, sill), rot: STAND, arcDeg: 180, seg: 20, color: RELIEF, lod: 0 });
   // ---- ithildin lines
-  const glow = { gate: 'night' as const, strength: 2.2, flicker: 0.02 };
-  /** a line of glow from (u, v) in the door plane, `len` long, rotated `deg` from straight up (CCW seen from the west) */
+  /** a line of glow from (u, v) on the face, `len` long, turned `deg` from straight up (CCW seen from the pool) */
   const ray = (u: number, v: number, len: number, bw: number, deg = 0) =>
-    k.box('ithildin', bw, len, TH, { at: [X + u, y0 + v, zf], rot: [0, 0, deg], color: SILVER, glow, lod: 0 });
+    k.box('ithildin', bw, len, TH, { at: onFace(u, v, BACK + TH / 2, sill), rot: inPlane(deg), color: SILVER, glow: GLOW, lod: 0 });
   // pillars, capitals and bases
   for (const s of [-1, 1]) {
     ray(s * pu, 0.04, pv - 0.04, 0.026);
@@ -84,7 +112,7 @@ export function buildDoors(k: ProxyKit, wall: number, level: number): void {
     [ar, 0.026],
     [ar + 0.075, 0.02],
   ] as [number, number][])
-    k.ring('ithildin', r, t, TH, { at: [X, y0 + pv + 0.012, zf], rot: [90, 0, 0], arcDeg: 180, seg: 22, color: SILVER, glow, lod: 0 });
+    k.ring('ithildin', r, t, TH, { at: onFace(0, pv + 0.012, BACK + TH, sill), rot: STAND, arcDeg: 180, seg: 22, color: SILVER, glow: GLOW, lod: 0 });
   // the crown (a band with three points) and the seven stars in an arc under the arch
   ray(0, 0.705, 0.02, 0.075);
   for (const u of [-0.03, 0, 0.03]) ray(u, 0.725, 0.032, 0.016);
