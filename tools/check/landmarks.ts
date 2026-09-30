@@ -8,10 +8,10 @@
  *  - structure: every geometry key is a shared material key ('structure' | 'glow')
  *  - determinism: building every landmark twice gives identical geometry hashes (error)
  *
- * Rebuilt vs legacy rule: a landmark counts as REBUILT (kit v2, hard gates) once its definition declares
- * `lodPx` — the rebuild agent tunes the LOD thresholds at the landmark's hero distance, so declaring them
- * is the explicit "this landmark is v2" switch. Until then (S1 proxies through the v1-compatible kit API)
- * budget / LOD overruns are warnings.
+ * Rebuilt vs legacy rule: a landmark counts as REBUILT (kit v2, hard gates) once its data/tour/shotlist.json
+ * entry has `"status": "s3"` (the same switch makes its bookmark gates strict, tools/check/bookmarks.ts) or
+ * its definition declares `lodPx`. Until then (S1 proxies through the v1-compatible kit API) budget / LOD
+ * overruns are warnings.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -31,7 +31,7 @@ interface Budget {
 
 export async function checkLandmarks(world: World, landmarks: LandmarkDefinition[]): Promise<CheckResult> {
   const out: CheckResult = { errors: [], warnings: [], info: [] };
-  const shotlist = JSON.parse(readFileSync(join(ROOT, 'data/tour/shotlist.json'), 'utf8')) as { landmarks: Record<string, { budget?: Budget }> };
+  const shotlist = JSON.parse(readFileSync(join(ROOT, 'data/tour/shotlist.json'), 'utf8')) as { landmarks: Record<string, { budget?: Budget; status?: string }> };
   const { buildLandmarks, buildStats } = await import('../../src/landmarks/build.ts');
   const { geometryHash } = await import('../../src/landmarks/kit/geom.ts');
   const { MATERIAL_KEYS } = await import('../../src/materials/families.ts');
@@ -62,7 +62,7 @@ export async function checkLandmarks(world: World, landmarks: LandmarkDefinition
   let rebuilt = 0;
   const hashes = new Map<string, number>();
   for (const b of built) {
-    const v2 = !!b.def.lodPx;
+    const v2 = shotlist.landmarks[b.id]?.status === 's3' || !!b.def.lodPx;
     if (v2) rebuilt++;
     const sev = v2 ? out.errors : out.warnings;
     const tag = v2 ? '' : ' (legacy proxy)';
