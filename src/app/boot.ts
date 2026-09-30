@@ -45,6 +45,7 @@ async function buildWorld(engine: Engine, quality: QualityTierId, shots: ShotSpe
   const vegetation = new VegetationSystem(world);
   vegetation.setExclusions(landmarkExclusions(world, LANDMARKS)); // before init → placed once
   vegetation.setAuthored(built.flatMap((b) => b.trees));
+  vegetation.setForests(built.flatMap((b) => b.forests));
   const diorama = new DioramaSystem(world);
   const landmarks = new LandmarkSystem(world, built);
   const emission = new EmissionSystem(world, built.flatMap((b) => b.lights));
