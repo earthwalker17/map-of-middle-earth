@@ -12,11 +12,19 @@ import { defineLandmark } from '../types.ts';
 /** local point at compass bearing `b` (deg), radius `r` km from the summit */
 const polar = (b: number, r: number): V2 => [Math.sin((b * Math.PI) / 180) * r, -Math.cos((b * Math.PI) / 180) * r];
 
-const TIMBER = 0x6b5238;
+const TIMBER = 0x4e3a28;
 const TURF = 0x8a8554; // terrace banks, close to the Rohan tussock of the hill
-const THATCH = [0x9c8f68, 0x8f8460, 0xa39470, 0x8a7f5c, 0x978a62];
+// weathered grey-olive thatch over dark timber walls (the film's town: grey roofs, near-black walls)
+const THATCH = [0x8c8468, 0x827b62, 0x958c6e, 0x7c765e, 0x898067];
 const GATE = 90; // compass bearing of the gate (east)
 const RING = 1.75; // palisade radius, km
+/** the rocky band under the summit (north and west): no houses there */
+const ROCK_BAND: V2[] = (() => {
+  const out: V2[] = [];
+  for (let b = 228; b <= 392; b += 8) out.push(polar(b, 1.02));
+  for (let b = 392; b >= 228; b -= 8) out.push(polar(b, 0.5));
+  return out;
+})();
 
 export default defineLandmark({
   id: 'edoras',
@@ -64,18 +72,23 @@ export default defineLandmark({
       for (const s of [-1, 1])
         k.box('wood', 0.012, 0.09, 0.012, { at: [hx + sx * 0.46, 0.018 + 0.12 + 0.13 * 1.28 - 0.03, hz + s * 0.02], rot: [s * 28, 0, 0], color: 0x5a3f28 });
     k.house('wood', 'thatch', 0.42, 0.14, 0.08, { at: [hx - 0.08, 0, hz - 0.3], pitch: 48, roofColor: 0x8a7650, color: TIMBER });
-    // ---- the rocky north-west face: cliffs below the terrace (walked anticlockwise so they face out)
-    const face: V2[] = [];
-    for (let b = 338; b >= 236; b -= 6) face.push(polar(b, 0.82 + 0.1 * Math.sin(b * 0.11)));
-    k.cliff(
-      'weathered',
-      face,
-      face.map((_, i) => 0.16 + 0.12 * Math.sin((i / (face.length - 1)) * Math.PI)),
-      { color: 0x7b7466, rough: 0.5, strata: 0.35, overhang: 0.05, depth: 0.25 },
-    );
+    // ---- the rocky face under Meduseld: staggered outcrops round the north and west (the steepest band
+    // of the knoll; each walked anticlockwise so it faces out), a lower broken band on the west
+    const crags: [number, number, number, number][] = [
+      // [from bearing, to bearing, radius, height]
+      [28, 350, 0.78, 0.26],
+      [352, 318, 0.9, 0.34],
+      [322, 286, 0.8, 0.3],
+      [292, 250, 0.92, 0.26],
+    ];
+    for (const [b0, b1, r, h] of crags) {
+      const face: V2[] = [];
+      for (let b = b0 + (b0 < b1 ? 360 : 0); b >= b1; b -= 4) face.push(polar(b, r + 0.05 * Math.sin(b * 0.21)));
+      k.cliff('weathered', face, h, { color: 0x6e685c, rough: 0.75, strata: 0.35, depth: 0.4 });
+    }
     const lower: V2[] = [];
     for (let b = 318; b >= 262; b -= 6) lower.push(polar(b, 1.28 + 0.06 * Math.cos(b * 0.2)));
-    k.cliff('weathered', lower, 0.12, { color: 0x847c6c, rough: 0.6, strata: 0.3, depth: 0.2 });
+    k.cliff('weathered', lower, 0.14, { color: 0x77705f, rough: 0.7, strata: 0.3, depth: 0.3 });
     // boulders on the flanks
     k.scatter({ annulus: { at: [0, 0], r0: 0.7, r1: 1.9, a0: 200, a1: 350 } }, 12, (_i, x, z, u) => {
       k.rock('weathered', 0.035 + u * 0.045, { at: [x, 0, z], seat: true, squash: 0.7, lump: 0.3, color: 0x7f786a, shade: 0.9 + u * 0.2, lod: 0 });
@@ -85,10 +98,10 @@ export default defineLandmark({
     let lit = 0;
     k.scatter(
       { annulus: { at: [0, 0], r0: 0.66, r1: RING - 0.12, a0: 342, a1: 232 } },
-      84,
+      60,
       (i, x, z, u) => {
         const b = (Math.atan2(x, -z) * 180) / Math.PI;
-        const w = 0.15 + u * 0.12;
+        const w = 0.16 + u * 0.14;
         const d = 0.1 + ((i * 7) % 5) * 0.01;
         const h = 0.045 + ((i * 3) % 4) * 0.006;
         // ridge along the contour; local +z (the window side) faces out, downhill
@@ -111,7 +124,7 @@ export default defineLandmark({
           ...(window ? { windows: { count: 1, on: 1, sides: 1 as const, size: 0.01 } } : {}),
         });
       },
-      { minSpacing: 0.2, avoid: [[[0.45, -0.12], [RING + 0.3, -0.12], [RING + 0.3, 0.2], [0.45, 0.2]]] },
+      { minSpacing: 0.2, avoid: [[[0.45, -0.12], [RING + 0.3, -0.12], [RING + 0.3, 0.2], [0.45, 0.2]], ROCK_BAND] },
     );
 
     // ---- palisade round the hill (open at the gate), gate towers

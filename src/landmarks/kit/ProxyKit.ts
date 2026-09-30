@@ -2,7 +2,7 @@ import { Euler, Matrix4, Quaternion, Vector3, type BufferGeometry } from 'three/
 import { hash32, rand } from '../../core/rng.ts';
 import { familyKey, familyVertex, paintLinear, type FamilyId, type GlowOverride, type MaterialKey } from '../../materials/families.ts';
 import type { LightGate, LightKind, LodGeometry, TreeKind, V2, V3 } from '../records.ts';
-import { Geo, area2, boxGeo, face, icoGeo, latheGeo, noise3, packGeometry, prismGeo, type PackItem } from './geom.ts';
+import { Geo, area2, boxGeo, cross3, face, icoGeo, latheGeo, noise3, packGeometry, prismGeo, sub3, type PackItem } from './geom.ts';
 
 export type { V2, V3 } from '../records.ts';
 export type { FamilyId } from '../../materials/families.ts';
@@ -1269,8 +1269,9 @@ export class ProxyKit {
   /**
    * A rock face along a local polyline (x, z; + `at`) — cliffs narrower than the 0.4 km heightfield
    * can express. The face looks to the RIGHT of the walking direction; `height` is constant or one
-   * value per path point. Rough (smooth-normal noise), strata-banded, with an optional `overhang`; the
-   * rock body slopes back `depth` km into the ground. Bottom follows the ground by default.
+   * value per path point (the skyline is jagged by noise). Faceted rock (flat triangles, per-facet
+   * shade), buttresses and gullies (`rough`), strata bands, an optional `overhang`; the rock body slopes
+   * back `depth` km into the ground. Bottom follows the ground by default.
    */
   cliff(fam: FamilyId, path: V2[], height: number | number[], o: CliffOpts = {}): this {
     const p = this.begin();
@@ -1303,7 +1304,9 @@ export class ProxyKit {
       const g = new Geo();
       const nu = Math.max(2, Math.ceil(total / (Math.max(0.02, hmax * 0.12) / d)));
       const nv = Math.max(2, Math.round(7 * d));
-      const rows: number[][] = [];
+      // grid of points (u along the path, v up the face, then 2 rows over the top and down the back)
+      const P: V3[][] = [];
+      const S: number[][] = [];
       for (let iu = 0; iu <= nu; iu++) {
         const t = (iu / nu) * total;
         let k = 1;
@@ -1318,20 +1321,21 @@ export class ProxyKit {
         nx /= nl;
         nz /= nl;
         const hh = hs[k - 1] + (hs[k] - hs[k - 1]) * f;
-        // taper the ends so the face grows out of the slope
+        // taper the ends so the face grows out of the slope; a jagged skyline along the top
         const endT = Math.min(1, (Math.min(t, total - t) / Math.max(1e-6, hmax)) * 1.5 + 0.15);
-        const H = hh * endT;
+        const H = hh * endT * (0.72 + 0.56 * noise3(t * 3.1, 0.3, 4.2, nseed));
         const y0 = fg ? this.ground(x - nx * 0.02, z - nz * 0.02) - SINK : at[1];
-        const row: number[] = [];
+        // buttresses and gullies: a column-wise bulge, plus two octaves of face noise
+        const col = (noise3(t * 9, 0.7, 3.3, nseed) - 0.5) * rough * H * 0.3;
+        const row: V3[] = [];
+        const sh: number[] = [];
         for (let iv = 0; iv <= nv; iv++) {
           const v = iv / nv;
-          const nn = noise3(t * 6, v * 3, 0.5, nseed) - 0.5;
-          const off = H * (over * v * v - 0.18 * v) + rough * H * 0.35 * nn * Math.sin(v * Math.PI);
+          const nn = noise3(t * 5, v * 2.2, 0.5, nseed) - 0.5 + 0.5 * (noise3(t * 13, v * 5, 7.5, nseed) - 0.5);
+          const off = H * (over * v * v - 0.18 * v) + (rough * H * 0.45 * nn + col) * (0.35 + 0.65 * Math.sin(v * Math.PI));
           const y = y0 + v * H;
-          const vi = g.v(x + nx * off, y, z + nz * off);
-          const band = 1 + strata * 0.35 * Math.sin(y * 38 + noise3(t * 2, y * 3, 1.5, nseed) * 4);
-          g.shade(vi, band);
-          row.push(vi);
+          row.push([x + nx * off, y, z + nz * off]);
+          sh.push(1 + strata * 0.35 * Math.sin(y * 38 + noise3(t * 2, y * 3, 1.5, nseed) * 4) + 0.18 * (noise3(t * 7, v * 4, 9.5, nseed) - 0.5));
         }
         // the rock body rounds over the top and slopes back into the ground (monotone down: no folds;
         // on a hillside the back simply ends up buried in the uphill slope)
@@ -1339,23 +1343,44 @@ export class ProxyKit {
         const bz = z - nz * depth;
         const yb = fg ? this.ground(bx, bz) - SINK : at[1];
         const topY = y0 + H;
-        row.push(g.v(x - nx * depth * 0.4, topY - H * 0.12, z - nz * depth * 0.4));
-        row.push(g.v(bx, Math.min(yb, topY - H * 0.4), bz));
-        rows.push(row);
+        row.push([x - nx * depth * 0.4, topY - H * 0.12, z - nz * depth * 0.4]);
+        row.push([bx, Math.min(yb, topY - H * 0.4), bz]);
+        sh.push(0.95, 0.9);
+        P.push(row);
+        S.push(sh);
       }
-      const m = rows[0].length;
-      // (u along the path, v up the face): this order faces the right-hand side of the path
-      for (let iu = 0; iu < nu; iu++) for (let iv = 0; iv + 1 < m; iv++) g.quad(rows[iu][iv], rows[iu + 1][iv], rows[iu + 1][iv + 1], rows[iu][iv + 1]);
-      g.smoothNormals();
+      // faceted rock: every triangle its own flat normal (quad order A→B→C→D faces the right-hand side)
+      const tri = (a: V3, b: V3, c: V3, k: number) => {
+        const n = cross3(sub3(b, a), sub3(c, a));
+        const l = Math.hypot(n[0], n[1], n[2]);
+        if (l < 1e-12) return;
+        const i0 = g.v(a[0], a[1], a[2], n[0] / l, n[1] / l, n[2] / l);
+        g.v(b[0], b[1], b[2], n[0] / l, n[1] / l, n[2] / l);
+        g.v(c[0], c[1], c[2], n[0] / l, n[1] / l, n[2] / l);
+        g.shade(i0, k);
+        g.shade(i0 + 1, k);
+        g.shade(i0 + 2, k);
+        g.tri(i0, i0 + 1, i0 + 2);
+      };
+      const m = P[0].length;
+      for (let iu = 0; iu < nu; iu++)
+        for (let iv = 0; iv + 1 < m; iv++) {
+          const A = P[iu][iv];
+          const B = P[iu + 1][iv];
+          const C = P[iu + 1][iv + 1];
+          const D = P[iu][iv + 1];
+          const k = (S[iu][iv] + S[iu + 1][iv] + S[iu + 1][iv + 1] + S[iu][iv + 1]) / 4;
+          tri(A, B, C, k);
+          tri(A, C, D, k * 0.96);
+        }
       // end caps (flat) close the body
       for (const iu of [0, nu]) {
-        const ring = rows[iu].map((vi): V3 => [g.p[vi * 3], g.p[vi * 3 + 1], g.p[vi * 3 + 2]]);
         const k = iu === 0 ? 1 : pts.length - 1;
         const dx = pts[k][0] - pts[k - 1][0];
         const dz = pts[k][1] - pts[k - 1][1];
         const dl = Math.hypot(dx, dz) || 1;
         const sgn = iu === 0 ? -1 : 1;
-        capPolygon(g, ring, [(sgn * dx) / dl, 0, (sgn * dz) / dl]);
+        capPolygon(g, P[iu], [(sgn * dx) / dl, 0, (sgn * dz) / dl]);
       }
       return g;
     };
