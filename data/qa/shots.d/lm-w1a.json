@@ -1,0 +1,75 @@
+{
+ "version": 1,
+ "notes": "W1-A (kit v2 pilot) inspection shots: Edoras LOD0 detail from ~5 km and the LOD1/LOD2 silhouette from ~70 km.",
+ "shots": [
+  {
+   "id": "w1a-edoras-hero",
+   "tod": 9,
+   "note": "= the edoras-close bookmark as an explicit shot (pnpm shots --determinism only repeats JSON shots, not page-resolved bookmarks)",
+   "camera": {
+    "orbit": {
+     "place": "edoras",
+     "distanceKm": 16,
+     "elevationDeg": -3,
+     "azimuthDeg": 40,
+     "fov": 38,
+     "lift": 2.2
+    }
+   },
+   "compare": [
+    "reference/film/edoras",
+    "reference/photos/edoras"
+   ]
+  },
+  {
+   "id": "w1a-edoras-near",
+   "tod": 11,
+   "note": "W1-A kit v2 inspection: Edoras town and Meduseld from ~5 km (LOD0 detail, seating, AO)",
+   "camera": {
+    "orbit": {
+     "place": "edoras",
+     "distanceKm": 5,
+     "elevationDeg": 22,
+     "azimuthDeg": 45,
+     "fov": 35,
+     "lift": -0.3
+    }
+   },
+   "compare": [
+    "reference/film/edoras"
+   ]
+  },
+  {
+   "id": "w1a-edoras-nw",
+   "tod": 16.5,
+   "note": "W1-A: the rock band under Meduseld and the town from the north-west, ~6 km (LOD0)",
+   "camera": {
+    "orbit": {
+     "place": "edoras",
+     "distanceKm": 6,
+     "elevationDeg": 12,
+     "azimuthDeg": 320,
+     "fov": 35,
+     "lift": -0.2
+    }
+   },
+   "compare": [
+    "reference/film/edoras"
+   ]
+  },
+  {
+   "id": "w1a-edoras-far",
+   "tod": 11,
+   "note": "W1-A LOD check: Edoras from ~70 km (LOD1/LOD2, silhouette)",
+   "camera": {
+    "orbit": {
+     "place": "edoras",
+     "distanceKm": 70,
+     "elevationDeg": 14,
+     "azimuthDeg": 40,
+     "fov": 35
+    }
+   }
+  }
+ ]
+}

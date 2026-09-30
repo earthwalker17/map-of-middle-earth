@@ -19,7 +19,8 @@ export default defineLandmark({
     for (const s of [-1, 1]) {
       k.cylinder('darkStone', 0.8, 1.1, 8.5, { at: [s * 5.2, 0, -1.6], seg: 8 });
       k.cone('darkStone', 1.0, 2.6, { at: [s * 5.2, 8.5, -1.6], seg: 8 });
-      k.box('emissive', 0.12, 0.3, 0.05, { at: [s * 5.2, 7.2, -2.45] });
+      // watch-fires in the towers: lit from dusk (the default lamp gate is night only)
+      k.box('emissive', 0.12, 0.3, 0.05, { at: [s * 5.2, 7.2, -2.45], glow: { gate: 'dusk' } });
     }
   },
   lookOverride: 'dagorlad',
