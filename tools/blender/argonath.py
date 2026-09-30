@@ -2,9 +2,11 @@
 
 ONE shared body and two head variants — the landmark places the model twice (src/landmarks/argonath/index.ts),
 unmirrored (both kings raise the LEFT hand: the film, the book), each instance adding its own head nodes:
-- `lod0` / `lod1` / `lod2`: the robed body, the raised left arm with its hanging sleeve, the open left hand
-  (palm facing upstream), the right fist round a long axe, the chipped pedestal and the boulders at its foot;
-- `crown_lod0..2`: the bearded king under a crowned helm (the film's west king);
+- `lod0` / `lod1` / `lod2`: the robed body under a mantle, the raised left arm, the open left hand (palm
+  facing upstream, fingers together), the cloak falling on that side, the right fist round a long axe, the
+  chipped pedestal and the boulders at its foot;
+- `crown_lod0..2`: the bearded king under a tall, narrow Gondorian helm-crown with a low diadem (the film's
+  west king);
 - `helm_lod0..2`: the king in a full helm with a face guard and a crest (the film's east king).
 
 Built from the same proportions as the TS-v2 fallback (src/landmarks/argonath/king.ts) but as sculpture:
@@ -190,14 +192,15 @@ def belt():
 
 
 def drape(rnd):
-    """the heavy sleeve falling from the raised left arm to the pedestal (outer side), in deep flutes"""
+    """the cloak falling from under the mantle on the raised arm's side to the pedestal (outer side), in deep
+    flutes — it hangs from the shoulder, not from the raised elbow (no sail between the arm and the robe)"""
     table = [
-        (0.02, -0.66, 0.26, 0.28),
-        (1.0, -0.66, 0.24, 0.25),
-        (2.2, -0.67, 0.21, 0.21),
-        (3.2, -0.7, 0.16, 0.16),
-        (3.75, -0.73, 0.12, 0.13),
-        (4.08, -0.76, 0.085, 0.1),
+        (0.02, -0.64, 0.25, 0.27),
+        (1.0, -0.63, 0.23, 0.24),
+        (2.2, -0.61, 0.19, 0.2),
+        (2.85, -0.6, 0.15, 0.16),
+        (3.2, -0.62, 0.12, 0.13),
+        (3.4, -0.63, 0.09, 0.1),
     ]
     top = table[-1][0]
 
@@ -223,8 +226,16 @@ def drape(rnd):
 
     m = lib.sweep(path, radius, seg=96, section=sect)
     # round the top into the underside of the sleeve
-    m.add(lib.ellipsoid(K(-0.76, top, 0.02), (0.1, 0.11, 0.09), seg=24, rings=12))
+    m.add(lib.ellipsoid(K(-0.63, top, 0.02), (0.1, 0.11, 0.09), seg=24, rings=12))
     return m
+
+
+def mantle():
+    """a mantle over the shoulders from the collar to a hem across the upper chest and arms: hides the
+    shoulder balls and gives the torso a garment line (an elliptic solid; its underside is the hem)"""
+    prof = [(0.001, 3.14), (0.78, 3.14), (0.81, 3.2), (0.81, 3.34), (0.75, 3.52), (0.6, 3.64), (0.4, 3.74), (0.2, 3.8), (0.001, 3.81)]
+    m = lib.lathe([(r, y + PED_TOP) for r, y in prof], seg=64, sx=1.0, sy=0.47)
+    return m.transform(Matrix.Translation(Vector((0.0, -0.03, 0.0))))
 
 
 def left_arm():
@@ -316,8 +327,9 @@ def hand():
     m.add(lib.ellipsoid(tuple(P(0.0, 0.12, 0.0)), (0.098, 0.034, 0.115), seg=24, rings=12, rot=rot))
     # thenar pad at the base of the thumb, the palm's heel
     m.add(lib.ellipsoid(tuple(P(0.05, 0.07, 0.012)), (0.048, 0.034, 0.075), seg=16, rings=10, rot=rot))
-    # fingers: little (lateral, -u) … index (towards the thumb, +u); base, length, fan angle, radius
-    fingers = [(-0.074, 0.155, -0.14, 0.021), (-0.026, 0.195, -0.05, 0.023), (0.024, 0.21, 0.03, 0.023), (0.073, 0.185, 0.11, 0.022)]
+    # fingers: little (lateral, -u) … index (towards the thumb, +u); base, length, fan angle, radius — held
+    # together, straight and flat (the film's "halt" palm, not a wave)
+    fingers = [(-0.066, 0.16, -0.035, 0.021), (-0.022, 0.195, -0.012, 0.022), (0.022, 0.205, 0.008, 0.022), (0.066, 0.185, 0.028, 0.021)]
     for a, ln, ang, r in fingers:
         d = (v * math.cos(ang) + u * math.sin(ang)).normalized()
         base = P(a, 0.215)
@@ -341,36 +353,81 @@ def face_common(m):
     m.add(lib.ellipsoid(K(0, HEAD_Y, -0.02), (0.19, 0.2, 0.245), seg=40, rings=24))
 
 
+# the crowned king's tall helm-crown (radius, height above y = 4.1): a narrow ogival cone ≈ 1.6× the head's
+# height (the head spans 3.92–4.32), the Gondorian helm of the film's bearded king — never a spiked ring
+CROWN_HELM = [(0.001, -0.02), (0.232, -0.02), (0.236, 0.03), (0.226, 0.1), (0.206, 0.2), (0.18, 0.3), (0.149, 0.4),
+              (0.114, 0.49), (0.077, 0.56), (0.04, 0.607), (0.015, 0.63), (0.001, 0.64)]
+
+
+def crown_helm_r(h):
+    for (r0, h0), (r1, h1) in zip(CROWN_HELM, CROWN_HELM[1:]):
+        if h <= h1:
+            return r0 + (r1 - r0) * (h - h0) / max(1e-9, h1 - h0)
+    return 0.0
+
+
 def head_crown(rnd):
-    """the bearded king under a crowned helm: brow, nose, cheekbones, moustache, a long fluted beard over the
-    chest; the helm dome, a crown band flaring out and nine tines (the front one tallest)"""
+    """the bearded king under a crowned helm: brow, deep-set eyes, nose, cheekbones, moustache, a long beard
+    over the chest parted into three twisted locks; a tall, narrow ogival helm with vertical flutes, a low
+    diadem band at the brow with short upright crenels (the front one a little taller), small wings swept
+    back along its sides and a knob at the point"""
     m = lib.Mesh()
     face_common(m)
     m.add(lib.ellipsoid(K(0, 4.18, -0.175), (0.16, 0.05, 0.042), seg=24, rings=10))  # brow
     m.add(lib.capsule(K(0, 4.16, -0.2), K(0, 4.02, -0.262), 0.036, 0.052, seg=12, rings=4))  # nose
-    for sx in (-1, 1):  # cheekbones
+    for sx in (-1, 1):  # cheekbones, the lower lids
         m.add(lib.ellipsoid(K(sx * 0.1, 4.07, -0.15), (0.07, 0.06, 0.05), seg=16, rings=8))
+        m.add(lib.capsule(K(sx * 0.045, 4.095, -0.2), K(sx * 0.11, 4.1, -0.175), 0.014, 0.012, seg=10, rings=3))
     for sx in (-1, 1):  # moustache sweeping into the beard
         m.add(lib.capsule(K(sx * 0.03, 4.0, -0.215), K(sx * 0.12, 3.9, -0.19), 0.03, 0.02, seg=12, rings=4))
+    # the beard: a rounded, fluted mass from the chin to mid-chest (as wide as it is deep, not a slab), then
+    # parting into three twisted locks, the middle one longest
     chin = Vector(K(0, 3.98, -0.13))
-    tip = Vector(K(0, 3.32, -0.36))
-    path = [tuple(chin.lerp(tip, k / 30) + Vector((0, 0.03 * math.sin(math.pi * k / 30), 0))) for k in range(31)]
+    mid_b = Vector(K(0, 3.6, -0.3))
+    path = [tuple(chin.lerp(mid_b, k / 20) + Vector((0, 0.025 * math.sin(math.pi * k / 20), 0))) for k in range(21)]
     ph = rnd.random() * 6.28
-    m.add(lib.sweep(path, lambda t: (0.1 * (1 - 0.55 * t) + 0.015, 0.175 * (1 - 0.55 * t) + 0.015), seg=48,
-                    section=lambda a, t: 1 + 0.18 * math.cos(9 * a + ph) * (0.3 + t)))
-    m.add(lib.ellipsoid(tuple(tip), (0.075, 0.05, 0.07), seg=24, rings=12))
+    m.add(lib.sweep(path, lambda t: (0.125 - 0.02 * t, 0.1 - 0.02 * t), seg=48,
+                    section=lambda a, t: 1 + 0.2 * math.cos(11 * a + ph + 2.0 * t) * (0.4 + 0.6 * t)))
+    for j, (dx, ln, r0) in enumerate(((-0.065, 0.24, 0.05), (0.0, 0.33, 0.058), (0.065, 0.22, 0.048))):
+        p0 = Vector(K(dx * 0.6, 3.68, -0.29))
+        p1 = Vector(K(dx * 1.5, 3.6 - ln, -0.34 - 0.03 * (1 - abs(dx) / 0.065)))
+        pts = []
+        for k in range(15):
+            t = k / 14
+            q = p0.lerp(p1, t) + Vector((0.014 * math.sin(5.0 * t + j * 2.1), 0.012 * math.cos(5.0 * t + j), 0))
+            pts.append(tuple(q))
+        m.add(lib.sweep(pts, lambda t, r0=r0: (r0 * (1 - 0.75 * t) + 0.006, r0 * 0.85 * (1 - 0.75 * t) + 0.006), seg=16,
+                        section=lambda a, t, j=j: 1 + 0.22 * math.cos(4 * a + 9 * t + j)))
     base = Matrix.Translation(Vector(K(0, 4.1, -0.02)))
-    helm = [(0.001, -0.02), (0.228, -0.02), (0.238, 0.03), (0.226, 0.07), (0.217, 0.16), (0.183, 0.26), (0.1, 0.325), (0.001, 0.342)]
-    m.add(lib.lathe(helm, seg=48).transform(base))
-    band = [(0.001, 0.02), (0.25, 0.02), (0.29, 0.16), (0.001, 0.16)]
-    m.add(lib.lathe(band, seg=48).transform(base))
-    for i in range(9):
-        a = 2 * math.pi * i / 9 - math.pi / 2  # i = 0: front (-z)
+    m.add(lib.lathe(CROWN_HELM, seg=48).transform(base))
+    m.add(lib.ellipsoid(K(0, 4.1 + 0.638, -0.02), (0.022, 0.026, 0.022), seg=12, rings=8))  # knob at the point
+    # vertical flutes up the helm: ribs laid on its surface from the diadem to near the point
+    for i in range(12):
+        a = 2 * math.pi * (i + 0.5) / 12 - math.pi / 2
         c, s = math.cos(a), math.sin(a)
-        h = 0.3 if i == 0 else 0.16 + 0.06 * (i % 2) + 0.02 * rnd.random()
-        p0 = K(c * 0.265, 4.24, -0.02 + s * 0.265)
-        p1 = K(c * (0.265 + 0.2 * h), 4.24 + h, -0.02 + s * (0.265 + 0.2 * h))
-        m.add(lib.capsule(p0, p1, 0.045, 0.006, seg=10, rings=4, caps=2))
+        pts = []
+        for k in range(9):
+            h = 0.13 + 0.38 * k / 8
+            r = crown_helm_r(h) + 0.004
+            pts.append(K(c * r, 4.1 + h, -0.02 + s * r))
+        m.add(lib.sweep(pts, lambda t: (0.013 * (1 - 0.6 * t), 0.013 * (1 - 0.6 * t)), seg=10))
+    # the diadem: a low band at the brow with short upright crenels (≤ ¼ of the head's height, vertical)
+    band = [(0.001, 0.0), (0.249, 0.0), (0.258, 0.03), (0.258, 0.1), (0.25, 0.125), (0.001, 0.125)]
+    m.add(lib.lathe(band, seg=48).transform(base))
+    for i in range(16):
+        a = 2 * math.pi * i / 16 - math.pi / 2  # i = 0: front (-z)
+        c, s = math.cos(a), math.sin(a)
+        h = 0.085 if i == 0 else 0.05 + 0.012 * (i % 2)
+        p0 = K(c * 0.246, 4.1 + 0.11, -0.02 + s * 0.246)
+        p1 = K(c * 0.242, 4.1 + 0.11 + h, -0.02 + s * 0.242)
+        m.add(lib.capsule(p0, p1, 0.024, 0.014, seg=10, rings=3, caps=2))
+    # small wings swept back along the helm's sides (seen edge-on from the front: no horns in silhouette)
+    wing = [(0.0, 0.0), (0.05, -0.012), (0.12, 0.01), (0.19, 0.07), (0.23, 0.15), (0.2, 0.14), (0.14, 0.1), (0.08, 0.075), (0.02, 0.06)]
+    for sx in (-1, 1):
+        o = Vector(K(sx * 0.252, 4.16, 0.02))
+        back = Vector((sx * 0.14, -1.0, 0.0)).normalized()  # figure +z (behind) = Blender -y, a little outward
+        m.add(lib.slab(wing, 0.018, (o, back, Vector((0, 0, 1)))))
+    del rnd
     return m
 
 
@@ -555,8 +612,11 @@ def paint(co, n, cav, cavb, dark=0.0):
     k *= 1 - 0.4 * clamp01(cav * 1.8) - 0.45 * clamp01(cavb * 3.2)
     k *= 1 + 0.2 * clamp01(-cav * 1.8) + 0.1 * clamp01(-cavb * 3.2)
     side = 1 - abs(n.z)
-    st = lib.fbm(Vector((co.x * 26.0, co.y * 26.0, co.z * 0.9)) + Vector((2.2, 5.1, 0.0)), 2)
-    k *= 1 - 0.45 * smoothstep(0.0, 0.3, st) * (0.35 + 0.65 * side)
+    # rain streaks: vertical, but in irregular patches and of varying pitch (not a regular wood grain)
+    st = lib.fbm(Vector((co.x * 21.0, co.y * 21.0, co.z * 0.9)) + Vector((2.2, 5.1, 0.0)), 2)
+    st2 = lib.fbm(Vector((co.x * 47.0, co.y * 47.0, co.z * 1.6)) + Vector((8.4, 0.7, 3.0)), 2)
+    patch = smoothstep(-0.05, 0.35, lib.fbm(co * 2.2 + Vector((0.4, 6.2, 1.9)), 2))
+    k *= 1 - (0.42 * smoothstep(0.0, 0.3, st) * patch + 0.2 * smoothstep(0.05, 0.3, st2) * (1 - patch)) * (0.35 + 0.65 * side)
     k *= 0.66 + 0.34 * smoothstep(0.0, 0.55, co.z)  # wet foot at the waterline
     k *= 0.96 + 0.1 * max(0.0, n.z)  # sun-bleached tops
     k *= 1 - dark
@@ -625,6 +685,7 @@ def main():
         drape(rnd).obj('drape'),
         axe().obj('axe'),
         neck_collar().obj('neck'),
+        mantle().obj('mantle'),
         la, sleeve.obj('sleeve'), ra, fist.obj('fist'),
     ], VOXEL_BODY)
     lib.displace(body, weathering_body)

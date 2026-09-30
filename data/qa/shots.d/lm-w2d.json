@@ -1,23 +1,24 @@
 {
  "version": 1,
- "notes": "W2-D shots. The kings face upstream (NNE, heading 15°), so the film framing — low on the water, looking up at their faces and raised palms, backlit by the afternoon sun — is taken from UPSTREAM looking downstream: argonath-lowpass (6 km NNE on the Anduin, 1.5 above the water). w2d-* are close inspections of the GLB kings (heads, the raised hand).",
+ "notes": "W2-D shots. The kings face upstream (NNE, heading 15°), so the film framing — low on the water, looking up at their faces and raised palms, backlit by the afternoon sun — is taken from UPSTREAM looking downstream: argonath-lowpass (8.5 km NNE on the Anduin, 1.5 above the water). w2d-* are close inspections of the GLB kings (heads, the raised hand).",
  "shots": [
   {
    "id": "argonath-lowpass",
-   "tod": 15,
-   "note": "low pass: camera on the Anduin 6 km upstream of the kings (bearing 15°), 1.5 above the river level 5.32, looking downstream between them",
+   "tod": 16,
+   "dayOfYear": 56,
+   "note": "low pass: camera on the Anduin 8.5 km upstream of the kings (bearing 15°), 1.5 above the river, looking downstream up between them — the pedestals at the waterline and both raised hands in frame; late-winter backlight (25 February, the Tale of Years)",
    "camera": {
     "position": [
-     181.51,
-     6.82,
-     149.62
+     183.03,
+     6.5,
+     147.44
     ],
     "target": [
      179.96,
-     9.24,
+     8.1,
      155.42
     ],
-    "fov": 50
+    "fov": 52
    },
    "compare": [
     "reference/film/argonath",
@@ -93,7 +94,7 @@
   {
    "id": "w2d-tol",
    "tod": 15,
-   "note": "W2-D inspection: Tol Brandir from 5 km SSW on the lake, the hero light",
+   "note": "W2-D inspection: Tol Brandir from 5 km SSW on the lake (the fluted body and its strata bands), the hero light",
    "camera": {
     "position": [
      173.53,
@@ -114,18 +115,18 @@
   {
    "id": "w2d-seat",
    "tod": 15,
-   "note": "W2-D inspection: the Seat of Seeing in its clearing on Amon Hen's summit from 0.6 km in front (NE), the hero light",
+   "note": "W2-D inspection: the Seat of Seeing on its dais in the bald rocky crown of Amon Hen, from 0.42 km in front (NE, inside the treeless ring), the hero light",
    "camera": {
     "orbit": {
      "targetKm": [
-      1066.638,
-      743.624
+      1066.338,
+      743.424
      ],
-     "distanceKm": 0.6,
-     "elevationDeg": 12,
-     "azimuthDeg": 45,
+     "distanceKm": 0.42,
+     "elevationDeg": 18,
+     "azimuthDeg": 50,
      "lift": 0.1,
-     "fov": 40
+     "fov": 55
     }
    },
    "compare": [

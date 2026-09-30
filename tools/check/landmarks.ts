@@ -162,9 +162,13 @@ export async function checkLandmarks(world: World, landmarks: LandmarkDefinition
     // budgets: kit LODs (built in Node) + per instance the manifest's shared tris + its variant's tris
     const insts: { node?: string }[] = d.model.instances?.length ? d.model.instances : [{}];
     const n = insts.length;
+    const variantNames = Object.keys(entry.variants ?? {});
     for (const inst of insts)
       if (inst.node && !entry.variants?.[inst.node])
-        out.errors.push(`models: ${d.id} instance node '${inst.node}' is not a variant of ${file} (manifest variants: ${Object.keys(entry.variants ?? {}).join(', ') || 'none'})`);
+        out.errors.push(`models: ${d.id} instance node '${inst.node}' is not a variant of ${file} (manifest variants: ${variantNames.join(', ') || 'none'})`);
+    // a model built with variants (heads) but placed without a node gets only the shared nodes (a body)
+    const bare = insts.filter((inst) => !inst.node).length;
+    if (variantNames.length && bare) out.warnings.push(`models: ${d.id} ${bare} instance(s) of ${file} name no variant node — they get the shared nodes only (variants: ${variantNames.join(', ')})`);
     const kt = built.find((b) => b.id === d.id)?.stats.tris ?? [];
     const perInst = (L: number) => insts.reduce((s, inst) => s + entry.tris[Math.min(L, 2)] + (inst.node ? (entry.variants?.[inst.node]?.[Math.min(L, 2)] ?? 0) : 0), 0);
     const lv = (L: number) => (kt.length ? kt[Math.min(L, kt.length - 1)] : 0) + perInst(L);
