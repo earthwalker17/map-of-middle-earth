@@ -1,5 +1,5 @@
 import { hash32, rand, valueNoise } from '../core/rng.ts';
-import { fieldWeight, shireFieldGrid } from '../world/fields.ts';
+import { fieldWeightAt, shireFieldGrid } from '../world/fields.ts';
 import type { World } from '../world/World.ts';
 
 export { valueNoise };
@@ -241,7 +241,9 @@ const FERTILE: Record<string, number> = {
  */
 const BARREN_REGION: Record<string, number> = { mordor: 1, dagorlad: 1, 'brown-lands': 0.85, nurn: 0.8, harad: 0.55 };
 const BARREN_PLACE: { id: string; full: number; none: number; b: number }[] = [
-  { id: 'black-gate', full: 42, none: 58, b: 1 },
+  // keep North Ithilien (Henneth Annûn is ~60 km from the Gate): the Dagorlad / Mordor region weights
+  // already clear the plain and the Ephel Dúath; this only strips the Morannon approach
+  { id: 'black-gate', full: 20, none: 32, b: 1 },
   { id: 'dead-marshes', full: 20, none: 34, b: 0.95 },
   { id: 'emyn-muil', full: 24, none: 38, b: 0.85 },
   { id: 'minas-morgul', full: 8, none: 14, b: 1 },
@@ -508,12 +510,13 @@ export function placeVegetation(world: World, opts: PlacementOptions): Placement
     const z = p.z + (rand(seed, id, 3) - 0.5) * coarseCell * 0.6;
     const hr = coarseCell * (0.42 + 0.14 * rand(seed, id, 4));
     if (excluded(ex, x, z, hr)) continue;
-    const vr = hr * (1.6 + 0.4 * rand(seed, id, 5));
-    const trunk = p.top * (1.12 + 0.28 * rand(seed, id, 6));
+    // broad golden crowns lifted on silver trunks (tall stacked columns read as sandstone pillars)
+    const vr = hr * (1.05 + 0.25 * rand(seed, id, 5));
+    const trunk = p.top * (1.25 + 0.25 * rand(seed, id, 6));
     coarse.push(x, z, hr, vr, trunk, Kind.Lorien, rand(seed, id, 7) * TAU, 0.9 + 0.2 * rand(seed, id, 8), pickColor(Kind.Lorien, seed, id, x, z), {
-      spread: 0.6,
+      spread: 0.75,
       gap: 0.04,
-      hVar: 0.9,
+      hVar: 0.35,
     });
   }
 
@@ -521,7 +524,7 @@ export function placeVegetation(world: World, opts: PlacementOptions): Placement
   {
     const bree = world.places.get('bree');
     // one rule with the terrain's field colouring (src/world/fields.ts)
-    const hedgeWeight = (x: number, z: number) => fieldWeight(s.region(x, z, 'shire'), bree ? Math.hypot(x - bree.x, z - bree.z) : Infinity);
+    const hedgeWeight = (x: number, z: number) => fieldWeightAt(x, z, s.region(x, z, 'shire'), bree ? Math.hypot(x - bree.x, z - bree.z) : Infinity, world.spec.json.seeds.world);
     const { n, vert } = shireFieldGrid(spec, seed);
     const landOk = (x: number, z: number) =>
       s.water(x, z, 2) > 0.5 && s.water(x, z, 0) < 0.25 && s.water(x, z, 1) < 0.2 && s.forest(x, z) < 0.4 && s.slope(x, z) < 0.3 && s.height(x, z) > 0.3;

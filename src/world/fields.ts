@@ -28,6 +28,20 @@ export function fieldWeight(shireWeight: number, breeDistKm: number): number {
   return Math.max(smooth(0.18, 0.42, shireWeight), 1 - smooth(16, 30, breeDistKm));
 }
 
+/**
+ * fieldWeight with an organic boundary at world (x, z): the Shire region is a soft polygon, so a fixed
+ * threshold prints its straight sides as the edge of the patchwork (a square quilt in wide shots).
+ * Low-frequency noise shifts the threshold, fraying the edge by several km. The same rule drives the
+ * hedgerows (vegetation) and the field colouring (terrain), so both fray together.
+ */
+export function fieldWeightAt(x: number, z: number, shireWeight: number, breeDistKm: number, seed: number): number {
+  const n = valueNoise(x / 26, z / 26, seed + 91) * 0.65 + valueNoise(x / 9, z / 9, seed + 92) * 0.35;
+  const shift = (n - 0.5) * 0.4;
+  const shire = smooth(0.18 + shift, 0.42 + shift, shireWeight);
+  const bree = 1 - smooth(16 + shift * 40, 30 + shift * 40, breeDistKm);
+  return Math.max(shire, bree);
+}
+
 export function shireFieldGrid(spec: WorldSpec, seed: number): FieldGrid {
   const fs = 5.2;
   const ang = 0.38;

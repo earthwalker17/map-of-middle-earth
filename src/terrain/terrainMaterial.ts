@@ -63,7 +63,8 @@ const HARD_TILE = 4.2;
 /** preview (soft grain projected from above only): fade it out over this slope range (1 − n.y) */
 const SOFT_STEEP = [0.22, 0.45] as const;
 /** the lowland / river-bank turf rule holds on moderate slopes only (steep scarps stay rock) */
-const BANK_TURF_SLOPE = [0.3, 0.5] as const;
+// exaggerated heights make ordinary Shire stream banks / downs steeper than 0.3: keep them turf
+const BANK_TURF_SLOPE = [0.55, 0.8] as const;
 /** wetland only on flat ground (marsh fills, river flats), gone on this slope range */
 const WET_SLOPE = [0.06, 0.2] as const;
 /** cos, sin of the fixed grain direction of the bog pools */
@@ -324,14 +325,17 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     // (ground look layer 4, noise-dithered) instead of following the binary landcover outline;
     // far off the pools average into a slightly darker, wetter mat. Pools carry a low roughness
     // (a subtle sheen under the key light).
-    const wetEdge = max(pal.wetland.mul(1.25), lc.g.mul(0.55)).add(n2.mul(0.2)).add(n3.mul(0.16)).add(n4.mul(0.08));
+    // the noise only frays an existing cover: no bog tint where there is no wetland at all
+    const wetCover = smoothstep(0.02, 0.15, max(pal.wetland, lc.g));
+    const wetEdge = max(pal.wetland.mul(1.25), lc.g.mul(0.55)).add(n2.mul(0.2)).add(n3.mul(0.16)).add(n4.mul(0.08)).mul(wetCover);
     const wetW = smoothstep(0.35, 0.7, wetEdge).mul(float(1).sub(smoothstep(WET_SLOPE[0], WET_SLOPE[1], slope)));
     const poolFade = float(1).sub(smoothstep(0.03, 0.2, fp));
     // fine pool noise in a stretched frame bent by a gentle domain warp: bog pools lie in a grain
     // (along the mire's slope and drainage) that wanders, not as round blobs (a fixed rotation —
     // a position-dependent angle on world-scale coordinates would swirl into moiré)
-    const pq = vec2(p.x.mul(POOL_GRAIN[0]).sub(p.z.mul(POOL_GRAIN[1])), p.x.mul(POOL_GRAIN[1]).add(p.z.mul(POOL_GRAIN[0]))).add(vec2(n3.mul(1.6), n2.mul(3)));
-    const n5 = preview ? n4 : mx_noise_float(vec2(pq.x.div(0.55), pq.y.div(0.22)));
+    const pq = vec2(p.x.mul(POOL_GRAIN[0]).sub(p.z.mul(POOL_GRAIN[1])), p.x.mul(POOL_GRAIN[1]).add(p.z.mul(POOL_GRAIN[0]))).add(vec2(n3.mul(2.6), n2.mul(3.4)));
+    // only a mild grain (≈1.4:1): stronger stretching printed parallel 'tiger-stripe' dashes
+    const n5 = preview ? n4 : mx_noise_float(vec2(pq.x.div(0.46), pq.y.div(0.33)));
     // pool density: open, water-logged reaches in clusters (12 and 3 km noise, the wetter core)
     // between stretches of closed mat
     const poolDens = clamp(n2.mul(0.8).add(n3.mul(1.6)).add(wetW.sub(0.6)).add(0.2), 0, 1);

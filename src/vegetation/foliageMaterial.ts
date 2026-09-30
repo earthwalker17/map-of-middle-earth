@@ -219,7 +219,9 @@ export function createFoliageMaterial(world: World, opts: FoliageOptions = {}): 
   const dropped = isCentre.not().and(h(1).lessThan(gap));
   const size = select(dropped, float(0), mix(float(0.6), float(1.2), h(2)));
   // some crowns taller and narrower, some squat
-  const sy = mix(float(0.8), float(1.32), h(8));
+  // the far LOD's single blob stands for a whole cluster: keep its height near the 7-crown cluster's
+  // (otherwise the canopy doubles in height at the 5 px switch)
+  const sy = mix(float(0.8), float(1.32), h(8)).mul(select(sub.z.greaterThan(0.9), float(0.45), float(1)));
   const kSpread = float(1).sub(spread.mul(RING)).div(RNOM);
   // the far LOD's single blob (sub.z = WHOLE) already spans the cluster, whatever its spread
   const R = sub.z.mul(select(sub.z.greaterThan(0.9), float(1), kSpread)).mul(size);
@@ -258,10 +260,14 @@ export function createFoliageMaterial(world: World, opts: FoliageOptions = {}): 
   // foam clumps: size follows the sub-crown (small trees get small clumps); one field shared by
   // the vertex relief and the fragment micro structure
   const foam = taps > 0 ? (opts.foam ?? createFoamTexture(world.spec.json.seeds.world + 71)) : null;
+  const CLUMP_RELIEF = false;
   const grainOf = (subR: N, kIdx: N) => clamp(subR.mul(0.4), 0.022, 0.28).mul(grainK.element(kIdx));
   const foamOff = (sd: N) => vec3(sd.mul(37.1), sd.mul(5.3), sd.mul(11.3));
   let worldPos: N = basePos;
-  if (foam && taps > 1) {
+  // Vertex clump relief is off: the finest LOD's sub-crown vertex spacing is as large as the foam
+  // feature size, so the displacement aliased into faceted, crumpled silhouettes (offline tiers
+  // looked worse than preview). Re-enable together with a tessellation that matches the grain.
+  if (foam && taps > 1 && CLUMP_RELIEF) {
     // clump relief on near crowns (stills / film): displace along the geometric normal, so
     // silhouettes break up into clumps instead of smooth potatoes
     const grainV = grainOf(R.mul(hr), ik);

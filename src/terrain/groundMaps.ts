@@ -1,6 +1,6 @@
 import { ClampToEdgeWrapping, Color, DataTexture, LinearFilter, NoColorSpace, RGBAFormat, SRGBColorSpace, UnsignedByteType, Vector4 } from 'three/webgpu';
 import { hash32, rand } from '../core/rng.ts';
-import { fieldWeight, shireFieldGrid } from '../world/fields.ts';
+import { fieldWeightAt, shireFieldGrid } from '../world/fields.ts';
 import { lookNoise } from '../materials/looks.ts';
 import type { World } from '../world/World.ts';
 
@@ -221,7 +221,8 @@ function hedgerowRule(world: World): (x: number, z: number) => number {
     const b = g(x0, y1) + (g(x1, y1) - g(x0, y1)) * tx;
     return a + (b - a) * ty;
   };
-  return (x, z) => fieldWeight(shireAt(x, z), bree ? Math.hypot(x - bree.x, z - bree.z) : Infinity);
+  const seed = world.spec.json.seeds.world;
+  return (x, z) => fieldWeightAt(x, z, shireAt(x, z), bree ? Math.hypot(x - bree.x, z - bree.z) : Infinity, seed);
 }
 
 /**
