@@ -48,12 +48,14 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
 ## World services (src/world)
 - `HeightField` — **the only height API**: `sample`, `normal`, `rangeMinMax` (culling bounds), `raycast`,
   GPU `texture` (R32F linear), and `setStamps(stamps)` (TypeScript stamp layer; no re-bake needed).
-  **River guard ("rivers win")**: after stamps are composited, the water itself (ribbon, lake + graded shore)
-  keeps its baked height and stamped terrain beside it is clamped to the water level ± a natural bank
-  (`world.json rivers.stampBankSlope`); `places.json onRiver` landmarks are exempt; `stampLoss()` reports
-  how much of each landmark's stamp the guard removed (validated in `pnpm check`).
+  **River guard ("rivers win")**: after stamps are composited, the channel core keeps its baked height; under
+  the rest of the ribbon the ground stays between the baked bank and the water, and beyond it stamped terrain
+  is clamped to the water level ± a natural bank (`world.json rivers.stampBankSlope`) — no blend back to baked
+  walls. `places.json onRiver` landmarks are exempt; `stampLoss()` reports how much of each landmark's stamp
+  the guard removed (validated in `pnpm check`).
 - Stamps (`stamps.ts`): `flatten | raise | cone | plateau | carve` — declared as data by landmarks, relative
-  to the landmark's base ground (a cone's profile applies to the height above `base`).
+  to the landmark's base ground (a cone's profile applies to the height above `base`; `flatten lowerOnly`
+  only cuts ground above its target, e.g. the Osgiliath terrace).
 - `World.places` — `places.json` resolved to world coordinates (display = canonical + `displayOffsetKm`).
 - Mask textures (RGBA8, linear): `water` (riverChannel, lake, land, riverValley), `landcover` (forest,
   wetland, vulcanism, road), `forests` (mirkwood, fangorn, lorien, oldForest), `look` (array texture: 4
@@ -66,7 +68,8 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
   `world.json rivers.snap`), pit closing, expectile-isotonic profiles, bank spill cap, clipped confluences,
   edge-bounded carve walls + capped levee, band marsh fills that follow the river level, lake levels solved
   in stems with deltas/lips at the shore. Every gate the bake reports lives in `report.json`.
-- `src/world/fields.ts` — the shared Shire/Bree field lattice (hedgerows + field colouring).
+- `src/world/fields.ts` — the shared Shire/Bree field lattice and `fieldWeightAt` (noise-frayed patchwork
+  rule) used by both the hedgerows and the terrain's field colouring.
 
 ## Materials (src/materials)
 - `env` (environment.ts) — shared uniforms (sun/moon/sky/night/golden/wind/cloudCoverage/cameraPos/tFx, air
@@ -78,9 +81,11 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
   regional haze from a CPU-built texture (`bindWorld`: region weights × `looks.json atmo` + place spots),
   valley mist (ground layer thickened over `terrainMask` valleys at low sun). The water material uses the
   same functions.
-- Ground look (looks.ts): `groundLookTexture(world)` bakes region weights × `looks.json ground` (+ place /
-  km spots) once on the CPU into a 5-layer sRGB array texture (grass+dryness, dry+pattern, soil+snowline
-  offset, rock+volcanic, rockiness+turf); `groundPalette(tex, uv)` reads it (domain-warped). `TERRAIN_SHADE`
+- Ground look (looks.ts): `LookField` — one shared CPU region-weight field (multi-scale warp + noise dither,
+  per-region `ecotone` width) used by the ground look, the regional haze and the field fringe, released after
+  init. `groundLookTexture(world)` bakes it × `looks.json ground` (+ place / km spots) into a 5-layer sRGB array
+  texture (grass+dryness, dry+pattern, soil+snowline offset, rock+volcanic, rockiness+wetland cover);
+  `groundPalette(tex, uv, explicitLod?)` reads it. `TERRAIN_SHADE`
   and the shared TSL rules (`snowLineAt`, `alpineAt`, `rockAt`, `snowAt`, `coarseGroundAlbedo`) are the single
   source for anything that approximates the terrain (the water's reflected terrain uses them).
 - `looks.json` — one key per line per region: `ground` (terrain palette), `grade` (tint, saturation,
@@ -106,17 +111,24 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
    `groundMaps.ts` builds CPU masks at init: stamp turf/presence (stamped − base), shore bands, the Shire field
    mask (from `fields.ts`). Detail: 6 CC0-derived layers (`tools/textures/prep.mjs` → `public/textures/terrain`,
    luminance-normalised so the palette keeps the hue; preview 512²×4 planar, review 512²×6, final 1024²×6
-   triplanar on hard ground), faded by texel footprint. Raw sources live in `data/textures-src` (never shipped;
-   `pnpm data:fetch` syncs + derives).
+   triplanar on hard ground, triplanar soft detail in review/final), faded by texel footprint. Missing or
+   stale detail fails loudly in capture / review / final (`terrainDetailError`, capture assertion). Raw sources
+   live in `data/textures-src` (never shipped; `pnpm data:fetch` syncs + derives).
 3. `WaterSystem` (water/) — one material family (presets sea/lake/river): depth absorption, sky+heightfield
    reflection, env.tFx waves, shore foam; sea plane, earcut lakes at manifest levels, merged river ribbons
    built from the baked v2 points/levels as-is (flat across; whitewater only at declared falls or steep baked
    grades; the v1 heuristic stays as a fallback). Waterfalls → effects (S4).
 4. `VegetationSystem` (vegetation/) — hashed world-grid placement from forest/look/water masks, forest types
-   (Mirkwood, Fangorn, Lórien, old, deciduous), hedgerows/scatter, 32 km chunks × 4 LODs, near-camera fill
-   band, foliage material (wrap + translucency); `setExclusions(circles)` (landmark footprints).
-5. `DioramaSystem` (diorama/) — the slab: strata cut faces following the terrain edge profile, glassy sea
-   cross-section, satin-stone plinth.
+   (Mirkwood, Fangorn, Lórien + emergent mallorns, old, Ithilien groves, deciduous), glades/stands, a Barren
+   rule (Mordor, Dagorlad, the Morannon approach, sparse Brown Lands/Emyn Muil), hedgerows on the shared field
+   lattice. Every instance is a **cluster of 7 sub-crowns** (10-float records); per-instance LOD (5 levels, a
+   single blob below ~5 px), 32 km chunks, near-camera fill band. Foliage material: wrap + translucency +
+   per-kind sky fill, micro-structure from a precomputed tileable 48³ foam texture (preview 1 tap, review/final
+   2). Note the WebGPU limit of 8 vertex buffers (all used — pack new attributes) and that `meta` is a
+   reserved WGSL word. `setExclusions(circles)` (landmark footprints).
+5. `DioramaSystem` (diorama/) — the slab: strata cut faces following the terrain edge profile (tier-aware:
+   the preview variant moves fold/undulation to the vertex stage), glassy sea cross-section, satin-stone
+   plinth.
 6. `LandmarkSystem` (landmarks/) — realizes `defineLandmark` bundles.
 7. (later) `EffectsSystem`, `RouteSystem`, `AnnotationSystem`.
 
@@ -145,9 +157,11 @@ render loops — shared systems realize their declarations. Proxies (S1) → Ble
 - `tools/capture/pair.ts --a <run> --b <run>` — blind A/B sheets (left/right shuffled; key outside the folder).
 
 ## Validation (tools/check, CPU only)
-- `pnpm check` (run.ts): places/footprints, landmark definitions, assets vs CREDITS, and on the baked world
-  (honours `MOME_WORLD_DIR`): river levels monotone except at falls, rivers win over stamps, per-landmark
-  stamp loss, bake hydro report gates (report.json).
+- `pnpm check` (run.ts): places/footprints, landmark definitions, assets vs CREDITS (incl. derived detail
+  layers), and on the baked world (honours `MOME_WORLD_DIR`): river levels monotone except at falls,
+  continuation continuity, rivers win over stamps, per-landmark stamp loss, and the bake's hydro report gates
+  (report.json) expressed as visible-defect budgets (core raise, carve lowering by band, marsh / lake-rim
+  areas and a fixed fill-depth cap, ribbon-edge float, new steep steps, source trims).
 - `tools/check/geometry.ts` (`MOME_BASELINE_DIR`): coast IoU, lake wetted areas, channel alignment, landmark
   ground and named-peak changes, snowline/treeline area moved, steepness — vs a frozen bake.
 - `tools/check/cameras.ts` — CPU camera probe (sky/foreground/line of sight/subject NDC, lakes, slab
