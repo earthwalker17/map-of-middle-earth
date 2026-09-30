@@ -4,7 +4,7 @@ import type { World } from '../world/World.ts';
 import type { PoolRecord } from '../landmarks/records.ts';
 import { createNoiseTexture, createWaveSlopeTexture } from './waveTexture.ts';
 import { createWaterMaterial, waterDebug } from './waterMaterial.ts';
-import { buildLakeGeometry, lakeInfos, type LakeInfo } from './lakes.ts';
+import { buildLakeGeometry, lakeInfos, poolInfos, type LakeInfo } from './lakes.ts';
 import { buildRiverGeometry, type RiverStats } from './rivers.ts';
 import { LAKE, RIVER, SEA } from './presets.ts';
 
@@ -36,8 +36,10 @@ export class WaterSystem implements System {
   constructor(private readonly world: World) {}
 
   /**
-   * Landmark still-water pools (world space, from landmarkPools). Call before init.
-   * W0a stub: stored only — W1 builds them with the lake preset.
+   * Landmark still-water pools (world space, from landmarkPools): the Sirannon pool at Moria, the
+   * Water at Hobbiton, Henneth Annûn's basin. Call before init. They are triangulated into the lake
+   * mesh (earcut at `level`, LAKE preset) — no extra draw; the rivers never see them (they are not
+   * lakes of the hydrology).
    */
   setPools(pools: PoolRecord[]): void {
     this.pools = pools.map((p) => ({ ...p, ring: p.ring.map((q) => [q[0], q[1]] as [number, number]) }));
@@ -63,7 +65,7 @@ export class WaterSystem implements System {
     this.sea.renderOrder = 1;
 
     this.lakeList = lakeInfos(world);
-    this.lakes = new Mesh(buildLakeGeometry(this.lakeList), mat(LAKE));
+    this.lakes = new Mesh(buildLakeGeometry([...this.lakeList, ...poolInfos(this.pools)]), mat(LAKE));
     this.lakes.name = 'water-lakes';
     this.lakes.renderOrder = 2;
 

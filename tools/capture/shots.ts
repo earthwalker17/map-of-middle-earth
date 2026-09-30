@@ -136,11 +136,12 @@ async function main(): Promise<void> {
           break;
         }
       }
-      if (args.determinism && wanted.length && exitCode === 0) {
-        const shot = wanted[0];
-        const again = await page.evaluate((req) => window.__mm!.render(req), { name: `${shot.id}__repeat`, shot, width: args.w, height: args.h, spp: args.spp });
+      if (args.determinism && jobs.length && exitCode === 0) {
+        // repeat the first job's exact request (JSON shot or page-resolved bookmark, with any --tod override)
+        const first = jobs[0];
+        const again = await page.evaluate((req) => window.__mm!.render(req), { ...first.req, name: `${first.id}__repeat` });
         const same = again.sha256 === results[0].sha256;
-        console.log(`[shots] determinism (${shot.id} rendered twice): ${same ? 'IDENTICAL' : 'DIFFERENT'}`);
+        console.log(`[shots] determinism (${first.id} rendered twice): ${same ? 'IDENTICAL' : 'DIFFERENT'}`);
         if (!same) exitCode = 1;
       }
       footprint = captureFootprint();

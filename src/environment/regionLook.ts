@@ -161,6 +161,8 @@ export class RegionLook {
     g.tint.value.set(tint.r, tint.g, tint.b);
     g.lift.value.set(lift[0], lift[1], lift[2]);
     g.redKeep.value = red;
+    // lights keep their colour through the night / blue-hour desaturation (0 by day)
+    g.glowKeep.value = 0.9 * Math.max(night, env.twilight.value);
     g.bloomStrength.value = BASE.bloomStrength + 0.16 * bloom;
     g.bloomRadius.value = BASE.bloomRadius + 0.2 * bloom;
     g.bloomThreshold.value = BASE.bloomThreshold - 1.4 * bloom;

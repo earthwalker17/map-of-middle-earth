@@ -1,5 +1,6 @@
 import { BufferGeometry, Float32BufferAttribute, ShapeUtils, Uint32BufferAttribute, Vector2 } from 'three/webgpu';
 import type { World } from '../world/World.ts';
+import type { PoolRecord } from '../landmarks/records.ts';
 
 export interface LakeInfo {
   key: string;
@@ -35,6 +36,23 @@ export function lakeInfos(world: World): LakeInfo[] {
     }
     out.push({ key: l.key, name: l.name, level, ring, bbox: [x0, z0, x1, z1] });
   }
+  return out;
+}
+
+/**
+ * Landmark pools (world space) as lake polygons for the lake mesh: the ring is opened (a repeated
+ * closing point dropped), degenerate rings are skipped. Keys are `pool:<landmark>:<index>`.
+ */
+export function poolInfos(pools: readonly PoolRecord[]): LakeInfo[] {
+  const out: LakeInfo[] = [];
+  pools.forEach((p, i) => {
+    const ring = p.ring.map(([x, z]) => [x, z] as [number, number]);
+    if (ring.length > 1 && Math.hypot(ring[0][0] - ring[ring.length - 1][0], ring[0][1] - ring[ring.length - 1][1]) < 1e-6) ring.pop();
+    if (ring.length < 3 || !Number.isFinite(p.level)) return;
+    const xs = ring.map((q) => q[0]);
+    const zs = ring.map((q) => q[1]);
+    out.push({ key: `pool:${p.landmark}:${i}`, name: null, level: p.level, ring, bbox: [Math.min(...xs), Math.min(...zs), Math.max(...xs), Math.max(...zs)] });
+  });
   return out;
 }
 
@@ -84,19 +102,29 @@ export function pushUpTri(idx: number[], pos: ArrayLike<number>, a: number, b: n
   else idx.push(a, c, b);
 }
 
-/** All lakes as one flat, earcut-triangulated mesh (each polygon at its own level). */
+/**
+ * All lakes as one flat, earcut-triangulated mesh (each polygon at its own level). `waterPool` is 1 on
+ * landmark pools (keys `pool:…`), 0 on baked lakes: the lake material fades baked lakes by the baked
+ * lake mask, pools only by their waterline.
+ */
 export function buildLakeGeometry(lakes: LakeInfo[]): BufferGeometry {
   const pos: number[] = [];
   const idx: number[] = [];
+  const pool: number[] = [];
   for (const l of lakes) {
     const base = pos.length / 3;
     const contour = l.ring.map(([x, z]) => new Vector2(x, z));
-    for (const [x, z] of l.ring) pos.push(x, l.level, z);
+    const isPool = l.key.startsWith('pool:') ? 1 : 0;
+    for (const [x, z] of l.ring) {
+      pos.push(x, l.level, z);
+      pool.push(isPool);
+    }
     const tris = ShapeUtils.triangulateShape(contour, []);
     for (const [a, b, c] of tris) pushUpTri(idx, pos, base + a, base + b, base + c);
   }
   const g = new BufferGeometry();
   g.setAttribute('position', new Float32BufferAttribute(pos, 3));
+  g.setAttribute('waterPool', new Float32BufferAttribute(pool, 1));
   g.setIndex(new Uint32BufferAttribute(idx, 1));
   g.computeBoundingSphere();
   g.computeBoundingBox();

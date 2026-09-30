@@ -143,8 +143,14 @@ south edge is a clean diorama cut through the Bay of Belfalas; a squarer board w
   cut-face / top-void classes, subject px) + bookmark / shot-list gates (strict per landmark once its
   shot-list `status` is `s3`); S3 QA sets; region shots reframed (mordor, erebor-long-lake, misty-moria);
   `tools/capture/exportCameras.ts` for the final S2-vs-S3 A/B.
-- **W1 (agents):** A = kit v2 / families v2 / LOD / landmark gates + Edoras; B = emission / authored trees /
-  stamps v2 / pools + Lothlórien + Erebor massif.
+- **W1 (agents):** A = kit v2 / families v2 / LOD / landmark gates + Edoras (merged); B = emission /
+  authored trees / stamps v2 / pools + Lothlórien + Erebor massif.
+- **Blender spike (W2-D phase 1, merged): GO.** `pnpm models` (headless Blender 4.5 under the lock, 10 min
+  timeout, `--verify` byte-identical), runtime GLB loader (families by `fam:<id>`, shared AO). Argonath king
+  GLB (39k tris/king, 1.06 MB) vs the TS-v2 figure: 3/3 blind critics preferred the GLB in every readable
+  pair (low pass, rear, 6 km king; conf 0.7–0.85) and recognised it as the Argonath; compile unchanged,
+  boot +0.2–0.4 s. Follow-ups (Barad-dûr → Moria gate → Orthanc) only if their TS-v2 builds fail the hero
+  checkpoint.
 
 ## S4+ backlog
 - **Mordor mood (S4):** ash ceiling, plume, red under-glow, bloomed lava/Eye.

@@ -6,6 +6,7 @@ import type { Cdlod } from './cdlod.ts';
 import { env } from '../materials/environment.ts';
 import { TERRAIN_SHADE as TS, alpineAt, groundLookTexture, groundPalette, rockAt, snowAt, snowLineAt, srgbNode } from '../materials/looks.ts';
 import type { GroundMaps } from './groundMaps.ts';
+import { stampSnowCaps } from '../world/stamps.ts';
 import type { TerrainDetail } from './terrainTextures.ts';
 
 type N = TslNode;
@@ -70,6 +71,9 @@ const WET_SLOPE = [0.06, 0.2] as const;
 /** cos, sin of the fixed grain direction of the bog pools */
 const POOL_GRAIN = [Math.cos(0.7), Math.sin(0.7)] as const;
 
+/** stamp snow caps the terrain shader reads (world/stamps.ts `snowCap`; unused slots have reach 0) */
+const MAX_SNOW_CAPS = 4;
+
 /**
  * Terrain material family (the only terrain material in the project).
  * Vertex: CDLOD morph + displacement from the HeightField texture.
@@ -119,6 +123,12 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
   const groundTex = groundLookTexture(world);
   const maskTex = world.terrainMask ?? neutralMask();
   const fieldFrame = uniform(maps.fieldFrame);
+  // stamp snow caps (x, z, reach, absolute snow line): Erebor's upper body holds snow on slopes the
+  // regional rules shed it from
+  const caps = stampSnowCaps(world.heights.stampList).slice(0, MAX_SNOW_CAPS);
+  const capData: number[] = [];
+  for (let i = 0; i < MAX_SNOW_CAPS; i++) capData.push(caps[i]?.x ?? 0, caps[i]?.z ?? 0, caps[i]?.reach ?? 0, caps[i]?.line ?? 0);
+  const snowCaps = uniformArray(capData, 'float');
   const du = 1 / world.heights.width;
   const dv = 1 / world.heights.height;
   const e = world.heights.texel;
@@ -181,7 +191,25 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     const alpineRaw = alpineAt(hEff.add(n3.mul(1.2)), line);
     const alpine = alpineRaw.mul(float(1).sub(turf));
     // snow sheds from convex ribs and collects in gullies
-    const snowBase = snowAt(hEff, slope.add(n3.mul(0.04)).add(crest.mul(0.12)), line, pal.volcanic, max(curv, 0));
+    const snowRegional = snowAt(hEff, slope.add(n3.mul(0.04)).add(crest.mul(0.12)), line, pal.volcanic, max(curv, 0));
+    // stamp snow caps: above the cap's line (streaky edge, lower on north faces) on all but the sheerest
+    // faces, fading out over the outer fifth of the stamp's reach
+    let capSnow: N = float(0);
+    if (caps.length) {
+      const sheer = float(1).sub(smoothstep(0.8, 0.96, slope.add(n3.mul(0.08)).add(crest.mul(0.06))));
+      for (let i = 0; i < caps.length; i++) {
+        const cx = snowCaps.element(i * 4);
+        const cz = snowCaps.element(i * 4 + 1);
+        const reach = snowCaps.element(i * 4 + 2);
+        const cl = snowCaps.element(i * 4 + 3);
+        const d = length(p.xz.sub(vec2(cx, cz)));
+        const wR = clamp(reach.sub(d).div(reach.mul(0.2).add(1e-3)), 0, 1);
+        const up = smoothstep(cl.sub(0.6), cl.add(1.6), hEff.add(n3.mul(1.4)).add(n2.mul(0.8)));
+        capSnow = max(capSnow, wR.mul(up));
+      }
+      capSnow = capSnow.mul(sheer).mul(float(1).sub(pal.volcanic));
+    }
+    const snowBase = max(snowRegional, capSnow);
 
     // ---- rock / scree
     // lowland river valleys: the carved banks are earth and turf, not rock (unless the ground is
