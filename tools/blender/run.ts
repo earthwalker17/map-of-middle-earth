@@ -13,7 +13,7 @@
  * ({ id, file, sha256, bytes, script, scriptSha256, blender, tris, boundsKm }). `--verify` builds every
  * model a second time into .cache/models/ and requires identical bytes (determinism gate).
  */
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { acquireGpuLock, onAbort } from '../capture/gpuLock.ts';
@@ -23,6 +23,8 @@ import { MANIFEST, MODELS_DIR, readManifest, scriptHash, sha256, type ModelEntry
 const ROOT = process.cwd();
 const BLENDER = process.env.MOME_BLENDER ?? 'C:\\Program Files\\Blender Foundation\\Blender 4.5\\blender.exe';
 const NOT_MODELS = new Set(['lib', 'probe']);
+/** a hung Blender must never hold the machine-wide GPU lock (normal runs take 20–40 s) */
+const TIMEOUT_MS = Number(process.env.MOME_BLENDER_TIMEOUT_MS ?? 600_000);
 
 const argv = process.argv.slice(2);
 const flag = (k: string) => argv.includes(k);
@@ -53,7 +55,16 @@ function blender(script: string, extra: string[]): Promise<RunResult> {
   const t0 = performance.now(); // diagnostics
   return new Promise((resolve, reject) => {
     const child = spawn(BLENDER, args, { cwd: ROOT, shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, PYTHONUNBUFFERED: '1' } });
-    const off = onAbort(() => child.kill());
+    const kill = () => {
+      if (process.platform === 'win32' && child.pid) spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+      else child.kill();
+    };
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      kill();
+    }, TIMEOUT_MS);
+    const off = onAbort(kill);
     const lines: string[] = [];
     let buf = '';
     const feed = (chunk: Buffer, err: boolean) => {
@@ -70,10 +81,12 @@ function blender(script: string, extra: string[]): Promise<RunResult> {
     child.stderr.on('data', (c: Buffer) => feed(c, true));
     child.on('error', reject);
     child.on('exit', (code) => {
+      clearTimeout(timer);
       off();
+      if (timedOut) console.error(`[models] ${script} timed out after ${Math.round(TIMEOUT_MS / 1000)} s — killed`);
       if (buf) lines.push(buf);
       const st = lines.find((l) => l.startsWith('MOME_STATS '));
-      resolve({ code: code ?? 1, stats: st ? (JSON.parse(st.slice('MOME_STATS '.length)) as Stats) : null, ms: Math.round(performance.now() - t0), lines });
+      resolve({ code: timedOut ? 1 : (code ?? 1), stats: st ? (JSON.parse(st.slice('MOME_STATS '.length)) as Stats) : null, ms: Math.round(performance.now() - t0), lines });
     });
   });
 }
