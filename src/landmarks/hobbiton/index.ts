@@ -1,20 +1,23 @@
 import { type ProxyKit, SINK } from '../kit/ProxyKit.ts';
 import type { TreeDecl, V2 } from '../types.ts';
 import { defineLandmark } from '../types.ts';
-import { archBridge, DOORS, facing, fallLine, fence, hedge, hobbitHole, houseFloor, lane, OCHRE, TIMBER, WARM } from './parts.ts';
+import { archBridge, cottage, decal, DOORS, facing, fallLine, faceRot, hedge, hobbitHole, houseFloor, lane, OCHRE, TIMBER, WARM, type Hole } from './parts.ts';
 
 /**
- * Hobbiton (research §1, the Matamata set): the Hill — a broad, gently rounded green dome with Bag End's
- * green round door near the top under a big lone oak — rows of round painted doors (Bagshot Row) set into
- * its slopes along pale lanes, with gardens, hedges, fences and stubby brick chimneys on the turf; the mill
- * pond at its west foot with the mill and its waterwheel; the double-arched stone bridge over the Water;
- * the Green Dragon and the cottages of Bywater across the stream; the Party Tree on the Party Field at the
+ * Hobbiton (research §1, the Matamata set): the Hill — a broad, gently rounded green dome — with Bag End
+ * near the top under its great spreading oak, its big round green door on a terrace; below it, rows of
+ * hobbit-holes along the contours of the south-west face (Bagshot Row and the rows below), each dug into
+ * the slope behind its own LEVEL garden terrace (dry-stone retaining face, lawn, vegetable and flower
+ * beds, a picket fence or a hedge, a chimney poking out of the turf, round windows in yellow frames), the
+ * rows strung on lanes of worn soil that lie in the grass; the mill pond at the Hill's west foot with the
+ * stone-and-timber mill and its waterwheel; the double-arched rubble-stone bridge over the Water; the Green
+ * Dragon and the cottages of Bywater across the stream; the Party Field with its own great tree at the
  * Hill's south-east foot; hedgerows round the patchwork.
  *
  * Local frame: x east, z south (heading 0), km around the display point (places.json: 2 km north of the
  * canon point), heights relative to the base ground there. The Water (baked, level −1.04, a broad reach
  * 0.8–1.0 km wide) runs west → east 1–2.5 km south; the baked Bywater Pool lies south-east (x 2.6–4.7).
- * Design scale: the Hill 6.4 km across and ~1 unit high, hobbit-hole fronts ~0.2 km, doors ~0.08 km — the
+ * Design scale: the Hill 6.4 km across and ~1 unit high, hobbit-hole fronts ~0.25 km, doors ~0.08 km — the
  * miniature's scale, readable as the Shire, never a model railway.
  */
 
@@ -36,17 +39,32 @@ const WATER_REL = -1.041;
  * stamps; survey) — local y = 0 there, so relative heights become local by subtracting it. The proxy
  * checks it against the pond terrace and throws if a stamp change has made it stale.
  */
-const ORIGIN_REL = 0.876;
+const ORIGIN_REL = 1.404;
 /** the Hill's crown, flattened a little (lowerOnly): exactly this high relative to the base ground */
 const CROWN_REL = 1.06;
+/**
+ * Bag Hill: a rounded knoll raised on the Hill's broad crown at its south-west corner, so the face the
+ * hero sees rises evenly from the main lane to a top ≈ 1 unit above it — room for the rows of terraced
+ * holes, Bag End near the top and the great oak on it (applied after the crown flatten and before the
+ * pond terrace, which keeps its level)
+ */
+const KNOLL: V2 = [-0.35, -0.7];
+const KNOLL_R = 2.2;
+const KNOLL_AMOUNT = 0.75;
 const POND_LEVEL = POND_REL - ORIGIN_REL;
 const WATER = WATER_REL - ORIGIN_REL;
 
+const DEG = Math.PI / 180;
+/** compass bearing (deg) → unit vector (x, z) */
+const dirOf = (b: number): V2 => [Math.sin(b * DEG), -Math.cos(b * DEG)];
 /** compass bearing (deg) and radius (km) round the Hill's crown → local */
-const polar = (b: number, r: number): V2 => [HILL[0] + Math.sin((b * Math.PI) / 180) * r, HILL[1] - Math.cos((b * Math.PI) / 180) * r];
+const polar = (b: number, r: number): V2 => [HILL[0] + Math.sin(b * DEG) * r, HILL[1] - Math.cos(b * DEG) * r];
 
-/** Bag End: near the top of the south-west face, facing the camera side and the pond */
-const BAG_END = polar(222, 0.72);
+/** the top of Bag Hill (local; the knoll on the crown, ≈ 0.36) — the rows' contours are marched from it */
+const TOP: V2 = [-0.4, -0.9];
+/** Bag End: near the top of the south-west face (on the 0.25 contour), facing the hero camera and the pond */
+const BAG_END_BEARING = 218;
+const BAG_END_LEVEL = 0.25;
 
 /** the Party Field and its tree at the Hill's south-east foot (its long shadow falls east, off the Hill) */
 const PARTY_TREE: V2 = [2.15, 0.4];
@@ -85,31 +103,34 @@ const MILL_TRACK: V2[] = [
   [-1.64, -0.95],
   [-1.8, -1.22],
 ];
-/** the path from the lane up the south-west face to Bag End */
-const BAG_END_PATH: V2[] = [
-  [-0.75, 0.46],
-  [-0.72, 0.22],
-  [-0.6, 0.02],
-  [BAG_END[0] - 0.05, BAG_END[1] + 0.1],
+/** the lane from the bridge's south end up the far bank to Bywater (clear of the Water's flood plain) */
+const BYWATER_LANE: V2[] = [
+  [BRIDGE_X, BRIDGE_Z[1] + 0.03],
+  [-2.3, 2.6],
+  [-1.6, 3.0],
+  [-0.6, 3.25],
+  [0.3, 3.35],
+  [1.1, 3.4],
+  [1.55, 3.42],
 ];
 
-/** the rows of holes along the contours (radius round the crown, bearings) */
-const ROWS: { r: number; from: number; to: number }[] = [
-  { r: 0.98, from: 150, to: 300 },
-  { r: 1.38, from: 138, to: 306 },
-  { r: 1.78, from: 150, to: 296 },
+/** the rows of holes: contour levels (local y) down the south-west face, the bearing range of each row */
+const ROWS: { level: number; from: number; to: number }[] = [
+  { level: 0.15, from: 110, to: 290 },
+  { level: -0.06, from: 105, to: 290 },
+  { level: -0.25, from: 105, to: 290 },
+  { level: -0.42, from: 150, to: 290 },
 ];
 
-/** the garden, hedge and lane trees (authored oaks: they win the vegetation LOD0 cap) */
-const GARDEN_TREES: TreeDecl[] = (
+/** the trees round the Hill's foot, along the lanes, at Bywater and by the river (authored oaks) */
+const FOOT_TREES: TreeDecl[] = (
   [
-    // round the Hill's foot and along the lanes
-    [-1.05, 0.72, 0.15],
-    [-0.35, 0.78, 0.13],
-    [-2.35, 0.45, 0.14],
-    [0.25, 0.85, 0.16],
-    [0.95, 0.8, 0.14],
-    [1.3, 0.1, 0.18],
+    [-1.05, 0.74, 0.15],
+    [-0.35, 0.8, 0.13],
+    [-2.32, 0.42, 0.14],
+    [0.25, 0.86, 0.16],
+    [0.95, 0.82, 0.14],
+    [1.3, 0.12, 0.18],
     [2.1, -0.6, 0.2],
     [2.3, -1.5, 0.17],
     [1.6, -2.55, 0.2],
@@ -118,26 +139,57 @@ const GARDEN_TREES: TreeDecl[] = (
     [-3.5, -1.5, 0.17],
     [-3.2, 0.3, 0.16],
     [-3.6, -0.5, 0.18],
-    // gardens on the Hill (small, between the rows)
-    [-1.2, -0.3, 0.11],
-    [-1.45, -1.25, 0.12],
-    [1.0, 0.05, 0.12],
-    [1.4, -0.6, 0.1],
-    [0.3, 0.12, 0.1],
-    [-0.9, 0.15, 0.1],
     // Bywater across the Water
-    [0.2, 3.25, 0.15],
-    [1.2, 3.1, 0.13],
+    [0.2, 3.1, 0.15],
+    [1.2, 3.0, 0.13],
     [2.3, 3.05, 0.16],
     [3.1, 3.35, 0.18],
     [0.6, 4.05, 0.16],
     [2.0, 4.1, 0.15],
-    // by the river banks
+    // by the river banks (willows lean over the water)
     [-2.25, 0.75, 0.13],
     [-3.1, 0.62, 0.15],
     [3.2, 1.05, 0.17],
   ] as [number, number, number][]
-).map(([x, z, c], i) => ({ at: [x, z] as V2, kind: 'oak' as const, crownKm: c, heightKm: c * 1.65, yawDeg: (i * 137) % 360 }));
+).map(([x, z, c], i) => ({ at: [x, z] as V2, kind: (i >= 20 ? 'willow' : 'oak') as TreeDecl['kind'], crownKm: c, heightKm: c * 1.6, yawDeg: (i * 137) % 360 }));
+
+/** distance from (x, z) to a polyline and the nearest point on it */
+function nearest(path: V2[], x: number, z: number): { d: number; p: V2 } {
+  let best = { d: Infinity, p: path[0] };
+  for (let i = 0; i + 1 < path.length; i++) {
+    const a = path[i];
+    const b = path[i + 1];
+    const ex = b[0] - a[0];
+    const ez = b[1] - a[1];
+    const t = Math.max(0, Math.min(1, ((x - a[0]) * ex + (z - a[1]) * ez) / (ex * ex + ez * ez || 1)));
+    const p: V2 = [a[0] + ex * t, a[1] + ez * t];
+    const d = Math.hypot(x - p[0], z - p[1]);
+    if (d < best.d) best = { d, p };
+  }
+  return best;
+}
+
+/** the contour at local height `level` round Bag Hill's top, marched outward along bearings b0..b1 (step 2°) */
+function contour(k: ProxyKit, level: number, b0: number, b1: number): { b: number; p: V2 }[] {
+  const out: { b: number; p: V2 }[] = [];
+  for (let b = b0; b <= b1 + 1e-6; b += 2) {
+    const [dx, dz] = dirOf(b);
+    let r = 0.1;
+    while (r < 3.4 && k.ground(TOP[0] + dx * r, TOP[1] + dz * r) > level) r += 0.01;
+    out.push({ b, p: [TOP[0] + dx * r, TOP[1] + dz * r] });
+  }
+  // smooth a little (no saw teeth from the march)
+  return out.map((q, i) => {
+    const a = out[Math.max(0, i - 1)].p;
+    const c = out[Math.min(out.length - 1, i + 1)].p;
+    return { b: q.b, p: [(a[0] + 2 * q.p[0] + c[0]) / 4, (a[1] + 2 * q.p[1] + c[1]) / 4] as V2 };
+  });
+}
+
+/** Bag End's front on the BAG_END_LEVEL contour */
+function bagEndAt(k: ProxyKit): V2 {
+  return contour(k, BAG_END_LEVEL, BAG_END_BEARING, BAG_END_BEARING)[0].p;
+}
 
 export default defineLandmark({
   id: 'hobbiton',
@@ -147,6 +199,8 @@ export default defineLandmark({
     // the Hill: a broad, gently rounded turf dome (never rough), its crown flattened a little
     { kind: 'raise', at: HILL, radius: 3.2, amount: 1.0, surface: 'turf' },
     { kind: 'flatten', at: HILL, radius: 0.55, falloff: 0.9, height: CROWN_REL, lowerOnly: true, surface: 'turf' },
+    // Bag Hill, the knoll on the crown's south-west corner
+    { kind: 'raise', at: KNOLL, radius: KNOLL_R, amount: KNOLL_AMOUNT, surface: 'turf' },
     // the mill pond: a level turf terrace at the Hill's west foot and the bowl cut into it
     { kind: 'flatten', at: POND, radius: 0.95, falloff: 0.35, height: TERRACE_REL, surface: 'turf' },
     { kind: 'flatten', at: POND, radius: 0.24, falloff: 0.34, height: BED_REL, lowerOnly: true, surface: 'turf' },
@@ -165,24 +219,24 @@ export default defineLandmark({
   ],
   trees: [
     // the Party Tree: very large, broad and full, on the Party Field
-    { at: PARTY_TREE, kind: 'party', crownKm: 0.52, heightKm: 0.92, yawDeg: 30 },
-    // the big lone oak on the crown of the Hill above Bag End
-    { at: polar(212, 0.4), kind: 'oak', crownKm: 0.42, heightKm: 0.56, color: 0x4a6a26, yawDeg: 200 },
-    ...GARDEN_TREES,
+    { at: PARTY_TREE, kind: 'party', crownKm: 0.55, heightKm: 0.95, yawDeg: 30 },
+    ...FOOT_TREES,
   ],
   waterFeatures: [{ kind: 'pool', ring: POND_RING, level: POND_LEVEL }],
   proxy: (k) => {
-    // the survey constant behind the pond's level must still hold (the crown's flat top = CROWN_REL)
-    const t = k.ground(HILL[0], HILL[1]);
-    if (Math.abs(t - (CROWN_REL - ORIGIN_REL)) > 0.02) throw new Error(`hobbiton: ORIGIN_REL ${ORIGIN_REL} is stale (crown at ${(t + ORIGIN_REL).toFixed(3)} rel. base, expected ${CROWN_REL})`);
+    // the survey constant behind the pond's level must still hold (the pond terrace's level ring = TERRACE_REL)
+    const t = k.ground(POND[0] + 0.75, POND[1]);
+    if (Math.abs(t - (TERRACE_REL - ORIGIN_REL)) > 0.01) throw new Error(`hobbiton: ORIGIN_REL ${ORIGIN_REL} is stale (pond terrace at ${(t + ORIGIN_REL).toFixed(3)} rel. base, expected ${TERRACE_REL})`);
     buildHill(k);
     buildPond(k);
-    buildMillAndBridge(k);
+    buildMill(k);
+    // the bridge: two round arches over the Water, humped over the stream, weathered rubble stone
+    archBridge(k, BRIDGE_X, BRIDGE_Z[0], BRIDGE_Z[1], { width: 0.11, arches: 2, water: WATER, crown: WATER + 0.34, rise: 0.22, color: 0x857a6a });
     buildBywater(k);
     buildPartyField(k);
-    lane(k, MAIN_LANE, 0.038);
-    lane(k, BAG_END_PATH, 0.026);
-    lane(k, MILL_TRACK, 0.026);
+    lane(k, MAIN_LANE, 0.042);
+    lane(k, MILL_TRACK, 0.03);
+    lane(k, BYWATER_LANE, 0.038);
     // a hedge along the main lane's downhill side past the pond and the mill
     hedge(
       k,
@@ -195,23 +249,24 @@ export default defineLandmark({
   bookmarks: [
     {
       id: 'hobbiton-close',
-      distanceKm: 8.5,
-      elevationDeg: 12,
-      azimuthDeg: 228,
-      fov: 35,
-      lift: 0,
-      aimKm: [-1.0, -0.05],
+      distanceKm: 7,
+      elevationDeg: 9,
+      azimuthDeg: 205,
+      fov: 21,
+      lift: 0.1,
+      aimKm: [-0.2, 0.25],
       tod: 17.8,
       compare: ['reference/film/hobbiton/hobbiton-wide-fotr.jpg', 'reference/photos/hobbiton/bag-end-hill-set.jpg', 'reference/photos/hobbiton/hobbiton-mill-bridge-set.jpg'],
       note: 'hero (close, 8.5 km): from the south-west in the golden late-afternoon sun (17.8: the lit south-west face of the Hill) — the broad Hill with Bag End under its oak and the rows of round doors along their lanes, the mill pond and the mill at its foot, the Water curving past in front with the double-arched bridge, the Party Tree to the right',
     },
     {
       id: 'hobbiton-wide',
-      distanceKm: 60,
-      elevationDeg: 26,
-      azimuthDeg: 222,
-      fov: 35,
-      lift: 0.5,
+      distanceKm: 55,
+      elevationDeg: 16,
+      azimuthDeg: 250,
+      fov: 34,
+      lift: 0,
+      aimKm: [4, -6],
       tod: 17.8,
       compare: ['reference/film/hobbiton/hobbiton-wide-fotr.jpg'],
       note: 'the Shire: Hobbiton’s Hill and the Water in the patchwork of hedged fields and woods, golden afternoon',
@@ -219,64 +274,182 @@ export default defineLandmark({
   ],
 });
 
-/** Bag End, Bagshot Row and the rows of holes round the Hill's southern half, each row on its lane */
+/**
+ * Bag End, Bagshot Row and the rows of holes on the Hill's south face: the fronts strung along the
+ * contours, each behind its terrace, the row's lane just below the terraces; short ramps join the rows'
+ * lanes at their ends and the lowest row to the main lane, and Bag End's gate to the top row.
+ */
 function buildHill(k: ProxyKit): void {
-  // Bag End: the largest front, the green door, two windows, a hedged garden
-  const be = hobbitHole(k, { at: BAG_END, w: 0.27, door: DOORS[0], doorR: 0.05, facade: 0xcfae6e, windows: 2, chimney: true, lit: true, spark: true, edge: 'hedge' });
-  k.light([be[0], be[1] + 0.03, be[2]], { color: WARM, intensity: 0.9, radius: 0.014, kind: 'window' });
+  const placed: V2[] = [];
+  const be = bagEndAt(k);
+  const { yaw: beYaw } = fallLine(k, be[0], be[1]);
+  const [bnx, bnz] = facing(beYaw);
+
+  // ---- Bag End: the largest front, the big green door, a window either side, a lamp by the gate
+  const bag = hobbitHole(k, { at: be, w: 0.4, door: DOORS[0], doorR: 0.074, facade: 0xcfae6e, windows: 2, chimney: true, lit: true, spark: true, edge: 'picket', terrace: 0.15, terraceW: 1.5, clump: 1 });
+  k.light([bag.gate[0] + bag.r[0] * 0.05, bag.ty + 0.05, bag.gate[1] + bag.r[1] * 0.05], { color: 0xffc070, intensity: 1.0, radius: 0.012, kind: 'lamp' });
+  k.cylinder('wood', 0.003, 0.004, 0.05, { at: [bag.gate[0] + bag.r[0] * 0.05, bag.ty - 0.004, bag.gate[1] + bag.r[1] * 0.05], seg: 5, color: TIMBER, lod: 0 });
+  placed.push(be);
+  // the great oak on the Hill above Bag End: about twice any other tree, a broad spreading crown
+  k.tree('oak', be[0] - bnx * 0.34 + bag.r[0] * 0.06, be[1] - bnz * 0.34 + bag.r[1] * 0.06, { crownKm: 0.46, heightKm: 0.6, color: 0x4a6a26, yawDeg: 200 });
+
+  // ---- the rows (each row's lane runs, east → west)
+  const rowLanes: V2[][][] = [];
   let n = 0;
+  let sparks = 0;
   ROWS.forEach((row, ri) => {
-    // the row's lane just below its fronts, fenced on its downhill side on alternate rows
-    const lanePts: V2[] = [];
-    for (let b = row.from; b <= row.to + 1e-6; b += 6) lanePts.push(polar(b, row.r + 0.13));
-    const dry = lanePts.filter(([x, z]) => Math.hypot(x - POND[0], z - POND[1]) > 0.8 && k.ground(x, z) > WATER + 0.25);
-    if (dry.length > 2) {
-      lane(k, dry, 0.03);
-      if (ri % 2 === 0) fence(k, dry.map(([x, z]) => [x + (x - HILL[0]) * 0.03, z + (z - HILL[1]) * 0.03] as V2));
-    }
-    let b = row.from + k.r(1) * 12;
-    while (b < row.to) {
-      const r = row.r + (k.r(2) - 0.5) * 0.06;
-      const at = polar(b, r);
-      const nearPond = Math.hypot(at[0] - POND[0], at[1] - POND[1]) < 1.1;
-      const skip = k.r(3) < 0.18 || nearPond || Math.hypot(at[0] - MILL[0], at[1] - MILL[1]) < 0.4 || Math.hypot(at[0] - BAG_END[0], at[1] - BAG_END[1]) < 0.4 || k.ground(at[0], at[1]) < WATER + 0.3 || fallLine(k, at[0], at[1]).slope > 1.4;
+    const line = contour(k, row.level, row.from, row.to);
+    // arc length along the contour
+    const cum = [0];
+    for (let i = 1; i < line.length; i++) cum.push(cum[i - 1] + Math.hypot(line[i].p[0] - line[i - 1].p[0], line[i].p[1] - line[i - 1].p[1]));
+    const at = (s: number): V2 => {
+      let i = 1;
+      while (i < line.length - 1 && cum[i] < s) i++;
+      const f = Math.max(0, Math.min(1, (s - cum[i - 1]) / Math.max(1e-6, cum[i] - cum[i - 1])));
+      return [line[i - 1].p[0] + (line[i].p[0] - line[i - 1].p[0]) * f, line[i - 1].p[1] + (line[i].p[1] - line[i - 1].p[1]) * f];
+    };
+    const fronts: { s: number; hole: Hole }[] = [];
+    // stagger the rows against each other
+    let s = 0.08 + (ri % 2) * 0.17 + k.r(1) * 0.06;
+    while (s < cum[cum.length - 1] - 0.1) {
+      const p = at(s);
+      const w = 0.2 + k.r(4) * 0.06;
+      const lane0 = nearest(MAIN_LANE, p[0], p[1]);
+      const { slope } = fallLine(k, p[0], p[1]);
+      const skip =
+        k.r(3) < 0.06 ||
+        Math.hypot(p[0] - POND[0], p[1] - POND[1]) < 0.98 ||
+        Math.hypot(p[0] - MILL[0], p[1] - MILL[1]) < 0.42 ||
+        lane0.d < 0.17 ||
+        k.ground(p[0], p[1]) < k.ground(lane0.p[0], lane0.p[1]) + 0.05 ||
+        placed.some((q) => Math.hypot(q[0] - p[0], q[1] - p[1]) < (q === be ? 0.4 : 0.27)) ||
+        k.ground(p[0], p[1]) < WATER + 0.4 ||
+        slope > 1.15;
       if (!skip) {
         const i = n++;
-        const face = (fallLine(k, at[0], at[1]).yaw + 360) % 360;
+        // compass bearing the front faces (house yaw 0 faces +z = south)
+        const face = (180 - fallLine(k, p[0], p[1]).yaw + 720) % 360;
         const lit = i % 4 !== 3;
-        hobbitHole(k, {
-          at,
-          w: 0.18 + k.r(4) * 0.05,
+        // a spark (EmissionSystem) only for fronts facing the south-west half, where the hero and night
+        // cameras see them from the front — seen side-on a sprite would float beside the hood
+        const spark = lit && face > 150 && face < 300 && sparks < 20;
+        if (spark) sparks++;
+        const hole = hobbitHole(k, {
+          at: p,
+          w,
           door: DOORS[(i * 3 + ri) % DOORS.length],
           facade: OCHRE[i % OCHRE.length],
-          windows: i % 3 === 0 ? 2 : 1,
-          chimney: i % 2 === 0,
+          windows: i % 3 === 0 ? 1 : 2,
+          chimney: i % 3 !== 1,
           lit,
-          // a spark (EmissionSystem) only for fronts facing the south-west half, where the hero and night
-          // cameras see them from the front — seen side-on a sprite would float beside the hood
-          spark: lit && face > 150 && face < 300,
-          edge: i % 3 === 0 ? 'fence' : 'hedge',
-          turn: (k.r(5) - 0.5) * 14,
+          spark,
+          edge: i % 3 === 2 ? 'hedge' : 'picket',
+          turn: (k.r(5) - 0.5) * 12,
           shade: 0.92 + k.r(6) * 0.14,
+          clump: i % 4 === 1 ? 1 : i % 4 === 3 ? -1 : 0,
         });
+        fronts.push({ s, hole });
+        placed.push(p);
+        // a small garden tree beside some terraces
+        if (k.r(7) < 0.3) {
+          const side = k.r(8) < 0.5 ? -1 : 1;
+          const tx = p[0] + hole.r[0] * side * (hole.hw + 0.07) + hole.n[0] * 0.05;
+          const tz = p[1] + hole.r[1] * side * (hole.hw + 0.07) + hole.n[1] * 0.05;
+          k.tree('oak', tx, tz, { crownKm: 0.075 + k.r(9) * 0.03, heightKm: 0.14 + k.r(10) * 0.04, yawDeg: k.r(11) * 360 });
+        }
+        // a short path from the terrace's gate down to the row's lane
+        const g = hole.gate;
+        lane(k, [g, [g[0] + hole.n[0] * 0.06, g[1] + hole.n[1] * 0.06]], 0.022);
       }
-      // along the row: fronts 0.34–0.52 km apart (cosy, with gardens between)
-      b += (((0.34 + k.r(7) * 0.18) / r) * 180) / Math.PI;
+      // along the row: fronts 0.34–0.5 km apart (gardens, hedges and trees between)
+      s += 0.34 + k.r(2) * 0.16;
     }
+    const runs: V2[][] = [];
+    rowLanes.push(runs);
+    if (fronts.length < 2) return;
+    // the row's lane just below the terraces, from a little before the first front to after the last
+    const s0 = Math.max(0, fronts[0].s - 0.18);
+    const s1 = Math.min(cum[cum.length - 1], fronts[fronts.length - 1].s + 0.18);
+    let run: V2[] = [];
+    const flush = () => {
+      if (run.length >= 3) {
+        lane(k, run, 0.034);
+        runs.push(run);
+      }
+      run = [];
+    };
+    for (let ss = s0; ss <= s1 + 1e-6; ss += 0.06) {
+      const c = at(Math.min(ss, s1));
+      const { yaw, slope } = fallLine(k, c[0], c[1]);
+      const [fx, fz] = facing(yaw);
+      const off = Math.min(0.15, 0.085 / Math.max(0.2, slope)) + 0.05;
+      const p: V2 = [c[0] + fx * off, c[1] + fz * off];
+      // split where the lane would leave the Hill (near the pond, below the main lane)
+      const l0 = nearest(MAIN_LANE, p[0], p[1]);
+      const ok = Math.hypot(p[0] - POND[0], p[1] - POND[1]) > 0.8 && (l0.d > 0.08 || k.ground(p[0], p[1]) > k.ground(l0.p[0], l0.p[1])) && k.ground(p[0], p[1]) > WATER + 0.35;
+      if (ok) run.push(p);
+      else flush();
+    }
+    flush();
   });
-  // the path up to Bag End is hedged on its west side
-  hedge(
-    k,
-    BAG_END_PATH.map(([x, z]) => [x - 0.05, z] as V2),
-    0.03,
-    0.024,
+  // allotments on the lower slope above the main lane: tilled plots with rows of greens, hedged below
+  k.scatter(
+    { polygon: [[-1.0, 0.0], [0.6, 0.1], [0.75, 0.38], [-1.0, 0.33]] as V2[] },
+    7,
+    (_i, x, z, u) => {
+      const l0 = nearest(MAIN_LANE, x, z);
+      if (l0.d < 0.1) return;
+      const { yaw } = fallLine(k, x, z);
+      const [fx, fz] = facing(yaw);
+      const [rx, rz] = [Math.cos(yaw * DEG), -Math.sin(yaw * DEG)];
+      const w = 0.14 + u * 0.08;
+      const plot = (off: number, width: number, color: number, lift: number) => decal(k, [[x + rx * (-w / 2) + fx * off, z + rz * (-w / 2) + fz * off], [x + rx * (w / 2) + fx * off, z + rz * (w / 2) + fz * off]], width, { fam: 'foliage', color, step: 0.08, gaps: 0, jitter: 0.2, lift });
+      plot(0, 0.08, 0x5c4a34, 0.0015);
+      for (const off of [-0.025, 0, 0.025]) plot(off, 0.01, u < 0.5 ? 0x4f7a2c : 0x6a8a34, 0.0035);
+      hedge(k, [[x + rx * (-w / 2 - 0.02) + fx * 0.055, z + rz * (-w / 2 - 0.02) + fz * 0.055], [x + rx * (w / 2 + 0.02) + fx * 0.055, z + rz * (w / 2 + 0.02) + fz * 0.055]], 0.026, 0.02);
+    },
+    { minSpacing: 0.3, avoid: placed.map((q) => ({ at: q, r: 0.25 })) },
   );
+  // shrubs and small trees between the gardens on the face (never on a terrace)
+  k.scatter(
+    { annulus: { at: TOP, r0: 0.3, r1: 1.5, a0: 100, a1: 295 } },
+    30,
+    (_i, x, z, u) => {
+      const l0 = nearest(MAIN_LANE, x, z);
+      if (l0.d < 0.08 || Math.hypot(x - POND[0], z - POND[1]) < 0.9) return;
+      if (u < 0.25) k.tree('oak', x, z, { crownKm: 0.06 + u * 0.12, heightKm: 0.12 + u * 0.15, yawDeg: u * 900 });
+      else k.rock('foliage', 0.024 + u * 0.026, { at: [x, 0, z], seat: 'min', squash: 0.6, lump: 0.35, detail: 1, color: [0x3d5a22, 0x4a6628, 0x55702e][Math.floor(u * 30) % 3], shade: 0.85 + u * 0.3, lod: 0 });
+    },
+    { minSpacing: 0.12, avoid: placed.map((q) => ({ at: q, r: q === be ? 0.36 : 0.22 })) },
+  );
+  // ramps joining the rows' lanes at both ends, the lowest row to the main lane, Bag End to the top row
+  const ends = rowLanes.filter((r) => r.length).map((r) => ({ east: r[0][0], west: r[r.length - 1][r[r.length - 1].length - 1] }));
+  for (let i = 0; i + 1 < ends.length; i++) {
+    lane(k, [ends[i].east, ends[i + 1].east], 0.03);
+    lane(k, [ends[i].west, ends[i + 1].west], 0.03);
+  }
+  if (ends.length) {
+    const last = ends[ends.length - 1];
+    for (const p of [last.east, last.west]) {
+      const l0 = nearest(MAIN_LANE, p[0], p[1]);
+      if (l0.d < 0.6) lane(k, [p, l0.p], 0.03);
+    }
+    const top = rowLanes.find((r) => r.length);
+    if (top) {
+      let best = { d: Infinity, p: top[0][0] };
+      for (const r of top) {
+        const q = nearest(r, bag.gate[0], bag.gate[1]);
+        if (q.d < best.d) best = q;
+      }
+      if (best.d < 0.5) lane(k, [bag.gate, best.p], 0.03);
+    }
+  }
 }
 
 /** reeds round the pond's rim: tufts of three slender pale green-gold blades, except at the mill */
 function buildPond(k: ProxyKit): void {
-  for (let i = 0; i < 26; i++) {
-    const a = (i / 26) * Math.PI * 2 + k.r(1) * 0.15;
+  for (let i = 0; i < 22; i++) {
+    const a = (i / 22) * Math.PI * 2 + k.r(1) * 0.15;
     const r = 0.52 + k.r(2) * 0.07;
     const x = POND[0] + Math.cos(a) * r;
     const z = POND[1] + Math.sin(a) * r;
@@ -291,124 +464,96 @@ function buildPond(k: ProxyKit): void {
   }
 }
 
-/** the mill on the pond's rim with its waterwheel in the pond, the double-arched bridge over the Water */
-function buildMillAndBridge(k: ProxyKit): void {
+/**
+ * The mill on the pond's rim: a rubble-stone ground floor dug into the bank, a jettied timber-and-plaster
+ * upper storey (dark posts and rails on cream plaster) under a deep overhanging straw thatch with a ridge
+ * roll, a brick chimney; the waterwheel on the pond side (a timber rim, spokes, a hub, its lower third in
+ * the water); a warm window.
+ */
+function buildMill(k: ProxyKit): void {
   const [mx, mz] = MILL;
-  const w = 0.34;
+  const w = 0.32;
   const d = 0.17;
-  const h = 0.13;
+  const h1 = 0.068;
+  const h2 = 0.072;
   // facing the pond (its +z toward the pond's centre)
   const yaw = (Math.atan2(POND[0] - mx, POND[1] - mz) * 180) / Math.PI;
   const [nx, nz] = facing(yaw);
-  const rx = Math.cos((yaw * Math.PI) / 180);
-  const rz = -Math.sin((yaw * Math.PI) / 180);
-  const dig = 0.3;
-  const floor = houseFloor(k, MILL, w, d, h, yaw, dig);
-  // the half-timbered cream mill on a short stone base, under a heavy warm-straw thatch
-  k.house('plaster', 'thatch', w, d, h, {
-    at: [mx, 0, mz],
+  const rx = Math.cos(yaw * DEG);
+  const rz = -Math.sin(yaw * DEG);
+  const dig = 0.35;
+  k.house('weathered', 'weathered', w, d, h1, { at: [mx, 0, mz], rot: [0, yaw, 0], roof: 'flat', overhang: 0.004, color: 0x8c8474, roofColor: 0x6e675b, grain: 0.85, dig, plinthFam: 'weathered', plinthColor: 0x7d7566 });
+  const floor = houseFloor(k, MILL, w, d, h1, yaw, dig);
+  const up = floor + SINK + h1 + Math.min(w, d) * 0.06;
+  const W2 = w * 1.06;
+  const D2 = d * 1.12;
+  k.house('plaster', 'thatch', W2, D2, h2, {
+    at: [mx, up, mz],
+    seat: false,
     rot: [0, yaw, 0],
-    pitch: 50,
-    overhang: 0.025,
+    pitch: 52,
+    overhang: 0.045,
     color: 0xdccb9c,
     roofColor: 0xa58a52,
-    roofGrain: 0.6,
-    dig,
-    plinthFam: 'weathered',
-    plinthColor: 0x857d6c,
-    plinthGrow: 1.06,
+    roofGrain: 0.65,
     chimney: true,
+    ridge: { color: 0x7a6440, size: 0.016 },
     gableBoards: { color: 0x4a3a28, size: 0.008, horn: 0.012 },
     windows: { count: 2, on: 1, sides: 1, size: 0.012, color: WARM },
   });
-  // timber framing on the pond side (dark posts and a rail)
-  for (let i = -2; i <= 2; i++) {
-    const u = (i * w) / 5;
-    k.box('wood', 0.012, h * 0.95, 0.006, { at: [mx + rx * u + nx * (d / 2 + 0.002), floor + SINK, mz + rz * u + nz * (d / 2 + 0.002)], rot: [0, yaw, 0], color: 0x4a3a28, lod: 0 });
+  // timber framing on the pond side of the upper storey (dark posts, a sill and a mid rail)
+  for (let i = -3; i <= 3; i++) {
+    const u = (i * W2) / 7;
+    k.box('wood', 0.008, h2 * 0.98, 0.004, { at: [mx + rx * u + nx * (D2 / 2 + 0.002), up, mz + rz * u + nz * (D2 / 2 + 0.002)], rot: [0, yaw, 0], color: 0x4a3a28, lod: 0 });
   }
-  k.box('wood', w * 0.98, 0.01, 0.006, { at: [mx + nx * (d / 2 + 0.003), floor + SINK + h * 0.5, mz + nz * (d / 2 + 0.003)], rot: [0, yaw, 0], color: 0x4a3a28, lod: 0 });
-  // the waterwheel on the pond side, its lower third in the water
+  for (const yy of [0.004, h2 * 0.5]) k.box('wood', W2, 0.008, 0.005, { at: [mx + nx * (D2 / 2 + 0.003), up + yy, mz + nz * (D2 / 2 + 0.003)], rot: [0, yaw, 0], color: 0x4a3a28, lod: 0 });
+  // the waterwheel on the pond side, its lower third in the water: a timber rim, six spokes, a hub
   const wr = 0.1;
-  const wx = mx + rx * w * 0.28 + nx * (d / 2 + 0.035);
-  const wz = mz + rz * w * 0.28 + nz * (d / 2 + 0.035);
+  const wx = mx + rx * w * 0.24 + nx * (d / 2 + 0.035);
+  const wz = mz + rz * w * 0.24 + nz * (d / 2 + 0.035);
   const wy = POND_LEVEL + wr * 0.35;
-  k.ring('wood', wr, 0.018, 0.035, { at: [wx - nx * 0.0175, wy, wz - nz * 0.0175], rot: [0, yaw + 90, 90], seg: 18, color: 0x4d3c2a, lod: 0 });
-  for (let i = 0; i < 4; i++) k.box('wood', wr * 2, 0.01, 0.03, { at: [wx, wy - 0.005, wz], rot: [0, yaw, i * 45], color: 0x5a4632, lod: 0 });
+  k.ring('wood', wr, 0.016, 0.036, { at: [wx - nx * 0.018, wy, wz - nz * 0.018], rot: faceRot(yaw), seg: 20, color: 0x4d3c2a, lod: 0 });
+  k.ring('wood', wr * 0.86, 0.008, 0.03, { at: [wx - nx * 0.015, wy, wz - nz * 0.015], rot: faceRot(yaw), seg: 16, color: 0x5a4632, lod: 0 });
+  for (let i = 0; i < 3; i++) k.box('wood', wr * 1.9, 0.009, 0.01, { at: [wx, wy - 0.0045, wz], rot: [0, yaw, i * 60], color: 0x5a4632, lod: 0 });
+  k.cylinder('wood', 0.016, 0.016, 0.05, { at: [wx - nx * 0.03, wy, wz - nz * 0.03], rot: faceRot(yaw), seg: 8, color: 0x3a2e22, lod: 0 });
   // a lit window by the door
-  k.light([mx - rx * w * 0.2 + nx * (d / 2 + 0.01), floor + h * 0.55, mz - rz * w * 0.2 + nz * (d / 2 + 0.01)], { color: WARM, intensity: 1, radius: 0.012, kind: 'window' });
-  // the bridge: two round arches over the Water, humped over the stream, weathered grey-brown stone
-  archBridge(k, BRIDGE_X, BRIDGE_Z[0], BRIDGE_Z[1], { width: 0.11, arches: 2, water: WATER, crown: WATER + 0.34, rise: 0.22, color: 0x7a7064 });
+  k.light([mx - rx * W2 * 0.2 + nx * (D2 / 2 + 0.01), up + h2 * 0.55, mz - rz * W2 * 0.2 + nz * (D2 / 2 + 0.01)], { color: WARM, intensity: 1, radius: 0.012, kind: 'window' });
 }
 
 /** the Green Dragon and the cottages of Bywater on the south bank */
 function buildBywater(k: ProxyKit): void {
   const [gx, gz] = GREEN_DRAGON;
-  // the inn: a long two-storey house with a slate-grey thatch, lit windows, facing the lane
-  k.house('plaster', 'thatch', 0.4, 0.2, 0.14, {
-    at: [gx, 0, gz],
-    rot: [0, 10, 0],
-    pitch: 48,
-    overhang: 0.03,
-    color: 0xd6c39a,
-    roofColor: 0x7a6a48,
-    roofGrain: 0.55,
-    chimney: true,
-    dig: 0.15,
-    plinthFam: 'weathered',
-    plinthColor: 0x857d6c,
-    ridge: { color: 0x5a523c },
-    gableBoards: { color: 0x3f3020, size: 0.01, horn: 0.015 },
-    windows: { count: 4, on: 1, sides: 2, size: 0.013, color: WARM, intensity: 1.2 },
-  });
+  // the inn: a long two-storey house (ochre plaster, dark timbering) under a deep thatch, a green round
+  // door, lit windows, a lamp and the sign on its post by the lane
+  const floor = cottage(k, GREEN_DRAGON, 10, { w: 0.42, d: 0.2, h: 0.13, wall: 0xc9ad78, roof: 0x8a7444, door: DOORS[0], chimney: true, windows: 4, lights: 4, storeys: 1 });
   const [nx, nz] = facing(10);
-  const floor = houseFloor(k, GREEN_DRAGON, 0.4, 0.2, 0.14, 10, 0.15);
-  k.cylinder('wood', 0.04, 0.04, 0.005, { at: [gx + nx * 0.102, floor + 0.062, gz + nz * 0.102], rot: [0, 10 + 90, 90], seg: 12, color: DOORS[0], lod: 0 });
-  k.light([gx + nx * 0.18, floor + 0.08, gz + nz * 0.18], { color: 0xffb060, intensity: 1.2, radius: 0.02, kind: 'lamp' });
-  // cottages: stone plinths down to the ground, cream walls with dark half-timbering, warm straw thatch,
-  // a round door and a warm window each
+  const rx = Math.cos(10 * DEG);
+  const rz = -Math.sin(10 * DEG);
+  // a cross wing at the east end
+  cottage(k, [gx + rx * 0.24 - nx * 0.02, gz + rz * 0.24 - nz * 0.02], 100, { w: 0.2, d: 0.16, h: 0.11, wall: 0xc4a874, roof: 0x8a7444, door: DOORS[1], chimney: false, windows: 1 });
+  k.light([gx + nx * 0.18 - rx * 0.12, floor + 0.08, gz + nz * 0.18 - rz * 0.12], { color: 0xffb060, intensity: 1.2, radius: 0.02, kind: 'lamp' });
+  const [sx, sz] = [gx + nx * 0.17 + rx * 0.08, gz + nz * 0.17 + rz * 0.08];
+  k.cylinder('wood', 0.004, 0.005, 0.08, { at: [sx, 0, sz], seat: true, seg: 5, color: 0x4a3a28, lod: 0 });
+  k.box('wood', 0.04, 0.026, 0.004, { at: [sx + rx * 0.02, k.ground(sx, sz) + 0.04, sz + rz * 0.02], rot: [0, 10, 0], color: 0x2f5d3a, lod: 0 });
+  // cottages: stone plinths, ochre / cream walls with dark half-timbering, deep straw thatch, round doors
   const cottages: [number, number, number][] = [
-    [0.35, 3.6, -8],
-    [0.85, 3.78, 6],
+    [0.35, 3.62, -8],
+    [0.85, 3.8, 6],
     [2.45, 3.3, 14],
-    [2.85, 3.62, -4],
-    [1.35, 3.95, 2],
+    [2.85, 3.64, -4],
+    [1.35, 3.97, 2],
+    [-0.2, 3.55, 18],
   ];
+  const walls = [0xd4bf92, 0xc8ab78, 0xdccaa0, 0xbfa070, 0xd0b888, 0xc6aa7c];
+  const roofs = [0x9a8048, 0x8e7442, 0xa58a52, 0x86703e, 0x9c8450, 0x907846];
   cottages.forEach(([x, z, yaw], i) => {
-    const w = 0.18 + (i % 3) * 0.02;
-    const d = 0.13;
-    const h = 0.08;
-    k.house('plaster', 'thatch', w, d, h, {
-      at: [x, 0, z],
-      rot: [0, yaw, 0],
-      pitch: 50,
-      overhang: 0.02,
-      color: [0xe0d2ae, 0xd8c8a0, 0xe4d8b8][i % 3],
-      roofColor: [0xa58a52, 0x9a8048, 0xae9258][i % 3],
-      roofGrain: 0.6,
-      dig: 0.15,
-      plinthFam: 'weathered',
-      plinthColor: 0x857d6c,
-      plinthGrow: 1.05,
-      chimney: i % 2 === 0,
-      windows: { count: 1, on: 1, sides: 1, size: 0.011, color: WARM },
-    });
-    const [cx, cz] = facing(yaw);
-    const rx = Math.cos((yaw * Math.PI) / 180);
-    const rz = -Math.sin((yaw * Math.PI) / 180);
-    const f = houseFloor(k, [x, z], w, d, h, yaw, 0.15);
-    k.cylinder('wood', 0.028, 0.028, 0.005, { at: [x + cx * (d / 2 + 0.002), f + 0.05, z + cz * (d / 2 + 0.002)], rot: [0, yaw + 90, 90], seg: 12, color: DOORS[(i + 1) % DOORS.length], lod: 0 });
-    // half-timbering: dark posts across the front
-    for (const u of [-0.42, -0.14, 0.14, 0.42]) {
-      if (Math.abs(u * w) < 0.035) continue;
-      k.box('wood', 0.008, h * 0.92, 0.004, { at: [x + rx * u * w + cx * (d / 2 + 0.002), f + SINK, z + rz * u * w + cz * (d / 2 + 0.002)], rot: [0, yaw, 0], color: 0x4a3a28, lod: 0 });
-    }
+    cottage(k, [x, z], yaw, { w: 0.17 + (i % 3) * 0.025, d: 0.12, h: 0.065, wall: walls[i], roof: roofs[i], door: DOORS[(i + 1) % DOORS.length], chimney: i % 2 === 0, windows: 2, lights: i < 5 ? 1 : 0 });
   });
 }
 
-/** the Party Field: a pointed canvas tent and lanterns by the Party Tree, hedged along its south side */
+/** the Party Field: a pointed canvas marquee and lanterns by the Party Tree, hedged along its south side */
 function buildPartyField(k: ProxyKit): void {
   const [px, pz] = PARTY_FIELD;
-  // the marquee: a steep ridge tent of cream canvas with a paler stripe along its ridge
   k.house('plaster', 'plaster', 0.15, 0.09, 0.018, { at: [px - 0.25, 0, pz + 0.18], rot: [0, 20, 0], pitch: 58, overhang: 0.008, color: 0xeee6d2, roofColor: 0xf2ead8, ridge: { fam: 'plaster', color: 0xfaf6ec, size: 0.012 }, gableFam: 'plaster', dig: 0.1, plinthColor: 0x5d7a2c });
   const lamps: V2[] = [
     [px - 0.05, pz - 0.2],

@@ -1,0 +1,131 @@
+{
+  "version": 1,
+  "notes": "S3 W5-I review shots: Hobbiton's terraced rows close up and at dusk, Bree at night (windows), Weathertop at night (the campfire). Landmark bookmarks (hobbiton -close / -wide, bree-close, weathertop-close, grey-havens-close) live in the landmark definitions.",
+  "shots": [
+    {
+      "id": "w5i-hobbiton-rows",
+      "tod": 17.8,
+      "camera": {
+        "orbit": {
+          "place": "hobbiton",
+          "distanceKm": 3.6,
+          "elevationDeg": 12,
+          "azimuthDeg": 205,
+          "fov": 30,
+          "aimKm": [
+            -0.3,
+            0.3
+          ],
+          "lift": 0.05
+        }
+      },
+      "compare": [
+        "reference/film/hobbiton/hobbiton-wide-fotr.jpg",
+        "reference/photos/hobbiton/bag-end-hill-set.jpg"
+      ],
+      "note": "close on the terraced rows: the level terraces with their dry-stone faces, picket fences and hedges, the round doors and yellow-framed windows, the lanes lying in the grass, Bag End and its oak above"
+    },
+    {
+      "id": "w5i-hobbiton-dusk",
+      "tod": 20.6,
+      "camera": {
+        "orbit": {
+          "place": "hobbiton",
+          "distanceKm": 7,
+          "elevationDeg": 9,
+          "azimuthDeg": 205,
+          "fov": 21,
+          "aimKm": [
+            -0.2,
+            0.25
+          ],
+          "lift": 0.1
+        }
+      },
+      "compare": [
+        "reference/film/hobbiton/hobbiton-wide-fotr.jpg"
+      ],
+      "note": "the hero framing at dusk: the round windows warm on the Hill"
+    },
+    {
+      "id": "w5i-bree-night",
+      "tod": 21.6,
+      "camera": {
+        "orbit": {
+          "place": "bree",
+          "distanceKm": 34,
+          "elevationDeg": 14,
+          "azimuthDeg": 250,
+          "fov": 12,
+          "aimKm": [
+            0.5,
+            0.1
+          ],
+          "lift": 0.3
+        }
+      },
+      "compare": [
+        "reference/film/bree/bree-gate-night.jpg"
+      ],
+      "note": "Bree at night: the windows of the town climbing the hill, the gate lamps"
+    },
+    {
+      "id": "w5i-weathertop-night",
+      "tod": 20.6,
+      "camera": {
+        "orbit": {
+          "place": "weathertop",
+          "distanceKm": 28,
+          "elevationDeg": 4,
+          "azimuthDeg": 160,
+          "fov": 16,
+          "lift": 1.1
+        }
+      },
+      "compare": [
+        "reference/film/weathertop/weathertop-ruin-fotr.png"
+      ],
+      "note": "Weathertop after dusk: the hill dark against the last light, the campfire in the ring"
+    },
+    {
+      "id": "w5i-weathertop-near",
+      "tod": 17.5,
+      "camera": {
+        "orbit": {
+          "place": "weathertop",
+          "distanceKm": 7,
+          "elevationDeg": 12,
+          "azimuthDeg": 200,
+          "fov": 26,
+          "lift": 0.15
+        }
+      },
+      "compare": [
+        "reference/film/weathertop/weathertop-ruin-fotr.png"
+      ],
+      "note": "close on the crown by day: the rock cap and bands, the ring of broken arches, pillar stumps and fallen blocks"
+    },
+    {
+      "id": "w5i-havens-near",
+      "tod": 18.3,
+      "camera": {
+        "orbit": {
+          "place": "grey-havens",
+          "distanceKm": 9,
+          "elevationDeg": 36,
+          "azimuthDeg": 100,
+          "fov": 30,
+          "aimKm": [
+            -0.5,
+            1.0
+          ],
+          "lift": 0.1
+        }
+      },
+      "compare": [
+        "reference/film/grey-havens/grey-havens-wide.webp"
+      ],
+      "note": "close on the harbour: quays, arcades, towers, the breakwater light, the swan-ship"
+    }
+  ]
+}
