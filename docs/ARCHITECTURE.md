@@ -33,8 +33,10 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
 
 ## Core contracts (src/core)
 - `SceneState` — complete description of a frame: `t`, `tFx` (effect clock), `tod`, `dayOfYear`, `camera`,
-  `lens`, `routeProgress`, `annotations`, `lookOverride`, `weather {cloudCoverage, wind}`, `quality`.
-  Bookmark shots carry their landmark's `lookOverride`.
+  `lens`, `routeProgress`, `annotations`, `lookOverride`, `weather {cloudCoverage, wind}`, `events`,
+  `quality`. Bookmark shots carry their landmark's `lookOverride`. `events` (S4) are named 0..1 channels
+  switched by the timeline / a shot (`beacons`, `morgul-beam`): gate-`event` lights and event-bound emitters
+  read them; `ShotSpec.events` / `BookmarkDecl.events` set them for stills.
 - `Timeline.evaluate(t) → SceneState`. `StaticTimeline` for stills/bookmarks; the tour timeline (S4) is data
   (`data/tour/timeline.json`), drafted by the S3 shot list `data/tour/shotlist.json` (film segments,
   per-landmark role, hero / context framing, detail budgets).
@@ -92,8 +94,17 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
   per-channel extinction + sun-phase in-scatter from a sky-radiance LUT, distance-ramped (`env.hazeRamp`:
   near field clear, depth grows with distance), height falloff, y < 0 clip (slab/void in clear studio air),
   regional haze from a CPU-built texture (`bindWorld`: region weights × `looks.json atmo` + place spots),
-  valley mist (ground layer thickened over `terrainMask` valleys at low sun). The water material uses the
-  same functions.
+  sampled ALONG the ray (end point, mid point in review/final, and the eye as a CPU uniform, weighted by
+  height) so a Mordor eye hazes the world beyond; `env.hazeRamp` is written per frame by RegionLook from the
+  focus-blended `atmo.ramp` (distances scaled with the focus distance; overviews ≈ S3) and `env.hazeGain`
+  adds "film air" to mid / regional shots (< ~320 km focus). **atmo2** (S4, 256×154 RGBA8, same LookField
+  weights): R ash-deck cover, G valley-floor height /64, B valley-mist gain /3, A cloud-cap boost. Under a
+  deck an **ash layer** (`rayDeck`, focus-scaled ramp) thickens the haze and, with the eye under the deck,
+  the in-scatter converges on the overcast colour `env.deckSky` (terrain haze and the overcast dome share
+  it: no horizon seam). **Valley mist** (all tiers) is a layer on the valley floor (atmo2.G), gated by
+  `max(golden, 0.8·twilight, 0.5·night·moonIllum)` × atmo2.B, lit as pale mist in the regional chroma (the
+  Morgul vale stays green), and framed out of wide shots (`mistVis`). The water material uses the same
+  functions.
 - Ground look (looks.ts): `LookField` — one shared CPU region-weight field (multi-scale warp + noise dither,
   per-region `ecotone` width) used by the ground look, the regional haze and the field fringe, released after
   init. `groundLookTexture(world)` bakes it × `looks.json ground` (+ place / km spots) into a 5-layer sRGB array
@@ -103,7 +114,10 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
   source for anything that approximates the terrain (the water's reflected terrain uses them).
 - `looks.json` — one key per line per region: `ground` (terrain palette), `grade` (tint, saturation,
   contrast, exposure, lift, redKeep, bloom, spots[] per place), `atmo` (tint, density (> 1 = local haze),
-  sky, spots[]).
+  sky, `ramp` [near0, near1, local0, local1] haze ramp, `mist` gain, spots[] with tint / density / `mist` /
+  `cap`), and (S4) `deck` — a region's overcast ash deck: cover, tone, shadow (key-light loss), height,
+  topOpacity (seen from above), `glow` {place, color, radiusKm, strength} (Doom's red underglow), spots[].
+  Regions without a `deck` line have none (today: mordor at 52, dagorlad at 46).
 - Shader code imports TSL through the `tsl` facade (`src/materials/tsl.ts`) — typed loosely on purpose.
 - Material families: terrain (terrain/terrainMaterial.ts), water, foliage, landmark structures
   (families.ts), emission sprites (src/emission), particle, text — one factory per family; per-instance /
@@ -113,7 +127,8 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
   stone, darkStone, weathered, plaster, wood, thatch, slate, roofTile, gold, obsidian, iron, foliage, metal,
   emissive, emissiveGreen, lava, ithildin) packed per vertex: `color` u8×4 = absolute sRGB paint + baked
   hemisphere AO in `a` (→ the material's AO slot only); `surf` u8×4 = roughness, metalness, grain,
-  `a` = noise class × 32 + ground-contact term (0..31; class 4 = foliage) — for glow: strength/16, gate
+  `a` = noise class × 32 + ground-contact term (0..31; class 4 = foliage, 5 = rock: kit cliffs, stone noise
+  without masonry courses + the shared strata) — for glow: strength/16, gate
   code, flicker. Contact is the only baked term on the albedo (`× mix(1, contact, 0.3)`). Landmark-local
   fwidth-faded noise (≈9, 37, 140 /km) + stone coursing on walls. Glow = paint × strength × gate × flicker
   (gates from env: always · night = clamp(smoothstep(0.2, 0.7, night) + 0.4·twilight) · dusk =
@@ -131,11 +146,33 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
    **RegionLook** (regionLook.ts): the post grade is a pure function of the camera focus — region weights
    sampled on the CPU over a disk around the target, blended `looks.json grade`, `lookOverride` honoured,
    no temporal smoothing. **Cloud shadows** (clouds.ts): deterministic world-XZ field scrolled by
-   `weather.wind × tFx`, coverage from `weather`, applied through the key light's `colorNode`, slab top only.
+   `weather.wind × tFx`, coverage from `weather`, applied through the key light's `colorNode`, slab top only;
+   the key loses `max(cloud·cloudShadow, atmo2.R·deckShadow)` (overcast light under a deck, all tiers).
+   **Visible clouds** (S4, cloudLayer.ts): the **ash deck** — a static 4 km grid mesh at the deck height
+   (CPU-baked cover / tone / height / glow per vertex, renderOrder 30 below the emission sprites, all tiers,
+   1–2 cloud taps): a steel-grey mottled underside lit by transmitted key + grey sky + ground bounce and the
+   windowed Gaussian Doom underglow (`env.deckGlow`, strongest at dusk / night), a charcoal top that fades to
+   `topOpacity` from above and near the focus (Mordor stays readable in overviews); it fogs itself so the glow
+   survives the haze. **Cumulus** (review / final, `quality.clouds.layer`): a sheet at `env.cloudHeight` from
+   the same cover field as the shadows (clouds sit over their shadows), faded at grazing angles, at night,
+   under decks and with the focus distance. Under a deck (RegionLook's focus cover) the hemisphere sky colour
+   turns to the deck tone, the fill rises, and the dome becomes an overcast ceiling with no sun, moon or stars.
+   Night (S4): moon key 1.8·illum^1.3, hemisphere lift 1 + 1.3·night, NIGHT grade +0.4 stops, stars at about
+   ¼ of S3 with horizon extinction.
 2. `TerrainSystem` (terrain/, async init) — one instanced CDLOD draw (root 320 km, 8 levels, morph + skirts).
    Surface pass: 5 shared height taps → normal, slope, curvature; `terrainMask` AO/valley (faded where stamps
    changed the ground); ground look + regional rules (alpine rock, dry-brushed crests, scree, snow v2 with
    aspect and per-region snowlines, volcanic ash/fissures, wetland pools, shores, forest floor, Shire fields).
+   S4: rock terms use 3D noise (no smear down the fall line); **strata** (materials/strata.ts — dipping
+   world-space bedding at three spacings, hard / soft beds with ledge normals, vertical joints and pinch-outs,
+   footprint-faded; also the structure family's rock class so kit cliffs band alike); triplanar sides mirrored
+   on negative faces, preview a biplanar hard layer on steep ground (+1 fetch); **volcanic crust**
+   (terrain/volcanic.ts, procedural, branch only on near volcanic ground: Voronoi plates and cracks at
+   6 / 1.5 / 0.4 km, basalt, cinder near Doom, angular fissure glow round Doom's foot, dim by day); grass hue
+   breakup (lush ↔ straw); snow v3 (ragged scoured cap rims, wind scouring, crisp margins); a terrain
+   `emissiveNode` = fissure glow + albedo · `spillIrradiance` / π (emission spill hook, emission/spill.ts) and
+   the `canopyShell()` hook in the forest-floor block (vegetation/canopyShell.ts). The terrain fragment stage
+   samples 14 textures (S4 budget: 15 incl. the canopy texture; the WebGPU limit is 16).
    `groundMaps.ts` builds CPU masks at init: stamp turf/presence (stamped − base), shore bands, the Shire field
    mask (from `fields.ts`). Detail: 6 CC0-derived layers (`tools/textures/prep.mjs` → `public/textures/terrain`,
    luminance-normalised so the palette keeps the hue; preview 512²×4 planar, review 512²×6, final 1024²×6
@@ -190,8 +227,12 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
 
 ## Landmarks (src/landmarks)
 `defineLandmark({ id, placeId, tier, headingDeg, scale, anchor, stamps[], proxy(kit), model, lodPx,
-lights[], trees[], forests[], emitters[], waterFeatures[], vegetationExclusion, contrast, lookOverride, annotation,
-bookmarks[], cameraConstraints, audioHooks })` (types.ts). Folders are auto-discovered
+lights[], trees[], forests[], treeCaps[], emitters[], waterFeatures[], vegetationExclusion, contrast, lookOverride,
+annotation, bookmarks[], cameraConstraints, audioHooks })` (types.ts). S4 contracts (records.ts / world.ts):
+lights (decl, kit, record) carry optional `LightExtras {event, spillKm, sprite}` (event channel; spill reach;
+`sprite: false` = spill-only source); emitters `{preset: smoke | ash | embers | steam | mist | sparks | beam, at,
+to?, rate, scale, color?, event?}` → world `EmitterRecord`s (`landmarkEmitters`), waterfalls / floods → world
+`FallRecord`s (`landmarkFalls`), `treeCaps` → world `TreeCapRecord`s (`landmarkTreeCaps`) — pure, usable in Node. Folders are auto-discovered
 (`import.meta.glob`). Landmarks never create materials, particle systems or render loops — shared systems
 realize their declarations.
 - **One pure build run** (build.ts `buildLandmarks(world, defs, {geometry})`, after the stamp layer, before
