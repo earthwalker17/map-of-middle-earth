@@ -40,9 +40,21 @@ export const STRATA = {
   /** ledge normal tilt per scale (tangent-plane "up" component at a full hard/soft step) */
   tilt: [0.5, 0.55, 0.35] as const,
   /** darkening of a soft bed's top under an overhanging hard bed */
-  shadow: [0.07, 0.05, 0.025] as const,
+  shadow: [0.035, 0.05, 0.02] as const,
   /** fraction of a bed taken by the step at its top */
   edge: 0.22,
+  /**
+   * vertical joints / faults: the rock is cut into blocks of about this many km (a jittered lattice in xz),
+   * each block's beds offset by up to ±`jointShift` height units — beds end or step at a joint instead of
+   * running as ruled lines across a whole face (no layer cake)
+   */
+  joint: 1.9,
+  jointShift: 0.45,
+  /** lateral presence: weight of the caller's strike noise and of a per-bed pinch-out along the strike */
+  lateral: 0.7,
+  pinch: 0.4,
+  /** km per radian of the per-bed pinch-out wave along the strike */
+  pinchKm: 0.55,
 } as const;
 
 export interface StrataSample {
@@ -64,6 +76,11 @@ export interface StrataOptions {
    * the strata inside a branch, where no derivative may be taken; default fwidth of the bedding coordinate
    */
   fy?: N;
+  /**
+   * bed spacing multiplier (default 1): kit faces (0.5–1.5 units tall) use finer beds than the terrain's
+   * mountain faces, or a whole kit cliff sits inside one or two beds and shows no banding
+   */
+  scale?: number;
 }
 
 /** fwidth of the (unwarped) bedding coordinate — take it in uniform control flow, pass it as `fy`. */
@@ -82,7 +99,14 @@ export function strataFootprint(p: N): N {
 export function strata(p: N, n: N, warp: N, lateral: N, opts: StrataOptions = {}): StrataSample {
   const S = STRATA;
   const preview = opts.preview ?? false;
-  const yb = p.y.add(p.x.mul(S.dip * S.dipDir[0]).add(p.z.mul(S.dip * S.dipDir[1]))).add(warp);
+  // jointed blocks: a block id from a jittered xz lattice (the joint planes are vertical, so on any face
+  // they run down the face as irregular cracks where the beds step or end)
+  const jq = p.xz.div(S.joint).add(warp.mul(0.18));
+  const jId = floor(jq.x).mul(57).add(floor(jq.y).mul(131));
+  const shift = hash(jId.add(911)).sub(0.5).mul(2 * S.jointShift);
+  const yb = p.y.add(p.x.mul(S.dip * S.dipDir[0]).add(p.z.mul(S.dip * S.dipDir[1]))).add(warp).add(shift);
+  // a coordinate along the strike (any horizontal direction not parallel to most faces)
+  const sAlong = p.x.mul(0.62).add(p.z.mul(0.78)).div(S.pinchKm);
   // bed-coordinate change per pixel (the face's projected bed thickness)
   const fy = max(opts.fy ?? fwidth(yb), 1e-6);
   let lum: N = float(0);
@@ -90,15 +114,25 @@ export function strata(p: N, n: N, warp: N, lateral: N, opts: StrataOptions = {}
   let tint: N = vec3(1);
   const scales = preview ? 2 : 3;
   for (let i = 0; i < scales; i++) {
-    const T = S.spacing[i];
+    const T = S.spacing[i] * (opts.scale ?? 1);
     // offset each scale so the bed boundaries of different scales never line up; uneven bed thicknesses
     // (the slab's formation remap)
-    const b0 = yb.div(T).add(0.37 * i + 4096);
+    const b0 = yb.div(T).add(0.37 * i);
     const b = b0.add(tsl.sin(b0.mul(1.37).add(0.6 + i)).mul(0.28)).add(tsl.sin(b0.mul(2.71).add(2.1 + i)).mul(0.17));
     const id = floor(b);
     const f = fract(b);
-    // some beds stand out, some barely show; and each fades in and out along the strike
-    const pres = (k: N): N => smoothstep(0.1, 0.6, hash(k.add(3301 * (i + 1))).mul(0.7).add(lateral.mul(0.45)).add(0.15 + 0.1 * i));
+    // some beds stand out, some barely show; each fades in and out along the strike (the caller's noise)
+    // and pinches out on its own wave (phase from its hash), so no bed runs unbroken across a face
+    const pres = (k: N): N =>
+      smoothstep(
+        0.1,
+        0.6,
+        hash(k.add(3301 * (i + 1)))
+          .mul(0.7)
+          .add(lateral.mul(S.lateral))
+          .add(tsl.sin(sAlong.mul(1 + 0.6 * i).add(hash(k.add(577 * (i + 1))).mul(6.2832))).mul(S.pinch))
+          .add(0.12 + 0.1 * i),
+      );
     const h0 = smoothstep(0.2, 0.8, hash(id.add(1013 * (i + 1)))).sub(0.5).mul(pres(id)).add(0.5);
     const h1 = smoothstep(0.2, 0.8, hash(id.add(1 + 1013 * (i + 1)))).sub(0.5).mul(pres(id.add(1))).add(0.5);
     // the step at the top of the bed: 0 inside the bed, 0..1 across the edge zone
@@ -124,7 +158,7 @@ export function strata(p: N, n: N, warp: N, lateral: N, opts: StrataOptions = {}
   const c = opts.contrast ?? 1;
   // the face's "up" in its tangent plane (length → 0 on flat ground, where strata never show anyway)
   const up = vec3(n.x.mul(n.y).negate(), float(1).sub(n.y.mul(n.y)), n.z.mul(n.y).negate());
-  return { lum: float(1).add(lum.mul(c)), tint, dn: up.mul(tilt) };
+  return { lum: clamp(float(1).add(lum.mul(c)), 0.35, 1.8), tint, dn: up.mul(tilt) };
 }
 
 /** 0..1 how sheer a surface is (1 − |n.y|) mapped onto the strata's visibility range [a, b]. */

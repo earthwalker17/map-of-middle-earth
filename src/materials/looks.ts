@@ -781,8 +781,13 @@ export const TERRAIN_SHADE = {
   snowGully: 0.16,
   /** snow albedo (sRGB): a little grey (wind-packed, shaded by its own micro relief), never paper white */
   snow: 0xd6dbe2,
-  /** grass on slopes facing the sun (south, +Z) dries by up to this much, shade-facing slopes green up */
+  /**
+   * grass on slopes facing the sun (south, +Z) dries by up to this much, shade-facing slopes green up
+   * (0 switches the aspect term off in the terrain and in the water's coarse albedo alike)
+   */
   aspectDry: 0.09,
+  /** slope bias of the rock rule in coarseGroundAlbedo (its coarse normal under-reads cliff slopes) */
+  coarseRockBias: 0.05,
   /** rock on steep slopes [a, b] (none on turf stamps) */
   rockSlope: [0.2, 0.44] as const,
   /** a rockiness of 1 moves the slope onset this much towards gentler ground */
@@ -862,12 +867,17 @@ export function aspectDryness(nz: N, slope: N): N {
  * terrain): the ground look at its mean dryness (+ the aspect term) + rock + snow from the same rules as
  * the terrain material, without its noise, curvature, masks or detail textures.
  */
-export function coarseGroundAlbedo(pal: GroundPalette, h: N, slope: N, southness: N, northness: N): N {
+export function coarseGroundAlbedo(pal: GroundPalette, h: N, slope: N, southness: N, northness: N, eastness: N = float(0)): N {
   const T = TERRAIN_SHADE;
   const line = snowLineAt(pal, southness);
   const hEff = h.add(northness.mul(T.snowNorth));
   const ground = mix(pal.grass, pal.dry, clamp(pal.dryness.add(h.mul(T.drynessPerHeight)).add(aspectDryness(northness.negate(), slope)), 0, 1));
-  const rock = rockAt(slope, alpineAt(hEff, line), float(0), pal.rockiness);
-  const snow = snowAt(hEff, slope, line, pal.volcanic);
+  // the coarse normal (central differences over 4 texels) flattens cliffs: its slope reads low, so the
+  // rock rule gets a small bias (a rock face mirrors as rock, not as the grass at its foot)
+  const rock = rockAt(slope.add(T.coarseRockBias), alpineAt(hEff, line), float(0), pal.rockiness);
+  // the terrain's mean wind scouring (snow v3): steep west-facing (windward) faces shed their snow first —
+  // `eastness` is the normal's +X component (0 when the caller has none)
+  const windward = clamp(eastness.negate().mul(1.6), 0, 1).mul(smoothstep(0.18, 0.42, slope)).mul(0.8 * 0.5 * 0.24);
+  const snow = snowAt(hEff, slope.add(windward), line, pal.volcanic);
   return mix(mix(ground, pal.rock, rock), srgbNode(T.snow), snow);
 }

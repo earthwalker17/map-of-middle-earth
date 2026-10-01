@@ -14,11 +14,18 @@ const { Fn, If, float, vec3, attribute, mx_noise_float, positionWorld, positionL
  */
 const ROCK_CLASS = 5;
 /**
- * The strata on the rock class: switched OFF — with a temporary class-0 mapping the kit faces showed no
- * banding although the generated WGSL matches the terrain's (working) strata; unresolved (W1-B knownIssues).
- * Off, no branch is emitted.
+ * The shared strata on the rock class (verified with a temporary class-0 mapping: the kit faces band). Inert
+ * until ProxyKit.cliff emits class 5 (contract above): no vertex carries it, the branch is never taken.
  */
-const KIT_STRATA = false;
+const KIT_STRATA = true;
+/**
+ * strata on kit faces: a kit cliff is only 0.5–1.5 units tall — at the terrain's bed spacing it sits inside
+ * one or two beds and shows no banding (the W1-B 'no banding' finding) — so kit faces take beds at 0.3× the
+ * spacing (formations ≈ 0.7, beds ≈ 0.18, laminae ≈ 0.05 units; the same world-space, dipping bedding
+ * planes, so they run on level with the terrain's) and a stronger contrast under their vertex colour and AO
+ */
+const KIT_STRATA_SCALE = 0.3;
+const KIT_STRATA_CONTRAST = 3.0;
 
 /**
  * Material families v2 (S3): every built structure is drawn with ONE of two shared uber materials —
@@ -232,8 +239,6 @@ function structureMaterial(): MeshStandardNodeMaterial {
   // S4: rock (kit cliffs — class 5, emitted by ProxyKit.cliff; see the strata helper below)
   const isRock = isClass(ROCK_CLASS);
   const nG = normalGeometry;
-  // footprint of the strata's bedding coordinate, taken in uniform control flow (the strata run in a branch)
-  const strataFy = strataFootprint(positionWorld);
   const pattern = Fn(() => {
     // landmark-local km (the meshes sit at the landmark origin): small arguments, so the fine octave
     // never bands on float32 world coordinates of several hundred km
@@ -266,15 +271,23 @@ function structureMaterial(): MeshStandardNodeMaterial {
     // the class: no other surface pays for it. The pattern scales the albedo by grain, so the strata's
     // luminance enters divided by it.
     const rockBands = float(0).toVar();
-    if (KIT_STRATA) If(isRock.greaterThan(0.5), () => {
-      const pw = positionWorld;
-      const nw = normalWorld;
-      const warp = mx_noise_float(pw.xz.mul(1 / 60)).mul(2.2).add(mx_noise_float(pw.mul(1 / 3)).mul(0.35));
-      const st = strata(pw, nw, warp, mx_noise_float(pw.mul(1 / 3.3)), { fy: strataFy });
-      const sw = strataSteep(nw, 0.45, 0.75);
-      rockBands.assign(st.lum.sub(1).mul(sw).div(max(surf.b, 0.1)));
-    });
-    return mix(n.mul(float(1).sub(isSmooth.mul(0.75))).add(coursing.mul(float(1).sub(isRock))).add(rockBands), leaf, isFoliage);
+    if (KIT_STRATA) {
+      // Everything shared with the rest of the shader is built HERE, in uniform control flow, before the
+      // branch: the bedding footprint (a derivative) and the world normal. Built lazily inside the branch,
+      // the normal's shared var (normalView → the lighting normal) was only assigned on fragments taking
+      // it, and every other structure surface lit black (the W1-B 'kit strata' darkening bug).
+      const fy = strataFootprint(positionWorld).toVar();
+      const nw = normalWorld.toVar();
+      If(isRock.greaterThan(0.5), () => {
+        const pw = positionWorld;
+        const n3k = mx_noise_float(pw.mul(1 / 3));
+        const warp = mx_noise_float(pw.xz.mul(1 / 60)).mul(2.2).add(n3k.mul(0.35));
+        const st = strata(pw, nw, warp, n3k.mul(0.8), { fy, contrast: KIT_STRATA_CONTRAST, scale: KIT_STRATA_SCALE });
+        const sw = strataSteep(nw, 0.45, 0.75);
+        rockBands.assign(st.lum.sub(1).mul(sw).div(max(surf.b, 0.1)));
+      });
+    }
+    return mix(n.mul(float(1).sub(isSmooth.mul(0.75))).add(coursing).add(rockBands), leaf, isFoliage);
   })();
   const albedo = sRGBTransferEOTF(col.rgb);
   // leaf masses: sun-bleached tops, shaded undersides (like the canopy shader's sub-crown shading)

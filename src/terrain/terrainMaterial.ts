@@ -8,7 +8,7 @@ import { TERRAIN_SHADE as TS, alpineAt, aspectDryness, groundLookTexture, ground
 import type { GroundMaps } from './groundMaps.ts';
 import { stampSnowCaps } from '../world/stamps.ts';
 import type { TerrainDetail } from './terrainTextures.ts';
-import { strata } from '../materials/strata.ts';
+import { strata, strataFootprint } from '../materials/strata.ts';
 import { VOLCANIC, volcanicCrust } from './volcanic.ts';
 import { spillIrradiance } from '../emission/spill.ts';
 import { canopyShell } from '../vegetation/canopyShell.ts';
@@ -80,12 +80,15 @@ const POOL_GRAIN = [Math.cos(0.7), Math.sin(0.7)] as const;
 
 /** stamp snow caps the terrain shader reads (world/stamps.ts `snowCap`; unused slots have reach 0) */
 const MAX_SNOW_CAPS = 4;
-/** strata on steep rock: visible over this slope range (1 − n.y) */
-const STRATA_SLOPE = [0.26, 0.5] as const;
-/** S4 switches (P1/P2 on; P3/P4 items ship switched off until they read right) */
+/**
+ * strata on steep rock: visible over this slope range (1 − n.y) — below it (rounded, convex rock) horizontal
+ * beds would print as topographic contour rings
+ */
+const STRATA_SLOPE = [0.3, 0.52] as const;
+/** S4 W1-B feature switches (all shipped on; each can be turned off on its own) */
 const STRATA_ON = true;
 const CRUST_ON = true;
-/** P3: patchy, wind-scoured snow edges; grass tonal breakup (mottling, aspect, hollows) */
+/** P3: patchy, wind-scoured snow edges; grass tonal breakup (lush ↔ straw mottling, lusher hollows) */
 const SNOW_V3_ON = true;
 const GRASS_BREAKUP_ON = true;
 
@@ -221,17 +224,18 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     if (SNOW_V3_ON) {
       snowJit = n4.mul(1.0).add(n5f.mul(0.6));
       const windward = clamp(nM.x.negate().mul(1.6), 0, 1).mul(smoothstep(0.18, 0.42, slope));
-      scour = crest.mul(0.6).add(windward.mul(0.5)).mul(smoothstep(-0.25, 0.35, n3.add(n4.mul(0.6))));
+      scour = crest.mul(0.6).add(windward.mul(0.8)).mul(smoothstep(-0.3, 0.3, n3.add(n4.mul(0.6))));
     }
     // snow sheds from convex ribs and collects in gullies
-    const snowRegional = snowAt(hEff.add(snowJit), slope.add(n3.mul(0.04)).add(crest.mul(0.12)).add(scour.mul(0.18)), line, pal.volcanic, max(curv, 0));
+    const snowRegional = snowAt(hEff.add(snowJit), slope.add(n3.mul(0.04)).add(crest.mul(0.12)).add(scour.mul(SNOW_V3_ON ? 0.24 : 0.18)), line, pal.volcanic, max(curv, 0));
     // stamp snow caps: above the cap's line (streaky edge, lower on north faces) on all but the sheerest
     // faces, fading out over the outer fifth of the stamp's reach
     let capSnow: N = float(0);
     if (caps.length) {
       // rock buttresses break through the cap on its steep, scoured parts (snow v3)
+      // ribs (convex crests) go bare first: buttresses, not blotches
       const sheer = SNOW_V3_ON
-        ? float(1).sub(smoothstep(0.6, 0.88, slope.add(n3.mul(0.08)).add(crest.mul(0.06)).add(n4.mul(0.12)).add(scour.mul(0.2))))
+        ? float(1).sub(smoothstep(0.56, 0.8, slope.add(n3.mul(0.06)).add(crest.mul(0.3)).add(n4.mul(0.08)).add(scour.mul(0.22))))
         : float(1).sub(smoothstep(0.8, 0.96, slope.add(n3.mul(0.08)).add(crest.mul(0.06))));
       for (let i = 0; i < caps.length; i++) {
         const cx = snowCaps.element(i * 4);
@@ -240,7 +244,11 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
         const cl = snowCaps.element(i * 4 + 3);
         const d = length(p.xz.sub(vec2(cx, cz)));
         const wR = clamp(reach.sub(d).div(reach.mul(0.2).add(1e-3)), 0, 1);
-        const up = smoothstep(cl.sub(0.6), cl.add(1.6), hEff.add(n3.mul(1.4)).add(n2.mul(0.8)).add(snowJit.mul(1.3)));
+        // the cap's lower edge: ±≈1 unit of 3 / 12 km noise, the fine jitter and the scoured crests — a ragged
+        // line across the shoulders, never a level icing rim
+        const up = SNOW_V3_ON
+          ? smoothstep(cl.sub(0.5), cl.add(1.2), hEff.add(n3.mul(2.0)).add(n2.mul(1.0)).add(snowJit.mul(1.5)).sub(crest.mul(0.8)).sub(scour.mul(0.6)))
+          : smoothstep(cl.sub(0.6), cl.add(1.6), hEff.add(n3.mul(1.4)).add(n2.mul(0.8)).add(snowJit.mul(1.3)));
         capSnow = max(capSnow, wR.mul(up));
       }
       capSnow = capSnow.mul(sheer).mul(float(1).sub(pal.volcanic));
@@ -273,15 +281,9 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     // grass breakup (P3): lush ↔ straw mottling at ≈ 5 and 1.5 km (3 / 0.9 km noise), sun-facing (south)
     // slopes drier and shade-facing ones lusher (aspectDryness, shared with the water's coarse albedo),
     // hollows lusher — the tonal variety of real pasture instead of one felt colour
-    let breakup: N = float(0);
-    if (GRASS_BREAKUP_ON)
-      breakup = n3
-        .mul(0.14)
-        .add(n4.mul(0.16))
-        .add(n5f.mul(0.12))
-        .mul(pal.pattern.add(0.5))
-        .add(aspectDryness(nM.z, slope))
-        .sub(hollow.mul(0.06));
+    // the aspect term is TERRAIN_SHADE.aspectDry's (0 switches it off here and in the water's coarse albedo)
+    let breakup: N = aspectDryness(nM.z, slope);
+    if (GRASS_BREAKUP_ON) breakup = breakup.add(n3.mul(0.14).add(n4.mul(0.16)).add(n5f.mul(0.12)).mul(pal.pattern.add(0.5))).sub(hollow.mul(0.06));
     const dryness = clamp(
       pal.dryness.add(n1.mul(0.2)).add(n2.mul(0.12)).add(hC.mul(TS.drynessPerHeight)).add(crest.mul(0.12)).sub(hollow.mul(0.08)).sub(moist.mul(0.3)).sub(water.a.mul(0.15)).add(breakup),
       0,
@@ -337,8 +339,9 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
         const useX = abs(nM.x).greaterThan(abs(nM.z));
         const dpx = dFdx(p);
         const dpy = dFdy(p);
-        const gx = select(useX, vec2(dpx.z, dpx.y), vec2(dpx.x, dpx.y)).mul(1 / HARD_TILE);
-        const gy = select(useX, vec2(dpy.z, dpy.y), vec2(dpy.x, dpy.y)).mul(1 / HARD_TILE);
+        // (the u axis is mirrored with the face, so are its gradients: the anisotropic footprint matches)
+        const gx = select(useX, vec2(dpx.z.mul(sx).negate(), dpx.y), vec2(dpx.x.mul(sz), dpx.y)).mul(1 / HARD_TILE);
+        const gy = select(useX, vec2(dpy.z.mul(sx).negate(), dpy.y), vec2(dpy.x.mul(sz), dpy.y)).mul(1 / HARD_TILE);
         const hSide = texture(T, select(useX, uvX(HARD_TILE), uvZ(HARD_TILE))).grad(gx, gy).depth(iH);
         const wt0 = pow(nM.y, 4);
         const ws0 = pow(max(abs(nM.x), abs(nM.z)), 4);
@@ -380,11 +383,25 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     // ---- strata on steep rock: bedding planes across the face (hard beds pale and proud with lit ledge
     // tops, soft beds dark and recessed), folded by the 60 km noise and wiggled by the 3 km one — the
     // horizontal structure that breaks the fall-line smear of the 0.4 km relief and masks
+    // Evaluated in a branch (only steep rock pays for it); the derivative and the inputs are taken before it,
+    // in uniform control flow. Gentler, rounded rock below the slope range stays unbanded (contour rings);
+    // a curvature fade was tried and dropped (the 0.4 km Laplacian is noisy on rugged faces and erased the beds).
+    const strataDn = vec3(0).toVar();
     if (STRATA_ON) {
-      const sW = smoothstep(STRATA_SLOPE[0], STRATA_SLOPE[1], slope).mul(rock).mul(float(1).sub(snow)).mul(float(1).sub(scree.mul(0.7)));
-      const st = strata(p, nM, n1.mul(2.2).add(n3.mul(0.35)), n3.mul(0.8).add(n2.mul(0.6)), { preview });
-      rockCol.assign(rockCol.mul(mix(float(1), st.lum, sW)).mul(mix(vec3(1), st.tint, sW)));
-      dN = dN.add(st.dn.mul(sW));
+      const sW = smoothstep(STRATA_SLOPE[0], STRATA_SLOPE[1], slope)
+        .mul(rock)
+        .mul(float(1).sub(snow))
+        .mul(float(1).sub(scree.mul(0.7)))
+        .toVar();
+      const stFy = strataFootprint(p).toVar();
+      const stWarp = n1.mul(2.2).add(n3.mul(0.35)).toVar();
+      const stLat = n3.mul(0.8).add(n2.mul(0.6)).toVar();
+      If(sW.greaterThan(1e-3), () => {
+        const st = strata(p, nM, stWarp, stLat, { preview, fy: stFy });
+        rockCol.assign(rockCol.mul(mix(float(1), st.lum, sW)).mul(mix(vec3(1), st.tint, sW)));
+        strataDn.assign(st.dn.mul(sW));
+      });
+      dN = dN.add(strataDn);
     }
 
     // ---- ground: grass ↔ dry, micro-pattern, alpine turf, soil on slopes, relief tint
@@ -392,13 +409,6 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     // micro-pattern (tussock clumps / meadow patches / heath), region-weighted amplitude
     const patAmp = pal.pattern.mul(detail ? 1.1 : 1.6).add(0.2);
     ground.assign(ground.mul(float(1).add(n3.mul(0.1).add(n4.mul(detail ? (GRASS_BREAKUP_ON ? 0.12 : 0.08) : 0.16)).mul(patAmp))).mul(lumSoft));
-    // grass breakup (P3): a tonal mottle independent of the palette's grass ↔ dry pair — lusher, darker
-    // patches and lighter straw ones at 0.4 / 0.9 / 3 km — so even a region whose two tones are close
-    // (Rohan's golds, the Hobbiton turf) never reads as one felt colour
-    if (GRASS_BREAKUP_ON) {
-      const m = clamp(n5f.mul(1.1).add(n4.mul(0.9)).add(n3.mul(0.6)), -1, 1).mul(pal.pattern.mul(0.6).add(0.5));
-      ground.assign(ground.mul(vec3(1).add(vec3(0.12, 0.07, -0.04).mul(m))).mul(float(1).add(m.mul(0.07))));
-    }
     // above the treeline the turf turns thin, grey-green and stony
     ground.assign(mix(ground, mix(pal.grass, pal.rock, 0.55).mul(0.9), alpine.mul(0.6)));
     ground.assign(mix(ground, pal.soil, smoothstep(0.1, 0.3, slope).mul(0.5).mul(float(1).sub(turf.mul(0.8)))));
@@ -408,6 +418,18 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     const f = texture(maps.fields, vec2(p.x.sub(fieldFrame.x).mul(fieldFrame.z), p.z.sub(fieldFrame.y).mul(fieldFrame.w)));
     const fieldW = f.a.mul(float(1).sub(smoothstep(0.08, 0.22, slope))).mul(float(1).sub(lc.r));
     ground.assign(mix(ground, f.rgb.mul(float(0.95).add(n4.mul(0.08))).mul(lumSoft), fieldW.mul(0.7)));
+    // grass breakup (P3): a tonal mottle independent of the palette's grass ↔ dry pair — patches of lush,
+    // darker green and of pale straw at 0.4 / 0.9 / 3 / 12 km with fairly crisp margins (pasture seen from
+    // the air, not a soft cloud noise), on the field patchwork too (within each field). Never on volcanic
+    // ground (Mordor stays charcoal) or the alpine turf
+    if (GRASS_BREAKUP_ON) {
+      const mRaw = n5f.mul(0.45).add(n4.mul(0.6)).add(n3.mul(0.8)).add(n2.mul(0.5));
+      const t = smoothstep(-0.48, 0.48, mRaw).sub(0.5).mul(2);
+      const gW = float(1).sub(smoothstep(0.12, 0.4, pal.volcanic)).mul(float(1).sub(alpine)).mul(pal.pattern.mul(0.5).add(0.6));
+      const m = t.mul(gW);
+      // −1 lush (greener, darker) … +1 straw (yellower, paler)
+      ground.assign(ground.mul(vec3(1).add(vec3(0.14, 0.07, -0.02).mul(m))).mul(float(1).add(m.mul(0.08))));
+    }
 
     // forest floor under the canopies: darker, richer litter and moss (the canopy is vegetation's)
     const floorCol = mix(pal.grass.mul(0.5), pal.soil.mul(0.62), float(0.45).add(n3.mul(0.2))).mul(float(0.8).add(n4.mul(0.18)));
@@ -431,7 +453,7 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     if (CRUST_ON) {
       const volc = pal.volcanic.toVar();
       If(volc.greaterThan(VOLCANIC.volcanic[0]).and(fp.lessThan(VOLCANIC.fade[1])), () => {
-        const c = volcanicCrust({ p, fp, slope, volcanic: volc, n2, n3, n4, doom: doomXZ, preview });
+        const c = volcanicCrust({ p, fp, slope, volcanic: volc, n2, n3, n4, n5: n5f, doom: doomXZ, preview });
         ground.assign(mix(ground, c.col(ground), c.w));
         rockCol.assign(mix(rockCol, rockCol.mul(vec3(1.3, 0.92, 0.8)), c.cinder));
         crustDn.assign(c.dn);
@@ -453,6 +475,9 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
       });
     }
 
+    // snow v3: a crisp snow / rock margin (the grey airbrushed halo round every rock patch was the soft
+    // ramp of the height rules) — sharpened about the half-cover line
+    if (SNOW_V3_ON) snow.assign(smoothstep(0.28, 0.72, snow));
     const col = mix(ground, rockCol, rock.mul(float(1).sub(shell.weight))).toVar();
     // snow: a slightly grey, varied albedo (old wind-packed vs fresh), never paper white
     const snowCol = srgbNode(TS.snow).mul(float(0.97).add(n3.mul(0.03)).add(n4.mul(0.03))).mul(mix(float(1), lumHard, 0.6));
@@ -532,7 +557,9 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     outRough.assign(mix(mix(rough, float(0.24), pools.mul(0.85)), float(0.12), channel));
     outAlbedo.assign(col);
     // fissure glow on open ground only (never on the rock faces or under snow / water)
-    outGlow.assign(glow.mul(float(1).sub(rock)).mul(float(1).sub(channel)));
+    // dim by day (the plates show a glow only in the gloom), full at dusk and night — the 'dusk' light gate
+    const glowGate = float(0.08).add(max(env.night, env.golden).mul(0.92));
+    outGlow.assign(glow.mul(float(1).sub(rock)).mul(float(1).sub(snow)).mul(float(1).sub(channel)).mul(glowGate));
     return col;
   });
 
