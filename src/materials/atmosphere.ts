@@ -18,6 +18,7 @@ import { env } from './environment.ts';
 import { atmoLook, DECK_DEFAULT_HEIGHT, DECK_DEFAULT_TOP, deckLook, lookColor, lookField, strongestDeck, type DeckLook } from './looks.ts';
 import type { World } from '../world/World.ts';
 import { SLAB } from '../diorama/slabSpec.ts';
+import { spillInScatter } from '../emission/spill.ts';
 
 type N = TslNode;
 const { Fn, If, abs, atan, clamp, dot, exp, float, length, max, min, mix, output, positionWorld, select, smoothstep, sqrt, step, texture, uniform, vec2, vec3, vec4 } = tsl;
@@ -746,7 +747,7 @@ export class Atmosphere {
     const lit = env.keyColor.mul(keyMist).add(env.skyColor.mul(env.hemiIntensity.mul(MIST_SKY)));
     const mistCol = mix(vec3(dot(lit, vec3(...LUM_W))), lit, MIST_SAT).mul(chroma);
     cInf = mix(cInf, mistCol, clamp(tauMist.div(max(tau, 1e-4)), 0, 1));
-    const out = color.mul(T).add(cInf.mul(vec3(1).sub(T)));
+    const out = color.mul(T).add(cInf.mul(vec3(1).sub(T))).add(spillInScatter(from, to, reg.a)); // + W2-D halos round strong lights
     // an additive light source seen through the haze: extinction only, softened by `emissiveFog`
     // (< 1: the light also scatters forward in the haze around it, so it survives the veil better)
     return emissive ? out.add(emissive.mul(T.pow(emissiveFog))) : out;

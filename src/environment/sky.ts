@@ -3,6 +3,7 @@ import { tsl, type TslNode } from '../materials/tsl.ts';
 import { env } from '../materials/environment.ts';
 import { atmosphere, DECK_HAZE_CHROMA } from '../materials/atmosphere.ts';
 import { celestialPole, type Daylight } from './timeOfDay.ts';
+import { HALO_RAY_KM, spillInScatter } from '../emission/spill.ts';
 
 type N = TslNode;
 
@@ -415,7 +416,7 @@ export class SkyModel {
     // blend in log space: an even, atmospheric falloff from bright haze into the void
     const lb = tsl.log(max(base, vec3(1e-6)));
     const lv = tsl.log(max(voidCol, vec3(1e-6)));
-    const col = tsl.exp(mix(lb, lv, t)).toVar();
+    const col = tsl.exp(mix(lb, lv, t)).add(spillInScatter(cameraPosition, cameraPosition.add(dir.mul(HALO_RAY_KM)), atmosphere.eyeHaze.w)).toVar(); // + W2-D halos (the regional density at the eye, as apply() weighs camera rays)
     If(h.greaterThan(-0.02), () => {
       // sun, moon and stars are hidden under the deck
       col.addAssign(this.bodies(dir).mul(tint).mul(float(1).sub(env.deck)));

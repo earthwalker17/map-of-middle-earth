@@ -1,11 +1,13 @@
 import { MeshStandardNodeMaterial, type Material } from 'three/webgpu';
 import type { LightGate } from '../landmarks/records.ts';
-import { tsl } from './tsl.ts';
+import { tsl, type TslNode } from './tsl.ts';
 import { env } from './environment.ts';
 import { strata, strataFootprint, strataSteep } from './strata.ts';
+import { gateCode, gateNode } from './gates.ts';
+import { spillIrradiance } from '../emission/spill.ts';
 
 // NB: TSL vec3(new Color()) silently yields black in r186 — always use color(Color) for colour constants
-const { Fn, If, float, vec3, attribute, mx_noise_float, positionWorld, positionLocal, normalGeometry, normalView, normalWorld, cameraPosition, reflect, normalize, positionViewDirection, fwidth, length, smoothstep, mix, clamp, max, abs, sin, step, round, floor, select, hash, dot, sRGBTransferEOTF } = tsl;
+const { Fn, If, float, vec3, attribute, mx_noise_float, positionWorld, positionLocal, normalGeometry, normalView, normalWorld, cameraPosition, reflect, normalize, positionViewDirection, fwidth, length, smoothstep, mix, clamp, max, abs, sin, step, floor, select, hash, dot, sRGBTransferEOTF } = tsl;
 
 /**
  * Noise class of rock faces (kit cliffs, `ProxyKit.cliff`): stone noise WITHOUT the masonry coursing +
@@ -36,8 +38,9 @@ const KIT_STRATA_CONTRAST = 3.0;
  *                  ground contact (0..31, 31 = free; kit/ao.ts): classes 0 stone (+ coursing) · 1 wood
  *                  streak · 2 fibre / thatch · 3 smooth · 4 foliage (leaf clumps). The contact term is the
  *                  ONLY baked darkening applied to the albedo (× mix(1, contact, 0.3) at the foot of a part).
- *      glow      → r strength / GLOW_MAX, g gate code / 3 (0 always · 1 night · 2 dusk · 3 event),
- *                  b flicker depth, a unused
+ *      glow      → r strength / GLOW_MAX, g gate code × 32 / 255 (materials/gates.ts: 0 night · 1 nightDim ·
+ *                  2 dusk · 3 always · 4.. event slots),
+ *                  b flicker depth, a albedo under the emission spill (GlowPreset.spill; 0 = self-luminous)
  *
  * Positions and normals are Float32 — four vertex buffers per draw in total.
  */
@@ -73,6 +76,14 @@ export interface GlowPreset {
   gate: LightGate;
   /** 0..1 deterministic flicker depth (env.tFx + world position) */
   flicker: number;
+  /** gate 'event': the SceneState.events channel (materials/gates.ts EVENT_SLOT) */
+  event?: string;
+  /**
+   * albedo under the emission spill (0..1, default 0): a skin that stands for lit stone (the Morgul
+   * wall wash) takes the spill of nearby sources like the stone under it; self-luminous skins (lava,
+   * windows, ithildin, the Eye) keep 0 — they are not lit by their own lights. Packed in `surf.a`.
+   */
+  spill?: number;
 }
 
 export interface FamilyPreset {
@@ -99,6 +110,9 @@ export const CONTACT_LEVELS = 31;
 /** Strength encoding range of glow vertices (surf.r × GLOW_MAX). */
 export const GLOW_MAX = 16;
 
+/** albedo under the emission spill of a stone-like glow skin (GlowPreset.spill; spill.ts) */
+const GLOW_SPILL_ALBEDO = 0.3;
+
 export const FAMILY: Record<FamilyId, FamilyPreset> = {
   stone: { albedo: 0xd9d3c4, roughness: 0.82, metalness: 0, grain: 0.22, noise: NOISE.stone },
   // near-black iron-dark stone (Barad-dûr, the Morannon): roughness 0.5 so edges catch the light
@@ -117,7 +131,7 @@ export const FAMILY: Record<FamilyId, FamilyPreset> = {
   // glow families: lamps / fires light up at night (the Lórien flets no longer glow at noon), lava and
   // Morgul magic always burn, ithildin wakes under the moon
   emissive: { albedo: 0xff7a1a, roughness: 0.6, metalness: 0, grain: 0, noise: NOISE.smooth, glow: { color: 0xff7a1a, strength: 4.5, gate: 'night', flicker: 0.06 } },
-  emissiveGreen: { albedo: 0x7ee6a0, roughness: 0.6, metalness: 0, grain: 0, noise: NOISE.smooth, glow: { color: 0x7ee6a0, strength: 2.4, gate: 'always', flicker: 0.12 } },
+  emissiveGreen: { albedo: 0x7ee6a0, roughness: 0.6, metalness: 0, grain: 0, noise: NOISE.smooth, glow: { color: 0x7ee6a0, strength: 2.4, gate: 'always', flicker: 0.12, spill: GLOW_SPILL_ALBEDO } },
   lava: { albedo: 0xff3a0a, roughness: 0.6, metalness: 0, grain: 0, noise: NOISE.smooth, glow: { color: 0xff3a0a, strength: 3.2, gate: 'always', flicker: 0.18 } },
   ithildin: { albedo: 0xdff3ff, roughness: 0.6, metalness: 0, grain: 0, noise: NOISE.smooth, glow: { color: 0xdff3ff, strength: 2.0, gate: 'night', flicker: 0.02 } },
 };
@@ -128,7 +142,11 @@ export const FAMILY_IDS = Object.keys(FAMILY) as FamilyId[];
 export type MaterialKey = 'structure' | 'glow';
 export const MATERIAL_KEYS: readonly MaterialKey[] = ['structure', 'glow'];
 
-export const GATE_CODE: Record<LightGate, number> = { always: 0, night: 1, dusk: 2, event: 3 };
+/**
+ * Glow vertices carry the shared gate code (materials/gates.ts) in `surf.g` = code × GATE_STEP / 255
+ * (codes 0..7: night, nightDim, dusk, always, event slots).
+ */
+const GATE_STEP = 32;
 
 /** AO floor of a family's vertices (kit/ao.ts). */
 export function aoFloor(fam: FamilyId): number {
@@ -183,7 +201,7 @@ export interface FamilyVertex {
 }
 
 /** Optional per-part overrides of a glow family's preset. */
-export type GlowOverride = Partial<Pick<GlowPreset, 'strength' | 'gate' | 'flicker'>>;
+export type GlowOverride = Partial<Pick<GlowPreset, 'strength' | 'gate' | 'flicker' | 'event'>>;
 
 /**
  * Pack a family (+ optional absolute paint / shade / legacy tint / glow override) into vertex bytes.
@@ -195,27 +213,16 @@ export function familyVertex(fam: FamilyId, paint?: number, shade = 1, tint?: nu
   const u = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 255);
   if (p.glow) {
     const gl = { ...p.glow, ...glow };
-    return { color: [r, g, b, 255], surf: [u(gl.strength / GLOW_MAX), GATE_CODE[gl.gate] * 85, u(gl.flicker), 0] };
+    return { color: [r, g, b, 255], surf: [u(gl.strength / GLOW_MAX), gateCode(gl.gate, undefined, gl.event) * GATE_STEP, u(gl.flicker), u(gl.spill ?? 0)] };
   }
   return { color: [r, g, b, 255], surf: [u(p.roughness), u(p.metalness), u(p.grain), p.noise * 32 + CONTACT_LEVELS] };
 }
 
 // ------------------------------------------------------------------ shaders
 
-/**
- * Light gate as a function of the env uniforms (records.ts LightGate), shared with the EmissionSystem
- * semantics: always 1 · night: smoothstep(0.2, 0.7, night) + 0.4·twilight (clamped) · dusk:
- * 0.25 + 0.75·max(night, golden) · event: 0 (switched by the S4 timeline).
- */
-export function gateNode(code: unknown): unknown {
-  const c = round(code);
-  const night = clamp(smoothstep(0.2, 0.7, env.night).add(env.twilight.mul(0.4)), 0, 1);
-  const dusk = float(0.25).add(max(env.night, env.golden).mul(0.75));
-  // code 0 → 1, 1 → night, 2 → dusk, 3 → 0
-  const isAlways = float(1).sub(step(0.5, c));
-  const isNight = step(0.5, c).mul(float(1).sub(step(1.5, c)));
-  const isDusk = step(1.5, c).mul(float(1).sub(step(2.5, c)));
-  return isAlways.add(isNight.mul(night)).add(isDusk.mul(dusk));
+/** The glow vertices' gate (materials/gates.ts gateNode) from their `surf.g` byte. */
+function glowGate(surfG: TslNode): TslNode {
+  return gateNode(surfG.mul(255 / GATE_STEP));
 }
 
 function structureMaterial(): MeshStandardNodeMaterial {
@@ -290,7 +297,8 @@ function structureMaterial(): MeshStandardNodeMaterial {
   const leafTone = mix(float(1), mix(float(0.78), float(1.12), smoothstep(-0.6, 0.9, nG.y)), isFoliage);
   // the baked ground-contact term is the only baked darkening on the albedo; the hemisphere AO (col.a)
   // goes to the AO slot alone (indirect light) — never both (S3 fix: small parts went near-black)
-  m.colorNode = albedo.mul(float(1).add(pattern.mul(surf.b))).mul(leafTone).mul(mix(float(1), contact, CONTACT_WEIGHT));
+  const baseColor = albedo.mul(float(1).add(pattern.mul(surf.b))).mul(leafTone).mul(mix(float(1), contact, CONTACT_WEIGHT));
+  m.colorNode = baseColor;
   m.aoNode = col.a;
   m.roughnessNode = clamp(surf.r.add(pattern.mul(0.08)), 0.04, 1);
   m.metalnessNode = surf.g;
@@ -303,7 +311,11 @@ function structureMaterial(): MeshStandardNodeMaterial {
     const r = reflect(v.negate(), normalWorld);
     const sky = mix(vec3(env.groundColor), vec3(env.skyColor), smoothstep(-0.25, 0.55, r.y)).mul(env.hemiIntensity);
     const f0 = mix(vec3(0.04), albedo, surf.g);
-    return sky.mul(f0).mul(float(1).sub(surf.r.mul(0.45))).mul(col.a);
+    const specAmb = sky.mul(f0).mul(float(1).sub(surf.r.mul(0.45))).mul(col.a);
+    // S4 W2-D: the light the emission spill throws onto the structure (Lambertian: diffuse albedo · E / π;
+    // half the baked AO — the spill is local direct light, the AO only hints at the occluded corners)
+    const diffuse = baseColor.mul(float(1).sub(surf.g)).mul(mix(float(0.5), float(1), col.a));
+    return specAmb.add(diffuse.mul(spillIrradiance(positionWorld, normalWorld)).mul(1 / Math.PI));
   })();
   return m;
 }
@@ -324,7 +336,12 @@ function glowMaterial(): MeshStandardNodeMaterial {
     const peak = max(paint.r, max(paint.g, paint.b));
     const hot = paint.add(vec3(peak).sub(paint).mul(vec3(0.2, 0.6, 0.1)));
     const c = mix(paint, hot, ndv.mul(ndv).mul(0.6)).mul(ndv.mul(0.4).add(0.8));
-    return c.mul(surf.r.mul(GLOW_MAX)).mul(gateNode(surf.g.mul(3))).mul(max(f, 0.2));
+    const glow = c.mul(surf.r.mul(GLOW_MAX)).mul(glowGate(surf.g)).mul(max(f, 0.2));
+    // S4 W2-D: a skin that stands for lit stone (the Morgul wash bands cover most of each washed face;
+    // GlowPreset.spill, surf.a) takes the emission spill like the stone under it, so the spill's falloff
+    // shows through the skin; self-luminous skins (surf.a = 0: lava, windows, ithildin) are not lit by
+    // their own lights
+    return glow.add(spillIrradiance(positionWorld, normalWorld).mul(surf.a.mul(1 / Math.PI)));
   })();
   return m;
 }

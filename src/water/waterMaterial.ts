@@ -5,6 +5,7 @@ import { atmosphere } from '../materials/atmosphere.ts';
 import { coarseGroundAlbedo, groundLookTexture, groundPalette } from '../materials/looks.ts';
 import type { QualityTier } from '../core/quality.ts';
 import type { World } from '../world/World.ts';
+import { spillGlint, spillIrradiance } from '../emission/spill.ts';
 
 type N = TslNode;
 type RGB = [number, number, number];
@@ -109,6 +110,9 @@ export interface WaterMaterialOptions {
 }
 
 const lin = (c: RGB): N => vec3(c[0], c[1], c[2]);
+
+/** deep-water scatter albedo of landmark pools (lake attribute waterPool = 1): dark peaty teal */
+const POOL_DEEP: RGB = [0.007, 0.014, 0.016];
 
 /** Debug view selector shared by all water materials (0 = beauty). Dev/QA only. */
 export const waterDebug: N = uniform(0, 'int');
@@ -260,7 +264,11 @@ export function createWaterMaterial(opts: WaterMaterialOptions): MeshStandardNod
   foam = saturate(foam);
 
   // ------------------------------------------------------------------ water body colour
-  const scatter = mix(lin(P.shallow), lin(P.deep), smoothstep(0, P.scatterDepth, depthB));
+  // landmark pools (the Moria pool, Rivendell's, …) have no baked lake bed under them: their deep body
+  // takes more scatter (a dark peaty teal, never a black slab)
+  const poolW = P.kind === 'lake' ? attribute('waterPool', 'float') : float(0);
+  const deep = mix(lin(P.deep), lin(POOL_DEEP), poolW);
+  const scatter = mix(lin(P.shallow), deep, smoothstep(0, P.scatterDepth, depthB));
   // subtle hue/brightness drift (silt, plankton, wind slicks)
   const hueShift = vec3(hueN.mul(0.12), hueN.mul(0.04), hueN.mul(-0.08)).mul(P.variation);
   const scatterV = scatter.mul(vec3(1).add(hueShift)).mul(float(1).add(vN2.mul(0.12 * P.variation)));
@@ -288,8 +296,10 @@ export function createWaterMaterial(opts: WaterMaterialOptions): MeshStandardNod
   const Ry = abs(Rv.y).add(sigma.mul(0.6));
   // reflected sky: the atmosphere's horizon in-scatter in the reflected azimuth (the same colour
   // the dome shows there) rising to a zenith tone that carries the dome's regional tint
-  const zenith = env.skyColor.mul(vec3(0.8, 0.95, 1.2)).mul(env.skyTint);
-  const horizon = atmosphere.inScatter(vec3(Rv.x, 0, Rv.z));
+  // (S4 W1-A contract: under the ash deck the reflected zenith is the overcast's underside, the horizon
+  // takes the focus-blended regional tint like the dome's)
+  const zenith = mix(env.skyColor.mul(vec3(0.8, 0.95, 1.2)).mul(env.skyTint), env.deckSky, env.deck);
+  const horizon = atmosphere.inScatter(vec3(Rv.x, 0, Rv.z)).mul(env.horizonTint);
   const sky = mix(horizon, zenith, pow(saturate(Ry), 0.5));
   const aureole = env.sunColor.mul(pow(saturate(dot(Rv, env.sunDir)), 10).mul(float(0.8).mul(float(1).sub(env.night))));
   const moonGlow = env.moonColor.mul(pow(saturate(dot(Rv, env.moonDir)), 40).mul(env.moonIntensity).mul(1.5));
@@ -336,11 +346,25 @@ export function createWaterMaterial(opts: WaterMaterialOptions): MeshStandardNod
         const nH = normalize(vec3(hx.negate(), float(4 * e), hz.negate()));
         const hh = hs(vec2(0, 0));
         const slope = float(1).sub(nH.y);
-        const alb = coarseGroundAlbedo(groundPalette(groundTex, huv, true), hh, slope, southness(hitP.z), nH.z.negate());
-        const sunLit = env.sunColor.mul(env.sunIntensity).mul(max(dot(nH, env.sunDir), 0));
-        const skyLit = mix(env.groundColor, env.skyColor, nH.y.mul(0.5).add(0.5));
-        const moonLit = env.moonColor.mul(env.moonIntensity).mul(max(dot(nH, env.moonDir), 0));
-        const groundRad = alb.mul(sunLit.add(skyLit).add(moonLit)).mul(1 / Math.PI);
+        const alb = coarseGroundAlbedo(groundPalette(groundTex, huv, true), hh, slope, southness(hitP.z), nH.z.negate(), nH.x);
+        // Reflections of landmarks standing in the water (the S3 'black holes' under the Argonath's
+        // plinths and Tol Brandir): the march sees only the heightfield, so it hits the landmark's stamp
+        // (Tol Brandir's 1.2 km plateau) and mirrors that short, dark lozenge with sky where the tall
+        // spire should be. The reflected stone is legitimately dark against the bright sky (F ≈ 0.3 of a
+        // dark rock); what is wrong is the missing silhouette above the stamp. A sky-share fallback made
+        // every dark bank and cliff reflection milky (S4 W2-D critic) and was removed; the real fix is
+        // landmark occluder proxies in the march (contract request: analytic upright proxies from the
+        // landmark bounds of `onRiver` places, tested along the reflected ray).
+        // the key under the ash deck (S4 W1-A contract: the Dead Marshes' pools no longer mirror the land
+        // 2–4× brighter than the land itself), the hemisphere fill at its intensity, and (review / final)
+        // the emission spill: lava, beacons and lit towns light the land their reflection shows
+        const deckK = float(1).sub(atmosphere.deckCover(hitP.xz, true).mul(env.deckShadow));
+        const sunLit = env.sunColor.mul(env.sunIntensity).mul(max(dot(nH, env.sunDir), 0)).mul(deckK);
+        const skyLit = mix(env.groundColor, env.skyColor, nH.y.mul(0.5).add(0.5)).mul(env.hemiIntensity);
+        const moonLit = env.moonColor.mul(env.moonIntensity).mul(max(dot(nH, env.moonDir), 0)).mul(deckK);
+        let lit: N = sunLit.add(skyLit).add(moonLit);
+        if (!preview) lit = lit.add(spillIrradiance(hitP, nH));
+        const groundRad = alb.mul(lit).mul(1 / Math.PI);
         const hazed = atmosphere.apply(groundRad, origin, vec3(hitP.x, max(hitP.y, hh), hitP.z), quality.atmosphere.inScatter, true);
         out.assign(mix(out, hazed, occ));
       });
@@ -351,7 +375,10 @@ export function createWaterMaterial(opts: WaterMaterialOptions): MeshStandardNod
   // ------------------------------------------------------------------ outputs
   const foamCol = vec3(0.78, 0.8, 0.8);
   const albedo = mix(body.mul(float(1).sub(fres)), foamCol, foam);
-  const emissive = refl.mul(fres).mul(P.reflection).mul(float(1).sub(foam.mul(0.8)));
+  // S4 W2-D: the emission spill on the water — glints of the lights (GGX on the water's own roughness,
+  // Fresnel inside) and their diffuse light on the body and the foam
+  const lights = spillGlint(pos, V, nW, rough).mul(float(1).sub(foam)).add(albedo.mul(spillIrradiance(pos, nW)).mul(1 / Math.PI));
+  const emissive = refl.mul(fres).mul(P.reflection).mul(float(1).sub(foam.mul(0.8))).add(lights);
   const roughness = mix(rough, float(0.85), foam);
 
   // waterline anti-aliasing: ~1 pixel of depth (rivers: their edges fade by the across coordinate)
@@ -365,6 +392,8 @@ export function createWaterMaterial(opts: WaterMaterialOptions): MeshStandardNod
   }
   if (isRiver) {
     const edge = float(1).sub(smoothstep(0.72, 1.0, abs(flow!.y)));
+    // (S4 W2-D P4: a ribbon running inside a baked lake at the lake's level fades out there through
+    // flow.w — rivers.ts lakeYield)
     alpha = alpha.mul(edge).mul(flow!.w);
   }
 

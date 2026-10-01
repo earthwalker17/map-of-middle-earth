@@ -4,6 +4,9 @@ import type { LightRecord } from '../landmarks/records.ts';
 import type { World } from '../world/World.ts';
 import { createEmissionMaterial } from './emissionMaterial.ts';
 import { aggregates, EMISSION_STRIDE, groupKey, packAggregate, packLight, ROLE, type EmissionArrays } from './lightKinds.ts';
+import { env } from '../materials/environment.ts';
+import { SPILL_MAX, spillU } from './spill.ts';
+import { buildSpillSources, selectSpill, SPILL_PREVIEW, type SpillFrame, type SpillSource } from './spillSources.ts';
 
 /** instance capacity of the one sprite draw (static landmark lights + S4 dynamic ones) */
 export const MAX_LIGHTS = 4096;
@@ -26,13 +29,17 @@ export const MAX_LIGHTS = 4096;
  */
 export class EmissionSystem implements System {
   readonly id = 'emission';
-  readonly stats = { count: 0, drawn: 0, dynamic: 0, aggregates: 0 };
+  readonly stats = { count: 0, drawn: 0, dynamic: 0, aggregates: 0, spillSources: 0, spill: 0 };
   private dynamic: ((s: SceneState) => LightRecord[]) | null = null;
   private mesh: Mesh | null = null;
   private material: NodeMaterial | null = null;
   private attrs: { pos: InstancedBufferAttribute; col: InstancedBufferAttribute; aux: InstancedBufferAttribute; grp: InstancedBufferAttribute } | null = null;
   private geometry: InstancedBufferGeometry | null = null;
   private staticCount = 0;
+  /** static spill sources (spillSources.ts), built once from the records */
+  private spill: SpillSource[] = [];
+  /** the selection's input, rewritten in full every frame (no per-frame allocation; no state carried) */
+  private readonly spillFrame: SpillFrame = { focus: [0, 0, 0], focusDist: 0, gate: { night: 0, twilight: 0, golden: 0, events: [0, 0, 0, 0] }, tFx: 0, n: 0, halos: false };
 
   constructor(
     private readonly world: World,
@@ -65,6 +72,8 @@ export class EmissionSystem implements System {
     this.attrs = attrs;
     this.geometry = g;
     this.staticCount = this.packStatic(this.records);
+    this.spill = buildSpillSources(this.records);
+    this.stats.spillSources = this.spill.length;
     g.instanceCount = this.staticCount;
     this.stats.drawn = this.staticCount;
 
@@ -99,6 +108,8 @@ export class EmissionSystem implements System {
     let n = 0;
     for (const r of records) {
       if (n >= MAX_LIGHTS) break;
+      // spill-only sources (sprite: false) draw no sprite
+      if (r.sprite === false) continue;
       const o = n * EMISSION_STRIDE;
       if (!packLight(r, arr, o)) continue;
       n++;
@@ -144,13 +155,14 @@ export class EmissionSystem implements System {
     let n = start;
     for (const r of records) {
       if (n >= MAX_LIGHTS) break;
-      if (packLight(r, arr, n * EMISSION_STRIDE)) n++;
+      if (r.sprite !== false && packLight(r, arr, n * EMISSION_STRIDE)) n++;
     }
     this.flag(start, n);
     return n;
   }
 
   evaluate(frame: FrameContext): void {
+    this.evaluateSpill(frame);
     if (!this.mesh || !this.geometry) return;
     let n = this.staticCount;
     if (this.dynamic) {
@@ -160,6 +172,38 @@ export class EmissionSystem implements System {
     this.geometry.instanceCount = n;
     this.stats.drawn = n;
     this.mesh.visible = n > 0;
+  }
+
+  /**
+   * The frame's spill sources (spill.ts uniforms): a pure function of the camera focus, the gates (env
+   * night / twilight / golden / events, written by the EnvironmentSystem before this runs) and env.tFx.
+   * Dynamic (timeline) lights do not spill.
+   */
+  private evaluateSpill(frame: FrameContext): void {
+    const { state, camera } = frame;
+    const preview = frame.quality.id === 'preview';
+    const [tx, ty, tz] = state.camera.target;
+    const ev = env.events.value;
+    const f = this.spillFrame;
+    f.focus[0] = tx;
+    f.focus[1] = ty;
+    f.focus[2] = tz;
+    f.focusDist = Math.hypot(camera.position.x - tx, camera.position.y - ty, camera.position.z - tz);
+    f.gate.night = env.night.value;
+    f.gate.twilight = env.twilight.value;
+    f.gate.golden = env.golden.value;
+    const evs = f.gate.events as number[];
+    evs[0] = ev.x;
+    evs[1] = ev.y;
+    evs[2] = ev.z;
+    evs[3] = ev.w;
+    f.tFx = state.tFx;
+    f.n = preview ? SPILL_PREVIEW : SPILL_MAX;
+    f.halos = !preview;
+    const n = selectSpill(this.spill, f);
+    spillU.count.value = n;
+    spillU.haloOn.value = preview ? 0 : 1;
+    this.stats.spill = n;
   }
 
   dispose(): void {

@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "notes": "S4 W2-D acceptance shots (pnpm qa --set s4-d): emission lights the world (spill, halos), event gates and water that reflects light. The beacon pair is one frame of Minas Tirith at night with Mindolluin's beacon crag above the city: with events {beacons: 1} the beacon burns and lights its crag; without it the beacon stays dark (the event gate, materials/gates.ts). Owned by the emission module.",
+  "shots": [
+    { "id": "w2d-mt-beacons", "tod": 21.6, "events": { "beacons": 1 }, "camera": { "orbit": { "place": "minas-tirith", "distanceKm": 40, "elevationDeg": 6, "azimuthDeg": 110, "fov": 30, "lift": 6.5, "aimKm": [-3, 1] } }, "compare": ["reference/film/minas-tirith"], "note": "night, events {beacons: 1}: the beacon on the crag above the city burns and lights the rock round it (halo in the air); the city's windows below" },
+    { "id": "w2d-mt-beacons-off", "tod": 21.6, "camera": { "orbit": { "place": "minas-tirith", "distanceKm": 40, "elevationDeg": 6, "azimuthDeg": 110, "fov": 30, "lift": 6.5, "aimKm": [-3, 1] } }, "compare": ["reference/film/minas-tirith"], "note": "the same frame without the event: the beacon stays dark" }
+  ]
+}

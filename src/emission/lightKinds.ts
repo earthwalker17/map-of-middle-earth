@@ -1,6 +1,7 @@
 import { Color } from 'three/webgpu';
 import { rand } from '../core/rng.ts';
-import type { LightGate, LightKind, LightRecord } from '../landmarks/records.ts';
+import type { LightKind, LightRecord } from '../landmarks/records.ts';
+import { gateCode as gateCodeOf } from '../materials/gates.ts';
 
 /**
  * Per-kind emission rules (CPU side of EmissionSystem): default colours, physical size caps,
@@ -45,7 +46,7 @@ export const MAX_RADIUS_KM: Record<LightKind, number> = {
 };
 
 /** default flicker depth when a record leaves it at 0 (fires breathe, lamps and windows are steady) */
-const DEFAULT_FLICKER: Partial<Record<LightKind, number>> = { fire: 0.28, lava: 0.12, beacon: 0.25, magic: 0.08, eye: 0.06 };
+export const DEFAULT_FLICKER: Partial<Record<LightKind, number>> = { fire: 0.28, lava: 0.12, beacon: 0.25, magic: 0.08, eye: 0.06 };
 
 /**
  * Wide-shot gain cap by kind (0 = no gain): the sprites of these kinds gain brightness with distance,
@@ -86,20 +87,11 @@ export const HALO: Record<LightKind, [number, number]> = {
 export const ROLE = { single: 0, member: 1, aggregate: 2 } as const;
 
 /**
- * Shader gate codes (emissionMaterial.ts):
- *  0 night (windows, lamps)  1 night-dim (ithildin)  2 dusk (fires)  3 always  4 event (off in S3)
+ * Shader gate code of a record (materials/gates.ts: 0 night · 1 nightDim (ithildin) · 2 dusk ·
+ * 3 always · 4 + slot event, by the record's `event` channel or its kind's default).
  */
-export function gateCode(kind: LightKind, gate: LightGate): number {
-  switch (gate) {
-    case 'night':
-      return kind === 'ithildin' ? 1 : 0;
-    case 'dusk':
-      return 2;
-    case 'always':
-      return 3;
-    case 'event':
-      return 4;
-  }
+export function gateCode(r: Pick<LightRecord, 'kind' | 'gate' | 'event'>): number {
+  return gateCodeOf(r.gate, r.kind, r.event);
 }
 
 /** Is the record's colour "plain" (white / grey) → use the kind default. */
@@ -129,7 +121,7 @@ export function aggregates(r: LightRecord): boolean {
 
 /** Group key of an aggregating record: one aggregate per landmark and gate. */
 export function groupKey(r: LightRecord): string {
-  return `${r.landmark}|${gateCode(r.kind, r.gate)}|${wideClass(r.kind)}`;
+  return `${r.landmark}|${gateCode(r)}|${wideClass(r.kind)}`;
 }
 
 /**
@@ -164,7 +156,7 @@ export function packLight(r: LightRecord, a: EmissionArrays, o: number, group: [
   col[o + 1] = cg * k;
   col[o + 2] = cb * k;
   col[o + 3] = Math.min(1, Math.max(0, r.flicker > 0 ? r.flicker : (DEFAULT_FLICKER[r.kind] ?? 0)));
-  aux[o] = gateCode(r.kind, r.gate) + 8 * wideClass(r.kind);
+  aux[o] = gateCode(r) + 8 * wideClass(r.kind);
   // flicker: two incommensurate angular rates (rad / effect-second) and a phase, per light
   const fast = r.kind === 'fire' || r.kind === 'beacon' ? 1 : 0.35;
   aux[o + 1] = (5.1 + 4.3 * rand(s, 'w', 1)) * fast;

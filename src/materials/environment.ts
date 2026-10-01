@@ -97,6 +97,8 @@ export const env = {
   cloudVis: uniform(0),
   /** the clear-sky hemisphere irradiance (colour × intensity) before the deck's overcast pull and fill (lights the decks and cumulus) */
   clearSkyColor: uniform(new Color(0.55, 0.7, 0.9)),
+  /** S4 W2-D: the timeline's event channels (SceneState.events → materials/gates.ts EVENT_SLOT: x beacons, y morgul-beam, z/w spare) */
+  events: uniform(new Vector4(0, 0, 0, 0)),
   // ---- added by S3 emission (src/emission) ----
   /** screen pixels per km at 1 km view depth: viewportHeight / (2·tan(fov/2)) — projected sizes in px */
   pxPerKm: uniform(1000),
