@@ -351,6 +351,8 @@ interface Band {
   conifer: number;
   birch: number;
   scale: [number, number];
+  /** steepest slope that carries trees (default 62°) */
+  maxSlope?: number;
 }
 
 const FOOT_N = offsetPath(STREAM_WE, FLOOR * 0.75).filter(([x]) => x > -3.8 && x < 6.5);
@@ -368,6 +370,8 @@ const BANDS: Band[] = [
   { path: arc(LEDGE_SE, 280, 420, LEDGE_SE.r + 0.08, 4), hw: 0.1, n: 3, conifer: 0.4, birch: 0.2, scale: [0.4, 0.65] },
   // the gorge floor along both wall feet: the valley filled with golden woods
   { path: FOOT_N, hw: 0.2, n: 16, conifer: 0.3, birch: 0.25, scale: [0.45, 0.75] },
+  // the main spur's slopes falling to the stream below the house: small golden trees and firs
+  { path: arc(LEDGE_N, 115, 300, LEDGE_N.r + 0.38, 8), hw: 0.22, n: 26, conifer: 0.35, birch: 0.25, scale: [0.35, 0.6], maxSlope: 76 },
   { path: FOOT_S, hw: 0.2, n: 17, conifer: 0.3, birch: 0.25, scale: [0.45, 0.75] },
   // the woods on the moor over the gorge's rims
   { path: RIM_N, hw: 0.6, n: 16, conifer: 0.5, birch: 0.15, scale: [0.4, 0.7] },
@@ -412,7 +416,8 @@ export const FORESTS: ForestDecl[] = WOOD_BANDS.map((b) => ({
   ],
   clump: { scaleKm: 0.25, amount: 0.7 },
   edgeKm: 0.05,
-  maxSlopeDeg: 62,
+  // the spur's slopes are steep (trees cling to them); elsewhere no trees on the sheer faces
+  maxSlopeDeg: b.maxSlope ?? 62,
   avoid: KEEP_OUT,
 }));
 
