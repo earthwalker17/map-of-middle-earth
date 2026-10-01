@@ -186,11 +186,14 @@ function statue(k: ProxyKit, u0: number, w0: number, base: number, axeSide: numb
   k.loft(
     'plaster',
     [
+      // a double-bitted head: two crescent blades, flaring to their horns, waisted at the haft
       { outline: rect(0.05 * SC, 0.035 * SC), y: 0 },
-      { outline: rect(0.3 * SC, 0.03 * SC), y: 0.1 * SC },
-      { outline: rect(0.36 * SC, 0.025 * SC), y: 0.26 * SC },
-      { outline: rect(0.3 * SC, 0.025 * SC), y: 0.4 * SC },
-      { outline: rect(0.05 * SC, 0.03 * SC), y: 0.48 * SC },
+      { outline: rect(0.39 * SC, 0.02 * SC), y: 0.07 * SC },
+      { outline: rect(0.33 * SC, 0.025 * SC), y: 0.15 * SC },
+      { outline: rect(0.27 * SC, 0.03 * SC), y: 0.24 * SC },
+      { outline: rect(0.33 * SC, 0.025 * SC), y: 0.33 * SC },
+      { outline: rect(0.39 * SC, 0.02 * SC), y: 0.41 * SC },
+      { outline: rect(0.05 * SC, 0.035 * SC), y: 0.48 * SC },
     ],
     { at: P(ax, y0 + 1.86, az), rot, color: S, shade: 1.08 },
   );

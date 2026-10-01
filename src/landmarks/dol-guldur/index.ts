@@ -20,7 +20,9 @@ const DEG = Math.PI / 180;
 const polar = (b: number, r: number, c: V2 = [0, 0]): V2 => [c[0] + Math.sin(b * DEG) * r, c[1] - Math.cos(b * DEG) * r];
 
 /** circumradius of the fortress triangle, km; vertex bearings (the south vertex faces the valley) */
-const R = 0.78;
+const R = 1.0;
+/** design scale of the towers and walls (the ruin crowns the whole hilltop) */
+const SC = 1.3;
 const VERTS = [60, 180, 300];
 /** the knob the bridge comes from */
 const KNOB: V2 = polar(48, 2.7);
@@ -86,7 +88,7 @@ function buildFortress(k: ProxyKit): void {
   const V = VERTS.map((b) => polar(b, R));
   // ---- the inner keep: a massive triangular core, battered, dark
   const inner = VERTS.map((b) => polar(b, R * 0.42));
-  k.extrude('weathered', inner, 0.28, { followGround: true, taper: 0.06, color: TOWER[1] });
+  k.extrude('weathered', inner, 0.36, { followGround: true, taper: 0.06, color: TOWER[1] });
 
   // ---- the curtain walls: each side in three or four broken stretches with breaches between them
   for (let s = 0; s < 3; s++) {
@@ -99,7 +101,7 @@ function buildFortress(k: ProxyKit): void {
       const t1 = cuts[c + 1] - 0.015;
       const p0: V2 = [a[0] + (b[0] - a[0]) * t0, a[1] + (b[1] - a[1]) * t0];
       const p1: V2 = [a[0] + (b[0] - a[0]) * t1, a[1] + (b[1] - a[1]) * t1];
-      k.wallPath('weathered', [p0, p1], 0.17 + k.r(4) * 0.14, 0.06, {
+      k.wallPath('weathered', [p0, p1], (0.17 + k.r(4) * 0.14) * SC, 0.075, {
         followGround: true,
         step: 0.08,
         batter: 0.25,
@@ -110,13 +112,13 @@ function buildFortress(k: ProxyKit): void {
     }
     // a bay tower in the middle of each side
     const m: V2 = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-    brokenTower(k, m[0], m[1], 0.07, 0.42 + k.r(6) * 0.15, 6, TOWER[s % TOWER.length]);
+    brokenTower(k, m[0], m[1], 0.07 * SC, (0.42 + k.r(6) * 0.15) * SC, 6, TOWER[s % TOWER.length]);
   }
   // ---- the three great corner towers
-  V.forEach(([x, z], i) => brokenTower(k, x, z, 0.12, 0.75 + i * 0.12 + k.r(1) * 0.1, 6, TOWER[(i + 1) % TOWER.length], 2));
+  V.forEach(([x, z], i) => brokenTower(k, x, z, 0.12 * SC, (0.75 + i * 0.12 + k.r(1) * 0.1) * SC, 6, TOWER[(i + 1) % TOWER.length], 2));
 
   // ---- the crown: a cluster of splintered towers rising from the keep, tallest in the middle
-  const crown: [number, number, number, number][] = [
+  const CROWN: [number, number, number, number][] = [
     [0, 0.05, 0.095, 1.25],
     [0.13, -0.08, 0.07, 1.0],
     [-0.14, -0.06, 0.065, 0.92],
@@ -130,6 +132,7 @@ function buildFortress(k: ProxyKit): void {
     [0.3, 0.0, 0.035, 0.5],
     [-0.05, 0.33, 0.04, 0.5],
   ];
+  const crown = CROWN.map(([x, z, r, h]) => [x * SC, z * SC, r * SC, h * SC]);
   const tops: V3[] = [];
   crown.forEach(([x, z, r, h], i) => {
     const top = brokenTower(k, x, z, r, h, i % 3 === 0 ? 5 : i % 3 === 1 ? 6 : 4, TOWER[i % TOWER.length], i < 4 ? 2 : 1);
@@ -154,6 +157,17 @@ function buildFortress(k: ProxyKit): void {
     const r = crown[i][2];
     const g = k.ground(x, z);
     k.light([x + r * 0.6, g + crown[i][3] * 0.62, z + r * 0.6], { kind: 'magic', color: GLOW, intensity: 0.55, radius: 0.025, flicker: 0.2 });
+  }
+
+  // ---- the crag under the walls: broken bands of rock round the upper hill (gaps for the bridge and the
+  // western breach), faces looking out and down the slope
+  for (const [b0, b1, hs] of [
+    [20, -75, [0.25, 0.5, 0.6, 0.45, 0.25]],
+    [-95, -190, [0.25, 0.55, 0.7, 0.5, 0.25]],
+    [-210, -290, [0.25, 0.45, 0.55, 0.25]],
+  ] as [number, number, number[]][]) {
+    const path: V2[] = hs.map((_h, i) => polar(b0 + ((b1 - b0) * i) / (hs.length - 1), 1.28 + 0.06 * Math.sin(i * 2.1)));
+    k.cliff('weathered', path, hs, { color: 0x3f4845, rough: 0.6, strata: 0.35, soft: 0.65, depth: 0.5 });
   }
 
   // ---- the long bridge from the knob to the north-east vertex
@@ -186,7 +200,7 @@ export default defineLandmark({
       kind: 'massif',
       at: [0, 0],
       radius: 3.0,
-      summit: 3.1,
+      summit: 3.3,
       base: 0,
       exponent: 1.25,
       dome: 0.45,
@@ -196,10 +210,10 @@ export default defineLandmark({
         { azimuthDeg: 300, lengthKm: 4.2, widthKm: 1.5, heightFrac: 0.36, rootFrac: 0.7 },
       ],
       flankSlope: 1.9,
-      rough: { amp: 0.45, scaleKm: 2.0, ridged: true },
+      rough: { amp: 0.8, scaleKm: 1.8, ridged: true },
       surface: 'rock',
     },
-    { kind: 'flatten', at: [0, 0], radius: 0.8, falloff: 0.5, height: 2.95, strength: 0.85 },
+    { kind: 'flatten', at: [0, 0], radius: 1.05, falloff: 0.5, height: 3.1, strength: 0.85 },
     { kind: 'raise', at: KNOB, radius: 1.1, amount: 1.9, rough: { amp: 0.25, scaleKm: 1.8 }, surface: 'rock' },
   ],
   lodPx: [60, 20],
@@ -213,10 +227,10 @@ export default defineLandmark({
     {
       id: 'dol-guldur-close',
       distanceKm: 36,
-      elevationDeg: 9,
+      elevationDeg: 5,
       azimuthDeg: 200,
       fov: 18,
-      lift: 1.2,
+      lift: 2.0,
       tod: 15.0,
       note: 'afternoon under a sick grey sky from the south-south-west over the dark forest: the bare hill and the crown of splintered towers on its top, the long bridge to the knob on the right',
     },

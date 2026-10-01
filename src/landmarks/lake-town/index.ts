@@ -47,7 +47,7 @@ function buildTown(k: ProxyKit): void {
     if (lights >= MAX_LIGHTS) return;
     lights++;
     // lanterns and windows are lit from golden hour (dusk gate): the prologue's town glows at sunset
-    k.light([x, y, z], { kind, color: LANTERN, intensity, radius: size, gate: 'dusk' });
+    k.light([x, y, z], { kind, color: LANTERN, intensity: intensity * 1.4, radius: size, gate: 'dusk' });
   };
   // house windows claim up to this many lights; the lamps (Grand Canal, bridge), the Master's house and
   // the bell tower take the rest of the budget
@@ -127,7 +127,10 @@ function buildTown(k: ProxyKit): void {
       const tall = k.r(4) < 0.06 && along < 0.078;
       // the inner rows (inside a block) drop out at LOD1; every third outer house stays in the silhouette LOD
       const lod = inner ? 0 : n % 3 === 0 ? 2 : 1;
-      house(u, v, along, deep, tall ? h * 1.5 : h, f, { gable: k.r(5) < 0.55, lod, lit: k.r(6) < 0.42, tall });
+      // lit windows favour the faces the dusk view sees (east / south fronts) and the eastern half of the
+      // town: the blocks are built west to east, so the far side must not use up the window budget
+      const seen = (f === 1 || f === 0 ? 0.8 : 0.2) * (u > -0.4 ? 1 : 0.5);
+      house(u, v, along, deep, tall ? h * 1.5 : h, f, { gable: k.r(5) < 0.55, lod, lit: !inner && k.r(6) < seen, tall });
       n++;
       // mostly shoulder to shoulder; now and then an alley
       s += along + (k.r(7) < 0.12 ? 0.026 + k.r(8) * 0.02 : 0.003 + k.r(9) * 0.008);
@@ -357,8 +360,8 @@ export default defineLandmark({
   bookmarks: [
     {
       id: 'lake-town-close',
-      distanceKm: 22,
-      elevationDeg: 22,
+      distanceKm: 18,
+      elevationDeg: 26,
       azimuthDeg: 112,
       fov: 22,
       // the aim point sits on the lake bed: lift it to the water surface (≈ 2.4 above the bed here)

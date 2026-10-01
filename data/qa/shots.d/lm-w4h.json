@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "notes": "S3 W4-H review shots: Lake-town close over the canals (day / dusk), hero framing candidates. Landmark bookmarks (erebor -close / -wide, lake-town / dale / dol-guldur -close) live in the landmark definitions.",
+  "notes": "S3 W4-H review shots: the Front Gate close by day, Dale / Lake-town / Dol Guldur close by day, Lake-town with Erebor (prologue option). Landmark bookmarks (erebor -close / -wide, lake-town / dale / dol-guldur -close) live in the landmark definitions.",
   "shots": [
     {
       "id": "w4h-laketown-near",
@@ -90,80 +90,27 @@
       "note": "afternoon, close: the triangle of broken walls, the splintered crown, the bridge"
     },
     {
-      "id": "w4h-t-lt75-200",
-      "tod": 18.2,
-      "dayOfYear": 200,
-      "camera": {
-        "orbit": {
-          "place": "lake-town",
-          "distanceKm": 20,
-          "elevationDeg": 18,
-          "azimuthDeg": 75,
-          "fov": 22,
-          "lift": 2.6,
-          "aimKm": [
-            1.3,
-            0.6
-          ]
-        }
-      }
-    },
-    {
-      "id": "w4h-t-lt75-240",
+      "id": "w4h-laketown-erebor",
       "tod": 18.2,
       "dayOfYear": 240,
       "camera": {
         "orbit": {
           "place": "lake-town",
-          "distanceKm": 20,
-          "elevationDeg": 18,
-          "azimuthDeg": 75,
-          "fov": 22,
-          "lift": 2.6,
+          "distanceKm": 62,
+          "elevationDeg": 6,
+          "azimuthDeg": 168,
+          "fov": 30,
+          "lift": 13,
           "aimKm": [
-            1.3,
-            0.6
+            0,
+            6
           ]
         }
-      }
-    },
-    {
-      "id": "w4h-t-lt110-200",
-      "tod": 18.2,
-      "dayOfYear": 200,
-      "camera": {
-        "orbit": {
-          "place": "lake-town",
-          "distanceKm": 20,
-          "elevationDeg": 18,
-          "azimuthDeg": 110,
-          "fov": 22,
-          "lift": 2.6,
-          "aimKm": [
-            1.3,
-            0.6
-          ]
-        }
-      }
-    },
-    {
-      "id": "w4h-t-lt110-240",
-      "tod": 18.2,
-      "dayOfYear": 240,
-      "camera": {
-        "orbit": {
-          "place": "lake-town",
-          "distanceKm": 20,
-          "elevationDeg": 18,
-          "azimuthDeg": 110,
-          "fov": 22,
-          "lift": 2.6,
-          "aimKm": [
-            1.3,
-            0.6
-          ]
-        }
-      }
+      },
+      "compare": [
+        "reference/film/erebor/erebor-lonely-mountain-dos.jpg"
+      ],
+      "note": "prologue option (golden evening): from the south over the Long Lake — Lake-town's lanterns at the foot of the frame, the lake running north to the Lonely Mountain (the town is small here: at the ×12 relief Erebor stands 18° above the horizon from the town)"
     }
   ]
 }
