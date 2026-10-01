@@ -2,9 +2,23 @@ import { MeshStandardNodeMaterial, type Material } from 'three/webgpu';
 import type { LightGate } from '../landmarks/records.ts';
 import { tsl } from './tsl.ts';
 import { env } from './environment.ts';
+import { strata, strataFootprint, strataSteep } from './strata.ts';
 
 // NB: TSL vec3(new Color()) silently yields black in r186 — always use color(Color) for colour constants
-const { Fn, float, vec3, attribute, mx_noise_float, positionWorld, positionLocal, normalGeometry, normalView, normalWorld, cameraPosition, reflect, normalize, positionViewDirection, fwidth, length, smoothstep, mix, clamp, max, abs, sin, step, round, floor, select, hash, dot, sRGBTransferEOTF } = tsl;
+const { Fn, If, float, vec3, attribute, mx_noise_float, positionWorld, positionLocal, normalGeometry, normalView, normalWorld, cameraPosition, reflect, normalize, positionViewDirection, fwidth, length, smoothstep, mix, clamp, max, abs, sin, step, round, floor, select, hash, dot, sRGBTransferEOTF } = tsl;
+
+/**
+ * Noise class of rock faces (kit cliffs): stone noise WITHOUT the masonry coursing (kit cliffs carry 'brick'
+ * courses today) + optionally the shared strata (strata.ts). S4 W1-B contract: NOISE gains `rock: 5` and
+ * ProxyKit.cliff emits it; until then no vertex carries it.
+ */
+const ROCK_CLASS = 5;
+/**
+ * The strata on the rock class: switched OFF — with a temporary class-0 mapping the kit faces showed no
+ * banding although the generated WGSL matches the terrain's (working) strata; unresolved (W1-B knownIssues).
+ * Off, no branch is emitted.
+ */
+const KIT_STRATA = false;
 
 /**
  * Material families v2 (S3): every built structure is drawn with ONE of two shared uber materials —
@@ -214,8 +228,12 @@ function structureMaterial(): MeshStandardNodeMaterial {
   const isWood = isClass(NOISE.wood);
   const isFibre = isClass(NOISE.fibre);
   const isSmooth = isClass(NOISE.smooth);
-  const isFoliage = step(NOISE.foliage - 0.5, cls);
+  const isFoliage = isClass(NOISE.foliage);
+  // S4: rock (kit cliffs — class 5, emitted by ProxyKit.cliff; see the strata helper below)
+  const isRock = isClass(ROCK_CLASS);
   const nG = normalGeometry;
+  // footprint of the strata's bedding coordinate, taken in uniform control flow (the strata run in a branch)
+  const strataFy = strataFootprint(positionWorld);
   const pattern = Fn(() => {
     // landmark-local km (the meshes sit at the landmark origin): small arguments, so the fine octave
     // never bands on float32 world coordinates of several hundred km
@@ -243,7 +261,20 @@ function structureMaterial(): MeshStandardNodeMaterial {
     const coursing = jit.mul(cw).mul(isStone).mul(0.6);
     // foliage: leaf clumps — the two coarse octaves, stronger
     const leaf = n1.mul(w1.mul(0.7)).add(n2.mul(w2.mul(0.45)));
-    return mix(n.mul(float(1).sub(isSmooth.mul(0.75))).add(coursing), leaf, isFoliage);
+    // rock: the stone noise without masonry coursing, banded on its sheer faces by the terrain's own
+    // strata (world-space bedding, so a kit cliff and the terrain face beside it band alike). A branch on
+    // the class: no other surface pays for it. The pattern scales the albedo by grain, so the strata's
+    // luminance enters divided by it.
+    const rockBands = float(0).toVar();
+    if (KIT_STRATA) If(isRock.greaterThan(0.5), () => {
+      const pw = positionWorld;
+      const nw = normalWorld;
+      const warp = mx_noise_float(pw.xz.mul(1 / 60)).mul(2.2).add(mx_noise_float(pw.mul(1 / 3)).mul(0.35));
+      const st = strata(pw, nw, warp, mx_noise_float(pw.mul(1 / 3.3)), { fy: strataFy });
+      const sw = strataSteep(nw, 0.45, 0.75);
+      rockBands.assign(st.lum.sub(1).mul(sw).div(max(surf.b, 0.1)));
+    });
+    return mix(n.mul(float(1).sub(isSmooth.mul(0.75))).add(coursing.mul(float(1).sub(isRock))).add(rockBands), leaf, isFoliage);
   })();
   const albedo = sRGBTransferEOTF(col.rgb);
   // leaf masses: sun-bleached tops, shaded undersides (like the canopy shader's sub-crown shading)

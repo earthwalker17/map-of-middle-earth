@@ -4,7 +4,7 @@ import type { World } from '../world/World.ts';
 import type { QualityTier } from '../core/quality.ts';
 import type { Cdlod } from './cdlod.ts';
 import { env } from '../materials/environment.ts';
-import { TERRAIN_SHADE as TS, alpineAt, groundLookTexture, groundPalette, rockAt, snowAt, snowLineAt, srgbNode } from '../materials/looks.ts';
+import { TERRAIN_SHADE as TS, alpineAt, aspectDryness, groundLookTexture, groundPalette, rockAt, snowAt, snowLineAt, srgbNode } from '../materials/looks.ts';
 import type { GroundMaps } from './groundMaps.ts';
 import { stampSnowCaps } from '../world/stamps.ts';
 import type { TerrainDetail } from './terrainTextures.ts';
@@ -85,6 +85,9 @@ const STRATA_SLOPE = [0.26, 0.5] as const;
 /** S4 switches (P1/P2 on; P3/P4 items ship switched off until they read right) */
 const STRATA_ON = true;
 const CRUST_ON = true;
+/** P3: patchy, wind-scoured snow edges; grass tonal breakup (mottling, aspect, hollows) */
+const SNOW_V3_ON = true;
+const GRASS_BREAKUP_ON = true;
 
 /**
  * Terrain material family (the only terrain material in the project).
@@ -208,13 +211,28 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     const hEff = hC.add(northness.mul(TS.snowNorth));
     const alpineRaw = alpineAt(hEff.add(n3.mul(1.2)), line);
     const alpine = alpineRaw.mul(float(1).sub(turf));
+    // snow v3: a patchy edge (fine 3D noise shifts the effective height near the line: 0.9 km, and 0.4 km
+    // offline) and wind scouring — convex crests and the windward (west-facing) steep faces lose their snow
+    // first, so a massif shows broken snowfields between bare ribs, never an icing line
+    // the 0.4 km 3D noise (offline tiers only; faded once it would shimmer): snow edge patches, grass mottling
+    const n5f: N = !preview && (SNOW_V3_ON || GRASS_BREAKUP_ON) ? mx_noise_float(p.mul(1 / 0.4)).mul(float(1).sub(smoothstep(0.03, 0.15, fp))) : float(0);
+    let snowJit: N = float(0);
+    let scour: N = float(0);
+    if (SNOW_V3_ON) {
+      snowJit = n4.mul(1.0).add(n5f.mul(0.6));
+      const windward = clamp(nM.x.negate().mul(1.6), 0, 1).mul(smoothstep(0.18, 0.42, slope));
+      scour = crest.mul(0.6).add(windward.mul(0.5)).mul(smoothstep(-0.25, 0.35, n3.add(n4.mul(0.6))));
+    }
     // snow sheds from convex ribs and collects in gullies
-    const snowRegional = snowAt(hEff, slope.add(n3.mul(0.04)).add(crest.mul(0.12)), line, pal.volcanic, max(curv, 0));
+    const snowRegional = snowAt(hEff.add(snowJit), slope.add(n3.mul(0.04)).add(crest.mul(0.12)).add(scour.mul(0.18)), line, pal.volcanic, max(curv, 0));
     // stamp snow caps: above the cap's line (streaky edge, lower on north faces) on all but the sheerest
     // faces, fading out over the outer fifth of the stamp's reach
     let capSnow: N = float(0);
     if (caps.length) {
-      const sheer = float(1).sub(smoothstep(0.8, 0.96, slope.add(n3.mul(0.08)).add(crest.mul(0.06))));
+      // rock buttresses break through the cap on its steep, scoured parts (snow v3)
+      const sheer = SNOW_V3_ON
+        ? float(1).sub(smoothstep(0.6, 0.88, slope.add(n3.mul(0.08)).add(crest.mul(0.06)).add(n4.mul(0.12)).add(scour.mul(0.2))))
+        : float(1).sub(smoothstep(0.8, 0.96, slope.add(n3.mul(0.08)).add(crest.mul(0.06))));
       for (let i = 0; i < caps.length; i++) {
         const cx = snowCaps.element(i * 4);
         const cz = snowCaps.element(i * 4 + 1);
@@ -222,7 +240,7 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
         const cl = snowCaps.element(i * 4 + 3);
         const d = length(p.xz.sub(vec2(cx, cz)));
         const wR = clamp(reach.sub(d).div(reach.mul(0.2).add(1e-3)), 0, 1);
-        const up = smoothstep(cl.sub(0.6), cl.add(1.6), hEff.add(n3.mul(1.4)).add(n2.mul(0.8)));
+        const up = smoothstep(cl.sub(0.6), cl.add(1.6), hEff.add(n3.mul(1.4)).add(n2.mul(0.8)).add(snowJit.mul(1.3)));
         capSnow = max(capSnow, wR.mul(up));
       }
       capSnow = capSnow.mul(sheer).mul(float(1).sub(pal.volcanic));
@@ -252,8 +270,20 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     const scree = clamp(curv.mul(1.5).add(0.2).add(n3.mul(0.25)), 0, 1).mul(float(1).sub(smoothstep(0.3, 0.52, slope)));
 
     // ---- ground dryness
+    // grass breakup (P3): lush ↔ straw mottling at ≈ 5 and 1.5 km (3 / 0.9 km noise), sun-facing (south)
+    // slopes drier and shade-facing ones lusher (aspectDryness, shared with the water's coarse albedo),
+    // hollows lusher — the tonal variety of real pasture instead of one felt colour
+    let breakup: N = float(0);
+    if (GRASS_BREAKUP_ON)
+      breakup = n3
+        .mul(0.14)
+        .add(n4.mul(0.16))
+        .add(n5f.mul(0.12))
+        .mul(pal.pattern.add(0.5))
+        .add(aspectDryness(nM.z, slope))
+        .sub(hollow.mul(0.06));
     const dryness = clamp(
-      pal.dryness.add(n1.mul(0.2)).add(n2.mul(0.12)).add(hC.mul(TS.drynessPerHeight)).add(crest.mul(0.12)).sub(hollow.mul(0.08)).sub(moist.mul(0.3)).sub(water.a.mul(0.15)),
+      pal.dryness.add(n1.mul(0.2)).add(n2.mul(0.12)).add(hC.mul(TS.drynessPerHeight)).add(crest.mul(0.12)).sub(hollow.mul(0.08)).sub(moist.mul(0.3)).sub(water.a.mul(0.15)).add(breakup),
       0,
       1,
     );
@@ -361,7 +391,14 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     const ground = mix(pal.grass, pal.dry, dryness).toVar();
     // micro-pattern (tussock clumps / meadow patches / heath), region-weighted amplitude
     const patAmp = pal.pattern.mul(detail ? 1.1 : 1.6).add(0.2);
-    ground.assign(ground.mul(float(1).add(n3.mul(0.1).add(n4.mul(detail ? 0.08 : 0.16)).mul(patAmp))).mul(lumSoft));
+    ground.assign(ground.mul(float(1).add(n3.mul(0.1).add(n4.mul(detail ? (GRASS_BREAKUP_ON ? 0.12 : 0.08) : 0.16)).mul(patAmp))).mul(lumSoft));
+    // grass breakup (P3): a tonal mottle independent of the palette's grass ↔ dry pair — lusher, darker
+    // patches and lighter straw ones at 0.4 / 0.9 / 3 km — so even a region whose two tones are close
+    // (Rohan's golds, the Hobbiton turf) never reads as one felt colour
+    if (GRASS_BREAKUP_ON) {
+      const m = clamp(n5f.mul(1.1).add(n4.mul(0.9)).add(n3.mul(0.6)), -1, 1).mul(pal.pattern.mul(0.6).add(0.5));
+      ground.assign(ground.mul(vec3(1).add(vec3(0.12, 0.07, -0.04).mul(m))).mul(float(1).add(m.mul(0.07))));
+    }
     // above the treeline the turf turns thin, grey-green and stony
     ground.assign(mix(ground, mix(pal.grass, pal.rock, 0.55).mul(0.9), alpine.mul(0.6)));
     ground.assign(mix(ground, pal.soil, smoothstep(0.1, 0.3, slope).mul(0.5).mul(float(1).sub(turf.mul(0.8)))));
@@ -417,7 +454,8 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     }
 
     const col = mix(ground, rockCol, rock.mul(float(1).sub(shell.weight))).toVar();
-    const snowCol = srgbNode(TS.snow).mul(float(0.97).add(n4.mul(0.03))).mul(mix(float(1), lumHard, 0.6));
+    // snow: a slightly grey, varied albedo (old wind-packed vs fresh), never paper white
+    const snowCol = srgbNode(TS.snow).mul(float(0.97).add(n3.mul(0.03)).add(n4.mul(0.03))).mul(mix(float(1), lumHard, 0.6));
     col.assign(mix(col, snowCol, snow));
 
     // ---- coasts, shores, wetlands, ash, roads, channels

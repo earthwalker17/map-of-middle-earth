@@ -15,7 +15,19 @@ import { tsl, type TslNode } from './tsl.ts';
  */
 
 type N = TslNode;
-const { abs, clamp, float, floor, fract, fwidth, hash, max, mix, smoothstep, vec3 } = tsl;
+const { abs, clamp, float, floor, fract, fwidth, max, mix, smoothstep, vec3 } = tsl;
+
+/**
+ * Float hash of a bed index → [0, 1) (Hoskins' hash without sine: pure float arithmetic, well conditioned
+ * for the small integers here; the same in every material that calls it).
+ */
+const hash = (x: N): N => {
+  // fold the index into [0, 289) first: small arguments, no precision loss in any compiler's reassociation
+  const k = x.sub(floor(x.mul(1 / 289)).mul(289));
+  const a = fract(k.mul(0.1031).add(0.1));
+  const b = a.mul(a.add(33.33));
+  return fract(b.mul(b.add(b)));
+};
 
 export const STRATA = {
   /** regional dip of the bedding: height units per km along DIP_DIR (≈ 2°) */
@@ -47,6 +59,17 @@ export interface StrataOptions {
   preview?: boolean;
   /** overall strength 0..1 of the luminance contrast (normals keep their tilt) */
   contrast?: number;
+  /**
+   * the bedding coordinate's change per pixel, precomputed (strataFootprint) — for callers that evaluate
+   * the strata inside a branch, where no derivative may be taken; default fwidth of the bedding coordinate
+   */
+  fy?: N;
+}
+
+/** fwidth of the (unwarped) bedding coordinate — take it in uniform control flow, pass it as `fy`. */
+export function strataFootprint(p: N): N {
+  const S = STRATA;
+  return fwidth(p.y.add(p.x.mul(S.dip * S.dipDir[0]).add(p.z.mul(S.dip * S.dipDir[1]))));
 }
 
 /**
@@ -61,7 +84,7 @@ export function strata(p: N, n: N, warp: N, lateral: N, opts: StrataOptions = {}
   const preview = opts.preview ?? false;
   const yb = p.y.add(p.x.mul(S.dip * S.dipDir[0]).add(p.z.mul(S.dip * S.dipDir[1]))).add(warp);
   // bed-coordinate change per pixel (the face's projected bed thickness)
-  const fy = max(fwidth(yb), 1e-6);
+  const fy = max(opts.fy ?? fwidth(yb), 1e-6);
   let lum: N = float(0);
   let tilt: N = float(0);
   let tint: N = vec3(1);
