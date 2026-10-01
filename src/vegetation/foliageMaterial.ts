@@ -2,6 +2,7 @@ import { MeshStandardNodeMaterial, PhysicalLightingModel, type Data3DTexture } f
 import { tsl, type TslNode } from '../materials/tsl.ts';
 import { env } from '../materials/environment.ts';
 import type { World } from '../world/World.ts';
+import { spillIrradiance } from '../emission/spill.ts';
 import { Arch, archReach } from './archetypes.ts';
 import { RING, RNOM, TRUNK_LIMB, TRUNK_RING, WHOLE } from './clumpGeometry.ts';
 import { HERO_TRUNK } from './authored.ts';
@@ -49,6 +50,9 @@ const {
   vec3,
   vec4,
 } = tsl;
+
+/** Emission spill on the foliage (P4; inert until W2-D fills spill.ts). */
+const SPILL_ON = true;
 
 /** Per-kind shader parameters, indexed by `Kind`. */
 function perKind(values: Partial<Record<Kind, number>>, fallback: number): N {
@@ -486,7 +490,19 @@ export function createFoliageMaterial(world: World, opts: FoliageOptions = {}): 
   // (single trees: a wider spread, so a crown reads as lobes of light and shade, not one puff)
   const tone = float(1).add(h(6).sub(0.5).mul(toneK.element(ik)).mul(select(aCluster.or(aStand), float(1), float(1.5))));
   const warm = h(7).sub(0.5).mul(hueK.element(ik));
-  const albedoV = pow(max(iC.rgb, vec3(0)), vec3(2.2)).mul(tone).mul(vec3(float(1).add(warm), 1, float(1).sub(warm.mul(1.5))));
+  const linC = pow(max(iC.rgb, vec3(0)), vec3(2.2));
+  // autumn crowns (warm golds / ochres on broadleaf and riverside kinds — Rivendell): a real autumn crown is
+  // a mix of gold, rust and leaves still olive-green, and darker than its brightest leaves — never one
+  // flat peach puff. Per sub-crown, from its own hash
+  const warmth = smoothstep(0.24, 0.42, linC.r.sub(linC.b).div(linC.r.add(linC.g).add(linC.b).add(1e-3))).mul(
+    select(kindIs(kind, Kind.Oak).or(kindIs(kind, Kind.River)), float(1), float(0)),
+  );
+  const hA = h(11);
+  const autumnMix = select(hA.lessThan(0.3), vec3(0.6, 0.78, 0.5), select(hA.greaterThan(0.78), vec3(0.92, 0.6, 0.42), vec3(0.95, 0.88, 0.72)));
+  const albedoV = linC
+    .mul(mix(vec3(1), autumnMix, warmth))
+    .mul(tone)
+    .mul(vec3(float(1).add(warm), 1, float(1).sub(warm.mul(1.5))));
   // cluster height fraction (0 bottom … 1 ≈ top of the centre crown / the archetype's crown top)
   const uTop = select(aCluster, kSpread.mul(0.42 * 1.55), select(aStand, float(1.05), reachA.mul(0.92)));
 
@@ -561,7 +577,9 @@ export function createFoliageMaterial(world: World, opts: FoliageOptions = {}): 
   const clusLo = select(treeF, float(0.66), float(0.8));
   let alb: N = vAlbedo.mul(densK.element(ikF)).mul(mix(subLo, float(1), subLit)).mul(mix(clusLo, float(1), clusterLit));
   // warm, sun-bleached crown tops
-  alb = mix(alb, alb.mul(vec3(1.1, 1.06, 0.86)), smoothstep(0.6, 1.0, crownH).mul(0.3));
+  // (not on autumn golds: warming them further turns them salmon)
+  const warmF = smoothstep(0.24, 0.42, vAlbedo.r.sub(vAlbedo.b).div(vAlbedo.r.add(vAlbedo.g).add(vAlbedo.b).add(1e-3)));
+  alb = mix(alb, alb.mul(vec3(1.1, 1.06, 0.86)), smoothstep(0.6, 1.0, crownH).mul(0.3).mul(float(1).sub(warmF)));
   alb = alb.mul(float(1).sub(vCavity.mul(0.4))).mul(creaseA);
   // trunks: dark bark, warm silver mallorn trunks in Lórien, pale sick trunks in Mirkwood
   const bark = select(kindIs(vKind, Kind.Lorien), srgb(0xcfc8b8), select(kindIs(vKind, Kind.Mirkwood), srgb(0x5e5a4e), srgb(0x3b3026)));
@@ -590,11 +608,14 @@ export function createFoliageMaterial(world: World, opts: FoliageOptions = {}): 
   // Lórien: faintly luminous gold (stronger at night), with a warm-gold sheen through twilight (the wood
   // keeps its gold at blue hour); mallorn bark catches a little of it
   const sheen = select(isTrunkF, vec3(0), vAlbedo.mul(vec3(1.15, 0.98, 0.62))).mul(env.twilight.mul(0.075));
-  material.emissiveNode = select(isTrunkF, bark.mul(0.2), vAlbedo)
+  const glow = select(isTrunkF, bark.mul(0.2), vAlbedo)
     .mul(float(0.012).add(env.night.mul(0.024)))
     .add(sheen)
     .mul(glowK.element(ikF))
     .mul(select(isTrunkF, float(1), crownH.mul(0.6).add(0.4)));
+  // emission spill (S4 P4): the light of nearby fires, windows and lamps on the leaves (W2-D's
+  // spillIrradiance; zero until it lands). Diffuse: albedo · E / π, through the ambient occlusion
+  material.emissiveNode = SPILL_ON ? glow.add(albedo.mul(spillIrradiance(positionWorld, nFinal)).mul(ao).mul(1 / Math.PI)) : glow;
   // Guard against the post grade: its saturation (>1) extrapolates away from luma and a saturated
   // gold with little blue went negative → pow() → NaN → black crowns. Keep every channel above
   // a small fraction of luma (visually identical, numerically safe).

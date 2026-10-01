@@ -20,30 +20,31 @@ import { archOf, retires } from './archetypes.ts';
  */
 
 type N = TslNode;
-const { If, clamp, dot, float, floor, fract, hash, length, max, min, mix, pow, select, smoothstep, sqrt, texture, uint, uniform, vec2, vec3 } = tsl;
+const { If, clamp, dFdx, dFdy, dot, float, floor, fract, hash, length, max, min, mix, pow, select, smoothstep, sqrt, texture, uint, uniform, vec2, vec3 } = tsl;
 
 /** Switch: off = no retirement, no shell (the S3 instanced forests everywhere). */
 export const SHELL_ON = true;
 /**
  * The hand-over band, in PIXELS of a canopy crown (≈ SHELL_CROWN_KM across): the canopy instances retire
  * while a crown shrinks from SHELL_NEAR_PX to SHELL_FAR_PX on screen, i.e. over the distances
- * SHELL_CROWN_KM · pxPerKm / px (720p, 35°: ≈ 114 … 196 km; 1080p: ≈ 171 … 293 km).
+ * SHELL_CROWN_KM · pxPerKm / px (720p, 35°: ≈ 76 … 137 km; 1080p: ≈ 114 … 205 km).
  *
- * (The brief's fixed 28–45 km band was built and rendered first: at those distances a canopy crown still
- * spans 25–40 px and the forest canopy stands ≈ 1 km above the ground — Mirkwood's and Fangorn's edges
- * lost their wall of trees and the shell read as a flat dark sheet / cobbles at grazing angles. Scaling the
- * band with the screen keeps every regional shot instanced and gives the shell the far views, where the
- * instances were sub-10-px blob carpets and the cost.)
+ * (The brief's fixed 28–45 km band was built and rendered first, with the S3 canopy crowns of ≈ 1 km: at
+ * those distances a crown still spans 25–40 px and the canopy stands ≈ 1 km above the ground — Mirkwood's
+ * and Fangorn's edges lost their wall of trees and the shell read as a flat dark sheet / cobbles at grazing
+ * angles. A band in screen pixels hands over only where the instances are a few-pixel speckle, the shell
+ * keeps that speckle (crown domes, per-crown tone), and with the S4 crowns at half the S3 size the band
+ * falls at half the distance — the instances drawn per view stay about the same.)
  */
-export const SHELL_CROWN_KM = 1.2;
-export const SHELL_NEAR_PX = 12;
-export const SHELL_FAR_PX = 7;
+export const SHELL_CROWN_KM = 0.6;
+export const SHELL_NEAR_PX = 9;
+export const SHELL_FAR_PX = 5;
 /** the band (km) for a view of `pxPerKm` screen pixels per km at 1 km distance */
 export function shellBand(pxPerKm: number): [number, number] {
   return [(SHELL_CROWN_KM * pxPerKm) / SHELL_NEAR_PX, (SHELL_CROWN_KM * pxPerKm) / SHELL_FAR_PX];
 }
 /** the current band (near, far km): set per frame by the VegetationSystem (a pure function of the view) */
-export const shellBandUniform = uniform(new Vector2(114, 196));
+export const shellBandUniform = uniform(new Vector2(76, 137));
 export const SHELL_W = 512;
 export const SHELL_H = 307;
 /**
@@ -53,15 +54,15 @@ export const SHELL_H = 307;
  * instanced forests in the same shots (veg-fangorn-close, veg-lorien-golden). Indexed by placement Kind.
  */
 const KIND_RESPONSE: Record<number, [number, number, number]> = {
-  1: [0.44, 0.52, 0.27], // Mirkwood
-  2: [0.42, 0.5, 0.26], // Fangorn
-  3: [0.95, 0.9, 0.44], // Lórien
+  1: [0.78, 0.86, 0.42], // Mirkwood
+  2: [0.74, 0.82, 0.4], // Fangorn
+  3: [1.15, 1.08, 0.55], // Lórien
 };
-const DEFAULT_RESPONSE: [number, number, number] = [0.46, 0.54, 0.28];
+const DEFAULT_RESPONSE: [number, number, number] = [0.8, 0.88, 0.43];
 /** mean of the crown shading (lit tops / crevices) where the relief has faded out */
 const SHELL_MEAN_LIT = 0.86;
-/** crown dome grid (km per cell): the canopy patches' sub-crowns are ≈ 0.4–0.9 km across */
-const CROWN_CELL = 1.0;
+/** crown dome grid (km per cell): the canopy patches' sub-crowns are ≈ 0.2–0.45 km across */
+const CROWN_CELL = 0.5;
 
 const shellData = new Uint8Array(SHELL_W * SHELL_H * 4);
 export const canopyTexture = new DataTexture(shellData, SHELL_W, SHELL_H, RGBAFormat, UnsignedByteType);
@@ -227,17 +228,26 @@ export function canopyShell(p: N, footprintKm: N, forest: N): CanopyShellSample 
   const dist = length(p.sub(env.cameraPos));
   // cover: the baked patch cover, its edge sharpened by the (finer) forest mask
   const cover = smoothstep(0.12, 0.5, tex.a).mul(smoothstep(0.22, 0.6, forest));
-  const weight = smoothstep(shellBandUniform.x, shellBandUniform.y, dist).mul(cover).toVar();
+  // the shell leads the hand-over: full by mid-band, so the gaps opening between the sinking crowns show
+  // canopy, never the bare floor
+  const bandIn = shellBandUniform.x.mul(0.9);
+  const bandFull = shellBandUniform.x.add(shellBandUniform.y.sub(shellBandUniform.x).mul(0.45));
+  const weight = smoothstep(bandIn, bandFull, dist).mul(cover).toVar();
   // (the baked colour is already the canopy's effective albedo: kind response, self-shadowing)
   const base = pow(max(tex.rgb, vec3(0)), vec3(2.2)).toVar();
   const albedo = base.mul(SHELL_MEAN_LIT).toVar();
   const dn = vec3(0).toVar();
   const fp = footprintKm.toVar();
   const pq = p.xz.toVar();
-  // relief amplitude: the crowns resolve while a dome spans more than a few pixels
+  // relief amplitude: the crowns' relief resolves while a dome spans more than a few pixels; their tones
+  // (the speckle of lit and shaded crowns that reads as canopy) down to a pixel or two
   const amp = float(1).sub(smoothstep(CROWN_CELL / 9, CROWN_CELL / 3.5, fp)).toVar();
+  // (the speckle fades on the pixel footprint's short axis: at grazing angles the long axis, across the
+  // view, would erase it long before the standing instance crowns lose theirs)
+  const fpMin = min(length(dFdx(p.xz)), length(dFdy(p.xz))).toVar();
+  const ampT = float(1).sub(smoothstep(CROWN_CELL / 3.5, CROWN_CELL / 1.3, fpMin)).toVar();
   // (called inside the terrain material's Fn: the branch joins its stack)
-  If(weight.greaterThan(1e-3).and(amp.greaterThan(0.01)), () => {
+  If(weight.greaterThan(1e-3).and(ampT.greaterThan(0.01)), () => {
     // two sizes of crown: the canopy's own (≈ 1 km) and the smaller fill between them
     const big = crownDomes(pq, CROWN_CELL, 0.55, 17);
     const small = crownDomes(pq, CROWN_CELL * 0.47, 0.5, 29);
@@ -248,12 +258,12 @@ export function canopyShell(p: N, footprintKm: N, forest: N): CanopyShellSample 
     const tone = select(winBig, big.tone, small.tone).sub(0.5);
     dn.assign(vec3(tilt.x, 0, tilt.y).mul(amp));
     // lit crown tops, dark low gaps between the crowns; each crown its own tone and a little warm / cool
-    const lit = smoothstep(0.0, CROWN_CELL * 0.3, h);
+    const lit = mix(float(SHELL_MEAN_LIT), mix(float(0.36), float(1.12), smoothstep(0.0, CROWN_CELL * 0.3, h)), amp.mul(0.6).add(0.4));
     const crown = base
-      .mul(mix(float(0.45), float(1.08), lit))
-      .mul(tone.mul(0.32).add(1))
-      .mul(vec3(float(1).add(tone.mul(0.08)), 1, float(1).sub(tone.mul(0.14))));
-    albedo.assign(mix(base.mul(SHELL_MEAN_LIT), crown, amp));
+      .mul(lit)
+      .mul(tone.mul(0.5).add(1))
+      .mul(vec3(float(1).add(tone.mul(0.12)), 1, float(1).sub(tone.mul(0.2))));
+    albedo.assign(mix(base.mul(SHELL_MEAN_LIT), crown, ampT));
   });
   return { weight: clamp(weight, 0, 1), albedo, dn };
 }

@@ -508,8 +508,15 @@ export function mallornShape(hr: number, trunk: number, r: number): Crown {
 
 /** base of the tree line (world units; the alpine zone of the terrain starts ≈ 20) */
 const TREELINE = 22;
-/** forest canopy grid (km): one canopy patch per cell (the final tier's S3 cell) */
-export const CANOPY_CELL = 2.0;
+/**
+ * forest canopy grid (km): one canopy patch (seven crowns) per cell. S4: half the S3 final cell, so a
+ * forest crown (≈ 0.2–0.45 km) stands beside a field tree (0.12–0.30 km) instead of dwarfing it; the far
+ * canopy shell takes the patches over at the same on-screen crown size as before (SHELL_CROWN_KM), so
+ * the instances drawn per view stay about the same.
+ */
+export const CANOPY_CELL = 1.0;
+/** the emergent mallorns of Lórien keep the S3 size (great trees above the canopy) */
+const MALLORN_CELL = 2.0;
 /** near-camera detail grid (km): forest fill, edge trees, open-country singles */
 export const FINE_CELL = 1.15;
 
@@ -559,13 +566,14 @@ export function placeVegetation(world: World, opts: PlacementOptions): Placement
         if (h < 0.15) continue;
         const al = alpine(x, z, h);
         if (al >= 1 || rand(seed, id, 8) < 0.75 * al) continue;
-        if (s.slope(x, z) > 0.55) continue;
-        if (rand(seed, id, 9) < barren.at(x, z)) continue;
+        const sl = s.slope(x, z);
+        if (sl > 0.55) continue;
         const kind = forestKind(s, x, z);
         const gT = kind === Kind.Mirkwood ? 0.24 : kind === Kind.Fangorn ? 0.2 : kind === Kind.Lorien ? 0.22 : 0.23;
         if (rand(seed, id, 10) > smooth(gT - 0.05, gT + 0.05, glade(x, z))) continue;
+        if (rand(seed, id, 9) < barren.at(x, z)) continue;
         // montane stands of conifers in coherent patches (a low-frequency noise picks which patches)
-        const conShare = coniferShare(kind, h, s.slope(x, z));
+        const conShare = coniferShare(kind, h, sl);
         const isCon = conShare > 0 && 0.65 * rand(seed, id, 11) + 0.35 * valueNoise(x / 6, z / 6, seed + 67) < conShare;
         const cr = isCon ? coniferStandFor(c, seed, id) : canopyFor(kind, c, seed, id);
         // ragged edges: smaller, lower, more open patches with crowns pulled in towards the forest edge
@@ -594,10 +602,11 @@ export function placeVegetation(world: World, opts: PlacementOptions): Placement
   for (let k = 0; k < lorienCanopy.length; k++) {
     const p = lorienCanopy[k];
     const id = hash32(Math.round(p.x * 100), Math.round(p.z * 100), 111);
-    if (rand(seed, id, 1) > 0.15) continue;
-    const x = p.x + (rand(seed, id, 2) - 0.5) * coarseCell * 0.6;
-    const z = p.z + (rand(seed, id, 3) - 0.5) * coarseCell * 0.6;
-    const hr = coarseCell * (0.42 + 0.14 * rand(seed, id, 4));
+    // (one per ≈ 27 km², whatever the canopy cell)
+    if (rand(seed, id, 1) > 0.15 * (coarseCell / MALLORN_CELL) ** 2) continue;
+    const x = p.x + (rand(seed, id, 2) - 0.5) * MALLORN_CELL * 0.6;
+    const z = p.z + (rand(seed, id, 3) - 0.5) * MALLORN_CELL * 0.6;
+    const hr = MALLORN_CELL * (0.42 + 0.14 * rand(seed, id, 4));
     if (excluded(ex, x, z, hr)) continue;
     const m = mallornShape(hr, p.top * (1.25 + 0.25 * rand(seed, id, 6)), rand(seed, id, 5));
     coarse.push(x, z, m.hr, m.vr, m.trunk, Kind.Lorien, rand(seed, id, 7) * TAU, 0.9 + 0.2 * rand(seed, id, 8), pickColor(Kind.Lorien, seed, id, x, z), m.shape);
@@ -737,9 +746,9 @@ export function placeVegetation(world: World, opts: PlacementOptions): Placement
           coarse.push(px, pz, tr.hr, tr.vr, tr.trunk, Kind.Ithilien, rand(seed, tid, 44) * TAU, 0.85 + 0.3 * rand(seed, tid, 45), pickColor(Kind.Ithilien, seed, tid, px, pz), tr.shape);
         };
         if (t < 0.7 * grove) {
-          // a grove: 4–9 trees whose crowns touch, a cypress among them now and then
-          const count = 4 + Math.floor(rand(seed, id, 5) * 6);
-          const rad = FIELD_CROWN * 1.15 * (1.1 + 0.6 * Math.sqrt(count));
+          // a grove: 6–14 trees whose crowns touch, a cypress among them now and then
+          const count = 6 + Math.floor(rand(seed, id, 5) * 9);
+          const rad = FIELD_CROWN * 1.15 * (0.9 + 0.5 * Math.sqrt(count));
           for (let q = 0; q < count; q++) {
             const a = rand(seed, id, 50 + q) * TAU;
             const rr = Math.sqrt(rand(seed, id, 60 + q)) * rad;
@@ -845,7 +854,8 @@ export function placeVegetation(world: World, opts: PlacementOptions): Placement
             // forest fill (part of the canopy: retired into the far shell with it); the quality density
             // thins it, never resizes it
             if (rand(seed, id, 14) > dens) continue;
-            const hr = c * (0.42 + 0.28 * rand(seed, id, 6)) * (1 - 0.3 * al);
+            // (sized like the canopy patches' crowns: half the fine cell at the S4 canopy cell)
+            const hr = c * (CANOPY_CELL / 2) * (0.42 + 0.28 * rand(seed, id, 6)) * (1 - 0.3 * al);
             if (isCon) cr = { hr, vr: hr * (0.6 + 0.2 * rand(seed, id, 7)), trunk: -0.05 * hr, shape: { spread: 0.65 + 0.25 * rand(seed, id, 8), gap: 0.18, hVar: 0.3, arch: Arch.ConiferStand } };
             else {
               const vr = hr * (kind === Kind.Lorien ? 1.15 : kind === Kind.Mirkwood ? 1.0 : 0.9) * (0.8 + 0.3 * rand(seed, id, 7));
