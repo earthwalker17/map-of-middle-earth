@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "notes": "S4 W1-A review shots (sky, ash deck, clouds, aerial perspective, valley mist, night): the named dales at dawn / dusk / moonlit night for the valley mist (Rivendell, the Sirannon below the Moria gate at dusk, the Anduin by Osgiliath, the Morgul vale), Mordor's pall at night (the red underglow over Doom), and Caradhras for the cumulus caps. JSON copies so `pnpm shots --determinism` can repeat them.",
+  "shots": [
+    {"id": "w1a-rivendell-dawn", "tod": 8.0, "dayOfYear": 298, "camera": {"orbit": {"place": "rivendell", "distanceKm": 45, "elevationDeg": 22, "azimuthDeg": 230, "fov": 38}}, "compare": ["reference/film/rivendell"], "note": "late-October morning over the Bruinen gorge from the south-west: valley mist in the dale, the heights clear"},
+    {"id": "w1a-sirannon-dusk", "tod": 19.6, "dayOfYear": 200, "camera": {"orbit": {"place": "moria", "distanceKm": 40, "elevationDeg": 16, "azimuthDeg": 250, "fov": 38}}, "compare": ["reference/film/moria"], "note": "summer dusk up the Sirannon (low sun behind the camera) to the West-gate under the Misty Mountains: mist in the stair-valley"},
+    {"id": "w1a-anduin-dawn", "tod": 5.0, "dayOfYear": 200, "camera": {"orbit": {"place": "osgiliath", "distanceKm": 60, "elevationDeg": 14, "azimuthDeg": 300, "fov": 38}}, "compare": ["reference/film/anduin", "reference/film/osgiliath"], "note": "summer dawn over the Anduin vale (Osgiliath) from the north-west toward the Ephel Dúath: river mist, Mordor's pall beyond the mountains"},
+    {"id": "w1a-morgul-vale-night", "tod": 22.0, "dayOfYear": 78, "camera": {"orbit": {"place": "minas-morgul", "distanceKm": 30, "elevationDeg": 12, "azimuthDeg": 250, "fov": 38}}, "compare": ["reference/film/minas-morgul"], "note": "the Morgul vale by March moonlight from the west: green-tinted vale mist, the pall overhead"},
+    {"id": "w1a-doom-night", "tod": 22.0, "camera": {"orbit": {"place": "mount-doom", "distanceKm": 56, "elevationDeg": 1, "azimuthDeg": 166, "fov": 46, "lift": 1, "aimKm": [10, -6]}}, "compare": ["reference/film/mount-doom/mount-doom-plume-lava-fotr.jpg"], "note": "= mount-doom-close at night: the pall lit red from below"},
+    {"id": "w1a-caradhras-caps", "tod": 14.0, "camera": {"orbit": {"place": "caradhras", "distanceKm": 70, "elevationDeg": 8, "azimuthDeg": 240, "fov": 35}}, "compare": ["reference/film/caradhras"], "note": "the Misty Mountains from the south-west at midday: cumulus caps on Caradhras (P4), cumulus overhead"}
+  ]
+}

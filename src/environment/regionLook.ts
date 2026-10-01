@@ -12,8 +12,9 @@ import { env } from '../materials/environment.ts';
  */
 const BASE = { saturation: 1.1, contrast: 1.1, bloomStrength: 0.12, bloomRadius: 0.55, bloomThreshold: 2.2 };
 /** Night (moonlit) layer: Purkinje-like desaturated blue-grey, a little lift in exposure (contrast
- * held so the moonlit land reads crisp, not murky). */
-const NIGHT = { saturation: 0.42, tint: new Color(0.85, 0.95, 1.15), exposure: 0.62, contrast: 1.0, redKeep: 0.75 };
+ * held so the moonlit land reads crisp, not murky). S4: +0.62 → +0.4 stops — the moon key doubled and
+ * the hemisphere fill dropped (timeOfDay), so the lift no longer has to carry the night read. */
+const NIGHT = { saturation: 0.42, tint: new Color(0.85, 0.95, 1.15), exposure: 0.4, contrast: 1.0, redKeep: 0.75 };
 /** How strongly SceneState.lookOverride pulls the grade towards its region. */
 const OVERRIDE = 0.85;
 

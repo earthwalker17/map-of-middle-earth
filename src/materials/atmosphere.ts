@@ -19,7 +19,7 @@ import type { World } from '../world/World.ts';
 import { SLAB } from '../diorama/slabSpec.ts';
 
 type N = TslNode;
-const { Fn, If, abs, atan, clamp, dot, exp, float, length, max, min, mix, output, positionWorld, select, smoothstep, sqrt, texture, uniform, vec2, vec3, vec4 } = tsl;
+const { Fn, If, abs, atan, clamp, dot, exp, float, length, max, min, mix, output, positionWorld, select, smoothstep, sqrt, step, texture, uniform, vec2, vec3, vec4 } = tsl;
 
 /** In-scatter LUT: azimuth × depression (rows at −dir.y = (j / (ROWS − 1))²). */
 const LUT_AZ = 96;
@@ -37,6 +37,12 @@ const LUT_ROWS = 16;
 export const VALLEY_MIST = 1.4;
 /** above this height (world units; ~6 e-folds of the ground layer) no fragment can gather mist */
 const VALLEY_MIST_TOP = 40;
+/**
+ * Optical depth of the valley-mist layer per unit of valley mist (seen straight down) and the
+ * shallowest view it is integrated for (grazing rays see at most 1 / MIST_MIN_SIN of it).
+ */
+const MIST_SIGMA = 0.03;
+const MIST_MIN_SIN = 0.15;
 /** atmo2.B stores the regional mist gain / MIST_SCALE (RGBA8) */
 const MIST_SCALE = 3;
 /**
@@ -95,11 +101,11 @@ const _c = new Color();
  *    pixel. Density below 1 thins the air; the EXCESS above 1 is a local feature (Mordor's fumes,
  *    Dagorlad ash, marsh damp, elven luminous haze) and fades in over a much shorter range
  *    (env.hazeRamp.zw), so Mordor keeps its gloom beyond a clear Ithilien at any shot scale.
- *  - Valley mist: at low sun (env.golden / twilight) the ground layer thickens over the valleys of
- *    the baked terrain analysis (World.terrainMask G < 0.5) at the ray endpoint, faded in like the
- *    local haze — mist lies in the dales at golden hour and dawn, the heights stay clear. Tier-gated
- *    (enableValleyMist: review/final) and pre-tested (low sun, fragment height), so preview and
- *    midday frames never sample the mask.
+ *  - Valley mist: at low sun (env.golden / twilight) or under a bright moon a thin mist layer lies
+ *    in the valleys of the baked terrain analysis (World.terrainMask G < 0.5) at the ray endpoint,
+ *    scaled by the regional gain (atmo2.B: the named dales) and faded in like the local haze — mist
+ *    lies in the dales at golden hour and dawn, the heights stay clear. Pre-tested (low sun / moon,
+ *    fragment height), so midday frames never sample the mask (all tiers since S4).
  *  - β_rgb is gently Rayleigh-like (blue extincts fastest), so distant land drifts to blue-grey;
  *    the spread is kept small so dark albedos (forests) do not turn teal.
  *  - C∞(dir) is the sky model's single-scattering radiance for the view direction (Preetham with
@@ -503,7 +509,8 @@ export class Atmosphere {
       const g = this.valleyTex.sample(uv).level(0).g;
       // the regional gain: the named dales gather it, the ash plains and open downs much less
       const regional = texture(this.atmo2, uv).level(0).b.mul(MIST_SCALE);
-      out.assign(clamp(float(0.44).sub(g).mul(4), 0, 1).mul(gain).mul(regional));
+      // soft valley edges (the mask is coarse): the mist thins out over the valley sides
+      out.assign(smoothstep(0, 1, clamp(float(0.47).sub(g).mul(2.6), 0, 1)).mul(gain).mul(regional));
     });
     return out;
   }
@@ -605,8 +612,13 @@ export class Atmosphere {
     const table = float(1).sub(smoothstep(350, 1400, from.y).mul(0.65));
     const air = smoothstep(r.x, r.y, d).mul(min(density, 1)).mul(table).mul(env.hazeGain);
     const local = smoothstep(r.z, r.w, d).mul(max(density.sub(1), 0)).mul(table);
-    // valley mist is a local feature too (short ramp): the ground layer thickened over the dales
-    const mist = ground.mul(valley).mul(smoothstep(r.z, r.w, d));
+    // valley mist is a local feature too (short ramp): a thin layer lying IN the dale at the ray's
+    // end (S4: relative to the valley floor, not to sea level — the S3 term rode the ground layer,
+    // which is ~0 in the high dales of Rivendell or the Sirannon), seen through 1 / sin(elevation)
+    // of it; only on the slab top (never the cut faces or the void)
+    const sinEl = abs(ray.y).div(max(d, 1e-3));
+    const onTop = step(SLAB.xMin + 0.5, to.x).mul(step(to.x, SLAB.xMax - 0.5)).mul(step(SLAB.zMin + 0.5, to.z)).mul(step(to.z, SLAB.zMax - 0.5)).mul(step(0, to.y));
+    const mist = valley.mul(MIST_SIGMA).div(max(sinEl, MIST_MIN_SIN)).mul(smoothstep(r.z, r.w, d)).mul(onTop);
     let tau = layers.mul(air.add(local)).add(mist).add(env.fogDensity.mul(d.mul(frac)));
     // ash under a deck (local feature: the short ramp, relaxed for whole-table views)
     if (ash) tau = tau.add(layer(float(ASH_FALLOFF)).mul(ASH_SIGMA).mul(ash).mul(smoothstep(ASH_RAMP[0], ASH_RAMP[1], d)).mul(table).mul(this.ashGain));
@@ -618,7 +630,7 @@ export class Atmosphere {
    * colour · T + C∞ · tint · (1 − T). `inScatter = false` (quality tier) uses grey extinction.
    * Must run inside a TSL Fn (the valley-mist pre-test is a branch).
    */
-  apply(color: N, from: N, to: N, inScatter = true, explicitLod = false, fromCamera = false): N {
+  apply(color: N, from: N, to: N, inScatter = true, explicitLod = false, fromCamera = false, emissive: N | null = null, emissiveFog = 1): N {
     const reg = this.rayRegional(from, to, explicitLod, fromCamera);
     const tau = this.opticalDepth(from, to, reg.a, this.valleyMist(to), this.rayDeck(from, to, explicitLod, fromCamera));
     const beta = inScatter ? env.extinction : vec3(1);
@@ -633,7 +645,10 @@ export class Atmosphere {
       const grey = dot(cInf, vec3(0.2126, 0.7152, 0.0722));
       cInf = mix(vec3(grey), cInf, mix(float(0.55), float(1), smoothstep(0, 0.6, tau)));
     }
-    return color.mul(T).add(cInf.mul(vec3(1).sub(T)));
+    const out = color.mul(T).add(cInf.mul(vec3(1).sub(T)));
+    // an additive light source seen through the haze: extinction only, softened by `emissiveFog`
+    // (< 1: the light also scatters forward in the haze around it, so it survives the veil better)
+    return emissive ? out.add(emissive.mul(T.pow(emissiveFog))) : out;
   }
 
   /** `scene.fogNode`: the material output seen through the atmosphere from the camera. */

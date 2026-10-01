@@ -24,6 +24,8 @@ const DECK_DRIFT = 0.45;
  * bright daytime one.
  */
 const GLOW_RADIANCE = 0.3;
+/** the glow sees the haze's transmittance to this power (it lights the ash around it) */
+const DECK_GLOW_FOG = 0.35;
 /** opacity of the deck seen from below at full cover (a little light leaks through the thinnest parts) */
 const DECK_UNDER_OPACITY = 0.97;
 /** visible cumulus: self-shadow probe distance towards the light (km) */
@@ -178,6 +180,7 @@ export class CloudLayer {
     mat.transparent = true;
     mat.depthWrite = false;
     mat.side = DoubleSide;
+    mat.fog = false; // the shader applies the aerial perspective itself (the glow survives it)
     const shade = this.deckShade();
     mat.colorNode = shade.rgb;
     mat.opacityNode = shade.a;
@@ -223,8 +226,10 @@ export class CloudLayer {
       const glow = B.xyz.mul(env.deckGlow).mul(thick.mul(0.5).add(0.6));
       // top: sunlit ash cloud with a faint key rim where it thins
       const rim = float(1).sub(dens).mul(0.4).add(0.6);
-      const top = tone.mul(1.4).mul(eKey.mul(n.mul(0.45).add(0.55)).mul(rim).add(eSky.mul(0.55))).add(glow.mul(0.25));
-      const col = mix(top, under.mul(n.mul(-0.35).add(1.12)).add(glow), below);
+      const top = tone.mul(1.4).mul(eKey.mul(n.mul(0.45).add(0.55)).mul(rim).add(eSky.mul(0.55)));
+      const surf = mix(top, under.mul(n.mul(-0.35).add(1.12)), below);
+      // fogged here (the material has fog off) so the fires' glow takes only part of the veil
+      const col = atmosphere.apply(surf, env.cameraPos, P, true, false, true, mix(glow.mul(0.25), glow, below), DECK_GLOW_FOG);
       // opacity: dense from below; from above the authored top opacity, relaxed for high eyes so
       // the whole-table views read the plateau and Doom's ember through a trace of the pall
       const table = float(1).sub(smoothstep(250, 1000, cam.y).mul(0.88));
