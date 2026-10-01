@@ -2,9 +2,9 @@ import type { OrbitSpec } from '../camera/shots.ts';
 import type { WeatherState } from '../core/types.ts';
 import type { Stamp } from '../world/stamps.ts';
 import type { ProxyKit } from './kit/ProxyKit.ts';
-import type { ForestArea, ForestSpecies, LightGate, LightKind, TreeKind, V2, V3 } from './records.ts';
+import type { EmitterPreset, ForestArea, ForestSpecies, LightExtras, LightGate, LightKind, TreeKind, V2, V3 } from './records.ts';
 
-export type { ForestArea, ForestSpecies, LightGate, LightKind, TreeKind, V2, V3 } from './records.ts';
+export type { EmitterPreset, ForestArea, ForestSpecies, LightExtras, LightGate, LightKind, TreeKind, V2, V3 } from './records.ts';
 
 /**
  * A landmark is a declarative bundle. One pure build run (build.ts) turns it into world-space records
@@ -27,7 +27,7 @@ export type { ForestArea, ForestSpecies, LightGate, LightKind, TreeKind, V2, V3 
  */
 export type LocalStamp = Stamp;
 
-export interface LightDecl {
+export interface LightDecl extends LightExtras {
   /** local km (x, y above the origin, z) */
   at: V3;
   /** sRGB hex */
@@ -42,12 +42,18 @@ export interface LightDecl {
   flicker?: number;
 }
 
-/** Particle/volume emitters, realized by the EffectsSystem (S4). */
+/** Particle/volume/ribbon emitters, realized by the EffectsSystem (S4). Local km. */
 export interface EmitterDecl {
-  preset: 'smoke' | 'ash' | 'embers' | 'steam' | 'mist' | 'sparks';
+  preset: EmitterPreset;
   at: V3;
+  /** far end (beam) or drift target, local km */
+  to?: V3;
   rate?: number;
   scale?: number;
+  /** sRGB hex tint (default by preset) */
+  color?: number;
+  /** SceneState.events channel that switches the emitter (absent = always on) */
+  event?: string;
 }
 
 export type WaterFeatureDecl =
@@ -114,6 +120,8 @@ export interface BookmarkDecl extends Omit<OrbitSpec, 'place' | 'targetKm'> {
   dayOfYear?: number;
   weather?: Partial<WeatherState>;
   fStop?: number;
+  /** SceneState.events channels for this shot (e.g. { beacons: 1 }) */
+  events?: Record<string, number>;
   /** extra reference images for QA compare sheets (paths relative to the project root) */
   compare?: string[];
   note?: string;
@@ -140,6 +148,8 @@ export interface LandmarkDefinition {
   lights?: LightDecl[];
   trees?: TreeDecl[];
   forests?: ForestDecl[];
+  /** tree-height caps (local km circles): placed, forest and authored trees inside stay ≤ maxHeightKm (S4) */
+  treeCaps?: { at: V2; r: number; maxHeightKm: number }[];
   emitters?: EmitterDecl[];
   waterFeatures?: WaterFeatureDecl[];
   /** km radius cleared of forest around the origin (default: the place footprint), or explicit local circles */

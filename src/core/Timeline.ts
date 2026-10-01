@@ -22,6 +22,8 @@ export interface ShotSpec {
   quality?: QualityTierId;
   lookOverride?: string | null;
   weather?: Partial<WeatherState>;
+  /** SceneState.events channels (e.g. { beacons: 1 }) */
+  events?: Record<string, number>;
   /** reference images (paths relative to project root) to compare against in QA sheets */
   compare?: string[];
   note?: string;
@@ -45,6 +47,7 @@ export class StaticTimeline implements Timeline {
       lens: { fStop: this.spec.fStop ?? 11 },
       lookOverride: this.spec.lookOverride ?? null,
       weather: { ...base.weather, ...this.spec.weather },
+      events: { ...this.spec.events },
       quality: this.spec.quality ?? 'review',
     });
   }

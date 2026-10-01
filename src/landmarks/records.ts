@@ -34,8 +34,32 @@ export const DEFAULT_GATE: Record<LightKind, LightGate> = {
   ithildin: 'night',
 };
 
+/**
+ * Optional light fields added in S4 (W0 contract), shared by LightDecl, the kit's LightOpts / KitLight
+ * and LightRecord:
+ *  - `event`: the SceneState.events channel that switches a light with gate 'event' (e.g. 'beacons',
+ *    'morgul-beam'); the light is on by the channel's 0..1 value
+ *  - `spillKm`: reach of the light's surface irradiance ("emission lights its surroundings"); default
+ *    by kind in the emission system, 0 = no spill
+ *  - `sprite`: false = spill-only light (no emission sprite), e.g. the Morgul wall-wash sources
+ */
+export interface LightExtras {
+  event?: string;
+  spillKm?: number;
+  sprite?: boolean;
+}
+
+/** Copy only the defined LightExtras fields (records without extras stay identical to S3's). */
+export function lightExtras(o: LightExtras): LightExtras {
+  const out: LightExtras = {};
+  if (o.event !== undefined) out.event = o.event;
+  if (o.spillKm !== undefined) out.spillKm = o.spillKm;
+  if (o.sprite !== undefined) out.sprite = o.sprite;
+  return out;
+}
+
 /** One point light in WORLD space (EmissionSystem draws all of them in one instanced pass). */
-export interface LightRecord {
+export interface LightRecord extends LightExtras {
   landmark: string;
   p: V3;
   /** linear RGB, 0..1 */
@@ -50,6 +74,48 @@ export interface LightRecord {
   flicker: number;
   /** stable per-light seed for rand(seed, …): lit fraction, flicker phase */
   seed: number;
+}
+
+/** Particle / volume / ribbon emitter presets realized by the EffectsSystem (S4). */
+export type EmitterPreset = 'smoke' | 'ash' | 'embers' | 'steam' | 'mist' | 'sparks' | 'beam';
+
+/** One effect emitter in WORLD space (landmark `emitters`, resolved by landmarks/world.ts). */
+export interface EmitterRecord {
+  landmark: string;
+  preset: EmitterPreset;
+  /** world position of the source */
+  p: V3;
+  /** world end point (beam: the far end; others: optional drift target) */
+  to?: V3;
+  /** relative emission rate (default 1) */
+  rate: number;
+  /** size multiplier (default 1; world km already include the landmark design scale) */
+  scale: number;
+  /** linear RGB tint (default by preset) */
+  color?: V3;
+  /** SceneState.events channel that switches it (absent = always on) */
+  event?: string;
+  seed: number;
+}
+
+/** One waterfall / flood ribbon in WORLD space (landmark `waterFeatures` of kind waterfall | flood). */
+export interface FallRecord {
+  landmark: string;
+  kind: 'waterfall' | 'flood';
+  /** world polyline from the lip down to the plunge point */
+  path: V3[];
+  /** width, km (design scale applied) */
+  width: number;
+  seed: number;
+}
+
+/** A world-space tree-height cap circle (landmark `treeCaps`): trees inside are no taller than maxHeightKm. */
+export interface TreeCapRecord {
+  landmark: string;
+  x: number;
+  z: number;
+  r: number;
+  maxHeightKm: number;
 }
 
 export type TreeKind = 'mallorn' | 'oak' | 'party' | 'holly' | 'autumn' | 'conifer' | 'poplar' | 'willow' | 'scrub';

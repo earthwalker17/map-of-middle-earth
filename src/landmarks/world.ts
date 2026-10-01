@@ -2,12 +2,14 @@ import type { World } from '../world/World.ts';
 import { hash32, hashString } from '../core/rng.ts';
 import type { Rough, Stamp, Vec2 } from '../world/stamps.ts';
 import { landmarkOrigin, localToWorldXZ } from './frame.ts';
-import type { ExclusionCircle, PoolRecord } from './records.ts';
+import { hexToLinear } from '../materials/families.ts';
+import type { EmitterRecord, ExclusionCircle, FallRecord, PoolRecord, TreeCapRecord, V3 } from './records.ts';
 import type { LandmarkDefinition } from './types.ts';
 
 /**
  * The terrain-side declarations of landmarks, as pure data usable before any system init (and in
- * Node): stamps for the HeightField, vegetation exclusion circles, still-water pools.
+ * Node): stamps for the HeightField, vegetation exclusion circles and tree caps, still-water pools,
+ * effect emitters and waterfall ribbons.
  */
 
 /**
@@ -99,6 +101,68 @@ export function landmarkPools(world: World, defs: LandmarkDefinition[]): PoolRec
     for (const f of d.waterFeatures ?? []) {
       if (f.kind !== 'pool') continue;
       out.push({ landmark: d.id, ring: f.ring.map((v) => localToWorldXZ(world, d, v, d.scale ?? 1)), level: o[1] + f.level * (d.scale ?? 1) });
+    }
+  }
+  return out;
+}
+
+/** Local km (x, y above the origin, z) → world, with the landmark's design scale (geometry-side). */
+function localToWorld3(world: World, d: LandmarkDefinition, o: V3, v: V3): V3 {
+  const sc = d.scale ?? 1;
+  const [x, z] = localToWorldXZ(world, d, [v[0], v[2]], sc);
+  return [x, o[1] + v[1] * sc, z];
+}
+
+/**
+ * Effect emitters declared by landmarks (`emitters`), in world space (EffectsSystem, S4). Positions,
+ * beam ends and `scale` carry the landmark's design scale; seeds are stable per (landmark, index).
+ */
+export function landmarkEmitters(world: World, defs: LandmarkDefinition[]): EmitterRecord[] {
+  const out: EmitterRecord[] = [];
+  for (const d of defs) {
+    if (!d.emitters?.length) continue;
+    const o = landmarkOrigin(world, d);
+    const seed = hashString(`${d.id}/emitters`);
+    for (const [i, e] of d.emitters.entries()) {
+      const rec: EmitterRecord = {
+        landmark: d.id,
+        preset: e.preset,
+        p: localToWorld3(world, d, o, e.at),
+        rate: e.rate ?? 1,
+        scale: (e.scale ?? 1) * (d.scale ?? 1),
+        seed: hash32(seed, i),
+      };
+      if (e.to) rec.to = localToWorld3(world, d, o, e.to);
+      if (e.color !== undefined) rec.color = hexToLinear(e.color);
+      if (e.event !== undefined) rec.event = e.event;
+      out.push(rec);
+    }
+  }
+  return out;
+}
+
+/** Waterfall / flood ribbons declared by landmarks (`waterFeatures`), in world space (EffectsSystem, S4). */
+export function landmarkFalls(world: World, defs: LandmarkDefinition[]): FallRecord[] {
+  const out: FallRecord[] = [];
+  for (const d of defs) {
+    const o = landmarkOrigin(world, d);
+    const seed = hashString(`${d.id}/falls`);
+    for (const [i, f] of (d.waterFeatures ?? []).entries()) {
+      if (f.kind === 'pool') continue;
+      out.push({ landmark: d.id, kind: f.kind, path: f.path.map((v) => localToWorld3(world, d, o, v)), width: f.width * (d.scale ?? 1), seed: hash32(seed, i) });
+    }
+  }
+  return out;
+}
+
+/** Tree-height caps declared by landmarks (`treeCaps`), as world circles; radius and height carry the design scale. */
+export function landmarkTreeCaps(world: World, defs: LandmarkDefinition[]): TreeCapRecord[] {
+  const out: TreeCapRecord[] = [];
+  for (const d of defs) {
+    const sc = d.scale ?? 1;
+    for (const c of d.treeCaps ?? []) {
+      const [x, z] = localToWorldXZ(world, d, c.at, sc);
+      out.push({ landmark: d.id, x, z, r: c.r * sc, maxHeightKm: c.maxHeightKm * sc });
     }
   }
   return out;

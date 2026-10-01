@@ -398,7 +398,8 @@ export function bookmarkShots(landmarks: LandmarkDefinition[]): { def: LandmarkD
   const out: { def: LandmarkDefinition; shot: ShotSpecInput; suffix: string }[] = [];
   for (const def of landmarks)
     for (const b of def.bookmarks ?? []) {
-      const { id, tod, dayOfYear, weather, fStop, compare, note, expect: _e, ...orbit } = b;
+      const { id, tod, dayOfYear, weather, fStop, events, compare, note, expect: _e, ...orbit } = b;
+      void events;
       void dayOfYear;
       void weather;
       void fStop;

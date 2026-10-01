@@ -31,8 +31,9 @@ data/textures-src/*
 !data/textures-src/manifest.json
 public/textures/**
 
-# renders, captures, caches
+# renders, captures, caches (review/ holds the curated per-session review stills — local only)
 renders/
+review/
 .cache/
 *.log
 

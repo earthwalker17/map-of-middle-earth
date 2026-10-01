@@ -53,6 +53,11 @@ export interface SceneState {
   /** force a region look (id from looks.json) instead of the spatial blend */
   lookOverride: string | null;
   weather: WeatherState;
+  /**
+   * Named event channels, 0..1 (S4): timeline-driven switches such as 'beacons' (Minas Tirith beacon
+   * fires) or 'morgul-beam' — read by the gate 'event' lights and event-bound effects. Absent = 0.
+   */
+  events: Record<string, number>;
   quality: QualityTierId;
 }
 
@@ -95,6 +100,7 @@ export function defaultSceneState(partial: Partial<SceneState> = {}): SceneState
     annotations: [],
     lookOverride: null,
     weather: { cloudCoverage: 0.35, wind: [0.8, 0.3] },
+    events: {},
     quality: 'review',
     ...partial,
   };

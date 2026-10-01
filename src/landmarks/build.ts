@@ -5,7 +5,7 @@ import { landmarkOrigin, rotateLocal } from './frame.ts';
 import { bakeVertexAO, stripBakeAttributes } from './kit/ao.ts';
 import { ProxyKit, type KitLight, type KitOutput } from './kit/ProxyKit.ts';
 import { canLoadModels, loadModel, mergeLods, modelFootprint, unionBox } from './model.ts';
-import { DEFAULT_GATE, type AuthoredTree, type BuiltLandmark, type ContactRecord, type ForestArea, type ForestRecord, type LightRecord, type LodGeometry, type V2 } from './records.ts';
+import { DEFAULT_GATE, lightExtras, type AuthoredTree, type BuiltLandmark, type ContactRecord, type ForestArea, type ForestRecord, type LightRecord, type LodGeometry, type V2 } from './records.ts';
 import type { LandmarkDefinition, TreeDecl } from './types.ts';
 
 export interface BuildOptions {
@@ -103,7 +103,7 @@ function buildOne(world: World, def: LandmarkDefinition, opts: BuildOptions, mod
   }
 
   // lights: definition first, then kit records (seeds follow that order)
-  const decl: KitLight[] = (def.lights ?? []).map((l) => ({ at: l.at, color: l.color, intensity: l.intensity, radius: l.radius, kind: l.kind ?? 'window', gate: l.gate, flicker: l.flicker ?? 0 }));
+  const decl: KitLight[] = (def.lights ?? []).map((l) => ({ at: l.at, color: l.color, intensity: l.intensity, radius: l.radius, kind: l.kind ?? 'window', gate: l.gate, flicker: l.flicker ?? 0, ...lightExtras(l) }));
   const lights: LightRecord[] = [...decl, ...kit.lights].map((l, i) => {
     const [x, z] = toWorld(l.at[0], l.at[2]);
     return {
@@ -116,6 +116,7 @@ function buildOne(world: World, def: LandmarkDefinition, opts: BuildOptions, mod
       gate: l.gate ?? DEFAULT_GATE[l.kind],
       flicker: l.flicker,
       seed: hash32(seed, i),
+      ...lightExtras(l),
     };
   });
   const treeDecl: TreeDecl[] = [...(def.trees ?? []), ...kit.trees];

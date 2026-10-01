@@ -51,6 +51,8 @@ for (const id of ids) {
     ...(r.dayOfYear !== undefined ? { dayOfYear: r.dayOfYear } : {}),
     ...(r.weather ? { weather: r.weather } : {}),
     ...(r.fStop !== undefined ? { fStop: r.fStop } : {}),
+    ...(r.tFx !== undefined ? { tFx: r.tFx } : {}),
+    ...(r.events ? { events: r.events } : {}),
     ...(r.lookOverride ? { lookOverride: r.lookOverride } : {}),
     camera: { position: round(r.camera.position), target: round(r.camera.target), fov: r.camera.fov, ...(r.camera.roll ? { roll: r.camera.roll } : {}) },
     note: `exported from ${id} (${new Date().toISOString().slice(0, 10)})`,
@@ -65,6 +67,7 @@ function bookmarkExtras(def: (typeof landmarks)[number], id: string) {
     ...(b.dayOfYear !== undefined ? { dayOfYear: b.dayOfYear } : {}),
     ...(b.weather ? { weather: b.weather } : {}),
     ...(b.fStop !== undefined ? { fStop: b.fStop } : {}),
+    ...(b.events ? { events: b.events } : {}),
   };
 }
 

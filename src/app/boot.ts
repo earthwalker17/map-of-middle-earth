@@ -76,13 +76,14 @@ export function landmarkShots(): ShotSpecInput[] {
   const out: ShotSpecInput[] = [];
   for (const def of LANDMARKS)
     for (const b of def.bookmarks ?? []) {
-      const { id, tod, dayOfYear, weather, fStop, compare, note, expect: _expect, ...orbit } = b;
+      const { id, tod, dayOfYear, weather, fStop, events, compare, note, expect: _expect, ...orbit } = b;
       out.push({
         id,
         tod: tod ?? 15,
         ...(dayOfYear !== undefined ? { dayOfYear } : {}),
         ...(weather ? { weather } : {}),
         ...(fStop !== undefined ? { fStop } : {}),
+        ...(events ? { events } : {}),
         ...(compare ? { compare } : {}),
         ...(note ? { note } : {}),
         lookOverride: def.lookOverride ?? null,

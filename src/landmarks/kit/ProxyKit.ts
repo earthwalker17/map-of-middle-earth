@@ -1,7 +1,7 @@
 import { Euler, Matrix4, Quaternion, Vector3, type BufferGeometry } from 'three/webgpu';
 import { hash32, rand } from '../../core/rng.ts';
 import { aoFloor, familyKey, familyVertex, paintLinear, type FamilyId, type GlowOverride, type MaterialKey } from '../../materials/families.ts';
-import type { LightGate, LightKind, LodGeometry, TreeKind, V2, V3 } from '../records.ts';
+import { lightExtras, type LightExtras, type LightGate, type LightKind, type LodGeometry, type TreeKind, type V2, type V3 } from '../records.ts';
 import { Geo, area2, boxGeo, cross3, face, icoGeo, latheGeo, noise3, packGeometry, prismGeo, sub3, type PackItem } from './geom.ts';
 
 export type { V2, V3 } from '../records.ts';
@@ -69,7 +69,7 @@ export interface WindowRect {
   normal: V3;
 }
 
-export interface LightOpts {
+export interface LightOpts extends LightExtras {
   /** sRGB hex (default #ffb060) */
   color?: number;
   /** relative brightness (default 1) */
@@ -217,7 +217,7 @@ export interface ScatterOpts {
 }
 
 /** A light recorded by the kit, local km (build.ts converts to a world LightRecord). */
-export interface KitLight {
+export interface KitLight extends LightExtras {
   at: V3;
   color: number;
   intensity: number;
@@ -1830,7 +1830,7 @@ export class ProxyKit {
 
   /** A point light (local km). Gate defaults by kind (records.ts DEFAULT_GATE). */
   light(at: V3, o: LightOpts = {}): this {
-    this.lights.push({ at, color: o.color ?? 0xffb060, intensity: o.intensity ?? 1, radius: o.radius ?? 0.02, kind: o.kind ?? 'lamp', gate: o.gate, flicker: o.flicker ?? 0 });
+    this.lights.push({ at, color: o.color ?? 0xffb060, intensity: o.intensity ?? 1, radius: o.radius ?? 0.02, kind: o.kind ?? 'lamp', gate: o.gate, flicker: o.flicker ?? 0, ...lightExtras(o) });
     return this;
   }
 
