@@ -5,9 +5,10 @@ import { defineLandmark } from '../types.ts';
 /**
  * Weathertop / Amon Sûl (research §3; the Fellowship still, Alan Lee, John Howe): a lone, steep hill at
  * the southern end of the Weather Hills, standing high over the lower hills and the East Road, its flanks
- * broken by bands of grey rock (#7a7a70) among slate-teal moss and scree, a bulging rock cap under a flat
+ * broken by outcrops of grey rock (#7a7a70) among slate-teal moss and scree, a bulging rock cap under a flat
  * crown, and on the crown the ring of the ruined watchtower — broken arches on their piers, gaps, pillar
- * stumps and fallen blocks; one campfire inside the ring.
+ * stumps and fallen blocks; one campfire on the crown at its southern edge, by a breach in the rock cap
+ * (inside the ring it would be hidden behind the cap from every low view).
  *
  * Local frame: x east, z south (heading 0), km round the display point; heights relative to the base
  * ground there (the plain falls gently to the south-east, the Weather Hills rise to the north-west). The
@@ -36,13 +37,19 @@ function buildWeathertop(k: ProxyKit): void {
   // ---------------------------------------------------------------- rock: the bulging cap under the crown's rim
   // ONE continuous outward-facing face (walked with decreasing bearing: the face looks to the right of the
   // walk = outward), its ends tapering into the slope where the path comes up from the north-west saddle
-  const cap: V2[] = [];
-  const hs: number[] = [];
-  for (let b = 300; b >= -10; b -= 5) {
-    cap.push(polar(b, CROWN_R + 0.04 + 0.03 * Math.sin(b * 0.11)));
-    hs.push(0.26 + 0.08 * Math.sin(b * 0.07 + 1) + 0.04 * Math.sin(b * 0.31));
+  // (two arcs: a breach in the south where the campfire burns at the crown's edge)
+  for (const [from, to] of [
+    [300, 178],
+    [148, -10],
+  ]) {
+    const cap: V2[] = [];
+    const hs: number[] = [];
+    for (let b = from; b >= to; b -= 5) {
+      cap.push(polar(b, CROWN_R + 0.04 + 0.03 * Math.sin(b * 0.11)));
+      hs.push(0.26 + 0.08 * Math.sin(b * 0.07 + 1) + 0.04 * Math.sin(b * 0.31));
+    }
+    k.cliff('weathered', cap, hs, { color: ROCK, rough: 0.7, strata: 0.6, soft: 0.35, depth: 0.25, overhang: 0.07 });
   }
-  k.cliff('weathered', cap, hs, { color: ROCK, rough: 0.7, strata: 0.6, soft: 0.35, depth: 0.25, overhang: 0.07 });
   // outcrops on the flanks: clusters of big half-buried lumpy boulders (grey schist breaking through)
   const level = (y: number, b: number): number => {
     // the radius where the ground falls to local height y along bearing b
@@ -115,10 +122,10 @@ function buildWeathertop(k: ProxyKit): void {
     (_i, x, z, u) => k.box('weathered', 0.035 + u * 0.03, 0.022 + u * 0.012, 0.026 + u * 0.016, { at: [x, 0.02, z], rot: [u * 20, u * 360, u * 15], seat: true, color: u > 0.5 ? STONE : STONE2, lod: 0 }),
     { minSpacing: 0.06 },
   );
-  // the campfire in the ring: a small dark hearth and the fire
-  const fire = polar(200, RING_R * 0.35);
+  // the campfire at the crown's southern edge by the breach in the rock cap (seen from the south-south-east)
+  const fire = polar(163, CROWN_R - 0.06);
   k.rock('weathered', 0.02, { at: [fire[0], 0.008, fire[1]], seat: true, squash: 0.5, detail: 0, color: 0x3a342c, lod: 0 });
-  k.light([fire[0], gy(fire[0], fire[1]) + 0.025, fire[1]], { kind: 'fire', color: 0xff9a40, intensity: 1.8, radius: 0.02, flicker: 0.35 });
+  k.light([fire[0], gy(fire[0], fire[1]) + 0.025, fire[1]], { kind: 'fire', color: 0xff9a40, intensity: 2.2, radius: 0.024, flicker: 0.35 });
 }
 
 export default defineLandmark({

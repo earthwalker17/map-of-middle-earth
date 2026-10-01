@@ -1,7 +1,7 @@
 import { type ProxyKit, SINK } from '../kit/ProxyKit.ts';
 import type { TreeDecl, V2 } from '../types.ts';
 import { defineLandmark } from '../types.ts';
-import { archBridge, cottage, decal, DOORS, facing, fallLine, faceRot, hedge, hobbitHole, houseFloor, lane, OCHRE, TIMBER, WARM, type Hole } from './parts.ts';
+import { archBridge, cottage, DOORS, facing, fallLine, faceRot, hedge, hobbitHole, houseFloor, lane, OCHRE, TIMBER, WARM, type Hole } from './parts.ts';
 
 /**
  * Hobbiton (research §1, the Matamata set): the Hill — a broad, gently rounded green dome — with Bag End
@@ -252,9 +252,9 @@ export default defineLandmark({
       distanceKm: 7,
       elevationDeg: 9,
       azimuthDeg: 205,
-      fov: 21,
-      lift: 0.1,
-      aimKm: [-0.2, 0.25],
+      fov: 17,
+      lift: 0.15,
+      aimKm: [-0.25, 0.35],
       tod: 17.8,
       compare: ['reference/film/hobbiton/hobbiton-wide-fotr.jpg', 'reference/photos/hobbiton/bag-end-hill-set.jpg', 'reference/photos/hobbiton/hobbiton-mill-bridge-set.jpg'],
       note: 'hero (close, 8.5 km): from the south-west in the golden late-afternoon sun (17.8: the lit south-west face of the Hill) — the broad Hill with Bag End under its oak and the rows of round doors along their lanes, the mill pond and the mill at its foot, the Water curving past in front with the double-arched bridge, the Party Tree to the right',
@@ -262,14 +262,14 @@ export default defineLandmark({
     {
       id: 'hobbiton-wide',
       distanceKm: 55,
-      elevationDeg: 16,
-      azimuthDeg: 250,
-      fov: 34,
+      elevationDeg: 14,
+      azimuthDeg: 255,
+      fov: 38,
       lift: 0,
       aimKm: [4, -6],
       tod: 17.8,
       compare: ['reference/film/hobbiton/hobbiton-wide-fotr.jpg'],
-      note: 'the Shire: Hobbiton’s Hill and the Water in the patchwork of hedged fields and woods, golden afternoon',
+      note: 'the Shire (context, 55 km, pitch 14°): Hobbiton’s Hill on the left third, the Water leading in from the west through the patchwork of hedged fields and woods, the hazy horizon at the top, golden afternoon',
     },
   ],
 });
@@ -322,7 +322,7 @@ function buildHill(k: ProxyKit): void {
         Math.hypot(p[0] - MILL[0], p[1] - MILL[1]) < 0.42 ||
         lane0.d < 0.17 ||
         k.ground(p[0], p[1]) < k.ground(lane0.p[0], lane0.p[1]) + 0.05 ||
-        placed.some((q) => Math.hypot(q[0] - p[0], q[1] - p[1]) < (q === be ? 0.4 : 0.27)) ||
+        placed.some((q) => Math.hypot(q[0] - p[0], q[1] - p[1]) < (q === be ? 0.4 : 0.25)) ||
         k.ground(p[0], p[1]) < WATER + 0.4 ||
         slope > 1.15;
       if (!skip) {
@@ -361,8 +361,8 @@ function buildHill(k: ProxyKit): void {
         const g = hole.gate;
         lane(k, [g, [g[0] + hole.n[0] * 0.06, g[1] + hole.n[1] * 0.06]], 0.022);
       }
-      // along the row: fronts 0.34–0.5 km apart (gardens, hedges and trees between)
-      s += 0.34 + k.r(2) * 0.16;
+      // along the row: fronts 0.3–0.42 km apart (gardens, hedges and trees between)
+      s += 0.3 + k.r(2) * 0.12;
     }
     const runs: V2[][] = [];
     rowLanes.push(runs);
@@ -392,24 +392,6 @@ function buildHill(k: ProxyKit): void {
     }
     flush();
   });
-  // allotments on the lower slope above the main lane: tilled plots with rows of greens, hedged below
-  k.scatter(
-    { polygon: [[-1.0, 0.0], [0.6, 0.1], [0.75, 0.38], [-1.0, 0.33]] as V2[] },
-    7,
-    (_i, x, z, u) => {
-      const l0 = nearest(MAIN_LANE, x, z);
-      if (l0.d < 0.1) return;
-      const { yaw } = fallLine(k, x, z);
-      const [fx, fz] = facing(yaw);
-      const [rx, rz] = [Math.cos(yaw * DEG), -Math.sin(yaw * DEG)];
-      const w = 0.14 + u * 0.08;
-      const plot = (off: number, width: number, color: number, lift: number) => decal(k, [[x + rx * (-w / 2) + fx * off, z + rz * (-w / 2) + fz * off], [x + rx * (w / 2) + fx * off, z + rz * (w / 2) + fz * off]], width, { fam: 'foliage', color, step: 0.08, gaps: 0, jitter: 0.2, lift });
-      plot(0, 0.08, 0x5c4a34, 0.0015);
-      for (const off of [-0.025, 0, 0.025]) plot(off, 0.01, u < 0.5 ? 0x4f7a2c : 0x6a8a34, 0.0035);
-      hedge(k, [[x + rx * (-w / 2 - 0.02) + fx * 0.055, z + rz * (-w / 2 - 0.02) + fz * 0.055], [x + rx * (w / 2 + 0.02) + fx * 0.055, z + rz * (w / 2 + 0.02) + fz * 0.055]], 0.026, 0.02);
-    },
-    { minSpacing: 0.3, avoid: placed.map((q) => ({ at: q, r: 0.25 })) },
-  );
   // shrubs and small trees between the gardens on the face (never on a terrace)
   k.scatter(
     { annulus: { at: TOP, r0: 0.3, r1: 1.5, a0: 100, a1: 295 } },

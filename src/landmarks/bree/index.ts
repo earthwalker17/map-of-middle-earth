@@ -291,9 +291,9 @@ export default defineLandmark({
       fov: 9.5,
       lift: 0.3,
       aimKm: [0.4, 0.1],
-      tod: 20.8,
+      tod: 20.4,
       compare: ['reference/film/bree/bree-wide.webp', 'reference/film/bree/bree-gate-night.jpg'],
-      note: 'hero (regional, 28 km, long lens): dusk from the west-south-west down the East Road — the palisade and the gatehouse on the road, the dark roofs of the town climbing Bree-hill behind them, warm windows coming on, the wooded crown of the hill above',
+      note: 'hero (regional, 28 km, long lens): blue dusk (20.4: the windows lit, the hill and the roofs still reading) from the west-south-west down the East Road — the palisade and the gatehouse on the road, the dark roofs of the town climbing Bree-hill behind them, warm windows coming on, the wooded crown of the hill above',
     },
   ],
 });

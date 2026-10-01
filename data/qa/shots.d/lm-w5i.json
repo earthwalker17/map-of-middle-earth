@@ -34,12 +34,12 @@
           "distanceKm": 7,
           "elevationDeg": 9,
           "azimuthDeg": 205,
-          "fov": 21,
+          "fov": 17,
           "aimKm": [
-            -0.2,
-            0.25
+            -0.25,
+            0.35
           ],
-          "lift": 0.1
+          "lift": 0.15
         }
       },
       "compare": [
@@ -53,12 +53,12 @@
       "camera": {
         "orbit": {
           "place": "bree",
-          "distanceKm": 34,
+          "distanceKm": 28,
           "elevationDeg": 14,
           "azimuthDeg": 250,
-          "fov": 12,
+          "fov": 9.5,
           "aimKm": [
-            0.5,
+            0.4,
             0.1
           ],
           "lift": 0.3
@@ -76,10 +76,10 @@
         "orbit": {
           "place": "weathertop",
           "distanceKm": 28,
-          "elevationDeg": 4,
-          "azimuthDeg": 160,
-          "fov": 16,
-          "lift": 1.1
+          "elevationDeg": -1.2,
+          "azimuthDeg": 150,
+          "fov": 12,
+          "lift": -0.2
         }
       },
       "compare": [
@@ -126,6 +126,28 @@
         "reference/film/grey-havens/grey-havens-wide.webp"
       ],
       "note": "close on the harbour: quays, arcades, towers, the breakwater light, the swan-ship"
+    },
+    {
+      "id": "w5i-hobbiton-mill",
+      "tod": 17.8,
+      "camera": {
+        "orbit": {
+          "place": "hobbiton",
+          "distanceKm": 2.8,
+          "elevationDeg": 30,
+          "azimuthDeg": 250,
+          "fov": 36,
+          "aimKm": [
+            -2.3,
+            -0.2
+          ],
+          "lift": 0.05
+        }
+      },
+      "compare": [
+        "reference/photos/hobbiton/hobbiton-mill-bridge-set.jpg"
+      ],
+      "note": "the mill pond, the stone-and-timber mill with its waterwheel, the double-arched rubble-stone bridge over the Water"
     }
   ]
 }

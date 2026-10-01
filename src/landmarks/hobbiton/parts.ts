@@ -159,7 +159,7 @@ export function decal(
         at: [mx + X[0] * off + Y[0] * s, my + X[1] * off + Y[1] * s, mz + X[2] * off + Y[2] * s],
         rot: basisRot(X, Y, Z),
         color: o.color ?? LANE,
-        shade: 1 + (u3 - 0.5) * 0.22 * jit,
+        shade: 1 + (u3 - 0.5) * 0.1 * jit,
         grain: o.grain ?? 0.55,
         lod: o.lod ?? 0,
       });
@@ -169,7 +169,9 @@ export function decal(
 
 /** a lane of worn soil lying in the ground (see `decal`) */
 export function lane(k: ProxyKit, path: V2[], width = 0.036): void {
-  decal(k, path, width, { color: LANE, gaps: 0, jitter: 0.6, step: 0.06 });
+  // (top 4 m above the heightfield: the rendered terrain triangles may stand a little above the bilinear
+  // height on steep convex ground, and a lower strip breaks up into dashes there)
+  decal(k, path, width, { color: LANE, gaps: 0, jitter: 0.6, step: 0.06, lift: 0.004 });
 }
 
 /**

@@ -1,5 +1,5 @@
 import type { ProxyKit } from '../kit/ProxyKit.ts';
-import type { V2, V3 } from '../types.ts';
+import type { ForestDecl, V2, V3 } from '../types.ts';
 import { defineLandmark } from '../types.ts';
 import { archOutline, planeRot } from '../hobbiton/parts.ts';
 
@@ -190,12 +190,12 @@ function buildHavens(k: ProxyKit): void {
   let n = 0;
   let lit = 0;
   const rings: [number, number, number][] = [
-    [BASIN_R + 0.42, 6, 0.2],
-    [BASIN_R + 0.64, 6.5, 0.3],
-    [BASIN_R + 0.88, 7.5, 0.4],
-    [BASIN_R + 1.16, 9, 0.5],
-    [BASIN_R + 1.5, 11, 0.6],
-    [BASIN_R + 1.9, 13, 0.7],
+    [BASIN_R + 0.42, 5, 0.12],
+    [BASIN_R + 0.62, 5.5, 0.18],
+    [BASIN_R + 0.84, 6, 0.25],
+    [BASIN_R + 1.1, 7, 0.35],
+    [BASIN_R + 1.4, 8.5, 0.5],
+    [BASIN_R + 1.75, 10, 0.62],
   ];
   for (const [r, step, skip] of rings) {
     for (let b = 18; b <= 242; b += step) {
@@ -212,7 +212,7 @@ function buildHavens(k: ProxyKit): void {
       const h = big ? 0.16 : 0.08 + k.r(6) * 0.08;
       // fronts look to the harbour: compass bb + 180 → house yaw −bb
       const yawH = -bb + (k.r(7) - 0.5) * 8;
-      const roof = big || i % 5 === 0 ? 'dome' : i % 3 === 2 ? 'gable' : 'hip';
+      const roof = big ? 'dome' : i % 3 === 2 ? 'gable' : 'hip';
       const litHere = lit < 6 && i % 7 === 1;
       if (litHere) lit++;
       k.house('stone', roof === 'dome' ? 'stone' : 'slate', w, d, h, {
@@ -230,7 +230,7 @@ function buildHavens(k: ProxyKit): void {
         ...(litHere ? { windows: { count: 1, on: 1, sides: 1 as const, size: 0.012, color: LAMP, kind: 'window' as const } } : {}),
       });
       // a slender tower among the halls here and there
-      if (i % 8 === 4) tower([p[0] + 0.09, p[1] + 0.05], 0.034, 0.28 + k.r(8) * 0.14, k.r(9) < 0.5 ? 'spire' : 'dome', undefined, 1);
+      if (i % 10 === 4) tower([p[0] + 0.09, p[1] + 0.05], 0.034, 0.28 + k.r(8) * 0.14, k.r(9) < 0.5 ? 'spire' : 'dome', undefined, 1);
     }
   }
 
@@ -293,6 +293,28 @@ function buildHavens(k: ProxyKit): void {
   }
 }
 
+/** the woods of Lindon on the rising land round the town (pines and beeches), clear of the halls */
+const WOODS: ForestDecl[] = [
+  {
+    // a band round the east side (bearings 0–215 from the basin), 2–6.5 km beyond the quays
+    area: {
+      polygon: [
+        ...Array.from({ length: 23 }, (_, i) => polar(i * (215 / 22), BASIN_R + 6.5)),
+        ...Array.from({ length: 23 }, (_, i) => polar(215 - i * (215 / 22), BASIN_R + 2.0)),
+      ],
+    },
+    density: 12,
+    species: [
+      { kind: 'conifer', share: 0.55, crownKm: [0.06, 0.1], colors: [0x2f4a2c, 0x35512f, 0x2b4428] },
+      { kind: 'oak', share: 0.45, crownKm: [0.07, 0.12], colors: [0x4a6a32, 0x557236, 0x5e7a3a] },
+    ],
+    clump: { scaleKm: 0.9, amount: 0.5 },
+    edgeKm: 0.5,
+    maxSlopeDeg: 75,
+    minY: 0.15,
+  },
+];
+
 export default defineLandmark({
   id: 'grey-havens',
   placeId: 'grey-havens',
@@ -341,19 +363,20 @@ export default defineLandmark({
   lodPx: [80, 26],
   vegetationExclusion: [
     { at: H, r: 2.4 },
-    { at: AMPHI, r: 2.8 },
+    { at: AMPHI, r: 1.6 },
     { at: NORTH, r: 0.9 },
     { at: SOUTH, r: 0.9 },
   ],
+  forests: WOODS,
   proxy: buildHavens,
   annotation: { title: 'The Grey Havens', subtitle: 'Mithlond', blurb: 'Harbour of the Elves upon the Gulf of Lune, whence the last ships sail into the West.' },
   bookmarks: [
     {
       id: 'grey-havens-close',
       distanceKm: 30,
-      elevationDeg: 30,
+      elevationDeg: 32,
       azimuthDeg: 100,
-      fov: 15,
+      fov: 13,
       lift: 0.3,
       aimKm: [-1.0, 1.4],
       tod: 18.3,
