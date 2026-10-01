@@ -32,6 +32,9 @@ import {
   select,
   exp,
   step,
+  hash,
+  uint,
+  If,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 
@@ -62,7 +65,38 @@ export const gradeUniforms = {
   bloomStrength: uniform(0.12),
   bloomRadius: uniform(0.55),
   bloomThreshold: uniform(2.2),
+  // ---- film grade (S4 W3-F; RegionLook writes them, identity defaults)
+  /**
+   * split-tone: multiplicative tints (luminance ≈ 1) of the shadows and the highlights, blended by the
+   * pixel's luminance l / (l + SPLIT_PIVOT) — cool steel shadows / warm highlights, or a region's own
+   */
+  splitShadow: uniform(new Vector3(1, 1, 1)),
+  splitHighlight: uniform(new Vector3(1, 1, 1)),
+  /**
+   * soft black point (linear HDR): the colour scales by l / (l + toe) — deep, clean blacks (charcoal
+   * Mordor, night) with the mid-tones nearly untouched (−2 % at mid-grey for toe 0.004)
+   */
+  toe: uniform(0),
+  /** saturation multiplier of yellow-green hues (lime grass → olive; cool emerald greens are untouched) */
+  greens: uniform(1),
+  /** 0..1 hue pull of the same yellow-greens towards green (lime → lush green) */
+  greensHue: uniform(0),
+  /** halation: red-weighted fringe added from the bloom (no extra pass), strength vs the bloom's luminance */
+  halation: uniform(0),
+  /** film grain std in display units (mid-tones; final tier only — Engine via PostPipeline.setFrame) */
+  grain: uniform(0),
+  /** film frame index of the grain (round(t · FILM_FPS)) */
+  grainFrame: uniform(0),
 };
+
+/** luminance pivot of the split-tone weight l / (l + pivot): 0.5 at mid-grey */
+const SPLIT_PIVOT = 0.18;
+/** halation colour (linear; the red layer re-exposed through the base, a little green, no blue) */
+const HALATION_COLOR = [1.0, 0.3, 0.08] as const;
+/** film grain at the final tier: std in display units at mid-grey (≈ 1 %) */
+export const FILM_GRAIN = 0.01;
+/** frame rate of the grain clock (the film is 24 fps) */
+export const FILM_FPS = 24;
 
 /**
  * Emitter highlight compress (graded linear HDR, night / twilight only): soft knee from GLOW_KNEE towards
@@ -137,7 +171,12 @@ export class PostPipeline {
     const graded = Fn(() => {
       const ex = g.exposure.mul(g.exposureBias);
       const c = input.rgb.mul(ex).toVar();
-      if (bloomNode) c.addAssign(bloomNode.rgb.mul(ex));
+      if (bloomNode) {
+        const b = bloomNode.rgb.mul(ex).toVar();
+        c.addAssign(b);
+        // halation: the bloom's energy again, red-weighted — a warm fringe around bright edges and lights
+        c.addAssign(vec3(...HALATION_COLOR).mul(dot(b, vec3(0.2126, 0.7152, 0.0722)).mul(g.halation)));
+      }
       // emitter key: luminance before the grade (lights and their bloom halo are the only things
       // this bright at night; by day glowKeep is 0)
       const glow = smoothstep(1.2, 4.0, dot(c, vec3(0.2126, 0.7152, 0.0722))).mul(g.glowKeep);
@@ -147,12 +186,23 @@ export class PostPipeline {
       const luma = dot(c, vec3(0.2126, 0.7152, 0.0722));
       // only strongly chromatic reds/oranges (lava, fire, embers), never brown earth or rock
       const redness = smoothstep(0.5, 0.8, c.r.sub(max(c.g, c.b)).div(max(c.r, 1e-4)));
-      const satRed = mix(g.saturation, max(g.saturation, 1.15), redness.mul(g.redKeep));
+      // yellow-green hues (green the largest channel, red well above blue: lime, sunlit grass) take the
+      // `greens` multiplier; blue-greens, olive-greys, earth and rock keep the region saturation
+      const gInv = float(1).div(max(c.g, 1e-4));
+      const yellowGreen = smoothstep(0.04, 0.25, c.g.sub(max(c.r, c.b)).mul(gInv)).mul(smoothstep(0.15, 0.55, c.r.sub(c.b).mul(gInv))).toVar();
+      const satBase = g.saturation.mul(mix(float(1), g.greens, yellowGreen));
+      const satRed = mix(satBase, max(satBase, 1.15), redness.mul(g.redKeep));
       const sat = mix(satRed, max(satRed, 1.1), glow);
       c.assign(max(mix(vec3(luma), c, sat), vec3(0))); // saturation > 1 extrapolates: clamp (pow of negatives = NaN)
+      // the same yellow-greens lean towards green (`greensHue`: red pulled towards blue) — lush, not lime
+      c.r.assign(c.r.sub(c.r.sub(c.b).max(0).mul(g.greensHue.mul(yellowGreen))));
       // contrast pivot at mid-grey (log-ish, gentle)
       const pivot = float(0.18);
       c.assign(c.div(pivot).pow(vec3(g.contrast)).mul(pivot));
+      // split-tone (multiplicative: black stays black) and the soft black point, both keyed on luminance
+      const ls = dot(c, vec3(0.2126, 0.7152, 0.0722));
+      c.mulAssign(mix(g.splitShadow, g.splitHighlight, ls.div(ls.add(SPLIT_PIVOT))));
+      c.mulAssign(select(g.toe.greaterThan(0), ls.div(max(ls.add(g.toe), 1e-8)), float(1)));
       // vignette
       const d = length(screenUV.sub(0.5).mul(vec3(1.0, 0.8, 0).xy));
       c.assign(c.mul(float(1).sub(smoothstep(0.35, 0.95, d).mul(g.vignette))));
@@ -168,7 +218,30 @@ export class PostPipeline {
     const display = renderOutput(vec4(graded, 1), AgXToneMapping, SRGBColorSpace);
     // blue-noise-like dither before 8-bit quantisation (kills sky/fog banding)
     const dither = interleavedGradientNoise(screenCoordinate.xy).sub(0.5).div(255);
-    return vec4(display.rgb.add(dither), 1);
+    const out = Fn(() => {
+      const rgb = display.rgb.add(dither).toVar();
+      // film grain (display space, luminance only, mid-tone weighted): a pure function of the pixel and the
+      // film frame (hash of round(t · fps)) — off (0) below the final tier, so QA hashes stay put
+      If(g.grain.greaterThan(0), () => {
+        const p = screenCoordinate.xy.floor();
+        const seed = p.x.toUint().mul(uint(1973)).add(p.y.toUint().mul(uint(9277))).add(g.grainFrame.toUint().mul(uint(26699))).toVar();
+        // triangular (sum of two uniforms), scaled to unit std
+        const n = hash(seed).add(hash(seed.bitXor(uint(0x5bd1e995)))).sub(1).mul(2.449);
+        const L = dot(rgb, vec3(0.2126, 0.7152, 0.0722)).clamp(0, 1);
+        rgb.addAssign(n.mul(g.grain).mul(L.mul(float(1).sub(L)).mul(4)));
+      });
+      return rgb;
+    })();
+    return vec4(out, 1);
+  }
+
+  /**
+   * The frame's film clock and tier: grain only at the final tier (stills, film), keyed on the film
+   * frame round(t · FILM_FPS) — two renders of the same frame are identical.
+   */
+  setFrame(t: number, final: boolean): void {
+    gradeUniforms.grain.value = final ? FILM_GRAIN : 0;
+    gradeUniforms.grainFrame.value = Math.max(0, Math.round(t * FILM_FPS));
   }
 
   setSize(width: number, height: number): void {

@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "notes": "S4 W3-F lens shots: explicit copies of the 10 hero bookmarks (same orbit cameras, tod, day, look) with the f-stop proposed for each hero (the lens is active only at spp >= 8 and f < 22; at spp < 8 each renders bit-identical to its bookmark). Regenerate from the bookmarks if a hero camera changes; the main agent moves the f-stops into the landmark bookmarks after merging.",
+  "shots": [
+    {"id":"s4f-hobbiton-dof","tod":17.8,"fStop":11,"camera":{"orbit":{"place":"hobbiton","distanceKm":7,"elevationDeg":9,"azimuthDeg":205,"fov":17,"lift":0.15,"aimKm":[-0.25,0.35]}},"note":"S4 W3-F lens: hobbiton-close at f/11 (blur at infinity 0.24 % of the frame height; active at spp >= 8)"},
+    {"id":"s4f-rivendell-dof","tod":16.3,"dayOfYear":298,"fStop":8,"camera":{"orbit":{"place":"rivendell","distanceKm":9.5,"elevationDeg":11,"azimuthDeg":256,"fov":21,"lift":1,"aimKm":[2.4,1.4]}},"note":"S4 W3-F lens: rivendell-close at f/8 (0.27 %)"},
+    {"id":"s4f-moria-dof","tod":22.5,"dayOfYear":19,"fStop":5.6,"camera":{"orbit":{"place":"moria","distanceKm":8.6,"elevationDeg":6,"azimuthDeg":270,"fov":35,"lift":0.9}},"note":"S4 W3-F lens: moria-close at f/5.6 (0.22 %)"},
+    {"id":"s4f-argonath-dof","tod":16,"dayOfYear":56,"fStop":4,"camera":{"orbit":{"place":"argonath","distanceKm":12,"elevationDeg":-6,"azimuthDeg":24,"fov":40,"lift":3.8}},"note":"S4 W3-F lens: argonath-close at f/4 (0.27 %)"},
+    {"id":"s4f-black-gate-dof","tod":16,"lookOverride":"dagorlad","fStop":5.6,"camera":{"orbit":{"place":"black-gate","distanceKm":26.2,"elevationDeg":-11.5,"azimuthDeg":320.5,"fov":48,"lift":5}},"note":"S4 W3-F lens: black-gate-close at f/5.6 (0.16 %)"},
+    {"id":"s4f-minas-morgul-dof","tod":21,"dayOfYear":78,"lookOverride":"mordor","fStop":4,"camera":{"orbit":{"place":"minas-morgul","distanceKm":14,"elevationDeg":6,"azimuthDeg":203,"fov":48,"lift":2.4,"aimKm":[0.2,-1.8]}},"note":"S4 W3-F lens: minas-morgul-close at f/4 (0.22 %)"},
+    {"id":"s4f-mount-doom-dof","tod":18.5,"lookOverride":"mordor","fStop":4,"camera":{"orbit":{"place":"mount-doom","distanceKm":56,"elevationDeg":1,"azimuthDeg":166,"fov":46,"lift":1,"aimKm":[10,-6]}},"note":"S4 W3-F lens: mount-doom-close at f/4 (0.23 %)"},
+    {"id":"s4f-erebor-dof","tod":18,"dayOfYear":240,"fStop":5.6,"camera":{"orbit":{"place":"erebor","distanceKm":62,"elevationDeg":3.5,"azimuthDeg":185,"fov":35,"lift":11}},"note":"S4 W3-F lens: erebor-close at f/5.6 (0.22 %)"},
+    {"id":"s4f-lake-town-dof","tod":16.3,"dayOfYear":240,"fStop":5.6,"camera":{"orbit":{"place":"lake-town","distanceKm":6.8,"elevationDeg":8,"azimuthDeg":195,"fov":28,"lift":2.6,"aimKm":[1.4,0.7]}},"note":"S4 W3-F lens: lake-town-close at f/5.6 (0.28 %)"},
+    {"id":"s4f-minas-tirith-dof","tod":6.3,"fStop":8,"camera":{"orbit":{"place":"minas-tirith","distanceKm":40,"elevationDeg":5,"azimuthDeg":110,"fov":24,"lift":4.2}},"note":"S4 W3-F lens: minas-tirith-close at f/8 (0.23 %)"}
+
+  ]
+}

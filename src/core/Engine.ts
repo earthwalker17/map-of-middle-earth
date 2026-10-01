@@ -1,8 +1,13 @@
-import { PerspectiveCamera, Scene, WebGPURenderer } from 'three/webgpu';
+import { PerspectiveCamera, Scene, Vector3, WebGPURenderer } from 'three/webgpu';
 import { halton } from './rng.ts';
 import { QUALITY, type QualityTier, type QualityTierId } from './quality.ts';
 import type { FrameContext, InitContext, SceneState, System } from './types.ts';
 import { PostPipeline } from '../render/PostPipeline.ts';
+import { lensSample, type LensSample } from '../render/lens.ts';
+
+const _right = new Vector3();
+const _up = new Vector3();
+const _pinhole = new Vector3();
 
 export interface GpuInfo {
   backend: 'webgpu' | 'webgl';
@@ -164,12 +169,29 @@ export class Engine {
     const w = this.post.width;
     const h = this.post.height;
     this.post.beginAccumulation();
+    let lens: LensSample | null = null;
     for (let i = 0; i < spp; i++) {
-      this.applyState(stateAt(i, spp));
+      const state = stateAt(i, spp);
+      // the frame's film grain (final tier only) follows the frame time of the first sub-sample
+      if (i === 0) this.post.setFrame(state.t, this.quality.id === 'final');
+      this.applyState(state);
       if (spp > 1) {
         // Halton(2,3) jitter in pixels, centred on 0
-        const jx = halton(i + 1, 2) - 0.5;
-        const jy = halton(i + 1, 3) - 0.5;
+        let jx = halton(i + 1, 2) - 0.5;
+        let jy = halton(i + 1, 3) - 0.5;
+        // lens (S4): after applyState — systems, LOD and light selection keep seeing the pinhole camera —
+        // the pinhole moves over the aperture and the view window shifts to hold the focus plane
+        // (pinhole for deep focus, f/22 default, and below LENS_MIN_SPP: wides and QA stay bit-identical)
+        lens = lensSample(state, i, spp, h);
+        if (lens) {
+          _pinhole.copy(cam.position);
+          _right.setFromMatrixColumn(cam.matrixWorld, 0);
+          _up.setFromMatrixColumn(cam.matrixWorld, 1);
+          cam.position.addScaledVector(_right, lens.dx).addScaledVector(_up, lens.dy);
+          cam.updateMatrixWorld();
+          jx += lens.px;
+          jy += lens.py;
+        }
         cam.setViewOffset(w, h, jx, jy, w, h);
       }
       this.renderer.setRenderTarget(this.post.hdr);
@@ -177,6 +199,12 @@ export class Engine {
       this.renderer.setRenderTarget(null);
       this.post.accumulate();
       cam.clearViewOffset();
+      if (lens) {
+        // back to the pinhole (probes and later frames read the camera)
+        cam.position.copy(_pinhole);
+        cam.updateMatrixWorld();
+        lens = null;
+      }
     }
     this.post.present(true, true);
   }
