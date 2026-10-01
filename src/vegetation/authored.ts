@@ -1,5 +1,6 @@
 import { rand } from '../core/rng.ts';
 import type { AuthoredTree, TreeKind } from '../landmarks/records.ts';
+import { Arch, archReach } from './archetypes.ts';
 import { RING } from './clumpGeometry.ts';
 import { InstanceList, Kind, LORIEN_TRUNK_K, pickColor, type Crown } from './placement.ts';
 
@@ -16,9 +17,13 @@ import { InstanceList, Kind, LORIEN_TRUNK_K, pickColor, type Crown } from './pla
  * it each kind's recipe decides.
  */
 
-/** crown top above the crown bottom in units of vr, for a cluster of this spread (tallest sub-crowns) */
-export function crownReach(spread: number): number {
-  return 1.8 * (1 - RING * spread);
+/**
+ * crown top above the crown bottom in units of vr, for a record of this spread and archetype (the cluster
+ * layouts: tallest sub-crowns; archetypes.ts archReach)
+ */
+export function crownReach(spread: number, arch: number = Arch.Cluster): number {
+  if (arch === Arch.Cluster || arch === Arch.Canopy) return 1.8 * (1 - RING * spread);
+  return archReach(arch, spread);
 }
 
 /**
@@ -114,6 +119,12 @@ interface Recipe {
   crown: (hr: number, r: (k: number) => number) => Crown;
   /** default sRGB crown colours (one picked per tree) — null: the kind's palette */
   colors: number[] | null;
+  /**
+   * bare stem as a share of the declared total height (`heightKm`): [min, max]. A tree declared taller
+   * than its crown proportions grows a taller crown (never a lollipop stick); one declared shorter keeps
+   * at least the minimum stem.
+   */
+  stem: [number, number];
 }
 
 const RECIPES: Record<TreeKind, Recipe> = {
@@ -121,76 +132,88 @@ const RECIPES: Record<TreeKind, Recipe> = {
   // this entry is the default height and palette)
   mallorn: {
     kind: Kind.Lorien,
-    crown: (hr) => ({ hr, vr: hr * MALLORN_TIER_VR, trunk: hr * 1.6, shape: { spread: TIER_SPREAD, gap: 0.06, hVar: 0.3 } }),
+    crown: (hr) => ({ hr, vr: hr * MALLORN_TIER_VR, trunk: hr * 1.6, shape: { spread: TIER_SPREAD, gap: 0.06, hVar: 0.3, arch: Arch.Cluster } }),
     colors: [0xc4a436, 0xcaa83a, 0xb89a30],
+    stem: [0, 1],
   },
-  // spreading oak: broad crown on a short bole (placement.ts broadleaf, oak branch)
+  // spreading oak: broad, asymmetric crown on a short bole (placement.ts broadleaf, oak branch)
   oak: {
     kind: Kind.Oak,
     crown: (hr, r) => {
-      const vr = hr * (0.72 + 0.14 * r(2));
-      return { hr, vr, trunk: vr * (0.45 + 0.15 * r(3)), shape: { spread: 0.62, gap: 0.14, hVar: 0.4 } };
+      const vr = hr * (0.85 + 0.15 * r(2));
+      return { hr, vr, trunk: vr * (0.5 + 0.15 * r(3)), shape: { spread: 0.62, gap: 0.12, hVar: 0.4, arch: Arch.Broadleaf } };
     },
     colors: null,
+    stem: [0.24, 0.36],
   },
   // the Party Tree: very large, broad and full
   party: {
     kind: Kind.Oak,
     crown: (hr, r) => {
-      const vr = hr * (0.76 + 0.06 * r(2));
-      return { hr, vr, trunk: vr * 0.42, shape: { spread: 0.68, gap: 0.06, hVar: 0.32 } };
+      const vr = hr * (0.9 + 0.06 * r(2));
+      return { hr, vr, trunk: vr * 0.45, shape: { spread: 0.68, gap: 0.05, hVar: 0.32, arch: Arch.Broadleaf } };
     },
     colors: [0x4b5e27, 0x53652b],
+    stem: [0.24, 0.36],
   },
-  // dark, tall, narrow evergreen
+  // holly: a dense, dark, glossy, pointed ovoid reaching low
   holly: {
     kind: Kind.Dark,
     crown: (hr, r) => {
-      const vr = hr * (1.8 + 0.3 * r(2));
-      return { hr, vr, trunk: vr * 0.12, shape: { spread: 0.3, gap: 0.04, hVar: 0.3 } };
+      const vr = hr * (1.15 + 0.2 * r(2));
+      return { hr, vr, trunk: vr * 0.08, shape: { spread: 0.4, gap: 0, hVar: 0.25, arch: Arch.Holly } };
     },
     colors: [0x2f4a2a],
+    stem: [0.04, 0.14],
   },
   // Rivendell's autumn broadleaves
   autumn: {
     kind: Kind.Oak,
     crown: (hr, r) => {
-      const vr = hr * (0.82 + 0.16 * r(2));
-      return { hr, vr, trunk: vr * (0.38 + 0.12 * r(3)), shape: { spread: 0.55, gap: 0.1, hVar: 0.35 } };
+      const vr = hr * (0.95 + 0.2 * r(2));
+      return { hr, vr, trunk: vr * (0.42 + 0.12 * r(3)), shape: { spread: 0.55, gap: 0.08, hVar: 0.35, arch: Arch.Broadleaf } };
     },
     colors: [0xb5702a, 0xd19a3a],
+    stem: [0.2, 0.3],
   },
+  // fir / pine: one pointed spire (archetype Conifer), a short bare stem
   conifer: {
     kind: Kind.Generic,
     crown: (hr, r) => {
-      const vr = hr * (2.2 + 0.5 * r(2));
-      return { hr, vr, trunk: vr * 0.1, shape: { spread: 0.24, gap: 0.05, hVar: 0.5 } };
+      const vr = hr * (1.8 + 0.5 * r(2));
+      return { hr, vr, trunk: vr * 0.1, shape: { spread: 0.3, gap: 0, hVar: 0.2, arch: Arch.Conifer } };
     },
     colors: [0x2a4226, 0x233a22, 0x2f4a2b],
+    stem: [0.05, 0.14],
   },
+  // poplar / birch: a narrow column
   poplar: {
     kind: Kind.River,
     crown: (hr, r) => {
-      const vr = hr * (2.1 + 0.4 * r(2));
-      return { hr, vr, trunk: vr * 0.15, shape: { spread: 0.28, gap: 0.05, hVar: 0.4 } };
+      const vr = hr * (1.6 + 0.4 * r(2));
+      return { hr, vr, trunk: vr * 0.1, shape: { spread: 0.3, gap: 0, hVar: 0.25, arch: Arch.Columnar } };
     },
     colors: null,
+    stem: [0.06, 0.16],
   },
+  // willow: a broad, low, drooping crown leaning over the water
   willow: {
     kind: Kind.River,
     crown: (hr, r) => {
-      const vr = hr * (0.72 + 0.1 * r(2));
-      return { hr, vr, trunk: vr * 0.3, shape: { spread: 0.6, gap: 0.1, hVar: 0.3 } };
+      const vr = hr * (0.8 + 0.1 * r(2));
+      return { hr, vr, trunk: vr * 0.32, shape: { spread: 0.66, gap: 0.1, hVar: 0.45, arch: Arch.Broadleaf } };
     },
     colors: [0x6f7a3e, 0x66713a],
+    stem: [0.14, 0.28],
   },
   scrub: {
     kind: Kind.Scrub,
     crown: (hr, r) => {
-      const vr = hr * (0.75 + 0.15 * r(2));
-      return { hr, vr, trunk: vr * 0.05, shape: { spread: 0.5, gap: 0.15, hVar: 0.3 } };
+      const vr = hr * (0.7 + 0.15 * r(2));
+      return { hr, vr, trunk: vr * 0.03, shape: { spread: 0.6, gap: 0.15, hVar: 0.3, arch: Arch.Shrub } };
     },
     colors: null,
+    stem: [0, 0.1],
   },
 };
 
@@ -208,15 +231,11 @@ export function authoredRecords(trees: readonly AuthoredTree[], seed: number): I
 type TreeSpec = Pick<AuthoredTree, 'x' | 'z' | 'kind' | 'crownKm' | 'heightKm' | 'color' | 'yaw' | 'id'>;
 
 /**
- * One tree of a landmark forest (forests.ts) → instance record(s). Conifers are two stacked clusters — a
- * broad lower crown and a narrow top — so masses of them read as tapered firs, not capsules.
+ * One tree of a landmark forest (forests.ts) → one instance record (conifers are one Conifer-archetype
+ * spire since S4, no longer two stacked clusters).
  */
 export function pushForestTree(out: InstanceList, t: TreeSpec, seed: number): void {
-  if (t.kind !== 'conifer') return pushTree(out, t, seed);
-  const c = t.crownKm;
-  const h = t.heightKm ?? 4.8 * c + 0.05;
-  pushTree(out, { ...t, heightKm: h - 1.04 * c }, seed);
-  pushTree(out, { ...t, crownKm: 0.5 * c, heightKm: h, yaw: t.yaw + 1.3, id: t.id ^ 0x5bd1e995 }, seed);
+  pushTree(out, t, seed);
 }
 
 function pushTree(out: InstanceList, t: TreeSpec, seed: number): void {
@@ -226,7 +245,14 @@ function pushTree(out: InstanceList, t: TreeSpec, seed: number): void {
     const hr = Math.max(0.02, t.crownKm);
     const c = rec.crown(hr, r);
     let trunk = c.trunk;
-    if (t.heightKm !== undefined) trunk = Math.max(0, t.heightKm - crownReach(c.shape.spread) * c.vr);
+    let vr = c.vr;
+    if (t.heightKm !== undefined && t.kind !== 'mallorn') {
+      // the declared height: the stem within its share, the crown takes the rest
+      const reach = crownReach(c.shape.spread, c.shape.arch);
+      const h = Math.max(0.01, t.heightKm);
+      trunk = Math.min(rec.stem[1] * h, Math.max(rec.stem[0] * h, h - reach * c.vr));
+      vr = (h - trunk) / reach;
+    }
     let rgb: RGB;
     if (t.color !== undefined) rgb = hexRgb(t.color);
     else if (rec.colors) {
@@ -239,11 +265,11 @@ function pushTree(out: InstanceList, t: TreeSpec, seed: number): void {
       const f = mallornFrame(hr, t.heightKm ?? c.trunk + crownReach(TIER_SPREAD) * c.vr);
       f.tiers.forEach((tier, k) => {
         const lift = 1 + 0.045 * k;
-        const shape = { spread: TIER_SPREAD + 0.04 * (r(10 + k) - 0.5), gap: k === 0 ? 0.06 : 0.14, hVar: 0.3 };
+        const shape = { spread: TIER_SPREAD + 0.04 * (r(10 + k) - 0.5), gap: k === 0 ? 0.06 : 0.14, hVar: 0.3, arch: Arch.Cluster };
         out.push(t.x, t.z, tier.hr, tier.vr, tier.trunk, rec.kind, t.yaw + k * 0.93, 0.92 + 0.16 * r(20 + k), [rgb[0] * lift, rgb[1] * lift, rgb[2] * lift], shape);
       });
       return;
     }
-    out.push(t.x, t.z, c.hr, c.vr, trunk, rec.kind, t.yaw, 0.9 + 0.2 * r(6), rgb, c.shape);
+    out.push(t.x, t.z, c.hr, vr, trunk, rec.kind, t.yaw, 0.9 + 0.2 * r(6), rgb, c.shape);
   }
 }

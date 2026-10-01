@@ -56,6 +56,8 @@ export default defineLandmark({
   vegetationExclusion: [{ at: [0.5, 0], r: 4.5 }, ...STREAM.filter((p, i) => i % 2 === 0 && Math.hypot(p[0] - 0.5, p[1]) + 1.0 > 4.5).map((at) => ({ at, r: 1.0 }))],
   trees: TREES,
   forests: FORESTS,
+  // S4 tree-height cap: every tree of the valley stays under 0.6 of the Last Homely House (0.49 to its ridge)
+  treeCaps: [{ at: [0.5, 0], r: 4.0, maxHeightKm: 0.28 }],
   // ribbon falls for S4 (EffectsSystem); the rock under them is darker (wet) today (halls.ts)
   waterFeatures: FALLS.map((f) => ({ kind: 'waterfall' as const, path: f.path, width: f.width })),
   proxy: (k) => buildRivendell(k),
