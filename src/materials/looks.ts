@@ -653,7 +653,13 @@ export interface AtmoSpot {
   radiusKm: number;
   tint?: ColorJson;
   density?: number;
+  /** valley-mist gain at the spot (S4: the named dales — Rivendell, the Sirannon, the Anduin, the Morgul vale) */
+  mist?: number;
+  /** cumulus-cap boost over a peak (S4 P4: Caradhras, Mindolluin, Erebor) */
+  cap?: number;
 }
+/** Default distance ramp of the aerial perspective (km): air fades in x → y, local excess z → w. */
+export const DEFAULT_HAZE_RAMP: [number, number, number, number] = [35, 700, 2, 30];
 export interface AtmoLook {
   /** multiplier on the in-scattered haze colour, linear (#ffffff / [1, 1, 1] = neutral; > 1 = luminous) */
   tint: Color;
@@ -661,8 +667,46 @@ export interface AtmoLook {
   density: number;
   /** multiplier on the sky dome when the camera looks at this region */
   sky: Color;
+  /** distance ramp of the haze when the camera looks at this region (env.hazeRamp, focus-blended) */
+  ramp: [number, number, number, number];
+  /** valley-mist gain of the region (1 = the S3 mist; spots raise it in the named dales) */
+  mist: number;
   /** local haze features around places (Rivendell's luminous valley, the Dead Marshes' damp) */
   spots: AtmoSpot[];
+}
+
+/** The red underglow of an ash deck around a place (Mount Doom's fires on the pall). */
+export interface DeckGlow {
+  place: string;
+  /** linear colour of the glow (radiance per unit strength) */
+  color: Color;
+  radiusKm: number;
+  strength: number;
+}
+/** A local change of a deck's cover around a place (a thinner pall, a hole). */
+export interface DeckSpot {
+  place: string;
+  radiusKm: number;
+  cover: number;
+}
+/**
+ * A region's overcast ash deck (looks.json `deck`; S4): a cloud ceiling drawn by the environment's
+ * cloud layer, darkening the key light under it and turning the sky overcast where the camera looks.
+ * Regions without a `deck` line have none (cover 0).
+ */
+export interface DeckLook {
+  /** 0..1 cover of the pall (0 = no deck) */
+  cover: number;
+  /** linear albedo-like tone of the deck (authored as sRGB hex) */
+  tone: Color;
+  /** 0..1 darkening of the key light under full cover */
+  shadow: number;
+  /** height of the deck's base, world units */
+  height: number;
+  /** opacity of the deck seen from above (overviews still read the plateau through it) */
+  topOpacity: number;
+  glow: DeckGlow | null;
+  spots: DeckSpot[];
 }
 
 interface GradeJson {
@@ -679,7 +723,18 @@ interface AtmoJson {
   tint?: ColorJson;
   density?: number;
   sky?: ColorJson;
+  ramp?: number[];
+  mist?: number;
   spots?: AtmoSpot[];
+}
+interface DeckJson {
+  cover?: number;
+  tone?: ColorJson;
+  shadow?: number;
+  height?: number;
+  topOpacity?: number;
+  glow?: { place: string; color?: ColorJson; radiusKm?: number; strength?: number };
+  spots?: { place: string; radiusKm: number; cover?: number }[];
 }
 
 /** Parse an authored colour (hex → linear via Color, arrays are already linear). */
@@ -708,11 +763,29 @@ export function gradeLook(id: string): GradeLook {
 
 export function atmoLook(id: string): AtmoLook {
   const a = ((looksJson.regions as Record<string, { atmo?: AtmoJson }>)[id]?.atmo ?? {}) as AtmoJson;
+  const r = a.ramp ?? DEFAULT_HAZE_RAMP;
   return {
     tint: lookColor(a.tint),
     density: a.density ?? 1,
     sky: lookColor(a.sky),
+    ramp: [r[0] ?? DEFAULT_HAZE_RAMP[0], r[1] ?? DEFAULT_HAZE_RAMP[1], r[2] ?? DEFAULT_HAZE_RAMP[2], r[3] ?? DEFAULT_HAZE_RAMP[3]],
+    mist: a.mist ?? 1,
     spots: a.spots ?? [],
+  };
+}
+
+export function deckLook(id: string): DeckLook {
+  const d = ((looksJson.regions as Record<string, { deck?: DeckJson }>)[id]?.deck ?? null) as DeckJson | null;
+  if (!d) return { cover: 0, tone: new Color(0.25, 0.25, 0.25), shadow: 0, height: 40, topOpacity: 0.35, glow: null, spots: [] };
+  const g = d.glow;
+  return {
+    cover: Math.min(1, Math.max(0, d.cover ?? 0.9)),
+    tone: lookColor(d.tone, '#808080'),
+    shadow: Math.min(1, Math.max(0, d.shadow ?? 0.6)),
+    height: d.height ?? 40,
+    topOpacity: Math.min(1, Math.max(0, d.topOpacity ?? 0.35)),
+    glow: g ? { place: g.place, color: lookColor(g.color, '#ff4a1a'), radiusKm: g.radiusKm ?? 80, strength: g.strength ?? 0.5 } : null,
+    spots: (d.spots ?? []).map((s) => ({ place: s.place, radiusKm: s.radiusKm, cover: Math.min(1, Math.max(0, s.cover ?? 0)) })),
   };
 }
 

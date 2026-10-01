@@ -3,6 +3,7 @@ import { tsl, type TslNode } from '../materials/tsl.ts';
 import { env } from '../materials/environment.ts';
 import { rand } from '../core/rng.ts';
 import { SLAB } from '../diorama/slabSpec.ts';
+import { atmosphere } from '../materials/atmosphere.ts';
 
 type N = TslNode;
 const { clamp, float, max, smoothstep, step, texture, vec2 } = tsl;
@@ -10,10 +11,10 @@ const { clamp, float, max, smoothstep, step, texture, vec2 } = tsl;
 /** texels of the tileable cloud field and its period in km (≈ 3.2 km per texel) */
 const TEX_W = 512;
 const TEX_H = 320;
-const PERIOD_X = 1638.4;
-const PERIOD_Z = 1024;
+export const PERIOD_X = 1638.4;
+export const PERIOD_Z = 1024;
 /** the detail channel repeats this many times faster (and is offset) */
-const DETAIL = 3.3;
+export const DETAIL = 3.3;
 
 /**
  * Tileable value-noise fBm on a periodic lattice (cells per tile in x/y per octave).
@@ -128,8 +129,14 @@ export class CloudField {
     return inX.mul(inZ).mul(smoothstep(-0.6, -0.05, p.y));
   }
 
-  /** Multiplier on the key light at p. */
-  lightFactor(p: N, detail = true): N {
-    return float(1).sub(this.cover(p, detail).mul(env.cloudShadow).mul(CloudField.slabTop(p)));
+  /**
+   * Multiplier on the key light at p: the darker of the drifting cloud shadows and the ash deck
+   * (atmo2.R × env.deckShadow — the overcast under Mordor's pall), on the slab top only.
+   * `shadows = false` keeps only the deck.
+   */
+  lightFactor(p: N, detail = true, shadows = true): N {
+    const deck = atmosphere.deckCover(p.xz).mul(env.deckShadow);
+    const shade = shadows ? max(this.cover(p, detail).mul(env.cloudShadow), deck) : deck;
+    return float(1).sub(shade.mul(CloudField.slabTop(p)));
   }
 }

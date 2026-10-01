@@ -66,6 +66,11 @@ export function celestialPole(out = new Vector3(), latDeg = LATITUDE_DEG): Vecto
   return out.set(0, Math.sin(latDeg * D2R), -Math.cos(latDeg * D2R));
 }
 
+/** hemisphere fill lift at full night (S4; see daylight) */
+const HEMI_NIGHT_LIFT = 0.9;
+/** moon key light at full moon, high in a dark sky (S4: 0.85 → 1.8, a readable moonlit key) */
+const MOON_KEY = 1.8;
+
 const smooth = (e0: number, e1: number, x: number) => {
   const t = MathUtils.clamp((x - e0) / (e1 - e0), 0, 1);
   return t * t * (3 - 2 * t);
@@ -283,8 +288,11 @@ export function daylight(sunDir: Vector3): Daylight {
 
   // The dark-side tables were calibrated against the S1 double-sRGB capture bug (darks lifted ~4×);
   // with the fixed single encode, lift the night regime back so moonlit terrain stays readable.
+  // S4: the hemisphere fill gets a smaller lift (1 + 0.9·night, was 1 + 2·night, which flattened
+  // the nights) — the moon key carries the moonlit read (key : fill ≥ 3 : 1, moon shadows, rims);
+  // the dome's night sky keeps the full lift.
   const nightLift = 1 + 2 * night;
-  const skyColor = curveRgb(el, HEMI_SKY).multiplyScalar(nightLift);
+  const skyColor = curveRgb(el, HEMI_SKY).multiplyScalar(1 + HEMI_NIGHT_LIFT * night);
   // warm bounce off the land (dimmer than the sky; carries a little of the sun's colour)
   const skyLum = 0.2126 * skyColor.r + 0.7152 * skyColor.g + 0.0722 * skyColor.b;
   const bounce = sunIntensity * Math.max(0, Math.sin(el * D2R)) * 0.045;
@@ -355,6 +363,6 @@ export function moonlight(moonDir: Vector3, illum: number, sunElevationDeg: numb
   const el = MathUtils.radToDeg(Math.asin(MathUtils.clamp(moonDir.y, -1, 1)));
   const up = smooth(-1, 12, el);
   const dark = smooth(-4, -11, sunElevationDeg);
-  const key = 0.85 * Math.pow(illum, 1.3) * up * dark;
+  const key = MOON_KEY * Math.pow(illum, 1.3) * up * dark;
   return { key, sky: Math.pow(illum, 1.5) * up * dark, color: new Color(0.6, 0.72, 1.0) };
 }

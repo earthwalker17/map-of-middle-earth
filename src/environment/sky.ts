@@ -50,6 +50,21 @@ const SUN_RADIUS = 0.0082;
 const MOON_RADIUS = 0.0118;
 
 /**
+ * Star field (S4: the S3 field read "too dense and crisp"): two lattice layers with these presence
+ * densities and gains, magnitude = hash^STAR_MAG_EXP (a steeper power law: few bright stars, a faint
+ * crowd), and atmospheric extinction towards the horizon exp(−STAR_EXTINCTION·(1/sin h − 1)).
+ */
+const STAR_LAYERS: [scale: number, density: number, gain: number, seed: number][] = [
+  [95, 0.3, 6, 0],
+  [230, 0.25, 2.2, 71.3],
+];
+const STAR_MAG_EXP = 9;
+const STAR_EXTINCTION = 0.12;
+/** the overcast dome's virtual ceiling above the eye (km) and its mottling scales (km) */
+const OVERCAST_CEILING = 30;
+const OVERCAST_SCALES = [28, 9] as const;
+
+/**
  * Haze shoulder: the horizon / in-scatter colour keeps its value up to KNEE (luminance) and rolls
  * off towards LMAX above it — haze towards a low sun glows but never whites out the land.
  */
@@ -129,7 +144,8 @@ export class SkyModel {
     u.glowPower.value = dl.glowPower;
     u.glowHeight.value = dl.glowHeight;
     u.moonSky.value.setRGB(0.0045, 0.0075, 0.016).multiplyScalar(moonSky);
-    u.stars.value = dl.stars * (1 - 0.55 * moonSky);
+    // stars: dimmed by the moonlit sky, hidden under an ash deck (env.deck is set before update)
+    u.stars.value = dl.stars * (1 - 0.55 * moonSky) * (1 - env.deck.value);
     u.sunDisc.value = dl.sunDisc;
     u.sunAureole.value = dl.dayWeight;
     u.sunGlow.value = (0.08 + 0.4 * dl.golden) * dl.dayWeight;
@@ -270,7 +286,7 @@ export class SkyModel {
   });
 
   /** One layer of point stars on a 3D cell lattice (one hash per pixel, no neighbour search). */
-  private starLayer(dc: N, scale: number, density: number, gain: number, seed: number): N {
+  private starLayer(dc: N, [scale, density, gain, seed]: (typeof STAR_LAYERS)[number]): N {
     const p = dc.mul(scale);
     const cell = floor(p);
     const r1 = this.hash33(cell.add(seed));
@@ -281,7 +297,7 @@ export class SkyModel {
     const sigma = max(px.mul(0.5), 0.03);
     const core = exp(d.mul(d).div(sigma.mul(sigma).mul(-2)));
     const energy = float(0.03).div(sigma).pow(2);
-    const mag = pow(r2.y, 7);
+    const mag = pow(r2.y, STAR_MAG_EXP);
     const present = step(r2.x, density);
     const tint = mix(vec3(1.0, 0.8, 0.62), vec3(0.74, 0.85, 1.0), r2.z);
     const twinkle = float(1).add(sin(env.tFx.mul(r1.x.mul(4.3).add(1.7)).add(r1.y.mul(40))).mul(0.3));
@@ -291,13 +307,13 @@ export class SkyModel {
   /** Stars + a faint Milky Way, in the rotating celestial frame. */
   private starField(dir: N): N {
     const dc = this.u.starMatrix.mul(dir);
-    const stars = this.starLayer(dc, 95, 0.85, 9, 0).add(this.starLayer(dc, 230, 0.8, 3.2, 71.3));
+    const stars = this.starLayer(dc, STAR_LAYERS[0]).add(this.starLayer(dc, STAR_LAYERS[1]));
     const G = vec3(0.34, 0.25, 0.906);
     const gb = dot(dc, G);
     const band = exp(gb.mul(gb).div(-0.028));
     const clumps = mx_noise_float(dc.mul(4.5)).mul(0.5).add(0.5).mul(mx_noise_float(dc.mul(12)).mul(0.35).add(0.65));
     const rift = smoothstep(0.25, 0.7, mx_noise_float(dc.mul(6.5).add(3.1)));
-    const milky = vec3(0.55, 0.6, 0.78).mul(band.mul(clumps).mul(float(1).sub(rift.mul(0.65))).mul(0.0065));
+    const milky = vec3(0.55, 0.6, 0.78).mul(band.mul(clumps).mul(float(1).sub(rift.mul(0.65))).mul(0.005));
     return stars.add(milky);
   }
 
@@ -339,7 +355,9 @@ export class SkyModel {
     const tm = length(dir.sub(m));
     const mglow = moonTint.mul(exp(tm.div(-0.022)).mul(0.22).add(exp(tm.div(-0.17)).mul(0.035))).mul(env.moonIllum.mul(u.moonGlow).mul(moonVis));
 
-    const starMask = float(1).sub(mdisc).mul(smoothstep(0.0, 0.14, h)).mul(u.stars);
+    // extinction: stars fade through the thicker air towards the horizon
+    const airmass = float(1).div(max(h, 0.02)).sub(1);
+    const starMask = float(1).sub(mdisc).mul(smoothstep(0.0, 0.1, h)).mul(exp(airmass.mul(-STAR_EXTINCTION))).mul(u.stars);
     const stars = vec3(0).toVar();
     If(u.stars.greaterThan(0.002).and(h.greaterThan(0)), () => {
       stars.assign(this.starField(dir).mul(starMask));
@@ -357,14 +375,19 @@ export class SkyModel {
     const u = this.u;
     const dir = normalize(positionWorld.sub(cameraPosition));
     const h = dir.y;
-    // the regional sky tint (Mordor's charcoal ceiling) darkens the sky overhead but not the
-    // horizon band, which must stay the colour distant land fades into
-    const tint = mix(vec3(1), env.skyTint, smoothstep(0.03, 0.25, h));
+    // the horizon takes the focus-blended regional in-scatter tint (env.horizonTint — the colour
+    // distant land of that region fades into, so Mordor's dark haze meets a dark horizon without a
+    // seam) and the sky overhead the regional sky tint (Mordor's charcoal ceiling)
+    const tint = mix(env.horizonTint, env.skyTint, smoothstep(0.0, 0.25, h));
     // the haze at infinity in this direction (at or below the horizon) and at the horizon
-    const hazeDir = atmosphere.inScatter(vec3(dir.x, min(h, 0), dir.z));
-    const hazeHor = atmosphere.inScatter(vec3(dir.x, 0, dir.z));
-    const sky = mix(hazeHor, this.skyBase(dir), smoothstep(0.0, 0.1, h));
-    const base = mix(hazeDir, sky, step(0, h)).mul(tint);
+    const hazeDir = atmosphere.inScatter(vec3(dir.x, min(h, 0), dir.z)).mul(env.horizonTint);
+    const hazeHorRaw = atmosphere.inScatter(vec3(dir.x, 0, dir.z));
+    const hazeHor = hazeHorRaw.mul(env.horizonTint);
+    const clear = mix(hazeHorRaw, this.skyBase(dir), smoothstep(0.0, 0.1, h)).mul(tint);
+    // under an ash deck the dome is overcast: a low-contrast mottled ceiling in perspective,
+    // the deck underside's radiance overhead, merging into the horizon haze
+    const sky = mix(clear, this.overcast(dir, hazeHor), env.deck);
+    const base = mix(hazeDir, sky, step(0, h));
     // studio void: a fraction of the horizon haze, lifted a little on the sun's side and just
     // under a low sun, darkest straight down, plus a faint floor so the night void stays navy
     const dh = normalize(vec2(dir.x, dir.z.add(1e-5)));
@@ -382,10 +405,22 @@ export class SkyModel {
     const lv = tsl.log(max(voidCol, vec3(1e-6)));
     const col = tsl.exp(mix(lb, lv, t)).toVar();
     If(h.greaterThan(-0.02), () => {
-      col.addAssign(this.bodies(dir).mul(tint));
+      // sun, moon and stars are hidden under the deck
+      col.addAssign(this.bodies(dir).mul(tint).mul(float(1).sub(env.deck)));
     });
     return vec4(col, 1);
   });
+
+  /** Overcast sky under an ash deck for a direction above the horizon. */
+  private overcast(dir: N, hazeHor: N): N {
+    const h = dir.y;
+    // a virtual ceiling OVERCAST_CEILING above the eye, drifting with the deck
+    const pc = vec2(dir.x, dir.z).div(max(h, 0.035)).mul(OVERCAST_CEILING).sub(env.wind.mul(env.tFx).mul(0.45));
+    const n0 = mx_noise_float(vec3(pc.div(OVERCAST_SCALES[0]), 1.3));
+    const n1 = mx_noise_float(vec3(pc.div(OVERCAST_SCALES[1]), 4.1));
+    const mott = n0.mul(0.16).add(n1.mul(0.08)).add(1);
+    return mix(hazeHor, env.deckSky.mul(mott), smoothstep(0.0, 0.3, h));
+  }
 
   /** Camera-centred sky sphere pinned just inside the (reversed-Z) far plane. */
   createDome(): Mesh {

@@ -1,7 +1,7 @@
 import { Color, Vector3 } from 'three/webgpu';
 import type { SceneState } from '../core/types.ts';
 import type { World } from '../world/World.ts';
-import { atmoLook, gradeLook, isLookRegion, sampleRegionWeights, type AtmoLook, type GradeLook, type GradeSpot } from '../materials/looks.ts';
+import { atmoLook, deckLook, DEFAULT_HAZE_RAMP, gradeLook, isLookRegion, sampleRegionWeights, type AtmoLook, type DeckLook, type GradeLook, type GradeSpot } from '../materials/looks.ts';
 import { gradeUniforms } from '../render/PostPipeline.ts';
 import { env } from '../materials/environment.ts';
 
@@ -45,6 +45,18 @@ const _t = new Vector3();
 export class RegionLook {
   private readonly grades: GradeLook[];
   private readonly atmos: AtmoLook[];
+  private readonly decks: DeckLook[];
+  /** deck spots (looks.json deck.spots) resolved to world positions */
+  private readonly deckSpots: { x: number; z: number; r: number; cover: number }[] = [];
+  /**
+   * The focus-blended ash deck (S4; wide views fade it like the grade): cover 0..1, tone (linear),
+   * base height, key shadow — what the dome, the hemisphere and the key light read this frame.
+   */
+  readonly deck = { cover: 0, tone: new Color(0.25, 0.25, 0.25), height: 40, shadow: 0 };
+  /** the focus-blended regional in-scatter tint (atmo.tint; the dome's horizon) */
+  readonly horizonTint = new Color(1, 1, 1);
+  /** the focus-blended haze distance ramp (atmo.ramp; env.hazeRamp) */
+  readonly ramp: [number, number, number, number] = [...DEFAULT_HAZE_RAMP];
   /** place-based grade spots of every region, resolved to world positions */
   private readonly spots: { x: number; z: number; r: number; grade: GradeSpot['grade'] }[] = [];
   private readonly w: Float32Array;
@@ -56,6 +68,12 @@ export class RegionLook {
     const ids = world.lookRegions;
     this.grades = ids.map((id) => gradeLook(id));
     this.atmos = ids.map((id) => atmoLook(id));
+    this.decks = ids.map((id) => deckLook(id));
+    for (const d of this.decks)
+      for (const s of d.spots) {
+        const p = world.places.get(s.place);
+        if (p) this.deckSpots.push({ x: p.x, z: p.z, r: s.radiusKm, cover: s.cover });
+      }
     for (const g of this.grades)
       for (const s of g.spots) {
         const p = world.places.get(s.place);
@@ -124,6 +142,53 @@ export class RegionLook {
       sky.g += a * s.g;
       sky.b += a * s.b;
     }
+
+    // ---- the ash deck, the horizon tint and the haze ramp around the focus (S4)
+    let dc = 0;
+    let dh = 0;
+    let ds = 0;
+    let dr = 0;
+    let dg = 0;
+    let db = 0;
+    const ht = [neutral, neutral, neutral];
+    const ramp = DEFAULT_HAZE_RAMP.map((v) => v * neutral);
+    for (let k = 0; k < n; k++) {
+      const a = acc[k];
+      if (a <= 1e-5) continue;
+      const D = this.decks[k];
+      const c = a * D.cover;
+      dc += c;
+      dh += c * D.height;
+      ds += c * D.shadow;
+      dr += c * D.tone.r;
+      dg += c * D.tone.g;
+      db += c * D.tone.b;
+      const A = this.atmos[k];
+      ht[0] += a * A.tint.r;
+      ht[1] += a * A.tint.g;
+      ht[2] += a * A.tint.b;
+      for (let i = 0; i < 4; i++) ramp[i] += a * A.ramp[i];
+    }
+    const deck = this.deck;
+    if (dc > 1e-5) {
+      deck.tone.setRGB(dr / dc, dg / dc, db / dc);
+      deck.height = dh / dc;
+      deck.shadow = ds / dc;
+    } else {
+      deck.tone.setRGB(0.25, 0.25, 0.25);
+      deck.height = 40;
+      deck.shadow = 0;
+    }
+    // deck spots: the cover moves towards the spot's by the focus distance to the place
+    for (const sp of this.deckSpots) {
+      const q = Math.hypot(tx - sp.x, tz - sp.z) / sp.r;
+      const a = Math.exp(-q * q) * regional;
+      if (a < 1e-4 || dc <= 1e-5) continue;
+      dc += (Math.min(dc, sp.cover) - dc) * a;
+    }
+    deck.cover = Math.min(1, dc);
+    this.horizonTint.setRGB(ht[0], ht[1], ht[2]);
+    for (let i = 0; i < 4; i++) this.ramp[i] = ramp[i];
 
     // ---- place spots (Gaussian in the focus distance to the place; wide views fade them too)
     for (const sp of this.spots) {
