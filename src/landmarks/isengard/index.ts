@@ -193,7 +193,7 @@ function buildRing(k: ProxyKit): void {
  */
 const PITS: [number, number, number][] = (
   [
-    [312, 2.3, 0.32],
+    [316, 2.3, 0.32],
     [322, 3.6, 0.22],
     [338, 2.9, 0.14],
     [330, 4.8, 0.36],
