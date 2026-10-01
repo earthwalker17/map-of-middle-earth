@@ -527,7 +527,8 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     const wetCol = mix(mat, srgbNode(TS.wetPool), pools.mul(0.85));
     col.assign(mix(col, wetCol, wetW.mul(0.92)));
     col.assign(mix(col, srgbNode(TS.ash), lc.b.mul(0.9)));
-    col.assign(mix(col, srgbNode(TS.road), lc.a.mul(0.45)));
+    // roads disappear under the far canopy shell (the Old Forest Road no longer stripes Mirkwood at range)
+    col.assign(mix(col, srgbNode(TS.road), lc.a.mul(0.45).mul(float(1).sub(shell.weight.mul(0.8)))));
     const channel = max(water.r, water.g);
     col.assign(mix(col, srgbNode(TS.channel), channel.mul(0.9)));
 

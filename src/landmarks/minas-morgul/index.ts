@@ -3,6 +3,7 @@ import { defineLandmark } from '../types.ts';
 import { buildBridge, buildCity } from './city.ts';
 import { C, PAD_C, PAD_FALL, PAD_R, PAD_REL, T3_TOP, TOWER } from './layout.ts';
 import { buildTower } from './tower.ts';
+import { WASH_LIGHTS } from './wash.ts';
 
 /**
  * Minas Morgul, the Tower of the Moon (research §11; the RotK gate-and-bridge still, Nasmith's "The Tower
@@ -48,6 +49,7 @@ export default defineLandmark({
   placeId: 'minas-morgul',
   tier: 'A',
   stamps: STAMPS,
+  lights: WASH_LIGHTS,
   proxy: (k) => {
     const padY = k.ground(C[0], C[1]);
     buildCity(k);

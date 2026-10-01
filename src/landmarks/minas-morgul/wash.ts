@@ -60,7 +60,7 @@ export function washFull(n: number, e0: number, floor: number): Band[] {
  * wired into the landmark (index.ts `lights: WASH_LIGHTS` — a contract request of W2-D) the painted bands
  * drop to WASH_PAINT of their S3 strength: a faint emissive skin that keeps the hue, the light does the rest.
  */
-export const WASH_SPILL = false;
+export const WASH_SPILL = true;
 /** the painted bands' share of their S3 strength once the spill lights the walls */
 export const WASH_PAINT = 0.35;
 /**

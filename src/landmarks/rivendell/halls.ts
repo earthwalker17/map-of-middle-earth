@@ -24,7 +24,7 @@ const ROCK = 0x5d605c;
 /** the dark, wet rock of the gullies under the falls */
 const ROCK_WET = 0x34383a;
 /** autumn crowns: varied golden ochres, a few still green-gold */
-const AUTUMN = [0xc9a040, 0xd4ae4c, 0xb8922f, 0xc69838, 0xa8862e, 0xdcbc5c, 0x9c963e];
+const AUTUMN = [0xc9a040, 0xb8922f, 0xc69838, 0xa8862e, 0x9c963e, 0x7d7a3a, 0x9c5a2a, 0xa8782a];
 /** feathery birches: pale gold */
 const BIRCH = [0xd8c060, 0xe0c86a, 0xcdb24e];
 /** slender firs among them */
