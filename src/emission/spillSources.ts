@@ -49,13 +49,13 @@ export interface SpillSource {
 export const SPILL_KM: Record<LightKind, number> = { lava: 6, eye: 4, magic: 2, beacon: 2, fire: 0.8, ithildin: 0.4, lamp: 0.35, window: 0 };
 
 /** spill gain by kind on the sprite energy (tuned on the s4-d shots) */
-export const SPILL_GAIN: Record<LightKind, number> = { lava: 45, eye: 8, magic: 12, beacon: 1.5, fire: 4, ithildin: 1, window: 1, lamp: 1 };
+export const SPILL_GAIN: Record<LightKind, number> = { lava: 150, eye: 20, magic: 20, beacon: 15, fire: 8, ithildin: 1, window: 6, lamp: 5 };
 
 /** smallest radius entering the power (km): tiny fire sprites still light their tower */
 const SPILL_R_MIN: Partial<Record<LightKind, number>> = { fire: 0.04, beacon: 0.08, lamp: 0.02 };
 
 /** halo gain by kind (spill.ts spillInScatter): lava, the Eye, magic and beacons glow in the air */
-export const HALO_GAIN: Record<LightKind, number> = { lava: 1, eye: 0.4, magic: 1, beacon: 1, fire: 0, ithildin: 0, window: 0, lamp: 0 };
+export const HALO_GAIN: Record<LightKind, number> = { lava: 0.3, eye: 0.15, magic: 1, beacon: 1, fire: 0, ithildin: 0, window: 0, lamp: 0 };
 
 /** glint gain by kind (spill.ts spillGlint on water) */
 export const GLINT_GAIN: Record<LightKind, number> = { lava: 1, eye: 1, magic: 1, beacon: 1, fire: 1, ithildin: 1, window: 1, lamp: 1 };
@@ -91,12 +91,29 @@ function flickerOf(r: LightRecord): [number, number, number, number] {
   return [depth, (5.1 + 4.3 * rand(s, 'w', 1)) * fast, (1.7 + 2.9 * rand(s, 'w', 2)) * fast, rand(s, 'phi', 0) * Math.PI * 2];
 }
 
+/**
+ * Emitter radius of a record (km): the sprite's radius (clamped to the kind's cap); a spill-only source
+ * (sprite: false) has no sprite to keep sane — its radius is the size of the glowing area it stands for.
+ */
+function radiusOf(r: LightRecord): number {
+  const lo = SPILL_R_MIN[r.kind] ?? 0.005;
+  return r.sprite === false ? Math.max(r.radiusKm, lo) : Math.min(Math.max(r.radiusKm, lo), MAX_RADIUS_KM[r.kind]);
+}
+
 /** radiant intensity of one record (before its colour) */
 function powerOf(r: LightRecord): number {
   const I = Math.min(MAX_INTENSITY, Math.max(0, r.intensity));
-  const rr = Math.min(Math.max(r.radiusKm, SPILL_R_MIN[r.kind] ?? 0.005), MAX_RADIUS_KM[r.kind]);
+  const rr = radiusOf(r);
   return SPILL_GAIN[r.kind] * HDR_PER_INTENSITY * I * rr * rr;
 }
+
+/**
+ * The lit pall over a big lava source: the ash and fume above a crater glow red and light the slopes
+ * round it from above (a light at the crater's rim only grazes a cone's flanks). A lava source of reach
+ * ≥ PALL.minR gets a spill-only companion `lift`·R above it, reach `reach`·R, core `core`·R, power
+ * `power`·J (no halo — the halo of the crater itself is the glow in the air; no glint).
+ */
+const PALL = { minR: 4, lift: 0.5, reach: 2.2, core: 0.5, power: 2.5 };
 
 /** singles of one landmark, kind, gate and reach closer than this × the reach merge into one source */
 const MERGE_K = 0.25;
@@ -152,7 +169,7 @@ export function buildSpillSources(records: LightRecord[]): SpillSource[] {
     }
     const R = explicit ?? SPILL_KM[r.kind];
     if (!(R > 0)) continue;
-    const rr = Math.min(Math.max(r.radiusKm, 0.005), MAX_RADIUS_KM[r.kind]);
+    const rr = radiusOf(r);
     const src: SpillSource = {
       key: `${r.landmark}|${r.kind}|${gateCode(r)}|${R}`,
       p: [r.p[0], r.p[1], r.p[2]],
@@ -167,6 +184,8 @@ export function buildSpillSources(records: LightRecord[]): SpillSource[] {
       glint: GLINT_GAIN[r.kind],
     };
     mergeOrPush(out, src);
+    if (r.kind === 'lava' && R >= PALL.minR)
+      out.push({ ...src, key: `${src.key}|pall`, p: [r.p[0], r.p[1] + PALL.lift * R, r.p[2]], R: PALL.reach * R, r0: PALL.core * R, J: PALL.power * J, halo: 0, glint: 0, flicker: [...src.flicker] });
   }
   for (const key of keys) {
     const g = groups.get(key)!;

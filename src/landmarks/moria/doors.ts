@@ -82,11 +82,11 @@ function onFace(u: number, v: number, f: number, sill: number): V3 {
  */
 const DOOR_SPILL: LightDecl[] = (
   [
-    [0, 0.72],
-    [-0.26, 0.3],
-    [0.26, 0.3],
+    [0, 0.8],
+    [-0.3, 0.35],
+    [0.3, 0.35],
   ] as const
-).map(([u, v]) => ({ at: onFace(u, v, 0.12, 0), color: 0xdff3ff, intensity: 1.6, radius: 0.05, kind: 'ithildin' as const, spillKm: 1.1, sprite: false }));
+).map(([u, v]) => ({ at: onFace(u, v, 0.4, 0), color: 0xdff3ff, intensity: 5, radius: 0.25, kind: 'ithildin' as const, spillKm: 1.4, sprite: false }));
 
 /** the single ithildin spark: the Star of Fëanor (local km; the sill is at local y ≈ 0), and the doors' spill */
 export const ITHILDIN_LIGHTS: LightDecl[] = [{ at: onFace(0, 0.36, 0.03, 0), color: 0xdff3ff, intensity: 2.2, radius: 0.04, kind: 'ithildin' }, ...DOOR_SPILL];

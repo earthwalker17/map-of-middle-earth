@@ -101,6 +101,9 @@ export const CONTACT_WEIGHT = 0.3;
 /** Bits of `surf.a` holding the contact term (the noise class sits above them). */
 export const CONTACT_LEVELS = 31;
 
+/** albedo under the emission spill of glow geometry (the stone a glow skin lies on; spill.ts) */
+const GLOW_SPILL_ALBEDO = 0.3;
+
 /** Strength encoding range of glow vertices (surf.r × GLOW_MAX). */
 export const GLOW_MAX = 16;
 
@@ -327,7 +330,10 @@ function glowMaterial(): MeshStandardNodeMaterial {
     const peak = max(paint.r, max(paint.g, paint.b));
     const hot = paint.add(vec3(peak).sub(paint).mul(vec3(0.2, 0.6, 0.1)));
     const c = mix(paint, hot, ndv.mul(ndv).mul(0.6)).mul(ndv.mul(0.4).add(0.8));
-    return c.mul(surf.r.mul(GLOW_MAX)).mul(glowGate(surf.g)).mul(max(f, 0.2));
+    const glow = c.mul(surf.r.mul(GLOW_MAX)).mul(glowGate(surf.g)).mul(max(f, 0.2));
+    // S4 W2-D: a glow skin lies on stone (the Morgul wash bands cover most of each washed face): it takes
+    // the emission spill like the pale stone under it, so the spill's falloff shows through the skin
+    return glow.add(spillIrradiance(positionWorld, normalWorld).mul(GLOW_SPILL_ALBEDO / Math.PI));
   })();
   return m;
 }

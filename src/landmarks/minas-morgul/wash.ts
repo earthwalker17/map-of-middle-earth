@@ -61,28 +61,29 @@ export function washFull(n: number, e0: number, floor: number): Band[] {
  */
 export const WASH_SPILL = false;
 /** the painted bands' share of their S3 strength once the spill lights the walls */
-export const WASH_PAINT = 0.45;
+export const WASH_PAINT = 0.25;
 
 /** foot emission of the wash (linear green) */
 export const E0 = 0.35 * (WASH_SPILL ? WASH_PAINT : 1);
 
 /** the light of the wash (sRGB): a saturated emerald, a little hotter than the paint */
-const WASH_LIGHT = 0x22d070;
+const WASH_LIGHT = 0x14b85a;
 
 /**
  * The wash sources (local km; the shelf is at y ≈ −0.4, the second tier's top 1.3, the keep terrace's
- * 2.1 — layout.ts): [x, y, z], intensity, reach. Before the gate (the strongest: the opening burns), off
- * the south-west, south-east and west curtains, before the second tier's face over the curtain, before
- * the keep terrace and the Tower's keep. 'magic' at the night gate; r = 0.2 → the core r0 = 0.4 km.
+ * 2.1 — layout.ts): [x, y, z], intensity, reach — 0.2 km off the walls' feet: before the gate (the
+ * strongest: the opening burns), off the south-west, south-east and west curtains, before the second
+ * tier's face over the curtain, before the keep terrace and the Tower's keep. 'magic' at the night gate;
+ * r = 0.12 → the core r0 = 0.24 km, so each face is brightest at its foot and dims up it and along it.
  */
 const WASH_SRC: [V3, number, number][] = [
-  [[0.19, -0.15, 3.3], 0.3, 1.5],
-  [[-1.19, -0.2, 2.47], 0.2, 1.4],
-  [[1.5, -0.2, 2.84], 0.2, 1.4],
-  [[-1.6, -0.2, 1.48], 0.18, 1.4],
-  [[0.42, 0.6, 2.42], 0.16, 1.2],
-  [[0.52, 1.6, 2.06], 0.15, 1.1],
-  [[0.52, 2.4, 1.95], 0.12, 1.0],
+  [[0.2, -0.2, 3.15], 1.0, 1.4],
+  [[-1.1, -0.25, 2.38], 0.7, 1.3],
+  [[1.42, -0.25, 2.72], 0.7, 1.3],
+  [[-1.48, -0.25, 1.46], 0.63, 1.3],
+  [[0.42, 0.5, 2.36], 0.6, 1.1],
+  [[0.52, 1.4, 2.0], 0.56, 1.0],
+  [[0.52, 2.25, 1.85], 0.45, 0.9],
 ];
 
-export const WASH_LIGHTS: LightDecl[] = WASH_SRC.map(([at, intensity, spillKm]) => ({ at, color: WASH_LIGHT, intensity, radius: 0.2, kind: 'magic', gate: 'night', spillKm, sprite: false }));
+export const WASH_LIGHTS: LightDecl[] = WASH_SRC.map(([at, intensity, spillKm]) => ({ at, color: WASH_LIGHT, intensity, radius: 0.12, kind: 'magic', gate: 'night', spillKm, sprite: false }));
