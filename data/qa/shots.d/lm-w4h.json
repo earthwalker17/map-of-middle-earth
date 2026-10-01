@@ -1,0 +1,163 @@
+{
+  "version": 1,
+  "notes": "S3 W4-H review shots: the Front Gate close by day, Dale / Lake-town / Dol Guldur close by day, Lake-town with Erebor (prologue option), Lake-town and Dale hero framings at blue hour (windows on). Landmark bookmarks (erebor -close / -wide, lake-town / dale / dol-guldur -close) live in the landmark definitions.",
+  "shots": [
+    {
+      "id": "w4h-laketown-near",
+      "tod": 16.0,
+      "camera": {
+        "orbit": {
+          "place": "lake-town",
+          "distanceKm": 9,
+          "elevationDeg": 28,
+          "azimuthDeg": 195,
+          "fov": 35,
+          "lift": 2.6,
+          "aimKm": [
+            1.45,
+            0.6
+          ]
+        }
+      },
+      "compare": [
+        "reference/film/lake-town/lake-town-wide.webp",
+        "reference/concept-art/lake-town/lake-town-alan-lee.jpg"
+      ],
+      "note": "afternoon, close and high: the continuous deck with its notched outline and jetties, the Grand Canal, the side canals and their bridges, the blocks turned against each other, the towers"
+    },
+    {
+      "id": "w4h-erebor-gate",
+      "tod": 16.0,
+      "camera": {
+        "orbit": {
+          "place": "erebor",
+          "distanceKm": 10,
+          "elevationDeg": 8,
+          "azimuthDeg": 195,
+          "fov": 35,
+          "lift": 1.8,
+          "aimKm": [
+            0.2,
+            0.9
+          ]
+        }
+      },
+      "compare": [
+        "reference/film/erebor/erebor-front-gate-statues.webp",
+        "reference/bigatures/erebor/erebor-front-gate-weta-mini.jpg"
+      ],
+      "note": "afternoon, close: the Front Gate in its recess, the two kings with their axes, the terrace and the river's outlet, the braziers"
+    },
+    {
+      "id": "w4h-dale-near",
+      "tod": 16.0,
+      "camera": {
+        "orbit": {
+          "place": "dale",
+          "distanceKm": 9,
+          "elevationDeg": 16,
+          "azimuthDeg": 210,
+          "fov": 35,
+          "lift": 0.5,
+          "aimKm": [
+            -1.45,
+            -1.2
+          ]
+        }
+      },
+      "compare": [
+        "reference/film/dale/dale-ruins-dos.jpg"
+      ],
+      "note": "afternoon, close: the pale terraced town on its promontory, the retaining walls, the curtain wall and gatehouses, the great hall and the belfry, the crags below the wall"
+    },
+    {
+      "id": "w4h-dolguldur-near",
+      "tod": 15.0,
+      "camera": {
+        "orbit": {
+          "place": "dol-guldur",
+          "distanceKm": 9,
+          "elevationDeg": 12,
+          "azimuthDeg": 200,
+          "fov": 35,
+          "lift": 1.6
+        }
+      },
+      "compare": [
+        "reference/film/dol-guldur/dol-guldur-silhouette-auj.png",
+        "reference/film/dol-guldur/dol-guldur-dos.webp"
+      ],
+      "note": "afternoon, close: the triangle of broken walls, the splintered crown, the bridge"
+    },
+    {
+      "id": "w4h-laketown-erebor",
+      "tod": 18.2,
+      "dayOfYear": 240,
+      "camera": {
+        "orbit": {
+          "place": "lake-town",
+          "distanceKm": 62,
+          "elevationDeg": 6,
+          "azimuthDeg": 168,
+          "fov": 30,
+          "lift": 13,
+          "aimKm": [
+            0,
+            6
+          ]
+        }
+      },
+      "compare": [
+        "reference/film/erebor/erebor-lonely-mountain-dos.jpg"
+      ],
+      "note": "prologue option (golden evening): from the south over the Long Lake — Lake-town's lanterns at the foot of the frame, the lake running north to the Lonely Mountain (the town is small here: at the ×12 relief Erebor stands 18° above the horizon from the town)"
+    },
+    {
+      "id": "w4h-laketown-dusk",
+      "tod": 19.2,
+      "dayOfYear": 240,
+      "camera": {
+        "orbit": {
+          "place": "lake-town",
+          "distanceKm": 6.8,
+          "elevationDeg": 8,
+          "azimuthDeg": 195,
+          "fov": 28,
+          "lift": 2.6,
+          "aimKm": [
+            1.4,
+            0.7
+          ]
+        }
+      },
+      "compare": [
+        "reference/film/lake-town/lake-town-wide.webp",
+        "reference/concept-art/lake-town/lake-town-alan-lee.jpg"
+      ],
+      "note": "the hero framing at blue hour (sun ≈ −5°): windows and lanterns on (night gate), clustered at the market and the Master's house, the bridge lanterns"
+    },
+    {
+      "id": "w4h-dale-dusk",
+      "tod": 19.2,
+      "dayOfYear": 240,
+      "camera": {
+        "orbit": {
+          "place": "dale",
+          "distanceKm": 20,
+          "elevationDeg": 11,
+          "azimuthDeg": 226,
+          "fov": 14,
+          "lift": 0.1,
+          "aimKm": [
+            -1.9,
+            -1.6
+          ]
+        }
+      },
+      "compare": [
+        "reference/film/dale/dale-ruins-dos.jpg"
+      ],
+      "note": "the hero framing at blue hour (sun ≈ −5°): warm windows on the terraces, belfry and gate lamps (night gate)"
+    }
+  ]
+}
