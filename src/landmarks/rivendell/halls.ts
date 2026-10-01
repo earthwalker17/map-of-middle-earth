@@ -2,7 +2,7 @@ import { hashString, rand } from '../../core/rng.ts';
 import type { ProxyKit } from '../kit/ProxyKit.ts';
 import { SINK } from '../kit/ProxyKit.ts';
 import type { ForestDecl, TreeDecl, V2 } from '../types.ts';
-import { FLOOR, LEDGE_N, LEDGE_NE, LEDGE_S, LEDGE_SE, NORTH_H, PAVILION, RAVINE_X, SOUTH_H, STREAM_WE } from './layout.ts';
+import { FLOOR, LEDGE_N, LEDGE_NE, LEDGE_S, LEDGE_SE, PAVILION, RAVINE_X, STREAM_WE } from './layout.ts';
 import { archedBridge, BRONZE, deck, elvenTower, gallery, hall, LAMP, offsetPath, pavilion, STONE2, TRIM, VERDIGRIS } from './parts.ts';
 
 /**
@@ -20,7 +20,7 @@ import { archedBridge, BRONZE, deck, elvenTower, gallery, hall, LAMP, offsetPath
 
 const SEED = hashString('rivendell-halls');
 /** grey rock of the gorge walls, a little warm (matches the terrain's rock; lit gold by the low sun) */
-const ROCK = 0x625f59;
+const ROCK = 0x5d605c;
 /** autumn crowns: varied golden ochres, a few still green-gold */
 const AUTUMN = [0xc9a040, 0xd4ae4c, 0xb8922f, 0xc69838, 0xa8862e, 0xdcbc5c, 0x9c963e];
 /** feathery birches: pale gold */
@@ -191,7 +191,7 @@ function buildNorthLedge(k: ProxyKit): void {
   // the house: a long hall with a cross wing and a loggia facing the gorge, two bronze wings running
   // back, a tall hall closing the court behind, a small hall on the east lip
   hall(k, { at: onN(-0.12, 0.14), yaw: 0, w: 0.74, d: 0.28, h: 0.22, rise: 0.27, windows: 4, cross: true, loggia: true });
-  hall(k, { at: onN(-0.56, -0.12), yaw: 90, w: 0.4, d: 0.21, h: 0.19, rise: 0.2, windows: 2, roof: BRONZE });
+  hall(k, { at: onN(-0.5, -0.12), yaw: 90, w: 0.4, d: 0.21, h: 0.19, rise: 0.2, windows: 2, roof: BRONZE });
   hall(k, { at: onN(0.38, -0.12), yaw: 90, w: 0.38, d: 0.2, h: 0.19, rise: 0.2, windows: 2, roof: BRONZE });
   hall(k, { at: onN(-0.1, -0.42), yaw: 0, w: 0.56, d: 0.22, h: 0.24, rise: 0.24, windows: 3 });
   hall(k, { at: onN(0.66, 0.12), yaw: -25, w: 0.3, d: 0.17, h: 0.15, windows: 1, loggia: true });
@@ -221,7 +221,7 @@ function buildNorthLedge(k: ProxyKit): void {
   }
   // slender towers with ogee caps (the group's silhouette)
   elvenTower(k, onN(0.28, 0.32), 0.05, 0.82, { lit: 3, roof: BRONZE });
-  elvenTower(k, onN(-0.78, -0.42), 0.045, 0.56, { lit: 2, roof: VERDIGRIS });
+  elvenTower(k, onN(-0.62, -0.32), 0.045, 0.56, { lit: 2, roof: VERDIGRIS });
   elvenTower(k, onN(0.8, -0.3), 0.042, 0.48, { lit: 1 });
   // the round Council court on the ledge's western lip: a pale floor, a ring of slender columns and their
   // ring beam, open to the sky

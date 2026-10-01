@@ -4,33 +4,36 @@ import { buildRivendell, FORESTS, TREES } from './halls.ts';
 import { FALLS, LEDGE_N, LEDGE_NE, LEDGE_S, LEDGE_SE, NORTH_FOOT, NORTH_H, PAVILION, RAVINE_X, SOUTH_FOOT, SOUTH_H, STREAM } from './layout.ts';
 
 /**
- * Rivendell, Imladris (research §4): a deep, narrow, steep-walled gorge with ribbon waterfalls; pale
- * terraced halls with steep slate roofs clinging to ledges on both sides, the Last Homely House the
- * largest group, a round Council court among pillars, a thin arched bridge leaping a waterfall's ravine,
- * woods of autumn gold and dark conifers filling the valley — the warmest, calmest place of the film.
+ * Rivendell, Imladris (research §4): a deep, narrow gorge with sheer rock walls and ribbon waterfalls;
+ * honey-cream elven halls under steep, swept (bell-cast) roofs of verdigris and bronze, slender towers
+ * with ogee caps, open pavilions, arched galleries and terraces cantilevered over the gorge on slender
+ * columns — the Last Homely House on a spur above the stream, a second group on the south ledge, single
+ * halls on two up-valley shelves, a round Council court among pillars, a thin arched bridge leaping a
+ * waterfall's ravine, woods of golden ochre broadleaves, pale-gold birches and slender firs kept under
+ * ~0.6 of the main hall's height — the warmest, calmest place of the film.
  *
  * Local frame: x east, z south (heading 0), km round the display point, heights relative to the base
  * ground there. The baked stream runs east → west through the valley (level ≈ 0 at the display point),
  * falling at x ≈ −4.5 … −6 into the deep Bruinen valley to the west. The gorge is built by RAISING its
- * walls beside the stream (scarps either side, their feet 0.7 km from it, just beyond the stream's ribbon;
- * the river guard keeps the stream and its banks): a high, sunlit north wall and a lower south one, four
- * ledges cut into them for the halls (the main one, the Last Homely House, on the north wall), each
- * terrace edged at its real edge with a low band of rim rock facing the gorge (kit cliffs, halls.ts); the
- * steep scarp faces themselves are the terrain's rock. A rock spur east of the main ledge carries a
- * pavilion at the ledge's level, a notch cut between them is the ravine of a waterfall. Waterfalls are
- * declared for S4 (static pale streaks stand in for them).
+ * walls beside the stream (scarps either side, their feet 0.7 km from it, a steep 0.5 km face; the river
+ * guard keeps the stream and its banks): a north wall 3.3 high that begins behind the main ledge (so the
+ * ledge stands out from its west end as a spur, open to the west), a south wall 2.8 high; kit cliffs
+ * (halls.ts) seated at the scarps' feet give the faces sheer, stratified rock. Ledges are cut into the
+ * walls for the halls, each edged with a band of rim rock; a rock spur east of the main ledge carries a
+ * pavilion at the ledge's level, a notch cut between them is the ravine of a waterfall. Five waterfalls
+ * are declared for S4 (no placeholder geometry).
  *
- * Straight down the gorge axis the walls hide the ledges, so the hero bookmark looks obliquely down the
- * gorge from the east-south-east with a long lens (fov 14), into the afternoon sun (side-back light).
+ * The hero looks from over the west-south-west rim down into the gorge with a long lens (the house on
+ * its spur on the left third, the gorge receding up-valley), on a late-October morning (side light from
+ * the south-east); the wide shows the valley as a dark slot in the moors under the Misty Mountains.
  */
 
 const STAMPS: LocalStamp[] = [
-  // the gorge walls: scarps raising the moor on both sides of the stream — the high, sunlit north wall (2.5,
-  // a steep 0.85 km face) that carries the Last Homely House on its ledge, a lower south wall (1.9); the
-  // moor running back behind the rims (undulating) and falling away gently, so the valley reads as a cleft
-  // in the high moorland rather than a cut between two mesas (the north moor fades within 1.4 km beyond
-  // its ends and back: the valley opens north-west into the Bruinen's gorge, whose slopes nothing may
-  // stand over)
+  // the gorge walls: scarps raising the moor on both sides of the stream — the high, sunlit north wall (3.3,
+  // a steep 0.5 km face) behind the Last Homely House's spur, the south wall (2.8); the moor running back
+  // behind the rims (undulating) and falling away, so the valley reads as a deep cleft in the high moorland
+  // (the north moor fades within 0.8 km beyond its ends and back: the valley opens north-west into the
+  // Bruinen's gorge, whose slopes nothing may stand over)
   { kind: 'scarp', path: NORTH_FOOT, side: 'left', height: NORTH_H, run: 0.5, plateauKm: 1.9, falloff: 0.8, rough: { amp: 0.45, scaleKm: 3.0 }, surface: 'rock' },
   { kind: 'scarp', path: SOUTH_FOOT, side: 'right', height: SOUTH_H, run: 0.5, plateauKm: 2.2, falloff: 2.6, rough: { amp: 0.35, scaleKm: 3.0 }, surface: 'rock' },
   // the ledges for the halls, level shelves cut into the walls (the two up-valley shelves only cut down:
@@ -60,15 +63,15 @@ export default defineLandmark({
     {
       id: 'rivendell-close',
       distanceKm: 10,
-      elevationDeg: 23,
-      azimuthDeg: 200,
-      fov: 22,
+      elevationDeg: 19,
+      azimuthDeg: 248,
+      fov: 24,
       lift: 0.5,
-      aimKm: [0.3, 1.2],
+      aimKm: [0.8, 1.2],
       tod: 10.5,
       dayOfYear: 298,
       compare: ['reference/film/rivendell/rivendell-valley-fotr.jpg', 'reference/concept-art/rivendell/rivendell-alan-lee.png', 'reference/bigatures/rivendell/rivendell-weta-mini.png'],
-      note: 'hero (mid, 12 km): from the valley lip over the falls at the gorge mouth, up the gorge to the east on a late-October morning — the low sun ahead-right rakes the honey-cream halls with their swept verdigris and bronze roofs on the spur-like north ledge (left third), the slender towers, galleries and terraces cantilevered over the gorge, the sheer rock walls with the falls, the golden woods on the floor, the Misty Mountains beyond',
+      note: 'hero (10 km, long lens): from over the west-south-west rim down into the deep gorge on a late-October morning — the Last Homely House on its spur on the left third (honey-cream halls, swept verdigris and bronze roofs, slender towers with ogee caps, the round Council court, terraces cantilevered over the gorge), the sheer walls and the stream receding up the gorge past the shelf halls, golden woods on the floor; the falls are S4 effects',
     },
     {
       id: 'rivendell-wide',

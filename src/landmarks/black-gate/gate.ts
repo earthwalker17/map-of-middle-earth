@@ -12,16 +12,18 @@ import type { V2, V3 } from '../records.ts';
  *    buttress spines every 0.95 km, each running up past the parapet to a spike; between them, three rows
  *    of massive iron plates hung like armour scales (each tilted out at its lower edge over the row
  *    below: horizontal shadow lines, broken at every buttress — no planks, no rails), varied rust and
- *    soot paint; a rank of broad spiked crenels along the top.
+ *    soot paint, rivet bosses along their edges; the crest flares out in a plated hood with a rank of
+ *    spikes along its lip (the film's hooked top).
  *  - the gate: two leaves 4.8 high (well above the wall), each a heavy slab with a raised frame, three
  *    banded tiers of panels in relief, rows of great rivet bosses and forward spikes, under a spiked
- *    lintel between two prow-fronted gate towers 6.3 high with spiked crowns and fire bowls.
+ *    lintel and a crest of five iron fangs (the central one 4.8 high) between two prow-fronted gate
+ *    towers 6.3 high with spiked crowns and fire bowls.
  *  - the Towers of the Teeth on their shelves high on the flanks: a stepped, battered octagonal plinth
- *    (its foot following the rock), eight flaring buttress fins, a broad fin-bundle shaft (r 1.0) banded
- *    every ~1.1 km, a flared collar, a lantern and a crown of spikes round a central spire — ≈ 8.7 high,
- *    standing clear above the crags.
- *  - crags: fractured basalt faces (kit cliffs) on the ridge noses and crests facing the plain, scree at
- *    their feet, a few broken spires — none near the Towers or the wall.
+ *    (its foot following the rock), eight buttress fins flaring onto it, a broad banded fin-bundle shaft
+ *    (r 0.82, 5.4 high), a flared collar, a lantern and a crown of spikes round a central spire — ≈ 9.4
+ *    high, standing clear above the crags.
+ *  - crags: fractured basalt (kit cliffs) round the front of each Tower's knob and along the ridge flanks
+ *    facing the pass, scree at their feet, a few broken spires — none on the Towers or the wall.
  *  - braziers (fire, night gate): the gate towers, the wall walk, the Towers' lanterns.
  *
  * Iron parts use the 'iron' family (metallic, roughness 0.5: the specular ambient keeps them from going

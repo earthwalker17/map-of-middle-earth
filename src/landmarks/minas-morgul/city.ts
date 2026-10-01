@@ -56,7 +56,7 @@ interface Band {
   s: number;
 }
 /**
- * The wash: `n` bands from the foot up to `top` (fraction of the height), emitting `e0`·(1 − t)^0.5 in
+ * The wash: `n` bands from the foot up to `top` (fraction of the height), emitting `e0`·(1 − t)^0.9 in
  * green (linear) at fraction t of the washed zone; the paint drifts from the emerald toward a grey green
  * (the hue holds — no white — and the upper bands' daytime albedo comes nearer the pale stone's).
  */
@@ -64,12 +64,12 @@ function wash(n: number, top: number, e0: number): Band[] {
   return Array.from({ length: n }, (_, i) => {
     const tm = (i + 0.5) / n;
     const color = mixHex(GLOW, GLOW_PALE, tm ** 2.5);
-    const e = e0 * (1 - tm) ** 0.5;
+    const e = e0 * (1 - tm) ** 0.9;
     return { f0: (top * i) / n, f1: (top * (i + 1)) / n, color, s: Math.min(15, e / lumG(color)) };
   });
 }
 /** foot emission of the wash (linear green) */
-const E0 = 0.085;
+const E0 = 0.35;
 const WALL_WASH = wash(14, 0.45, E0);
 const TIER_WASH = wash(10, 0.45, E0 * 0.9);
 const TOWER_WASH = wash(8, 0.42, E0 * 0.9);
@@ -360,15 +360,6 @@ function terrace(k: ProxyKit, poly: V2[], centre: V2, top: number, parapet: numb
     const base = ga - SINK;
     wallSeg(k, a, b, { h: top + parapet - base, t: 0.12, tt: 0.07, shade: 0.94 + 0.12 * k.r(seed + i), centre, glow: TIER_WASH, base, halo: true });
   }
-}
-
-/** a closed polygon round `c`: `n` points at radius r·(1 + wobble), phase-shifted */
-function polar(c: V2, r: number, n: number, wobble: number, phase: number): V2[] {
-  return Array.from({ length: n }, (_, j): V2 => {
-    const a = (j / n) * Math.PI * 2 + phase;
-    const rr = r * (1 + wobble * Math.sin(3 * a + 0.7) + 0.5 * wobble * Math.cos(5 * a));
-    return [c[0] + Math.cos(a) * rr, c[1] + Math.sin(a) * rr];
-  });
 }
 
 /**

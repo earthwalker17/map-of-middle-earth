@@ -14,7 +14,7 @@
       "id": "w5j-riv-dusk",
       "tod": 17.4,
       "dayOfYear": 298,
-      "camera": { "orbit": { "place": "rivendell", "distanceKm": 10, "elevationDeg": 18, "azimuthDeg": 236, "fov": 30, "lift": 1.0, "aimKm": [0.9, 1.4] } },
+      "camera": { "orbit": { "place": "rivendell", "distanceKm": 10, "elevationDeg": 19, "azimuthDeg": 248, "fov": 24, "lift": 0.5, "aimKm": [0.8, 1.2] } },
       "compare": ["reference/film/rivendell/rivendell-valley-fotr.jpg"],
       "note": "the hero framing at dusk: warm windows, lamps on the balustrades, the court and the pavilions (night gate)"
     },

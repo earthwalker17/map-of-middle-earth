@@ -3,10 +3,11 @@ import { defineLandmark } from '../types.ts';
 import { buildGate, EAST_RIDGE, TOWERS, WEST_RIDGE } from './gate.ts';
 
 /**
- * The Morannon, the Black Gate (research §6): a single long wall of spiked, plated iron closing the pass
- * of Cirith Gorgor between two steep rocky ridges, a giant double gate in the middle, the two Towers of
- * the Teeth standing high on the flanking slopes, and a flat pale ash plain in front (the Dagorlad look
- * region carries the ash; a ground-look spot in looks.json darkens the ridges' rock).
+ * The Morannon, the Black Gate (research §6): a single iron rampart closing the pass of Cirith Gorgor
+ * between two steep rocky ridges, a giant riveted double gate under a fang crest in the middle, the two
+ * Towers of the Teeth on broken crags high on the flanking slopes, and a flat pale ash plain in front
+ * (the Dagorlad look region carries the ash; a ground-look spot in looks.json darkens the ridges' rock).
+ * gate.ts builds the iron (the wall's level top dies into the rising rock under the Towers).
  *
  * Local frame (heading 312, see HEADING): local −z (the plain in front) faces north-west; the origin is the
  * middle of the gate. Stamps, applied in order:
@@ -17,9 +18,10 @@ import { buildGate, EAST_RIDGE, TOWERS, WEST_RIDGE } from './gate.ts';
  *     (lowerOnly, rising gently from −5.4 to −2.4 over 40 km);
  *  2. two steep, craggy ridges along the pass (crests at x ≈ ∓11.2, ~10 above the floor, sharp-crested
  *     with strong ridged noise so their skylines are serrated; their noses run 4 km out into the plain: a
- *     bay before the gate), so the pass is closed exactly by the ~15 km wall — the wall's wings climb their
- *     feet. Kit shards (gate.ts) break the crests and noses into crags;
- *  3. two shelves high on the flanks for the Towers of the Teeth.
+ *     bay before the gate), so the pass is closed by the ~16 km wall. Kit cliffs, scree and broken spires
+ *     (gate.ts) break the Towers' knobs, the noses and the crests into fractured basalt;
+ *  3. two shelves (r 1.4) high on the flanks, 6.2 above the floor, for the Towers of the Teeth — the wall
+ *     (3.6) stands at ≈ 0.58 of their height.
  */
 /**
  * The gate faces north-west, as the Morannon does: Cirith Gorgor opens onto the Dagorlad and the Dead
@@ -59,8 +61,8 @@ const STAMPS: LocalStamp[] = [
     rough: { amp: 3.2, scaleKm: 1.8, ridged: true },
     surface: 'rock',
   },
-  // 3. shelves for the Towers of the Teeth on the flanks, ~6 above the floor (the heightfield holds a
-  //    ~2 km ledge; the towers' buttressed feet follow the rest)
+  // 3. shelves for the Towers of the Teeth on the flanks, 6.2 above the floor (wide enough for the
+  //    Towers' stepped plinths; their foot follows the rest)
   ...TOWERS.map((at) => ({ kind: 'flatten' as const, at, radius: 1.4, falloff: 1.0, height: 0, surface: 'rock' as const })),
 ];
 
@@ -87,7 +89,7 @@ export default defineLandmark({
       lift: 5.5,
       tod: 16.0,
       compare: ['reference/film/black-gate/black-gate-rotk-4k.webp', 'reference/film/black-gate/black-gate-towers-rotk.jpg', 'reference/concept-art/black-gate/howe-the-black-gates.jpg'],
-      note: 'from the Dagorlad ash plain (the Dead Marshes road), the plated wall spanning the pass between the two craggy ridges, the Towers of the Teeth high on the flanks, Udûn and Mordor beyond; afternoon (16 h: the sun in the west, 35° up, ~50° off the face) in a high, neutral light, so the iron reads grey',
+      note: 'from the Dagorlad ash plain at eye level (the Dead Marshes road): the iron rampart spanning the pass, the riveted gate under its fang crest the single subject between the Towers of the Teeth on their broken crags; Barad-dûr hidden behind the east Tower, Mount Doom only a cone behind the gate (its summit behind the crest); afternoon (the sun in the west, raking the wall)',
     },
     {
       id: 'black-gate-wide',
@@ -99,7 +101,7 @@ export default defineLandmark({
       aimKm: [8, -7],
       tod: 16.0,
       compare: ['reference/film/black-gate/black-gate-towers-rotk.jpg'],
-      note: 'the Morannon from over the Dagorlad: the wall closing the gap between the Ephel Dúath and the Ered Lithui, Mount Doom and Barad-dûr beyond it in Mordor (aimKm into the pass)',
+      note: 'the Morannon from over the Dagorlad, the gate on the lower third (the camera tilted up off the empty ash): the wall closing the gap between the Ephel Dúath and the Ered Lithui, Mount Doom and Barad-dûr beyond it in Mordor (aimKm into the pass)',
     },
   ],
 });
