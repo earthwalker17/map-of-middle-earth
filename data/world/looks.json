@@ -58,7 +58,7 @@
       "atmo": {"tint": [0.84, 0.92, 0.86], "density": 1.25}
     },
     "rohan": {
-      "ground": {"ecotone": 0.4, "grass": "#a19f55", "dry": "#c3aa62", "soil": "#6c5a42", "rock": "#606368", "dryness": 0.62, "pattern": 0.8, "snowline": -5, "spots": [{"place": "edoras", "radiusKm": 3.0, "turf": 1, "grass": "#6c843f", "dryness": 0.26}, {"place": "helms-deep", "radiusKm": 9, "turf": 0, "rock": "#59595a"}, {"place": "isengard", "radiusKm": 5.5, "grass": "#5b5e5f", "dry": "#646668", "soil": "#4d5052", "dryness": 0.85, "pattern": 0.3}]},
+      "ground": {"ecotone": 0.4, "grass": "#a19f55", "dry": "#c3aa62", "soil": "#6c5a42", "rock": "#606368", "dryness": 0.62, "pattern": 0.8, "snowline": -5, "spots": [{"place": "edoras", "radiusKm": 3.0, "turf": 1, "grass": "#6c843f", "dryness": 0.26}, {"place": "helms-deep", "radiusKm": 9, "turf": 0, "rock": "#59595a"}, {"place": "helms-deep", "radiusKm": 20, "snowline": 7}, {"place": "isengard", "radiusKm": 13, "grass": "#5d6650", "dry": "#727159", "dryness": 0.45}, {"place": "isengard", "radiusKm": 7, "grass": "#5b5e5f", "dry": "#646668", "soil": "#4d5052", "dryness": 0.85, "pattern": 0.3}]},
       "grade": {"tint": "#fff5de", "saturation": 0.92, "contrast": 1.03},
       "atmo": {"tint": [1.05, 1.03, 0.95], "density": 0.9, "sky": [1.02, 1.01, 0.98]}
     },

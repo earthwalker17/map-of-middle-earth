@@ -39,20 +39,20 @@ export const TOWER = { at: [C[0] - 0.3, 0] as V2, h: 3.0, r: 0.2 };
  * light seen from the Pelennor (a knife pointing straight at the dawn sun is lit on its edge only).
  */
 export const PROW: V2[] = [
-  [0.65, -0.74],
-  [1.6, -0.68],
-  [2.6, -0.56],
-  [3.5, -0.4],
-  [4.3, -0.21],
-  [4.95, 0],
-  [4.3, 0.21],
-  [3.5, 0.4],
-  [2.6, 0.56],
-  [1.6, 0.68],
-  [0.65, 0.74],
+  [0.65, -0.7],
+  [1.5, -0.64],
+  [2.4, -0.52],
+  [3.25, -0.37],
+  [4.0, -0.19],
+  [4.6, 0],
+  [4.0, 0.19],
+  [3.25, 0.37],
+  [2.4, 0.52],
+  [1.5, 0.64],
+  [0.65, 0.7],
 ];
 /** compass bearing of the prow's axis */
-export const PROW_BEARING = 72;
+export const PROW_BEARING = 76;
 const PA: V2 = [Math.sin((PROW_BEARING * Math.PI) / 180), -Math.cos((PROW_BEARING * Math.PI) / 180)];
 /** the prow frame's +p direction (local x, z): the axis turned 90° clockwise */
 const PP: V2 = [-PA[1], PA[0]];

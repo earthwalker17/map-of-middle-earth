@@ -195,7 +195,10 @@ export function buildHouses(k: ProxyKit, arcs: TierArc[]): number {
           } else {
             // tall against the wall of the tier above (they hide most of it, some rise past its parapet),
             // lower towards the parapet
-            const h = back ? 0.38 + k.r(6) * 0.5 : front ? 0.12 + k.r(6) * 0.2 : 0.24 + k.r(6) * 0.3;
+            // every fifth one at the back a tall house rising past the parapet of the tier above (the
+            // film's skyline of buildings over the walls, never a clean stepped cake)
+            const tall = back && k.r(13) < 0.2;
+            const h = tall ? STEP * (1.0 + k.r(6) * 0.35) : back ? 0.38 + k.r(6) * 0.5 : front ? 0.12 + k.r(6) * 0.2 : 0.24 + k.r(6) * 0.3;
             const u = k.r(7);
             const roof = u < 0.36 ? 'flat' : u < 0.74 ? 'hip' : u < 0.9 ? 'gable' : 'dome';
             const lit = (lot % 5 === 1 || lot % 5 === 3) && k.lights.length < WINDOW_CAP;
@@ -212,7 +215,7 @@ export function buildHouses(k: ProxyKit, arcs: TierArc[]): number {
               roofColor: roof === 'dome' ? DOME[lot % DOME.length] : SLATE[lot % SLATE.length],
               roofShade: 0.9 + k.r(11) * 0.2,
               lod: 0,
-              ...(lit ? { windows: { count: 2, on: 0.47, sides: 1 as const, size: 0.011 } } : {}),
+              ...(lit ? { windows: { count: 2, on: 0.47, sides: 1 as const, size: 0.011, intensity: 1.8 } } : {}),
             });
             // dark window openings on the facade over the Pelennor: 2–3 per row, two rows on tall houses
             const yr = yawUsed * DEG;

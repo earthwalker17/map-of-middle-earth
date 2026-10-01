@@ -5,7 +5,7 @@ import { STONE, WALL, onProw } from './city.ts';
 import { BEACON, C, CITADEL_Y, GATE_BEARING, PROW, PROW_YAW, RADII, TOWER, fromProw, polarC, tierY } from './layout.ts';
 
 /** the prow's rock: pale weathered grey, rougher and a little cooler than the dressed stone */
-const ROCK = 0x9c9991;
+const ROCK = 0x95928a;
 const SLATE = 0x5d6064;
 /** the White Tower: the palest stone of the city (highlight #d2c6b7), still not white */
 const TOWER_STONE = 0xdcd9d0;
@@ -21,15 +21,15 @@ export function buildProw(k: ProxyKit): void {
   const ring: V2[] = [];
   for (let e = 0; e < PROW.length - 1; e++) {
     const [a, b] = [PROW[e], PROW[e + 1]];
-    const n = 8;
+    const n = 6;
     for (let j = 0; j < n; j++) ring.push([a[0] + ((b[0] - a[0]) * j) / n, a[1] + ((b[1] - a[1]) * j) / n]);
   }
   ring.push(PROW[PROW.length - 1]);
   const tip = ring.findIndex(([d, p]) => d === PROW[5][0] && p === 0);
-  // a faceted rock: ten sections, each face pushed in and out by smooth noise of (along, up) — broad
+  // a faceted rock: eight sections, each face pushed in and out by smooth noise of (along, up) — broad
   // buttresses and gullies, finer cracks — battered at the foot; the keel edge and the top outline stay
   // clean (the top is the citadel's level: a crisp crest with the battlement)
-  const secs = [0, 0.1, 0.2, 0.31, 0.42, 0.53, 0.64, 0.75, 0.86, 0.95, 1].map((f) => {
+  const secs = [0, 0.14, 0.3, 0.47, 0.64, 0.8, 0.94, 1].map((f) => {
     const outline = ring.map(([d, p], vi): V2 => {
       if (f === 1) return [d, p];
       const side = Math.sign(p) || 1;

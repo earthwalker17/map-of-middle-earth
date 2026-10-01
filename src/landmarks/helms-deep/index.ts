@@ -77,10 +77,10 @@ const STAMPS: LocalStamp[] = [
       [-5.2, 12.0],
     ],
     height: [0.9, 2.5, 3.5, 4.1, 3.8],
-    halfWidth: 3.0,
+    halfWidth: 3.6,
     profile: 'round',
     asym: 0.2,
-    rough: { amp: 0.5, scaleKm: 2.0, ridged: true },
+    rough: { amp: 0.4, scaleKm: 2.2, ridged: true },
     surface: 'rock',
   },
   // the east mountain: the far cliff of the wall, rising south-east
@@ -94,10 +94,10 @@ const STAMPS: LocalStamp[] = [
       [5.4, 12.0],
     ],
     height: [0.9, 2.4, 3.4, 3.9, 3.6],
-    halfWidth: 3.0,
+    halfWidth: 3.6,
     profile: 'round',
     asym: -0.2,
-    rough: { amp: 0.5, scaleKm: 2.0, ridged: true },
+    rough: { amp: 0.4, scaleKm: 2.2, ridged: true },
     surface: 'rock',
   },
   // the head of the gorge: the mountains close round it in the south
@@ -234,7 +234,7 @@ function build(k: ProxyKit): void {
     ],
     0.09,
     0.16,
-    { followGround: true, step: 0.1, batter: 0.5, color: 0x6c6a52, lod: 0 },
+    { followGround: true, step: 0.1, batter: 0.5, color: 0x7f7c5a, lod: 0 },
   );
   k.wallPath(
     'weathered',
@@ -245,7 +245,7 @@ function build(k: ProxyKit): void {
     ],
     0.09,
     0.16,
-    { followGround: true, step: 0.1, batter: 0.5, color: 0x6c6a52, lod: 0 },
+    { followGround: true, step: 0.1, batter: 0.5, color: 0x7f7c5a, lod: 0 },
   );
 
   // ---- 40 torches (fire, dusk): along the wall's walk, round the keep, up the causeway
