@@ -24,7 +24,7 @@ const BASE = {
   splitShadow: splitTint('#5b7896', 0.05),
   splitHighlight: splitTint('#f2d2a4', 0.05),
   toe: 0.0012,
-  halation: 0.3,
+  halation: 0.4,
 };
 /** Night (moonlit) layer: Purkinje-like desaturated blue-grey, a little lift in exposure (contrast
  * held so the moonlit land reads crisp, not murky). S4: +0.62 → +0.4 stops — the moon key doubled and

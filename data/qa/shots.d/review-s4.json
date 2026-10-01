@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "notes": "S4 W3-F review shots (data/qa/review-s4.json, set s4-review): the night halves of the four day/night pairs and the Minas Morgul beam, on the SAME orbit cameras as their -close bookmarks (copied — regenerate if a hero camera changes), with the hero f-stop proposed for the bookmark (the lens is active only at spp >= 8). minas-tirith-close itself is the dawn still (its bookmark is at 6.3).",
+  "shots": [
+    {"id":"hobbiton-night","tod":21.8,"fStop":11,"camera":{"orbit":{"place":"hobbiton","distanceKm":7,"elevationDeg":9,"azimuthDeg":205,"fov":17,"lift":0.15,"aimKm":[-0.25,0.35]}},"note":"S4 review: hobbiton-close camera at night (moonlit Shire, lit round windows) — day/night pair with hobbiton-close"},
+    {"id":"rivendell-night","tod":21.5,"dayOfYear":298,"fStop":8,"camera":{"orbit":{"place":"rivendell","distanceKm":9.5,"elevationDeg":11,"azimuthDeg":256,"fov":21,"lift":1,"aimKm":[2.4,1.4]}},"note":"S4 review: rivendell-close camera at night (late October: the lamps of the Last Homely House, moonlit gorge) — day/night pair with rivendell-close"},
+    {"id":"minas-tirith-night","tod":21.6,"events":{"beacons":1},"fStop":8,"camera":{"orbit":{"place":"minas-tirith","distanceKm":40,"elevationDeg":5,"azimuthDeg":110,"fov":24,"lift":4.2}},"note":"S4 review: minas-tirith-close camera at night with the beacons lit (events {beacons: 1}) — day/night pair with minas-tirith-close (dawn)"},
+    {"id":"lake-town-night","tod":21.5,"dayOfYear":240,"fStop":5.6,"camera":{"orbit":{"place":"lake-town","distanceKm":6.8,"elevationDeg":8,"azimuthDeg":195,"fov":28,"lift":2.6,"aimKm":[1.4,0.7]}},"note":"S4 review: lake-town-close camera at night (window lights on the Long Lake) — day/night pair with lake-town-close"},
+    {"id":"minas-morgul-beam","tod":21,"dayOfYear":78,"lookOverride":"mordor","events":{"morgul-beam":1},"fStop":4,"camera":{"orbit":{"place":"minas-morgul","distanceKm":14,"elevationDeg":6,"azimuthDeg":203,"fov":48,"lift":2.4,"aimKm":[0.2,-1.8]}},"note":"S4 review: minas-morgul-close with the beam (events {morgul-beam: 1}; drawn by the W3-E effects)"}
+
+  ]
+}
