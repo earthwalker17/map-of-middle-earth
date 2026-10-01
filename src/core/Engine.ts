@@ -153,6 +153,8 @@ export class Engine {
 
   /** Render one presented frame for interactive use (single sample). */
   renderInteractive(state: SceneState): void {
+    // no film grain on the interactive path (a static grain frame over a moving view reads as dirt)
+    this.post.setFrame(state.t, false);
     this.applyState(state);
     this.renderer.setRenderTarget(this.post.hdr);
     this.renderer.render(this.scene, this.camera);
