@@ -6,8 +6,8 @@ import { buildTower, CROWN_Y, EYE_DY } from './tower.ts';
  * Barad-dûr, the Dark Tower (research §14): a black, jagged spire of bundled fins and spikes rising in
  * stepped tiers from a massive buttressed foundation on a spur of the Ered Lithui; at the top two curved
  * horns form a U-shaped cradle holding the Eye — the brightest thing in Mordor. Slim (the fin bundles
- * are ≤ 5 km across, the foundation 7 km), ~20 km from the platform to the horn tips, so its top stands
- * a little above Mount Doom's rim (its ground is ~11 higher than Doom's plain).
+ * narrow from 5.9 km across at the foot to 2.7 km under the crown, the foundation 8 km), ~21 km from the
+ * platform to the horn tips, standing on ground ~11 higher than Doom's plain.
  *
  * Local frame: heading 170 — the local −z faces south-south-east, so the crescent of the horns (in the
  * local x–y plane) faces the hero cameras over Gorgoroth: its own (from bearing 145°, 25° off the face)
@@ -62,14 +62,14 @@ export default defineLandmark({
   bookmarks: [
     {
       id: 'barad-dur-close',
-      distanceKm: 50,
-      elevationDeg: 1.5,
+      distanceKm: 56,
+      elevationDeg: 4,
       azimuthDeg: 145,
-      fov: 38,
-      lift: 4,
+      fov: 40,
+      lift: 5,
       tod: 18.5,
       compare: ['reference/film/barad-dur/barad-dur-eye-rotk.jpg', 'reference/film/mordor/mordor-barad-dur-and-doom-rotk.webp', 'reference/concept-art/barad-dur/howe-the-dark-tower.jpg'],
-      note: 'low from the south-east over Gorgoroth, the Ered Lithui behind (no slab edge on the horizon): the black spire on its spur, the horns and the Eye against the sky, the low sun raking from the left',
+      note: 'low from the south-east over Gorgoroth, the Ered Lithui behind (no slab edge on the horizon): the black spire on its spur (raised a little so the buttressed foot and crags clear the foreground spur), the horns and the Eye against the sky with headroom over the horn tips, the low sun raking from the left',
     },
   ],
 });

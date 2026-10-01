@@ -2,37 +2,52 @@ import type { ProxyKit } from '../kit/ProxyKit.ts';
 import type { V2, V3 } from '../records.ts';
 
 /**
- * The Morannon's kit geometry (local: x east, z south, the gate at the origin). Iron #292b25, towers
- * #353730 (research §6 palette), all 'iron' family (metal that reads dark in shade, catches the light on
- * the plate edges).
+ * The Morannon's kit geometry (local: x east, z south, the gate at the origin, the plain in front at −z).
+ * Everything is dark, cool iron-grey on the rough 'weathered' family (the 60 %-metal 'iron' family
+ * mirrored the warm ground and sky and read as tan timber); spikes on 'darkStone' keep a little sheen.
  *
- *  - the wall: two ground-following halves from the gate to the ridge flanks, battered, a crest of iron
- *    stakes, and a rank of tall vertical plates with pointed tops on the north face (the film's spiked
- *    plates, hero range), squat spiked pylons every ~2.3 km;
- *  - the gate: two giant leaves (banded, ribbed) under a spiked lintel between two tall pylons;
- *  - the Towers of the Teeth: slender fin-bundle towers on shelves high on the flanking slopes, a
- *    buttressed foot, a waist collar, a flared lantern and a crown of spikes round a central spire, faint
- *    window slits;
- *  - eight braziers (fire, dusk gate) on the pylons, the wall walk and the towers' lanterns.
+ *  - the wall: two ground-following halves from the ridge flanks to the gate pylons, battered, faced
+ *    with a CONTINUOUS rank of tall, flat-topped, overlapping plates (0.38 km wide every 0.3 km, two
+ *    staggered layers, a raised rib down each — armoured iron, not pickets: pointed plate tops read as a
+ *    timber palisade), two riveted girders and a heavy top rail across the whole face, a sparse row of
+ *    thin needles on top (every other plate, every fourth tall), a lower rank on the back face, and squat
+ *    spiked pylons every ~2.3 km;
+ *  - the gate: two solid leaves (six vertical ribs, three heavy bands, spikes on the top edge and the
+ *    band ends — no square grid) under a spiked lintel between two tall pylons crowned with spikes round
+ *    a fire bowl;
+ *  - the Towers of the Teeth: slender fin-bundle towers on shelves high on the flanking slopes — a
+ *    buttressed foot, a twisting fin shaft with ribs and thorns, a collar, a flared lantern and a crown
+ *    of spikes round a central spire, window slits in the fin valleys (lit at night);
+ *  - crag shards: clusters of tall, narrow faceted rock spires on the ridge noses and crests (the
+ *    0.4 km heightfield cannot hold the film's jagged crags);
+ *  - eight braziers (fire, night gate — no fires by day): the gate pylons, the wall walk, the towers' lanterns.
  */
 
 /**
- * Paint: the research palette (#292b25 iron, #353730 towers) was sampled from an overcast still, where it is
- * the perceived value; the 'iron' family is 60 % metal (diffuse × 0.4), so at the palette value the wall
- * renders as a black cut-out — the paint is lifted until the diffuse albedo lands near the palette's
- * value (#686a60 → ≈ #3e403a diffuse) and the plates, girders and spikes read as dark iron.
+ * Paint (sRGB): cool dark iron greys (the research palette #292b25 lifted to
+ * read on a rough family; a cool bias so the warm low sun leaves them grey, not timber-brown). Plates and
+ * ribs on 'darkStone' (roughness 0.5: a dull steel sheen), the wall body, girders and towers on 'weathered'.
  */
-const IRON = 0x686a60;
-const IRON_DARK = 0x505249;
-const TOWER = 0x74766b;
-const SPIKE = 0x6e7068;
+const IRON = 0x3e4245;
+const IRON_DARK = 0x35393b;
+const RUST = 0x3a3d3f;
+const GIRDER = 0x2c2f31;
+const TOWER = 0x3f4345;
+const SPIKE = 0x2f3234;
+const ROCK = 0x363634;
 
 const TAU = Math.PI * 2;
 const DEG = 180 / Math.PI;
+const SINK = 0.02;
 
 /** wall height (km, above the ground under it) and thickness */
 export const WALL_H = 2.2;
 const WALL_T = 0.46;
+/** plate pitch, width, thickness and the stagger of the two layers */
+const PITCH = 0.3;
+const PLATE_W = 0.38;
+const PLATE_T = 0.05;
+const STAGGER = 0.045;
 
 /** the west half, from the flank of the west ridge to the gate; the east half mirrors it */
 const WEST: V2[] = [
@@ -50,7 +65,25 @@ export const TOWERS: V2[] = [
   [8.6, -1.8],
 ];
 
-/** fin-bundle section (see Barad-dûr): `n` flat-topped fins */
+/** the ridges' crest lines (local) — the stamps in index.ts; the crag shards follow them */
+export const WEST_RIDGE: V2[] = [
+  [-11.6, -4.8],
+  [-11.2, -1],
+  [-11.7, 4],
+  [-13.8, 10],
+  [-17.4, 17],
+  [-21, 25],
+];
+export const EAST_RIDGE: V2[] = [
+  [11.6, -4.8],
+  [11.2, -1],
+  [11.7, 4],
+  [14.4, 9],
+  [20.5, 12.5],
+  [28, 14.5],
+];
+
+/** fin-bundle section (see Barad-dûr): `n` flat-topped fins, fin i's tip at angle phase + i·τ/n */
 function finSection(n: number, rIn: number, rOut: number, w: number, phase = 0): V2[] {
   const pts: V2[] = [];
   for (let i = 0; i < n; i++) {
@@ -90,12 +123,25 @@ function sampler(path: V2[]): { len: number; at: (t: number) => { p: V2; d: V2 }
   };
 }
 
-/** a brazier: an iron bowl on a short stem with a flame (dusk) and a fire light, base at (x, y, z) */
+/** a rectangle outline w (along x) × t (along z), centred */
+const rect = (w: number, t: number): V2[] => [
+  [-w / 2, -t / 2],
+  [w / 2, -t / 2],
+  [w / 2, t / 2],
+  [-w / 2, t / 2],
+];
+
+/**
+ * a brazier: an iron bowl on a short stem with a flame and a fire light, base at (x, y, z). Night-gated
+ * (off by day, kindling in the blue hour): the 'dusk' gate keeps a quarter of the fire burning in full
+ * daylight, and the film shows no fires on the gate by day. Near-black paint at high strength: the glow
+ * material's albedo is the paint × 0.25, so by day the flame is a dark ember, not a red cone.
+ */
 function brazier(k: ProxyKit, x: number, y: number, z: number): void {
-  k.cylinder('iron', 0.03, 0.05, 0.14, { at: [x, y, z], seg: 6, color: IRON_DARK, lod: 0 });
-  k.cylinder('iron', 0.13, 0.07, 0.08, { at: [x, y + 0.14, z], seg: 8, color: IRON_DARK, lod: 0 });
-  k.cone('emissive', 0.09, 0.24, { at: [x, y + 0.2, z], seg: 6, color: 0xff8a2a, glow: { gate: 'dusk', strength: 2.2, flicker: 0.3 }, lod: 0 });
-  k.light([x, y + 0.3, z], { kind: 'fire', color: 0xff9a3c, intensity: 1.6, radius: 0.08 });
+  k.cylinder('weathered', 0.03, 0.05, 0.14, { at: [x, y, z], seg: 6, color: IRON_DARK, lod: 0 });
+  k.cylinder('weathered', 0.13, 0.07, 0.08, { at: [x, y + 0.14, z], seg: 8, color: IRON_DARK, lod: 0 });
+  k.cone('emissive', 0.09, 0.24, { at: [x, y + 0.2, z], seg: 6, color: 0x3a1004, glow: { gate: 'night', strength: 14, flicker: 0.3 }, lod: 0 });
+  k.light([x, y + 0.3, z], { kind: 'fire', gate: 'night', color: 0xff9a3c, intensity: 1.6, radius: 0.08 });
 }
 
 /** a spiked crown: `n` spikes leaning out round radius r at height y, plus an optional central spire */
@@ -103,9 +149,9 @@ function spikeCrown(k: ProxyKit, x: number, z: number, y: number, r: number, n: 
   for (let j = 0; j < n; j++) {
     const a = (j / n) * TAU + 0.2;
     const big = j % 2 === 0;
-    k.cone('iron', big ? 0.06 : 0.045, h * (big ? 1 : 0.65) * (0.9 + 0.2 * k.r()), { at: [x + Math.cos(a) * r, y - 0.05, z + Math.sin(a) * r], rot: tilt(a, big ? 0.22 : 0.4), seg: 4, color: SPIKE, lod: 0 });
+    k.cone('darkStone', big ? 0.06 : 0.045, h * (big ? 1 : 0.65) * (0.9 + 0.2 * k.r()), { at: [x + Math.cos(a) * r, y - 0.05, z + Math.sin(a) * r], rot: tilt(a, big ? 0.22 : 0.4), seg: 4, color: SPIKE, lod: 0 });
   }
-  if (spire > 0) k.cone('iron', r * 0.45, spire, { at: [x, y - 0.05, z], seg: 6, color: TOWER });
+  if (spire > 0) k.cone('weathered', r * 0.45, spire, { at: [x, y - 0.05, z], seg: 6, color: TOWER });
 }
 
 /** the highest ground under a ring of radius r round (x, z) */
@@ -118,24 +164,57 @@ function maxGround(k: ProxyKit, x: number, z: number, r: number): number {
   return m;
 }
 
+/** the lowest ground under the four corners and the centre of a w × t footprint at (x, z) along direction d */
+function minUnder(k: ProxyKit, x: number, z: number, d: V2, w: number, t: number): number {
+  const nx = -d[1];
+  const nz = d[0];
+  let m = k.ground(x, z);
+  for (const [a, b] of [
+    [-1, -1],
+    [1, -1],
+    [1, 1],
+    [-1, 1],
+  ])
+    m = Math.min(m, k.ground(x + d[0] * a * (w / 2) + nx * b * (t / 2), z + d[1] * a * (w / 2) + nz * b * (t / 2)));
+  return m;
+}
+
+/** the tooth-tower shaft loft: [height above its base, twist deg, scale] */
+const SHAFT: [number, number, number][] = [
+  [0, 0, 1],
+  [2.1, 4, 0.84],
+  [3.9, 8, 0.74],
+];
+/** twist and scale of the shaft at height yy above its base (piecewise linear, as the loft) */
+function shaftAt(yy: number): { rot: number; s: number } {
+  for (let i = 0; i + 1 < SHAFT.length; i++) {
+    const [y0, r0, s0] = SHAFT[i];
+    const [y1, r1, s1] = SHAFT[i + 1];
+    if (yy <= y1 || i + 2 === SHAFT.length) {
+      const f = Math.min(1, Math.max(0, (yy - y0) / (y1 - y0)));
+      return { rot: r0 + (r1 - r0) * f, s: s0 + (s1 - s0) * f };
+    }
+  }
+  return { rot: 0, s: 1 };
+}
+
 /** a Tower of the Teeth on its shelf at (x, z): foot, fin-bundle shaft, collar, flared lantern, crown */
 function toothTower(k: ProxyKit, x: number, z: number, face: number): void {
-  k.extrude('iron', finSection(8, 0.5, 0.82, 0.09, 0.2), 0.8, { at: [x, 0, z], followGround: true, taper: 0.28, color: TOWER });
+  k.extrude('weathered', finSection(8, 0.5, 0.82, 0.09, 0.2), 0.8, { at: [x, 0, z], followGround: true, taper: 0.28, color: TOWER });
   const y0 = maxGround(k, x, z, 0.82) + 0.8;
+  const yb = y0 - 0.15;
   const shaft = finSection(6, 0.34, 0.5, 0.1);
   k.loft(
-    'iron',
-    [
-      { outline: shaft, y: 0, rotDeg: 0 },
-      { outline: shaft, y: 2.1, rotDeg: 4, scale: 0.84 },
-      { outline: shaft, y: 3.9, rotDeg: 8, scale: 0.74 },
-    ],
-    { at: [x, y0 - 0.15, z], color: TOWER },
+    'weathered',
+    SHAFT.map(([y, rotDeg, scale]) => ({ outline: shaft, y, rotDeg, scale })),
+    { at: [x, yb, z], color: TOWER },
   );
-  k.cylinder('iron', 0.26, 0.34, 3.9, { at: [x, y0 - 0.15, z], seg: 8, color: IRON });
+  const CORE0 = 0.34;
+  const CORE1 = 0.26;
+  k.cylinder('weathered', CORE1, CORE0, 3.9, { at: [x, yb, z], seg: 8, color: IRON_DARK });
   const yc = y0 + 3.75;
   k.lathe(
-    'iron',
+    'weathered',
     [
       [0.25, 0],
       [0.46, 0.14],
@@ -146,7 +225,7 @@ function toothTower(k: ProxyKit, x: number, z: number, face: number): void {
   );
   const lantern = finSection(6, 0.28, 0.4, 0.12, 0.26);
   k.loft(
-    'iron',
+    'weathered',
     [
       { outline: lantern, y: 0, rotDeg: 8 },
       { outline: lantern, y: 0.55, rotDeg: 10, scale: 1.15 },
@@ -156,38 +235,53 @@ function toothTower(k: ProxyKit, x: number, z: number, face: number): void {
   );
   const yt = yc + 0.28 + 0.95;
   spikeCrown(k, x, z, yt, 0.46, 10, 0.75, 1.35);
-  // vertical ribs down the shaft (the fin tips' plated edges), hero range
+  // vertical ribs on the fin tips, lofted with the shaft's own twist and taper (they never stand off
+  // the narrowing fins), hero range
+  const RIB: [number, number] = [0.45, 3.2];
   for (let j = 0; j < 6; j++) {
-    const a = (j / 6) * TAU - (4 * Math.PI) / 180;
-    k.box('iron', 0.05, 2.6, 0.05, { at: [x + Math.cos(a) * 0.46, y0 + 0.3, z + Math.sin(a) * 0.46], color: SPIKE, lod: 0 });
+    const a = (j / 6) * TAU;
+    const c = Math.cos(a);
+    const sn = Math.sin(a);
+    const r = 0.5 + 0.02;
+    const sq: V2[] = rect(0.05, 0.05).map(([u, v]) => [c * (r + v) - sn * u, sn * (r + v) + c * u] as V2);
+    const secs = [RIB[0], 2.1, RIB[1]].map((yy) => ({ outline: sq, y: yy - RIB[0], rotDeg: shaftAt(yy).rot, scale: shaftAt(yy).s }));
+    k.loft('darkStone', secs, { at: [x, yb + RIB[0], z], color: SPIKE, lod: 0 });
   }
   // thorns along the fin edges, leaning out and up (uneven), hero range
   for (let j = 0; j < 6; j++) {
     for (let m = 0; m < 4; m++) {
       const f = 0.15 + 0.2 * m + 0.08 * k.r();
-      const a = (j / 6) * TAU - (f * 8 * Math.PI) / 180 + 0.1 * (k.r() - 0.5);
-      const r = 0.5 * (1 - 0.26 * f);
-      k.cone('iron', 0.035, 0.22 + 0.2 * k.r(), { at: [x + Math.cos(a) * r, y0 - 0.15 + f * 3.9, z + Math.sin(a) * r], rot: tilt(a, 0.9), seg: 4, color: SPIKE, lod: 0 });
+      const { rot, s } = shaftAt(f * 3.9);
+      const a = (j / 6) * TAU - (rot * Math.PI) / 180 + 0.1 * (k.r() - 0.5);
+      const r = 0.5 * s;
+      k.cone('darkStone', 0.035, 0.22 + 0.2 * k.r(), { at: [x + Math.cos(a) * r, yb + f * 3.9, z + Math.sin(a) * r], rot: tilt(a, 0.9), seg: 4, color: SPIKE, lod: 0 });
     }
   }
-  // faint window slits on the side facing the plain (north, −z), two of them lit (dusk)
+  // window slits in the fin valleys facing the plain (−z = 270°) and the gate side, with the shaft's
+  // twist at their height; the core cylinder fills the valley floor, so each slit sits on whichever
+  // surface is outermost there. Two of them lit (night).
+  const valleys = [270, 270 + 60 * face, 270];
   for (let j = 0; j < 3; j++) {
-    const y = y0 + 0.9 + j * 1.05;
-    const a = -Math.PI / 2 + face * 0.35 * (j - 1) - Math.PI / 6;
-    const r = 0.36 * (1 - 0.3 * ((y - y0) / 3.9)) + 0.01;
-    const p: V3 = [x + Math.cos(a) * r, y, z + Math.sin(a) * r];
-    k.box('emissive', 0.05, 0.2, 0.04, { at: p, rot: [0, -a * DEG + 90, 0], color: 0xd0702a, glow: { gate: 'dusk', strength: 1.4 }, lod: 0 });
-    if (j > 0) k.light([p[0] + Math.cos(a) * 0.02, y + 0.1, p[2] + Math.sin(a) * 0.02], { kind: 'window', gate: 'dusk', color: 0xe08a3a, intensity: 0.7, radius: 0.03 });
+    const yy = 1.05 + j * 1.05;
+    const { rot, s } = shaftAt(yy);
+    const a = ((valleys[j] - rot) * Math.PI) / 180;
+    const rSurf = Math.max(0.34 * s, CORE0 + (CORE1 - CORE0) * (yy / 3.9)) + 0.005;
+    const p: V3 = [x + Math.cos(a) * (rSurf - 0.01), yb + yy, z + Math.sin(a) * (rSurf - 0.01)];
+    k.box('emissive', 0.05, 0.2, 0.04, { at: p, rot: [0, -a * DEG + 90, 0], color: 0x3a1206, glow: { gate: 'night', strength: 7 }, lod: 0 });
+    if (j > 0) k.light([x + Math.cos(a) * (rSurf + 0.04), yb + yy + 0.1, z + Math.sin(a) * (rSurf + 0.04)], { kind: 'window', gate: 'night', color: 0xe08a3a, intensity: 0.7, radius: 0.03 });
   }
-  brazier(k, x + Math.cos(-Math.PI / 2) * 0.2, yt - 0.02, z - 0.2);
+  // the brazier stands on a front fin of the lantern (fin tips at 2.9° + i·60° after the 12° twist;
+  // 242.9° falls midway between two crown spikes, 302.9° would sit on one)
+  const af = (242.9 * Math.PI) / 180;
+  brazier(k, x + Math.cos(af) * 0.44, yt - 0.02, z + Math.sin(af) * 0.44);
 }
 
 /** a squat spiked pylon on the wall (a fin bundle from the ground to above the wall walk) */
 function pylon(k: ProxyKit, x: number, z: number, h: number, r: number): number {
   const sec = finSection(4, r * 0.7, r, 0.16, Math.PI / 4);
-  const g0 = Math.min(k.ground(x - r, z), k.ground(x + r, z), k.ground(x, z - r), k.ground(x, z + r)) - 0.02;
+  const g0 = Math.min(k.ground(x - r, z), k.ground(x + r, z), k.ground(x, z - r), k.ground(x, z + r)) - SINK;
   k.loft(
-    'iron',
+    'weathered',
     [
       { outline: sec, y: 0 },
       { outline: sec, y: h * 0.7, scale: 0.9 },
@@ -198,68 +292,123 @@ function pylon(k: ProxyKit, x: number, z: number, h: number, r: number): number 
   return g0 + h;
 }
 
+/**
+ * A faceted rock shard: a tall, narrow, leaning spire (loft of irregular pentagons narrowing to a point),
+ * its foot sunk below the lowest ground under it.
+ */
+function shard(k: ProxyKit, x: number, z: number, h: number, r: number, lean: number, leanDir: number): void {
+  const n = 5;
+  const base: V2[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * TAU + k.r() * 0.6;
+    const rr = r * (0.7 + 0.5 * k.r());
+    base.push([Math.cos(a) * rr, Math.sin(a) * rr]);
+  }
+  const lx = Math.cos(leanDir) * lean * h;
+  const lz = Math.sin(leanDir) * lean * h;
+  const mid = base.map(([u, v]) => [u * 0.55 + lx * 0.5, v * 0.55 + lz * 0.5] as V2);
+  const top = base.map(([u, v]) => [u * 0.07 + lx, v * 0.07 + lz] as V2);
+  let g = k.ground(x, z);
+  for (const [u, v] of base) g = Math.min(g, k.ground(x + u, z + v));
+  k.loft(
+    'weathered',
+    [
+      { outline: base, y: 0 },
+      { outline: mid, y: h * (0.45 + 0.2 * k.r()) },
+      { outline: top, y: h },
+    ],
+    { at: [x, g - 0.12 * h - SINK, z], color: ROCK, shade: 0.85 + 0.3 * k.r(), lod: 0 },
+  );
+}
+
+/** clusters of shards along a ridge crest line, densest on the nose (the part facing the plain) */
+function crags(k: ProxyKit, ridge: V2[], side: number): void {
+  const s = sampler(ridge);
+  const end = Math.min(s.len, 14);
+  for (let t = 0.2; t < end; t += 0.9 + 0.9 * k.r() + t * 0.08) {
+    const { p, d } = s.at(t);
+    // the highest ground within ±1.6 km across the crest line (the stamped crest wanders with the noise)
+    let best = p;
+    let hb = -1e9;
+    for (let q = -1.6; q <= 1.6; q += 0.4) {
+      const c: V2 = [p[0] - d[1] * q, p[1] + d[0] * q];
+      const h = k.ground(c[0], c[1]);
+      if (h > hb) {
+        hb = h;
+        best = c;
+      }
+    }
+    const count = 2 + Math.floor(k.r() * (t < 3 ? 4 : 3));
+    for (let i = 0; i < count; i++) {
+      const a = k.r() * TAU;
+      const rr = 0.2 + 0.7 * k.r();
+      const x = best[0] + Math.cos(a) * rr;
+      const z = best[1] + Math.sin(a) * rr;
+      const big = i === 0;
+      const h = (big ? 0.55 : 0.3) + (big ? 0.35 : 0.3) * k.r();
+      shard(k, x, z, h, h * (0.2 + 0.08 * k.r()), 0.12 + 0.12 * k.r(), Math.atan2(-side * d[0], side * d[1]) + (k.r() - 0.5));
+    }
+  }
+}
+
 export function buildGate(k: ProxyKit): void {
   // ---- the wall: two halves following the ground from the ridge flanks to the gate pylons
   for (const path of [WEST, EAST]) {
-    k.wallPath('iron', path, WALL_H, WALL_T, {
-      followGround: true,
-      batter: 0.2,
-      color: IRON,
-      shadeJitter: 0.06,
-      crenel: { w: 0.1, h: 0.42, gap: 0.09, shape: 'point', lod: 0, color: SPIKE },
-    });
+    k.wallPath('weathered', path, WALL_H, WALL_T, { followGround: true, batter: 0.2, color: IRON_DARK, shadeJitter: 0.05 });
   }
-  // the rank of tall spiked plates on the north face (the film's vertical plates), and pylons
   for (const path of [WEST, EAST]) {
     const s = sampler(path);
-    const n = Math.floor(s.len / 0.3);
-    for (let i = 1; i < n; i++) {
-      const { p, d } = s.at(i * 0.3 + 0.15);
-      // north (left of the walking direction for the west half, right for the east half): the side with −z
-      let nx = d[1];
-      let nz = -d[0];
-      if (nz > 0) {
-        nx = -nx;
-        nz = -nz;
-      }
-      const off = WALL_T / 2 + 0.04;
+    const n = Math.floor(s.len / PITCH);
+    // the wall's own foot there (wallPath: the lower ground under its two faces, sunk)
+    const wallFoot = (p: V2, d: V2) => Math.min(k.ground(p[0] - d[1] * WALL_T * 0.5, p[1] + d[0] * WALL_T * 0.5), k.ground(p[0] + d[1] * WALL_T * 0.5, p[1] - d[0] * WALL_T * 0.5)) - SINK;
+    // the front (north) normal of the path direction: the side with −z
+    const front = (d: V2): V2 => (d[0] > 0 ? [d[1], -d[0]] : [-d[1], d[0]]);
+    for (let i = 0; i < n; i++) {
+      const { p, d } = s.at(i * PITCH + PITCH / 2);
+      const [nx, nz] = front(d);
+      const yaw = -Math.atan2(d[1], d[0]) * DEG;
+      const crown = wallFoot(p, d) + SINK + WALL_H;
+      // the plated face: two staggered layers of tall flat-topped plates, overlapping (a continuous
+      // armoured face, no pickets), each with a raised central rib; their tops run under the top rail
+      const off = WALL_T / 2 + 0.03 + (i % 2) * STAGGER;
       const x = p[0] + nx * off;
       const z = p[1] + nz * off;
-      const yaw = -Math.atan2(d[1], d[0]) * DEG;
-      const tall = i % 4 === 0;
-      const ph = WALL_H + (tall ? 0.55 : 0.28);
-      k.box('iron', 0.1, ph, 0.1, { at: [x, 0, z], rot: [0, yaw, 0], seat: 'min', color: i % 3 ? IRON : IRON_DARK, lod: 0 });
-      const base = Math.min(k.ground(x - 0.05, z - 0.05), k.ground(x + 0.05, z + 0.05), k.ground(x, z)) - 0.02;
-      k.cone('iron', 0.065, tall ? 0.42 : 0.26, { at: [x, base + ph - 0.01, z], seg: 4, rot: [0, 45 + yaw, 0], color: SPIKE, lod: 0 });
-    }
-    // the back (Mordor) face: a lower rank of plates, seen from the pass and from Barad-dûr's side
-    for (let i = 1; i < n; i++) {
-      const { p, d } = s.at(i * 0.3 + 0.15);
-      let nx = -d[1];
-      let nz = d[0];
-      if (nz < 0) {
-        nx = -nx;
-        nz = -nz;
+      const base = Math.min(minUnder(k, x, z, d, PLATE_W, PLATE_T), wallFoot(p, d)) - SINK;
+      const ph = crown - 0.2 - base;
+      const col = i % 7 === 3 ? RUST : i % 2 ? IRON : IRON_DARK;
+      k.box('darkStone', PLATE_W, ph, PLATE_T, { at: [x, base, z], rot: [0, yaw, 0], color: col, shade: 0.94 + 0.12 * k.r(), lod: 0 });
+      const ro = off + PLATE_T / 2 + 0.018;
+      k.box('darkStone', 0.045, ph - 0.05, 0.04, { at: [p[0] + nx * ro, base + 0.03, p[1] + nz * ro], rot: [0, yaw, 0], color: IRON, lod: 0 });
+      // needles on the wall top: every other plate, every fourth tall
+      if (i % 2 === 0) {
+        const tall = i % 4 === 0;
+        k.cone('darkStone', 0.028, (tall ? 0.55 : 0.32) + 0.12 * k.r(), { at: [p[0] + nx * 0.1, crown - 0.03, p[1] + nz * 0.1], seg: 4, rot: [0, 45 + yaw, 0], color: SPIKE, lod: 0 });
       }
-      const off = WALL_T / 2 + 0.03;
-      const yaw = -Math.atan2(d[1], d[0]) * DEG;
-      k.box('iron', 0.1, WALL_H + 0.18, 0.08, { at: [p[0] + nx * off, 0, p[1] + nz * off], rot: [0, yaw, 0], seat: 'min', color: IRON_DARK, lod: 0 });
+      // the back (Mordor) face: a lower rank of plates, seen from the pass and from Barad-dûr's side
+      const bx = p[0] - nx * (WALL_T / 2 + 0.03);
+      const bz = p[1] - nz * (WALL_T / 2 + 0.03);
+      const bb = Math.min(minUnder(k, bx, bz, d, 0.26, 0.06), wallFoot(p, d)) - SINK;
+      k.box('weathered', 0.26, WALL_H + 0.1, 0.06, { at: [bx, bb, bz], rot: [0, yaw, 0], color: IRON_DARK, lod: 0 });
     }
-    // two horizontal girders across the plates (hero range), one run per plate bay
-    for (let i = 1; i + 1 < n; i++) {
-      const { p, d } = s.at(i * 0.3 + 0.3);
-      let nx = d[1];
-      let nz = -d[0];
-      if (nz > 0) {
-        nx = -nx;
-        nz = -nz;
-      }
-      const off = WALL_T / 2 + 0.02;
+    // two riveted girders across the whole face and a heavy top rail with a cap back to the wall's
+    // crown, in front of the plates and ribs (one run per plate bay, slightly overlapping)
+    for (let i = 0; i < n; i++) {
+      const { p, d } = s.at(i * PITCH + PITCH / 2);
+      const [nx, nz] = front(d);
+      const yaw = -Math.atan2(d[1], d[0]) * DEG;
+      const off = WALL_T / 2 + 0.03 + STAGGER + PLATE_T / 2 + 0.04 + 0.03;
       const x = p[0] + nx * off;
       const z = p[1] + nz * off;
-      const base = Math.min(k.ground(x - nx * 0.1, z - nz * 0.1), k.ground(x, z)) - 0.02;
-      const yaw = -Math.atan2(d[1], d[0]) * DEG;
-      for (const y of [0.55, 1.5]) k.box('iron', 0.3, 0.06, 0.05, { at: [x, base + y, z], rot: [0, yaw, 0], color: IRON_DARK, lod: 0 });
+      const foot = wallFoot(p, d);
+      const crown = foot + SINK + WALL_H;
+      const base = Math.min(minUnder(k, x, z, d, PITCH, 0.06), foot);
+      for (const y of [0.45, 1.22]) {
+        k.box('weathered', PITCH + 0.02, 0.08, 0.06, { at: [x, base + y, z], rot: [0, yaw, 0], color: GIRDER, lod: 0 });
+        for (const u of [-0.075, 0.075]) k.box('darkStone', 0.03, 0.03, 0.03, { at: [x + d[0] * u + nx * 0.03, base + y + 0.025, z + d[1] * u + nz * 0.03], rot: [0, yaw, 0], color: IRON, lod: 0 });
+      }
+      k.box('weathered', PITCH + 0.02, 0.26, 0.12, { at: [x, crown - 0.26, z], rot: [0, yaw, 0], color: GIRDER, lod: 0 });
+      const co = (WALL_T * 0.8) / 2 - 0.02;
+      k.box('weathered', PITCH + 0.02, 0.05, off - co + 0.06, { at: [p[0] + nx * ((off + co) / 2), crown - 0.05, p[1] + nz * ((off + co) / 2)], rot: [0, yaw, 0], color: IRON_DARK, lod: 0 });
     }
     // pylons every ~2.3 km (not at the ends)
     for (let t = 2.2; t < s.len - 0.8; t += 2.3) {
@@ -269,19 +418,27 @@ export function buildGate(k: ProxyKit): void {
     }
   }
 
-  // ---- the gate: two banded, ribbed leaves under a spiked lintel between two tall pylons
-  const gy = Math.min(k.ground(-1.2, 0), k.ground(1.2, 0), k.ground(0, 0)) - 0.02;
+  // ---- the gate: two solid leaves under a spiked lintel between two tall pylons
+  const gy = Math.min(k.ground(-1.2, 0), k.ground(1.2, 0), k.ground(0, 0)) - SINK;
   for (const s of [-1, 1]) {
-    k.box('iron', 1.24, 2.5, 0.3, { at: [s * 0.635, gy, 0.02], color: IRON_DARK });
-    for (const y of [0.35, 0.95, 1.55, 2.12]) k.box('iron', 1.18, 0.07, 0.38, { at: [s * 0.635, gy + y, 0.02], color: IRON, lod: 0 });
-    for (const x of [0.2, 0.62, 1.04]) k.box('iron', 0.05, 2.46, 0.36, { at: [s * x, gy + 0.02, 0.02], color: SPIKE, lod: 0 });
+    const cx = s * 0.635;
+    k.box('weathered', 1.24, 2.5, 0.3, { at: [cx, gy, 0.02], color: IRON_DARK });
+    // six slender vertical ribs (the plate seams), full height
+    for (let j = 0; j < 6; j++) k.box('weathered', 0.035, 2.44, 0.36, { at: [cx + (j - 2.5) * 0.19, gy + 0.03, 0.02], color: IRON, lod: 0 });
+    // three heavy bands
+    for (const y of [0.3, 1.18, 2.02]) k.box('weathered', 1.26, 0.16, 0.44, { at: [cx, gy + y, 0.02], color: GIRDER, lod: 0 });
+    // spikes jutting forward from the band ends, down both edges of the leaf (the top edge is under
+    // the lintel, which carries its own spikes)
+    for (const y of [0.38, 1.26, 2.1])
+      for (const e of [-0.58, 0.58]) k.cone('darkStone', 0.04, 0.26, { at: [cx + e, gy + y, -0.2], rot: tilt(-Math.PI / 2, 1.35), seg: 4, color: SPIKE, lod: 0 });
   }
-  k.box('iron', 3.3, 0.5, 0.62, { at: [0, gy + 2.48, 0.02], color: IRON });
-  for (let j = 0; j < 9; j++) k.cone('iron', 0.06, j % 2 ? 0.34 : 0.55, { at: [-1.4 + j * 0.35, gy + 2.97, -0.1], seg: 4, color: SPIKE, lod: 0 });
+  k.box('weathered', 3.3, 0.5, 0.62, { at: [0, gy + 2.48, 0.02], color: IRON });
+  for (let j = 0; j < 9; j++) k.cone('darkStone', 0.06, j % 2 ? 0.34 : 0.55, { at: [-1.4 + j * 0.35, gy + 2.97, -0.1], seg: 4, color: SPIKE, lod: 0 });
   for (const s of [-1, 1]) {
     const top = pylon(k, s * 1.78, 0, 4.3, 0.52);
-    spikeCrown(k, s * 1.78, 0, top, 0.36, 8, 0.6, 0.9);
-    brazier(k, s * 1.78 + s * 0.05, top - 0.05, -0.34);
+    // a crown of spikes round a fire bowl on the pylon's axis
+    spikeCrown(k, s * 1.78, 0, top, 0.36, 8, 0.6, 0);
+    brazier(k, s * 1.78, top - 0.05, 0);
   }
 
   // ---- braziers on the wall walk either side of the gate
@@ -296,4 +453,8 @@ export function buildGate(k: ProxyKit): void {
   // ---- the Towers of the Teeth, high on the flanks
   toothTower(k, TOWERS[0][0], TOWERS[0][1], 1);
   toothTower(k, TOWERS[1][0], TOWERS[1][1], -1);
+
+  // ---- crag shards on the ridge noses and crests
+  crags(k, WEST_RIDGE, -1);
+  crags(k, EAST_RIDGE, 1);
 }
