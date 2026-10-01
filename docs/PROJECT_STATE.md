@@ -149,7 +149,17 @@ south edge is a clean diorama cut through the Bay of Belfalas; a squarer board w
   pools + Lothlórien (s3) + Erebor massif. Perf gate after W1 (preview 1280×720): overview 46.8–56.5 ms,
   shire 49.8–50.1, anduin-gondor 50.4 (one noisy run 75.6, p95 spikes ~96), **compile 5.2–5.9 s (was
   7.3 s)**. Recheck after W3.
-- **W2 (running):** C = Hobbiton, Rivendell, Moria; D phase 2 = Argonath gorge + GLB refinements, Rauros.
+- **W2 (merged):** Hobbiton, Rivendell, Moria (C); Argonath gorge + refined GLB kings (Gondorian helm-crown,
+  halt palms, variant nodes) and Rauros / Amon Hen (D). Critic scores after fixes: Moria and Argonath
+  strongest (≈3), Hobbiton and Rivendell improved (Rivendell's wide shot still weak).
+- **Landmark forests (main):** `ForestDecl` (areas, density, species mix, clumping, clearings, slope / shore
+  limits) placed by the vegetation system; Rauros' 1348 and Rivendell's ~500 hand-authored trees converted
+  (authored trees 2035 → 203). Bog pools fade from regional distances (no hard blotches); QA compare sheets
+  use bookmark compare lists.
+- **W3 (merged):** Mount Doom, Barad-dûr, Black Gate (E); Minas Morgul, Cirith Ungol, Osgiliath, Henneth
+  Annûn (F). 14/24 landmarks at status s3; check: LOD0 191k tris, 14.9 MB, 320 lights, build ≈1 s (AO 0.56 s).
+- **W4 (running):** Minas Tirith, Helm's Deep, Isengard (G); Erebor gate, Dale, Lake-town, Dol Guldur (H).
+  Hero checkpoint renders + critics in parallel.
 - **Blender spike (W2-D phase 1, merged): GO.** `pnpm models` (headless Blender 4.5 under the lock, 10 min
   timeout, `--verify` byte-identical), runtime GLB loader (families by `fam:<id>`, shared AO). Argonath king
   GLB (39k tris/king, 1.06 MB) vs the TS-v2 figure: 3/3 blind critics preferred the GLB in every readable
