@@ -5,23 +5,28 @@ import type { V2 } from '../records.ts';
  * Lake-town layout (local km, heading 0: x east, z south; local y = 0 is the Long Lake's surface). The
  * display point lies 1.3 km off the lake's west shore, at the mouth of the Forest River; the lake is
  * ≈ 5.5 km wide here (shore x ≈ −1.4 … +4.3), its bed 0.8 below the water at the display point and
- * ≈ 2.5 below it 1.5 km out. The town (≈ 3 × 2.3 km) fills the middle of the lake on a deck of timber
- * platforms ("blocks") on piles, laced by canals — a broad Grand Canal running north–south through the
- * middle, a cross canal, narrow canals between the blocks — and joined to the west shore by a long
- * trestle bridge.
+ * ≈ 2.5 below it 1.5 km out.
  *
- * Town frame: (u, v) on a grid turned by YAW (u ≈ east, v ≈ south), centred on C.
+ * The town (≈ 3.4 × 2.6 km) is ONE continuous timber deck on piles in the middle of the lake — an
+ * organically grown stilt town, not a raft park: an irregular outline with harbour notches and jetties,
+ * cut by a broad Grand Canal running the town's length (south-south-west → north-north-east, the hero's
+ * view), a cross canal through the western half and narrower side canals (one to two house widths) that
+ * run in from the lake and end inside the town, bridged over here and there. Everything here is a pure
+ * function of the town frame (u, v): the deck mask, the canals, the house regions.
+ *
+ * Town frame: (u, v) turned by YAW (u ≈ east-south-east, v ≈ south-south-west), centred on C.
  */
 export const C: V2 = [1.45, -0.6];
-/** grid yaw, degrees (the kit's rot convention: +yaw turns x towards −z) */
-export const YAW = 8;
+/** grid yaw, degrees (the kit's rot convention: +yaw turns x towards −z): −15 runs the Grand Canal NNE */
+export const YAW = -15;
 /** deck top above the water, km */
 export const DECK = 0.075;
 /** deck slab thickness, km */
 export const DECK_T = 0.028;
-/** the Grand Canal: centre line u and width; the cross canal: centre line v and width */
-export const GRAND = { u: 0.08, w: 0.18 };
-export const CROSS = { v: 0.2, w: 0.12 };
+/** the Grand Canal: centre line u and width (twice the widest side canal) */
+export const GRAND = { u: 0.05, w: 0.3 };
+/** the cross canal: centre line v and width; it runs through the western half only */
+export const CROSS = { v: 0.2, w: 0.1 };
 
 const SEED = 0x1a4e70;
 const DEG = Math.PI / 180;
@@ -30,119 +35,133 @@ const sy = Math.sin(YAW * DEG);
 
 /** town frame → local x, z */
 export const T = (u: number, v: number): V2 => [C[0] + u * cy + v * sy, C[1] - u * sy + v * cy];
+/** local x, z → town frame */
+export const Tinv = (x: number, z: number): V2 => {
+  const dx = x - C[0];
+  const dz = z - C[1];
+  return [dx * cy - dz * sy, dx * sy + dz * cy];
+};
 
-/** the town's outline: an ellipse ≈ 3 × 2.3 km with a low-frequency wobble */
-const A = 1.5;
-const B = 1.16;
+/** half extents of the town's outline ellipse */
+const A = 1.7;
+const B = 1.3;
+/** harbour notches cut into the outline: centre angle (rad, in the ellipse-normalised frame), half width (rad), depth */
+const NOTCHES: [number, number, number][] = [
+  [0.35, 0.06, 0.2],
+  [1.15, 0.045, 0.16],
+  [2.05, 0.05, 0.22],
+  [2.75, 0.07, 0.15],
+  [3.55, 0.05, 0.2],
+  [4.25, 0.045, 0.14],
+  [5.0, 0.06, 0.2],
+  [5.75, 0.05, 0.17],
+];
+const angDiff = (a: number, b: number): number => {
+  let d = (a - b) % (Math.PI * 2);
+  if (d > Math.PI) d -= Math.PI * 2;
+  if (d < -Math.PI) d += Math.PI * 2;
+  return d;
+};
+
+/** outline radius (ellipse-normalised) at angle a: a low wobble, a ragged fine edge and the notches */
+function rim(a: number): number {
+  let r = 1 + 0.07 * Math.sin(3 * a + 0.7) + 0.05 * Math.sin(5 * a + 2.1) + 0.03 * Math.sin(8 * a + 0.3);
+  // a ragged edge: steps of ≈ 0.08 km where the outer houses stand out or fall back
+  r += (rand(SEED, Math.floor((a / (Math.PI * 2)) * 70 + 70) % 70, 41) - 0.5) * 0.06;
+  for (const [c, w, d] of NOTCHES) if (Math.abs(angDiff(a, c)) < w) r -= d;
+  return r;
+}
+
+/** inside the town's outline (grow > 1: a little beyond it) */
 export function insideTown(u: number, v: number, grow = 1): boolean {
-  const a = Math.atan2(v, u);
-  const wob = 1 + 0.07 * Math.sin(3 * a + 0.7) + 0.05 * Math.sin(5 * a + 2.1) + 0.03 * Math.sin(8 * a + 0.3);
-  return (u / A) ** 2 + (v / B) ** 2 <= (wob * grow) ** 2;
+  const a = Math.atan2(v / B, u / A);
+  return Math.hypot(u / A, v / B) <= rim(a) * grow;
 }
 
-export interface Block {
-  /** grid cell index */
-  i: number;
-  j: number;
-  u0: number;
-  u1: number;
-  v0: number;
-  v1: number;
-  /** the market square (no ring of houses) / the Master's house block */
-  role: 'houses' | 'square' | 'master';
+/** a side canal: runs along `axis` ('u': constant v, 'v': constant u) at `at`, width `w`, from `from` to `to` */
+interface SideCanal {
+  axis: 'u' | 'v';
+  at: number;
+  w: number;
+  from: number;
+  to: number;
+}
+/** side canals: in from the lake, ending inside the town (one to two house widths wide) */
+export const SIDE_CANALS: SideCanal[] = [
+  { axis: 'u', at: -0.72, w: 0.1, from: -9, to: -0.5 },
+  { axis: 'u', at: 0.8, w: 0.085, from: -9, to: -0.38 },
+  { axis: 'u', at: -0.34, w: 0.12, from: 0.66, to: 9 },
+  { axis: 'u', at: 0.62, w: 0.09, from: 0.42, to: 9 },
+  { axis: 'v', at: -0.98, w: 0.085, from: CROSS.v, to: 9 },
+  { axis: 'v', at: 1.0, w: 0.1, from: -9, to: -0.34 },
+];
+
+/** canal edge wander: each edge drifts ±0.012 km in 0.06 km steps (no ruler-straight canals) */
+const wander = (key: number, s: number): number => (rand(SEED, key * 1009 + Math.floor(s / 0.06 + 500), 7) - 0.5) * 0.024;
+
+/** in a canal (Grand, cross or a side canal)? `margin` widens every canal (keep-out for houses) */
+export function inCanal(u: number, v: number, margin = 0): boolean {
+  if (Math.abs(u - GRAND.u - wander(1, v)) < GRAND.w / 2 + margin) return true;
+  if (u < GRAND.u && Math.abs(v - CROSS.v - wander(2, u)) < CROSS.w / 2 + margin) return true;
+  for (let i = 0; i < SIDE_CANALS.length; i++) {
+    const c = SIDE_CANALS[i];
+    const [along, across] = c.axis === 'u' ? [u, v] : [v, u];
+    if (along < c.from || along > c.to + margin) continue;
+    if (Math.abs(across - c.at - wander(10 + i, along)) < c.w / 2 + margin) return true;
+  }
+  return false;
 }
 
-/** split [lo, hi] into blocks separated by canals, honouring one wide canal at `special` */
-function cuts(lo: number, hi: number, block: [number, number], canal: [number, number], special: { at: number; w: number }, key: number): [number, number][] {
-  const out: [number, number][] = [];
-  let p = lo;
-  let n = 0;
-  while (p < hi) {
-    const bw = block[0] + (block[1] - block[0]) * rand(SEED, key, n * 2);
-    const cw = canal[0] + (canal[1] - canal[0]) * rand(SEED, key, n * 2 + 1);
-    n++;
-    const s0 = special.at - special.w / 2;
-    const s1 = special.at + special.w / 2;
-    if (p < s0 && p + bw + cw > s0 - 0.02) {
-      // end this block at the wide canal (if there is room for one), resume beyond it
-      if (s0 - p > block[0] * 0.6) out.push([p, s0]);
-      // too little room: stretch the previous block up to the wide canal instead
-      else if (out.length) out[out.length - 1][1] = s0;
-      p = s1;
-      continue;
+/** on the deck: inside the outline and not in a canal */
+export function onDeck(u: number, v: number): boolean {
+  return insideTown(u, v) && !inCanal(u, v);
+}
+
+/**
+ * House regions: the parts of the town between the canals, each with its own small rotation (±5–10°,
+ * the blocks grew separately) and the market square / the Master's house carved out of two of them.
+ * Region key from the side of the Grand Canal and the bands between the canals that cross it.
+ */
+export function regionOf(u: number, v: number): number {
+  const east = u > GRAND.u;
+  if (!east) {
+    const band = v < -0.72 ? 0 : v < CROSS.v ? 1 : v < 0.8 ? 2 : 3;
+    return band + (u < -0.98 && v > CROSS.v ? 10 : 0);
+  }
+  const band = v < -0.34 ? 4 : v < 0.62 ? 5 : 6;
+  return band + (u > 1.0 && v < -0.34 ? 10 : 0);
+}
+
+/** a region's rotation, degrees (±5–10°, sign alternating with a random part) */
+export function regionYaw(r: number): number {
+  const s = rand(SEED, r, 3) < 0.5 ? -1 : 1;
+  return s * (5 + 5 * rand(SEED, r, 4));
+}
+
+/** the market square: an open deck on the west bank of the Grand Canal, just south of the cross canal */
+export const MARKET = { u0: GRAND.u - GRAND.w / 2 - 0.36, u1: GRAND.u - GRAND.w / 2 - 0.02, v0: CROSS.v + CROSS.w / 2 + 0.05, v1: CROSS.v + CROSS.w / 2 + 0.3 };
+/** the Master's house: west bank of the Grand Canal, just north of the cross canal */
+export const MASTER = { u0: GRAND.u - GRAND.w / 2 - 0.42, u1: GRAND.u - GRAND.w / 2 - 0.03, v0: CROSS.v - CROSS.w / 2 - 0.3, v1: CROSS.v - CROSS.w / 2 - 0.03 };
+
+export const inRect = (r: { u0: number; u1: number; v0: number; v1: number }, u: number, v: number, m = 0): boolean => u >= r.u0 - m && u <= r.u1 + m && v >= r.v0 - m && v <= r.v1 + m;
+
+/**
+ * The deck as row strips: for every row of `dv` km, the runs of deck along u (sampled every 0.01 km).
+ * `wet(u, v)` = deep enough water there (the town never runs onto the shore). Pure.
+ */
+export function deckRuns(dv: number, wet: (u: number, v: number) => boolean, mask: (u: number, v: number) => boolean = onDeck): { v: number; u0: number; u1: number }[] {
+  const out: { v: number; u0: number; u1: number }[] = [];
+  for (let v = -B * 1.15; v <= B * 1.15; v += dv) {
+    const vc = v + dv / 2;
+    let start: number | null = null;
+    for (let u = -A * 1.15; u <= A * 1.15 + 0.01; u += 0.01) {
+      const on = u <= A * 1.15 && mask(u, vc) && wet(u, vc);
+      if (on && start === null) start = u;
+      if (!on && start !== null) {
+        if (u - start > 0.03) out.push({ v, u0: start, u1: u - 0.01 });
+        start = null;
+      }
     }
-    out.push([p, Math.min(hi, p + bw)]);
-    p += bw + cw;
   }
   return out;
-}
-
-/** The town's blocks (pure, deterministic). */
-export function townBlocks(): Block[] {
-  const cols = cuts(-1.75, 1.75, [0.29, 0.46], [0.065, 0.1], { at: GRAND.u, w: GRAND.w }, 11);
-  const rows = cuts(-1.38, 1.38, [0.22, 0.35], [0.06, 0.087], { at: CROSS.v, w: CROSS.w }, 23);
-  const out: Block[] = [];
-  cols.forEach(([u0, u1], i) =>
-    rows.forEach(([v0, v1], j) => {
-      const cu = (u0 + u1) / 2;
-      const cv = (v0 + v1) / 2;
-      if (!insideTown(cu, cv, 1.04)) return;
-      // a few outer blocks stay open water (lagoons in the ragged edge)
-      if (!insideTown(cu, cv, 0.85) && rand(SEED, i * 97 + j, 5) < 0.12) return;
-      // shrink the corners that stick out of the outline
-      let a = u0;
-      let b = u1;
-      let c = v0;
-      let d = v1;
-      for (let it = 0; it < 16; it++) {
-        let moved = false;
-        if (!insideTown(a, c) || !insideTown(a, d)) {
-          if (a < cu - 0.07) {
-            a += 0.03;
-            moved = true;
-          }
-        }
-        if (!insideTown(b, c) || !insideTown(b, d)) {
-          if (b > cu + 0.07) {
-            b -= 0.03;
-            moved = true;
-          }
-        }
-        if (!insideTown(a, c) || !insideTown(b, c)) {
-          if (c < cv - 0.055) {
-            c += 0.03;
-            moved = true;
-          }
-        }
-        if (!insideTown(a, d) || !insideTown(b, d)) {
-          if (d > cv + 0.055) {
-            d -= 0.03;
-            moved = true;
-          }
-        }
-        if (!moved) break;
-      }
-      if (b - a < 0.13 || d - c < 0.1) return;
-      // a block whose corners still stick out (an outline nub) is dropped: no detached platforms
-      const outside = [insideTown(a, c), insideTown(b, c), insideTown(b, d), insideTown(a, d)].filter((q) => !q).length;
-      if (outside > 1) return;
-      // canals of uneven width: every edge wanders a little
-      const jit = (q: number) => (rand(SEED, i * 131 + j, 10 + q) - 0.5) * 0.034;
-      out.push({ i, j, u0: a + jit(0), u1: b + jit(1), v0: c + jit(2), v1: d + jit(3), role: 'houses' });
-    }),
-  );
-  // the market square and the Master's house: the two blocks west of the Grand Canal, either side of
-  // the cross canal
-  const west = out.filter((bk) => Math.abs(bk.u1 - (GRAND.u - GRAND.w / 2)) < 0.03);
-  const nearCross = (bk: Block, side: number) => (side < 0 ? Math.abs(bk.v1 - (CROSS.v - CROSS.w / 2)) < 0.03 : Math.abs(bk.v0 - (CROSS.v + CROSS.w / 2)) < 0.03);
-  const master = west.find((bk) => nearCross(bk, -1));
-  const square = west.find((bk) => nearCross(bk, 1));
-  if (master) master.role = 'master';
-  if (square) square.role = 'square';
-  return out;
-}
-
-/** the block containing (u, v), if any */
-export function blockAt(blocks: Block[], u: number, v: number): Block | undefined {
-  return blocks.find((bk) => u >= bk.u0 && u <= bk.u1 && v >= bk.v0 && v <= bk.v1);
 }

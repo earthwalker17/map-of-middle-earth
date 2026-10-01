@@ -1,80 +1,127 @@
 import type { ProxyKit } from '../kit/ProxyKit.ts';
 import type { V2 } from '../records.ts';
 import { defineLandmark } from '../types.ts';
-import { blockAt, CROSS, DECK, DECK_T, GRAND, insideTown, T, townBlocks, YAW, type Block } from './layout.ts';
+import { CROSS, DECK, DECK_T, deckRuns, GRAND, inCanal, insideTown, inRect, MARKET, MASTER, onDeck, regionOf, regionYaw, SIDE_CANALS, T, YAW } from './layout.ts';
 
 /**
  * Lake-town (Esgaroth, research §15): a dense town of weathered grey timber houses on stilts out on the
- * Long Lake — steep dark shingle roofs, gable fronts on the canals, little spired turrets everywhere, the
- * Master's house with its tall tower, a bell tower — laced with canals (a broad Grand Canal, a cross
- * canal, narrow canals between the blocks, footbridges over them), joined to the west shore by a long
- * trestle bridge, lantern-lit at dusk (windows + lamps along the Grand Canal and the bridge; the
- * settlement aggregates into one warm spark in overviews). Layout and frame: layout.ts. Design scale
- * ≈ ×9 (houses 55–100 m wide): the town is ≈ 3 km across so it reads as a town of roofs from 20–25 km.
+ * Long Lake — ONE continuous deck on piles with a ragged, notched outline and jetties, cut by a broad
+ * Grand Canal (the hero looks up it), a cross canal and narrow side canals bridged here and there;
+ * houses of one to four storeys in blocks turned a few degrees against each other, gable fronts on the
+ * canals, steep cool-grey shingle roofs; a spiky skyline of towers — the Master's house and its tall
+ * tower, a bell tower, a watch tower, many little spired turrets; joined to the west shore by a long
+ * trestle bridge. Lit windows cluster on the fronts the hero sees, at the market and the Master's house
+ * (the settlement aggregates into one warm spark in overviews). Layout and frame: layout.ts. Design scale
+ * ≈ ×9 (houses 50–95 m wide).
  */
 
-/** weathered grey timber (the film: #7d7b76 / #595a58), a few browner boards */
-const WALLS = [0x8a877f, 0x7d7b76, 0x6f6d67, 0x918d84, 0x837f76, 0x6e675d, 0x7a776f];
-/** dark blue-grey shingle (#3f494e / #283235), frosted and weathered paler on many roofs */
-const ROOFS = [0x5d666b, 0x4f585e, 0x6b7377, 0x454e54, 0x737a7c, 0x586064, 0x3f494e];
-const DECK_C = 0x3e3a34;
+/** weathered grey timber, paler than the film's #7d7b76 so it reads in the dusk light */
+const WALLS = [0x9a958b, 0x8f8a80, 0xa39e93, 0x948f85, 0x88837a, 0x9d978c, 0x857f75];
+/** cool blue-grey shingle (dark stone family: a lower roughness, the roofs catch the sky) */
+const ROOFS = [0x6b767c, 0x5f6a70, 0x737e84, 0x66706f, 0x7a8489, 0x5d676d, 0x707a7e];
+const DECK_C = 0x4a443c;
 const SKIRT = 0x1c1a17;
 const POST = 0x2a2622;
-const BRIDGE_C = 0x55504a;
+const BRIDGE_C = 0x5a554e;
 const HULL = 0x3a3129;
 const LANTERN = 0xf0a54a;
-/** walkway left free along canal-facing deck edges, km */
-const WALK = 0.022;
-/** at most this many lights (shot-list budget 120) */
-const MAX_LIGHTS = 118;
+/** at most this many lights (shot-list budget 120; the review asked for ≈ 55) */
+const MAX_LIGHTS = 60;
+/** walkway left free along the canals, km */
+const WALK = 0.016;
 
 const DEG = Math.PI / 180;
 
-/** unit outward normal of a block face in the town frame: 0 +v (south) · 1 +u · 2 −v · 3 −u */
-const NRM: V2[] = [
-  [0, 1],
-  [1, 0],
-  [0, -1],
-  [-1, 0],
-];
-/** house yaw so its local +z (the window side) looks along face `f` */
-const FACE_YAW = [0, 90, 180, -90];
+/** town frame (u, v) of a point (s, t) of a region turned by `rho` degrees about the town centre */
+const rotST = (s: number, t: number, rho: number): V2 => {
+  const c = Math.cos(rho * DEG);
+  const n = Math.sin(rho * DEG);
+  return [s * c + t * n, -s * n + t * c];
+};
 
 function buildTown(k: ProxyKit): void {
-  const blocks = townBlocks();
+  /** deep enough water under (u, v): the town never runs onto the shore */
+  const wet = (u: number, v: number): boolean => {
+    const [x, z] = T(u, v);
+    return k.ground(x, z) < -0.12;
+  };
+  const deckAt = (u: number, v: number): boolean => onDeck(u, v) && wet(u, v);
+
   let lights = 0;
-  const light = (x: number, y: number, z: number, kind: 'window' | 'lamp', intensity = 1, size = 0.01): void => {
+  const light = (x: number, y: number, z: number, kind: 'window' | 'lamp', intensity: number, size = 0.009): void => {
     if (lights >= MAX_LIGHTS) return;
     lights++;
-    // lanterns and windows are lit from golden hour (dusk gate): the prologue's town glows at sunset
-    k.light([x, y, z], { kind, color: LANTERN, intensity: intensity * 1.4, radius: size, gate: 'dusk' });
+    k.light([x, y, z], { kind, color: LANTERN, intensity, radius: size });
   };
-  // house windows claim up to this many lights; the lamps (Grand Canal, bridge), the Master's house and
-  // the bell tower take the rest of the budget
-  let windowBudget = 66;
+  /** a lamp on a short post standing on the deck (or a bridge) at local (x, z), deck top y */
+  const lamp = (x: number, z: number, y: number, intensity: number): void => {
+    if (lights >= MAX_LIGHTS) return;
+    k.box('wood', 0.006, 0.026, 0.006, { at: [x, y - 0.002, z], color: POST, lod: 0 });
+    light(x, y + 0.03, z, 'lamp', intensity, 0.01);
+  };
+
+  // ---------------------------------------------------------------- the deck, its dark underside, piles
+  const DV = 0.05;
+  for (const r of deckRuns(DV, wet)) {
+    const [x, z] = T((r.u0 + r.u1) / 2, r.v + DV / 2);
+    k.box('wood', r.u1 - r.u0 + 0.01, DECK_T, DV + 0.004, { at: [x, DECK - DECK_T, z], rot: [0, YAW, 0], color: DECK_C, shade: 0.88 + k.r(1) * 0.24, lod: 1 });
+  }
+  // the dark space under the deck between the piles (reads as stilts from afar): the deck eroded a little
+  const inner = (u: number, v: number): boolean => deckAt(u - 0.02, v) && deckAt(u + 0.02, v) && deckAt(u, v - 0.025) && deckAt(u, v + 0.025);
+  for (const r of deckRuns(DV, () => true, inner)) {
+    const [x, z] = T((r.u0 + r.u1) / 2, r.v + DV / 2);
+    k.box('wood', r.u1 - r.u0, DECK - DECK_T + 0.06, DV + 0.004, { at: [x, -0.06, z], rot: [0, YAW, 0], color: SKIRT, lod: 0 });
+  }
+  // piles along the deck's edges on the open lake and the Grand Canal
+  const pile = (u: number, v: number) => {
+    const [x, z] = T(u, v);
+    k.box('wood', 0.014, DECK - DECK_T + 0.05, 0.014, { at: [x, -0.05, z], rot: [0, YAW, 0], color: POST, shade: 0.85 + k.r(1) * 0.3, lod: 0 });
+  };
+  const openWater = (u: number, v: number): boolean => !insideTown(u, v) || Math.abs(u - GRAND.u) < GRAND.w / 2 - 0.03;
+  let pi = 0;
+  for (const r of deckRuns(DV, wet)) {
+    const vc = r.v + DV / 2;
+    if (pi++ % 2 === 0) {
+      if (openWater(r.u0 - 0.04, vc)) pile(r.u0 + 0.004, vc);
+      if (openWater(r.u1 + 0.04, vc)) pile(r.u1 - 0.004, vc);
+    }
+    for (let u = r.u0 + 0.03; u < r.u1 - 0.02; u += 0.065) {
+      if (!insideTown(u, r.v - 0.03)) pile(u, r.v + 0.004);
+      if (!insideTown(u, r.v + DV + 0.03)) pile(u, r.v + DV - 0.004);
+    }
+  }
+
+  // ---------------------------------------------------------------- houses
   let houseN = 0;
-
-  /** is the water beyond face `f` of block `bk` at (u, v) open (no block within `reach`)? */
-  const open = (u: number, v: number, f: number, reach = 0.05): boolean => !blockAt(blocks, u + NRM[f][0] * reach, v + NRM[f][1] * reach);
-
+  let windowBudget = 34;
+  const storeys = (p: number[]): number => {
+    const x = k.r(20);
+    let a = 0;
+    for (let i = 0; i < p.length; i++) if (x < (a += p[i])) return i + 1;
+    return p.length;
+  };
   /**
-   * One timber house centred at (u, v) of the town frame, looking along face `f`: `along` = width along
-   * the row, `deep` = depth into the block, `h` = wall height. Gable fronts turn the ridge onto the normal.
+   * One timber house centred at town (u, v): `along` = its width on the street, `deep` = its depth, `h` =
+   * wall height; `face` = the town-frame unit normal of its front; `rho` = its block's turn (deg). Gable
+   * fronts turn the ridge onto the normal.
    */
-  const house = (u: number, v: number, along: number, deep: number, h: number, f: number, o: { gable: boolean; lod: 0 | 1 | 2; lit: boolean; tall?: boolean }): void => {
+  const house = (u: number, v: number, along: number, deep: number, h: number, face: V2, o: { gable: boolean; lod: 0 | 1 | 2; lit: number; tall?: boolean }): void => {
     const i = houseN++;
     const [x, z] = T(u, v);
-    const yaw = YAW + FACE_YAW[f] + (o.gable ? 90 : 0) + (k.r(1) - 0.5) * 3;
+    // the yaw that turns the house's local +z onto the front normal (kit: +z → (sin yaw, cos yaw) in x, z)
+    const [nx, nz] = [face[0] * Math.cos(YAW * DEG) + face[1] * Math.sin(YAW * DEG), -face[0] * Math.sin(YAW * DEG) + face[1] * Math.cos(YAW * DEG)];
+    const yawF = (Math.atan2(nx, nz) * 180) / Math.PI;
+    const yaw = yawF + (o.gable ? 90 : 0) + (k.r(1) - 0.5) * 3;
     const w = o.gable ? deep : along;
     const d = o.gable ? along : deep;
     const r = k.r(2);
     const roof = o.tall ? 'cone' : r < 0.1 ? 'hip' : 'gable';
-    k.house('wood', 'slate', w, d, h, {
+    k.house('wood', 'darkStone', w, d, h, {
       at: [x, DECK - 0.002, z],
       seat: false,
       rot: [0, yaw, 0],
       roof,
-      pitch: 58 + k.r(3) * 10,
+      pitch: 56 + k.r(3) * 12,
       overhang: 0.006 + k.r(4) * 0.004,
       color: WALLS[i % WALLS.length],
       shade: 0.9 + k.r(5) * 0.2,
@@ -83,245 +130,232 @@ function buildTown(k: ProxyKit): void {
       lod: o.lod,
       // carved gable boards with short horns (the film's town), ridge caps on some
       ...(roof === 'gable' && i % 5 !== 4 ? { gableBoards: { color: 0x4a443c, size: 0.0045, horn: 0.008 } } : {}),
-      ...(i % 3 === 0 && roof === 'gable' ? { ridge: { color: 0x2b3134, size: 0.006 } } : {}),
+      ...(i % 3 === 0 && roof === 'gable' ? { ridge: { color: 0x3b4246, size: 0.006 } } : {}),
       ...(i % 7 === 2 ? { chimney: true } : {}),
     });
-    if (o.lit && windowBudget > 0) {
+    if (o.lit > 0 && windowBudget > 0 && k.r(6) < o.lit) {
       windowBudget--;
-      const [nu, nv] = NRM[f];
-      const [lx, lz] = T(u + nu * (deep / 2 + 0.003), v + nv * (deep / 2 + 0.003));
-      light(lx, DECK + h * (0.35 + k.r(6) * 0.3), lz, 'window', 0.9 + k.r(7) * 0.4, 0.008);
+      const fx = x + nx * (deep / 2 + 0.004);
+      const fz = z + nz * (deep / 2 + 0.004);
+      light(fx, DECK + h * (0.3 + k.r(7) * 0.4), fz, 'window', 0.4 + k.r(8) * 0.6, 0.008);
     }
   };
 
   /** a spired timber turret standing on the deck at (u, v) */
-  const turret = (u: number, v: number, r: number, h: number, sides: number): void => {
+  const turret = (u: number, v: number, r: number, h: number, sides: number, lod: 0 | 1 | 2 = 1): void => {
     const [x, z] = T(u, v);
     k.tower('wood', r, h, {
       at: [x, DECK - 0.002, z],
       sides,
       rot: [0, YAW + (sides === 4 ? 45 : 0), 0],
       roof: 'spire',
-      roofH: r * (3 + k.r(1) * 1.5),
-      roofFam: 'slate',
+      roofH: r * (3.2 + k.r(1) * 1.5),
+      roofFam: 'darkStone',
       color: WALLS[(houseN + 2) % WALLS.length],
       roofColor: ROOFS[houseN % ROOFS.length],
-      lod: 1,
+      lod,
     });
   };
 
-  /** a row of houses along one face of a block, from s0 to s1 along the face (town-frame coordinate) */
-  const row = (bk: Block, f: number, s0: number, s1: number, depth: number, inset: number, centre: number, inner = false): void => {
-    if (depth < 0.04) return;
-    let s = s0 + 0.004;
-    let n = 0;
-    while (s1 - s > 0.047) {
-      const along = Math.min(s1 - s - 0.002, 0.055 + k.r(1) * 0.047);
-      if (along < 0.044) break;
-      const mid = s + along / 2;
-      const deep = depth * (0.85 + k.r(2) * 0.15);
-      // houses on the outer ring and the canals are taller towards the middle of the town
-      const h = (0.06 + k.r(3) * 0.06) * (1 + 0.3 * (1 - Math.min(1, centre)));
-      const off = inset + deep / 2;
-      const [u, v] = f === 0 ? [mid, bk.v1 - off] : f === 2 ? [mid, bk.v0 + off] : f === 1 ? [bk.u1 - off, mid] : [bk.u0 + off, mid];
-      const tall = k.r(4) < 0.06 && along < 0.078;
-      // the inner rows (inside a block) drop out at LOD1; every third outer house stays in the silhouette LOD
-      const lod = inner ? 0 : n % 3 === 0 ? 2 : 1;
-      // lit windows favour the faces the dusk view sees (east / south fronts) and the eastern half of the
-      // town: the blocks are built west to east, so the far side must not use up the window budget
-      const seen = (f === 1 || f === 0 ? 0.8 : 0.2) * (u > -0.4 ? 1 : 0.5);
-      house(u, v, along, deep, tall ? h * 1.5 : h, f, { gable: k.r(5) < 0.55, lod, lit: !inner && k.r(6) < seen, tall });
-      n++;
-      // mostly shoulder to shoulder; now and then an alley
-      s += along + (k.r(7) < 0.12 ? 0.026 + k.r(8) * 0.02 : 0.003 + k.r(9) * 0.008);
+  /** footprint test: every corner and the centre on the deck, clear of the canals' walkways and of the reserved squares */
+  const fits = (u: number, v: number, a: number, b: number, rho: number, region: number | null): boolean => {
+    const pts: V2[] = [[0, 0], [-a / 2, -b / 2], [a / 2, -b / 2], [a / 2, b / 2], [-a / 2, b / 2]];
+    for (const [ds, dt] of pts) {
+      const [du, dv] = rotST(ds, dt, rho);
+      const pu = u + du;
+      const pv = v + dv;
+      if (!deckAt(pu, pv) || inCanal(pu, pv, WALK) || !insideTown(pu, pv, 0.985)) return false;
+      if (inRect(MARKET, pu, pv, 0.01) || inRect(MASTER, pu, pv, 0.01)) return false;
+      if (region !== null && regionOf(pu, pv) !== region) return false;
     }
+    return true;
   };
 
-  // ---------------------------------------------------------------- decks, piles, house rows
-  blocks.forEach((bk, bi) => {
-    const j = (a: number) => (k.r(a) - 0.5) * 0.016;
-    const quad: V2[] = [T(bk.u0 + j(1), bk.v0 + j(2)), T(bk.u1 + j(3), bk.v0 + j(4)), T(bk.u1 + j(5), bk.v1 + j(6)), T(bk.u0 + j(7), bk.v1 + j(8))];
-    k.extrude('wood', quad, DECK_T, { at: [0, DECK - DECK_T, 0], color: DECK_C, shade: 0.85 + k.r(9) * 0.25 });
-    // the dark space under the deck between the piles (reads as stilts from afar)
-    const cu = (bk.u0 + bk.u1) / 2;
-    const cv = (bk.v0 + bk.v1) / 2;
-    const ins = (a: number, c: number) => a + Math.sign(c - a) * 0.016;
-    const under: V2[] = [T(ins(bk.u0, cu), ins(bk.v0, cv)), T(ins(bk.u1, cu), ins(bk.v0, cv)), T(ins(bk.u1, cu), ins(bk.v1, cv)), T(ins(bk.u0, cu), ins(bk.v1, cv))];
-    k.extrude('wood', under, DECK - DECK_T + 0.06, { at: [0, -0.06, 0], color: SKIRT, lod: 1 });
-    // piles along the faces that look onto open water or the wide canals
-    for (let f = 0; f < 4; f++) {
-      const len = f % 2 === 0 ? bk.u1 - bk.u0 : bk.v1 - bk.v0;
-      const n = Math.floor(len / 0.045);
-      for (let p = 0; p <= n; p++) {
-        const s = (f % 2 === 0 ? bk.u0 : bk.v0) + (len * p) / Math.max(1, n);
-        const [u, v] = f === 0 ? [s, bk.v1] : f === 2 ? [s, bk.v0] : f === 1 ? [bk.u1, s] : [bk.u0, s];
-        if (!open(u, v, f, 0.11)) continue;
-        const [x, z] = T(u + NRM[f][0] * 0.005, v + NRM[f][1] * 0.005);
-        k.box('wood', 0.015, DECK - DECK_T + 0.05, 0.015, { at: [x, -0.05, z], rot: [0, YAW, 0], color: POST, shade: 0.85 + k.r(1) * 0.3, lod: 0 });
-      }
-    }
-    if (bk.role === 'master') return;
-    const centre = Math.hypot(cu / 1.5, cv / 1.16);
-    const depthV = bk.v1 - bk.v0;
-    const depthU = bk.u1 - bk.u0;
-    // which faces keep a walkway (canal-facing); outer faces over open lake run the houses to the edge
-    const inset = (f: number, u: number, v: number) => (open(u, v, f, 0.28) ? 0.005 : WALK);
-    const midU = cu;
-    const midV = cv;
-    const inN = inset(2, midU, bk.v0);
-    const inS = inset(0, midU, bk.v1);
-    const inW = inset(3, bk.u0, midV);
-    const inE = inset(1, bk.u1, midV);
-    if (bk.role === 'square') {
-      // the market square: houses only along the two faces away from the canals, stalls on the deck
-      const dN = Math.min(0.1, (depthV - 0.07) / 2);
-      row(bk, 2, bk.u0 + inW, bk.u1 - inE, dN, inN, centre);
-      row(bk, 3, bk.v0 + inN + dN, bk.v1 - inS, Math.min(0.095, depthU / 3), inW, centre);
-      for (let s = 0; s < 6; s++) {
-        const u = bk.u0 + inW + 0.13 + (s % 3) * 0.065 + k.r(1) * 0.013;
-        const v = bk.v0 + inN + dN + 0.065 + Math.floor(s / 3) * 0.06;
-        if (u > bk.u1 - 0.04 || v > bk.v1 - 0.04) continue;
-        const [x, z] = T(u, v);
-        k.house('wood', 'wood', 0.029, 0.023, 0.016, { at: [x, DECK - 0.002, z], seat: false, rot: [0, YAW, 0], roof: 'hip', pitch: 35, color: 0x6a5a48, roofColor: [0x7a3a2c, 0x3d5a7a, 0x8a6a3a][s % 3], lod: 0 });
-      }
-      return;
-    }
-    if (depthV < 0.19) {
-      // a narrow block: one row through, alternately facing either side
-      const f = bi % 2 === 0 ? 0 : 2;
-      row(bk, f, bk.u0 + inW, bk.u1 - inE, depthV - inN - inS - 0.008, f === 0 ? inS : inN, centre);
-      return;
-    }
-    const dN = Math.min(0.065 + k.r(1) * 0.045, (depthV - inN - inS) / 2 - 0.005);
-    const dS = Math.min(0.065 + k.r(2) * 0.045, (depthV - inN - inS) / 2 - 0.005);
-    row(bk, 2, bk.u0 + inW, bk.u1 - inE, dN, inN, centre);
-    row(bk, 0, bk.u0 + inW, bk.u1 - inE, dS, inS, centre);
-    const s0 = bk.v0 + inN + dN + 0.005;
-    const s1 = bk.v1 - inS - dS - 0.005;
-    if (s1 - s0 > 0.05) {
-      const dW = Math.min(0.065 + k.r(3) * 0.04, depthU / 2 - inW - 0.005);
-      const dE = Math.min(0.065 + k.r(4) * 0.04, depthU / 2 - inE - 0.005);
-      row(bk, 3, s0, s1, dW, inW, centre, inW > 0.01);
-      row(bk, 1, s0, s1, dE, inE, centre, inE > 0.01);
-      // the block's core: back-to-back rows of smaller houses round little yards (LOD0 only)
-      const c0 = bk.u0 + inW + dW + 0.008;
-      const c1 = bk.u1 - inE - dE - 0.008;
-      let v = s0 + 0.004;
-      let n = 0;
-      while (c1 - c0 > 0.06 && s1 - v > 0.06) {
-        const dd = Math.min(s1 - v - 0.004, 0.055 + k.r(5) * 0.03);
-        if (dd < 0.05) break;
-        const sub: Block = { ...bk, u0: c0, u1: c1, v0: v, v1: v + dd };
-        if (k.r(6) > 0.15) row(sub, n % 2 === 0 ? 0 : 2, c0 + k.r(7) * 0.02, c1, dd, 0, centre, true);
-        v += dd + 0.004 + (k.r(8) < 0.3 ? 0.02 : 0);
+  // ---- 1. the Grand Canal's frontages: tall gable-fronted houses shoulder to shoulder on both banks,
+  // facing the water (the view up the canal), a walkway along the water
+  for (const side of [-1, 1]) {
+    let v = -1.5 + k.r(1) * 0.05;
+    let n = 0;
+    while (v < 1.5) {
+      const along = 0.05 + k.r(2) * 0.04;
+      const deep = 0.075 + k.r(3) * 0.03;
+      const u = GRAND.u + side * (GRAND.w / 2 + WALK + 0.006 + deep / 2);
+      const vc = v + along / 2;
+      if (fits(u, vc, deep, along, 0, null)) {
+        const n_ = storeys([0.05, 0.35, 0.4, 0.2]);
+        const tall = k.r(4) < 0.05;
+        // lit windows: the canal fronts in the near (south-south-west) two-thirds of the canal
+        const lit = vc > -0.6 ? 0.55 : 0.2;
+        house(u, vc, along, deep, 0.032 * n_ + 0.012, [-side, 0], { gable: k.r(5) < 0.7, lod: n % 2 === 0 ? 2 : 1, lit, tall });
         n++;
       }
+      v += along + (k.r(6) < 0.1 ? 0.025 + k.r(7) * 0.02 : 0.003 + k.r(8) * 0.006);
     }
-    // spired turrets at some corners (more on the outer ring and along the Grand Canal)
-    const corners: [number, number, number, number][] = [
-      [bk.u0, bk.v0, 1, 1],
-      [bk.u1, bk.v0, -1, 1],
-      [bk.u1, bk.v1, -1, -1],
-      [bk.u0, bk.v1, 1, -1],
-    ];
-    for (const [u, v, su, sv] of corners) {
-      const nearGrand = Math.abs(u - GRAND.u) < GRAND.w / 2 + 0.04;
-      if (k.r(1) > (nearGrand ? 0.5 : 0.28)) continue;
-      const r = 0.024 + k.r(2) * 0.014;
-      turret(u + su * (r + 0.014), v + sv * (r + 0.014), r, 0.14 + k.r(3) * 0.1, k.r(4) < 0.6 ? 4 : 6);
-    }
-  });
-
-  // ---------------------------------------------------------------- the Master's house and its tower
-  const mb = blocks.find((bk) => bk.role === 'master');
-  if (mb) {
-    const cu = (mb.u0 + mb.u1) / 2;
-    const cv = (mb.v0 + mb.v1) / 2;
-    const [x, z] = T(cu - 0.03, cv);
-    const hw = Math.min(0.3, mb.u1 - mb.u0 - 0.09);
-    const hd = Math.min(0.15, mb.v1 - mb.v0 - 0.07);
-    k.house('wood', 'slate', hw, hd, 0.105, { at: [x, DECK - 0.002, z], seat: false, rot: [0, YAW, 0], pitch: 58, overhang: 0.01, color: 0x6d6a63, roofColor: 0x2f383d, roofGrain: 0.5, ridge: { color: 0x8c713f, size: 0.007 }, lod: 2 });
-    // the cross wing on the Grand Canal with its gable to the water
-    const [wx, wz] = T(mb.u1 - 0.075, cv);
-    k.house('wood', 'slate', 0.125, Math.min(0.22, mb.v1 - mb.v0 - 0.03), 0.12, { at: [wx, DECK - 0.002, wz], seat: false, rot: [0, YAW + 90, 0], pitch: 60, overhang: 0.01, color: 0x75716a, roofColor: 0x2f383d, roofGrain: 0.5, lod: 2 });
-    // the Master's tower: the tallest thing in the town
-    const [tx, tz] = T(mb.u1 - 0.055, mb.v0 + 0.06);
-    k.tower('wood', 0.047, 0.42, { at: [tx, DECK - 0.002, tz], sides: 6, roof: 'spire', roofH: 0.21, roofFam: 'slate', color: 0x6b675f, roofColor: 0x2a3236, lod: 2 });
-    for (const [y, a] of [[0.22, 200], [0.33, 260], [0.38, 150]] as const) light(tx + Math.sin(a * DEG) * 0.05, DECK + y, tz - Math.cos(a * DEG) * 0.05, 'window', 1.3, 0.011);
-    // a lantern on the Master's landing and windows down the hall
-    for (let s = 0; s < 4; s++) {
-      const [lx, lz] = T(cu - 0.03 - hw / 2 + 0.04 + s * ((hw - 0.08) / 3), cv + hd / 2 + 0.005);
-      light(lx, DECK + 0.055, lz, 'window', 1.2, 0.011);
-    }
-    // houses along the block's west face
-    row(mb, 3, mb.v0 + 0.008, mb.v1 - 0.008, Math.min(0.095, (mb.u1 - mb.u0 - hw) / 2), 0.005, 0.2);
   }
 
-  // ---------------------------------------------------------------- the bell tower (on the cross canal)
-  const eb = blocks.find((bk) => Math.abs(bk.u0 - (GRAND.u + GRAND.w / 2)) < 0.03 && Math.abs(bk.v1 - (CROSS.v - CROSS.w / 2)) < 0.03);
-  if (eb) {
-    const [x, z] = T(eb.u0 + 0.055, eb.v1 - 0.055);
-    k.tower('wood', 0.042, 0.35, { at: [x, DECK - 0.002, z], sides: 4, rot: [0, YAW + 45, 0], roof: 'spire', roofH: 0.18, roofFam: 'slate', color: 0x76726a, roofColor: 0x2c3438, lod: 2 });
-    light(x, DECK + 0.28, z + 0.034, 'window', 1.4, 0.012);
+  // ---- 2. the blocks: back-to-back rows of houses in each region's own slightly turned frame, alleys
+  // between the pairs of rows, now and then a gap; storeys 1–4 (taller towards the middle and the canal)
+  const regions = [0, 1, 2, 3, 4, 5, 6, 12, 13, 14];
+  for (const reg of regions) {
+    const rho = regionYaw(reg);
+    let t = -1.55 + k.r(1) * 0.08;
+    while (t < 1.55) {
+      const d1 = 0.06 + k.r(2) * 0.04;
+      const d2 = 0.06 + k.r(3) * 0.04;
+      for (const [row, depth, sgn] of [
+        [t + d1 / 2, d1, -1],
+        [t + d1 + 0.004 + d2 / 2, d2, 1],
+      ] as const) {
+        let s = -1.9 + k.r(4) * 0.06;
+        let n = 0;
+        while (s < 1.9) {
+          const along = 0.05 + k.r(5) * 0.045;
+          const sc = s + along / 2;
+          const [u, v] = rotST(sc, row, rho);
+          // never on the Grand Canal's frontage strip (its houses face the water)
+          if (Math.abs(u - GRAND.u) > GRAND.w / 2 + WALK + 0.12 && fits(u, v, along, depth, rho, reg)) {
+            const edge = !insideTown(u, v, 0.9);
+            const mid = Math.hypot(u / 1.7, v / 1.3) < 0.55;
+            const n_ = storeys(edge ? [0.35, 0.45, 0.2, 0] : mid ? [0.1, 0.35, 0.35, 0.2] : [0.25, 0.45, 0.25, 0.05]);
+            const face = rotST(0, sgn, rho);
+            // lit windows on the fronts that face the hero (south-south-west, +v)
+            const lit = face[1] > 0.5 ? (v > -0.4 ? 0.22 : 0.08) : 0;
+            const lod: 0 | 1 | 2 = edge ? (n % 3 === 0 ? 2 : 1) : n % 4 === 0 ? 1 : 0;
+            house(u, v, along, depth * (0.9 + k.r(6) * 0.1), 0.032 * n_ + 0.012, face, { gable: k.r(7) < 0.6, lod, lit, tall: k.r(8) < 0.04 && along < 0.07 });
+            n++;
+          }
+          s += along + (k.r(9) < 0.12 ? 0.024 + k.r(10) * 0.02 : 0.003 + k.r(11) * 0.007);
+        }
+      }
+      t += d1 + d2 + 0.004 + 0.018 + k.r(12) * 0.014;
+    }
   }
 
-  // ---------------------------------------------------------------- footbridges over the narrow canals
-  blocks.forEach((bk) => {
-    const cv = (bk.v0 + bk.v1) / 2;
-    const cu = (bk.u0 + bk.u1) / 2;
-    // east across a narrow canal
-    const east = blockAt(blocks, bk.u1 + 0.11, cv);
-    if (east && east !== bk && east.u0 - bk.u1 < 0.12) {
-      const [x, z] = T((bk.u1 + east.u0) / 2, cv);
-      k.box('wood', east.u0 - bk.u1 + 0.04, 0.009, 0.026, { at: [x, DECK - 0.005, z], rot: [0, YAW, 0], color: BRIDGE_C, lod: 0 });
+  // ---- 3. spired turrets at canal corners and along the outline (the spiky skyline)
+  let turrets = 0;
+  for (let a = 0; a < 360 && turrets < 12; a += 23 + k.r(1) * 14) {
+    const ca = Math.cos(a * DEG);
+    const sa = Math.sin(a * DEG);
+    // walk in from beyond the outline to the first deck
+    for (let q = 1.08; q > 0.6; q -= 0.02) {
+      const u = 1.7 * q * ca;
+      const v = 1.3 * q * sa;
+      if (deckAt(u, v) && insideTown(u, v, 0.96)) {
+        turret(u, v, 0.022 + k.r(2) * 0.012, 0.16 + k.r(3) * 0.1, k.r(4) < 0.6 ? 4 : 6);
+        turrets++;
+        break;
+      }
     }
-    const south = blockAt(blocks, cu, bk.v1 + 0.1);
-    if (south && south !== bk && south.v0 - bk.v1 < 0.11) {
-      const [x, z] = T(cu + 0.04, (bk.v1 + south.v0) / 2);
-      k.box('wood', south.v0 - bk.v1 + 0.04, 0.009, 0.026, { at: [x, DECK - 0.005, z], rot: [0, YAW + 90, 0], color: BRIDGE_C, lod: 0 });
+  }
+  for (const [u, v] of [
+    [GRAND.u - GRAND.w / 2 - WALK - 0.03, -0.95],
+    [GRAND.u + GRAND.w / 2 + WALK + 0.03, -0.55],
+    [GRAND.u + GRAND.w / 2 + WALK + 0.03, 0.85],
+    [GRAND.u - GRAND.w / 2 - WALK - 0.03, 0.95],
+    [-0.62, CROSS.v - CROSS.w / 2 - WALK - 0.03],
+    [0.75, SIDE_CANALS[2].at + SIDE_CANALS[2].w / 2 + WALK + 0.03],
+  ] as const)
+    if (deckAt(u, v)) turret(u, v, 0.026 + k.r(1) * 0.01, 0.2 + k.r(2) * 0.08, 6);
+
+  // ---- 4. the Master's house: a long hall, a cross wing gable-on to the Grand Canal, the town's tallest
+  // tower (≈ 0.92 km to the spire's tip); its windows and the lamps on its landing
+  {
+    const cu = (MASTER.u0 + MASTER.u1) / 2;
+    const cv = (MASTER.v0 + MASTER.v1) / 2;
+    const hw = MASTER.u1 - MASTER.u0 - 0.12;
+    const hd = Math.min(0.15, MASTER.v1 - MASTER.v0 - 0.08);
+    const [x, z] = T(cu - 0.05, cv);
+    k.house('wood', 'darkStone', hw, hd, 0.14, { at: [x, DECK - 0.002, z], seat: false, rot: [0, YAW, 0], pitch: 58, overhang: 0.01, color: 0x8c877d, roofColor: 0x4f595e, roofGrain: 0.5, ridge: { color: 0x8c713f, size: 0.007 }, lod: 2 });
+    const [wx, wz] = T(MASTER.u1 - 0.065, cv);
+    k.house('wood', 'darkStone', 0.13, MASTER.v1 - MASTER.v0 - 0.02, 0.16, { at: [wx, DECK - 0.002, wz], seat: false, rot: [0, YAW + 90, 0], pitch: 60, overhang: 0.01, color: 0x948f85, roofColor: 0x4f595e, roofGrain: 0.5, lod: 2 });
+    const [tx, tz] = T(MASTER.u0 + 0.07, MASTER.v0 + 0.07);
+    k.tower('wood', 0.055, 0.62, { at: [tx, DECK - 0.002, tz], sides: 6, roof: 'spire', roofH: 0.3, roofFam: 'darkStone', color: 0x86817a, roofColor: 0x454f54, lod: 2 });
+    for (const [y, a] of [
+      [0.36, 200],
+      [0.5, 160],
+    ] as const)
+      light(tx + Math.sin(a * DEG) * 0.057, DECK + y, tz - Math.cos(a * DEG) * 0.057, 'window', 0.95, 0.01);
+    // windows down the hall's front (south-south-west) and the wing's canal gable
+    const [fnx, fnz] = [Math.sin(YAW * DEG), Math.cos(YAW * DEG)];
+    for (let s = 0; s < 3; s++) {
+      const [lx, lz] = T(cu - 0.05 - hw / 2 + 0.05 + s * ((hw - 0.1) / 2), cv);
+      light(lx + fnx * (hd / 2 + 0.004), DECK + 0.08, lz + fnz * (hd / 2 + 0.004), 'window', 0.85 + k.r(1) * 0.15, 0.009);
     }
-  });
-  // humped bridges over the Grand Canal
-  for (const v of [-0.72, -0.26, 0.6]) {
-    const a = T(GRAND.u - GRAND.w / 2 - 0.01, v);
+    const [gx, gz] = T(MASTER.u1 + 0.004, cv);
+    light(gx, DECK + 0.1, gz, 'window', 1.0, 0.01);
+    // lamps on the landing at the canal
+    for (const dv of [-0.08, 0.08]) {
+      const [lx, lz] = T(GRAND.u - GRAND.w / 2 - 0.012, cv + dv);
+      lamp(lx, lz, DECK, 0.9);
+    }
+  }
+
+  // ---- 5. the market square: stalls with coloured awnings round an open deck, lamps at its corners
+  {
+    for (let s = 0; s < 8; s++) {
+      const u = MARKET.u0 + 0.07 + (s % 4) * 0.07 + k.r(1) * 0.012;
+      const v = MARKET.v0 + 0.07 + Math.floor(s / 4) * 0.11;
+      if (u > MARKET.u1 - 0.04 || v > MARKET.v1 - 0.04) continue;
+      const [x, z] = T(u, v);
+      k.house('wood', 'wood', 0.03, 0.024, 0.016, { at: [x, DECK - 0.002, z], seat: false, rot: [0, YAW + (k.r(2) - 0.5) * 20, 0], roof: 'hip', pitch: 35, color: 0x6a5a48, roofColor: [0x7a3a2c, 0x3d5a7a, 0x8a6a3a][s % 3], lod: 0 });
+    }
+    for (const [u, v] of [
+      [MARKET.u0 + 0.03, MARKET.v0 + 0.03],
+      [MARKET.u1 - 0.02, MARKET.v0 + 0.03],
+      [MARKET.u1 - 0.02, MARKET.v1 - 0.03],
+      [MARKET.u0 + 0.03, MARKET.v1 - 0.03],
+    ] as const) {
+      const [x, z] = T(u, v);
+      lamp(x, z, DECK, 0.85 + k.r(1) * 0.15);
+    }
+    // houses round the square's back (west) and south sides, facing it
+    let v = MARKET.v0;
+    while (v < MARKET.v1 - 0.05) {
+      const along = 0.055 + k.r(1) * 0.03;
+      const u = MARKET.u0 - 0.045;
+      if (deckAt(u, v + along / 2)) house(u, v + along / 2, along, 0.08, 0.032 * storeys([0, 0.3, 0.5, 0.2]) + 0.012, [1, 0], { gable: true, lod: 1, lit: 0.6 });
+      v += along + 0.004;
+    }
+  }
+
+  // ---- 6. the bell tower (east bank, across from the market) and a watch tower at the north end
+  {
+    const [bx, bz] = T(GRAND.u + GRAND.w / 2 + WALK + 0.06, CROSS.v + 0.15);
+    k.tower('wood', 0.048, 0.5, { at: [bx, DECK - 0.002, bz], sides: 4, rot: [0, YAW + 45, 0], roof: 'spire', roofH: 0.22, roofFam: 'darkStone', color: 0x8f8a80, roofColor: 0x4a5459, lod: 2 });
+    light(bx + Math.sin(YAW * DEG) * 0.05, DECK + 0.42, bz + Math.cos(YAW * DEG) * 0.05, 'window', 0.9, 0.011);
+    const [wx, wz] = T(GRAND.u + GRAND.w / 2 + WALK + 0.05, -1.0);
+    if (deckAt(GRAND.u + GRAND.w / 2 + WALK + 0.05, -1.0)) k.tower('wood', 0.042, 0.42, { at: [wx, DECK - 0.002, wz], sides: 6, roof: 'spire', roofH: 0.2, roofFam: 'darkStone', color: 0x948f85, roofColor: 0x4f595e, lod: 2 });
+    const [hx, hz] = T(-0.85, -0.3);
+    if (deckAt(-0.85, -0.3)) k.tower('wood', 0.04, 0.38, { at: [hx, DECK - 0.002, hz], sides: 4, rot: [0, YAW + 45, 0], roof: 'spire', roofH: 0.18, roofFam: 'darkStone', color: 0x8a857b, roofColor: 0x4f595e, lod: 1 });
+  }
+
+  // ---- 7. bridges: humped ones over the Grand Canal (lamps at their heads), plank footbridges over the
+  // side canals, and houses built across two side canals
+  for (const v of [-0.78, -0.08, 0.6]) {
+    const a = T(GRAND.u - GRAND.w / 2 - 0.012, v);
     const m = T(GRAND.u, v);
-    const b = T(GRAND.u + GRAND.w / 2 + 0.01, v);
-    k.bridge('wood', [a[0], DECK + 0.002, a[1]], [m[0], DECK + 0.028, m[1]], { width: 0.034, arches: 1, deck: 0.01, color: BRIDGE_C, lod: 0 });
-    k.bridge('wood', [m[0], DECK + 0.028, m[1]], [b[0], DECK + 0.002, b[1]], { width: 0.034, arches: 1, deck: 0.01, color: BRIDGE_C, lod: 0 });
-  }
-
-  // ---------------------------------------------------------------- the long trestle bridge to the west shore
-  const brV = -0.42;
-  let bu = -1.6;
-  while (bu < 0 && !blockAt(blocks, bu, brV)) bu += 0.01;
-  const A = T(bu, brV);
-  // westward (WNW) until the ground rises to the deck
-  const dir: V2 = [-Math.cos(12 * DEG), -Math.sin(12 * DEG)];
-  let L = 0.1;
-  while (L < 4 && k.ground(A[0] + dir[0] * L, A[1] + dir[1] * L) < DECK - 0.01) L += 0.05;
-  const B: V2 = [A[0] + dir[0] * L, A[1] + dir[1] * L];
-  const spans = Math.max(4, Math.round(L / 0.1));
-  k.bridge('wood', [A[0] + dir[0] * 0.01, DECK - 0.004, A[1] + dir[1] * 0.01], [B[0], DECK + 0.004, B[1]], { width: 0.04, arches: spans, deck: 0.014, color: BRIDGE_C, lod: 1 });
-  for (let s = 1; s * 0.3 < L - 0.1; s++) {
-    const t = s * 0.3;
-    light(A[0] + dir[0] * t, DECK + 0.02, A[1] + dir[1] * t + 0.016, 'lamp', 0.9, 0.011);
-  }
-  // the shore gatehouse where the bridge lands
-  const gyaw = (-Math.atan2(dir[1], dir[0]) * 180) / Math.PI;
-  k.house('wood', 'slate', 0.095, 0.08, 0.065, { at: [B[0] + dir[0] * 0.07, 0, B[1] + dir[1] * 0.07], rot: [0, gyaw, 0], pitch: 58, color: 0x6f6b64, roofColor: 0x2f383d, roofGrain: 0.5, lod: 1 });
-  light(B[0] + dir[0] * 0.01, k.ground(B[0], B[1]) + 0.04, B[1] + 0.04, 'lamp', 1.1, 0.012);
-
-  // ---------------------------------------------------------------- lanterns along the Grand Canal walkways
-  for (let v = -1.12; v <= 1.12; v += 0.15) {
-    for (const side of [-1, 1]) {
-      const u = GRAND.u + side * (GRAND.w / 2 + 0.01);
-      if (!blockAt(blocks, u + side * 0.014, v)) continue;
-      const [x, z] = T(u, v + side * 0.026);
-      light(x, DECK + 0.02, z, 'lamp', 1, 0.011);
+    const b = T(GRAND.u + GRAND.w / 2 + 0.012, v);
+    k.bridge('wood', [a[0], DECK + 0.002, a[1]], [m[0], DECK + 0.034, m[1]], { width: 0.034, arches: 1, deck: 0.01, color: BRIDGE_C, lod: 0 });
+    k.bridge('wood', [m[0], DECK + 0.034, m[1]], [b[0], DECK + 0.002, b[1]], { width: 0.034, arches: 1, deck: 0.01, color: BRIDGE_C, lod: 0 });
+    if (v > -0.5) {
+      const [lx, lz] = T(GRAND.u + GRAND.w / 2 + 0.012, v + 0.026);
+      lamp(lx, lz, DECK, 0.7);
     }
   }
+  SIDE_CANALS.forEach((c, i) => {
+    for (let q = 0; q < 2; q++) {
+      const along = c.from < -5 ? c.to - 0.12 - q * 0.35 : c.from + 0.12 + q * 0.35;
+      const [u, v] = c.axis === 'u' ? [along, c.at] : [c.at, along];
+      if (!insideTown(u, v, 0.95)) continue;
+      const [x, z] = T(u, v);
+      if (q === 1 && i % 3 === 0) {
+        // a house built across the canal on its own posts
+        k.house('wood', 'darkStone', c.w + 0.05, 0.06, 0.07, { at: [x, DECK - 0.002, z], seat: false, rot: [0, YAW + (c.axis === 'u' ? 90 : 0), 0], pitch: 58, color: WALLS[i % WALLS.length], roofColor: ROOFS[i % ROOFS.length], lod: 0 });
+      } else k.box('wood', c.w + 0.04, 0.009, 0.026, { at: [x, DECK - 0.005, z], rot: [0, YAW + (c.axis === 'u' ? 90 : 0), 0], color: BRIDGE_C, lod: 0 });
+    }
+  });
 
-  // ---------------------------------------------------------------- boats in the canals and at the deck edges
+  // ---- 8. jetties out into the lake from the outline (piles, a boat or two moored alongside)
   const hull = (len: number, beam: number): V2[] => [
     [-len / 2, 0],
     [-len * 0.3, -beam / 2],
@@ -330,22 +364,73 @@ function buildTown(k: ProxyKit): void {
     [len * 0.3, beam / 2],
     [-len * 0.3, beam / 2],
   ];
+  const boat = (x: number, z: number, yaw: number, lod: 0 | 1 = 0) =>
+    k.extrude('wood', hull(0.044 + k.r(1) * 0.016, 0.014), 0.009, { at: [x, -0.003, z], rot: [0, yaw, 0], color: HULL, shade: 0.8 + k.r(2) * 0.4, lod });
+  for (const a of [20, 62, 105, 150, 205, 238, 290, 330]) {
+    const ca = Math.cos(a * DEG);
+    const sa = Math.sin(a * DEG);
+    let q0 = 0;
+    for (let q = 1.12; q > 0.6; q -= 0.01)
+      if (deckAt(1.7 * q * ca, 1.3 * q * sa)) {
+        q0 = q;
+        break;
+      }
+    if (!q0) continue;
+    const len = 0.16 + k.r(1) * 0.14;
+    const u0 = 1.7 * q0 * ca;
+    const v0 = 1.3 * q0 * sa;
+    const dl = Math.hypot(1.7 * ca, 1.3 * sa);
+    const [du, dv] = [(1.7 * ca) / dl, (1.3 * sa) / dl];
+    const p0 = T(u0, v0);
+    const p1 = T(u0 + du * len, v0 + dv * len);
+    if (!wet(u0 + du * len, v0 + dv * len)) continue;
+    k.bridge('wood', [p0[0], DECK - 0.01, p0[1]], [p1[0], DECK - 0.012, p1[1]], { width: 0.022, arches: Math.max(2, Math.round(len / 0.05)), deck: 0.008, color: BRIDGE_C, lod: 0 });
+    const jyaw = (-Math.atan2(p1[1] - p0[1], p1[0] - p0[0]) * 180) / Math.PI;
+    const side = k.r(2) < 0.5 ? -1 : 1;
+    const [bx, bz] = T(u0 + du * len * 0.6 - dv * side * 0.025, v0 + dv * len * 0.6 + du * side * 0.025);
+    boat(bx, bz, jyaw);
+  }
+
+  // ---------------------------------------------------------------- the long trestle bridge to the west shore
+  const brV = -0.2;
+  let bu = -2.1;
+  while (bu < 0 && !deckAt(bu, brV)) bu += 0.01;
+  const A0 = T(bu, brV);
+  // westward (WNW) until the ground rises to the deck
+  const dir: V2 = [-Math.cos(12 * DEG), -Math.sin(12 * DEG)];
+  let L = 0.1;
+  while (L < 4 && k.ground(A0[0] + dir[0] * L, A0[1] + dir[1] * L) < DECK - 0.01) L += 0.05;
+  const B0: V2 = [A0[0] + dir[0] * L, A0[1] + dir[1] * L];
+  const spans = Math.max(4, Math.round(L / 0.1));
+  k.bridge('wood', [A0[0] + dir[0] * 0.01, DECK - 0.004, A0[1] + dir[1] * 0.01], [B0[0], DECK + 0.004, B0[1]], { width: 0.04, arches: spans, deck: 0.014, color: BRIDGE_C, lod: 1 });
+  // lanterns on posts every 0.3 km, alternating sides
+  for (let s = 1; s * 0.3 < L - 0.1; s++) {
+    const t = s * 0.3;
+    const off = (s % 2 ? 1 : -1) * 0.016;
+    lamp(A0[0] + dir[0] * t - dir[1] * off, A0[1] + dir[1] * t + dir[0] * off, DECK - 0.004 + (0.008 * t) / L, 0.75);
+  }
+  // the shore gatehouse where the bridge lands
+  const gyaw = (-Math.atan2(dir[1], dir[0]) * 180) / Math.PI;
+  k.house('wood', 'darkStone', 0.095, 0.08, 0.075, { at: [B0[0] + dir[0] * 0.07, 0, B0[1] + dir[1] * 0.07], rot: [0, gyaw, 0], pitch: 58, color: 0x8c877d, roofColor: 0x4f595e, roofGrain: 0.5, lod: 1 });
+  light(B0[0] + dir[0] * 0.012, k.ground(B0[0], B0[1]) + 0.04, B0[1], 'lamp', 0.9, 0.011);
+
+  // ---------------------------------------------------------------- boats moored in the Grand Canal, in the harbours, out on the lake
   let boats = 0;
-  for (let v = -1.0; v <= 1.0 && boats < 40; v += 0.09) {
-    const side = k.r(1) < 0.5 ? -1 : 1;
-    if (k.r(2) < 0.35) continue;
-    const u = GRAND.u + side * (GRAND.w / 2 - 0.022);
-    if (!insideTown(u, v)) continue;
+  for (let v = -1.1; v <= 1.1 && boats < 26; v += 0.08) {
+    if (k.r(1) < 0.4) continue;
+    const side = k.r(2) < 0.5 ? -1 : 1;
+    const u = GRAND.u + side * (GRAND.w / 2 - 0.02);
+    if (!insideTown(u, v, 0.98) || !wet(u, v)) continue;
     const [x, z] = T(u, v);
-    k.extrude('wood', hull(0.044 + k.r(3) * 0.016, 0.014), 0.009, { at: [x, -0.003, z], rot: [0, YAW + 90 + (k.r(4) - 0.5) * 10, 0], color: HULL, shade: 0.8 + k.r(5) * 0.4, lod: 0 });
+    boat(x, z, YAW + 90 + (k.r(3) - 0.5) * 10);
     boats++;
   }
-  for (let a = 0; a < 360 && boats < 40; a += 17) {
-    const u = 1.58 * Math.cos(a * DEG);
-    const v = 1.24 * Math.sin(a * DEG);
-    if (k.r(1) < 0.5 || insideTown(u, v, 0.98)) continue;
+  for (let a = 0; a < 360 && boats < 40; a += 19) {
+    const u = 1.88 * Math.cos(a * DEG);
+    const v = 1.46 * Math.sin(a * DEG);
+    if (k.r(1) < 0.55 || insideTown(u, v, 1.02) || !wet(u, v)) continue;
     const [x, z] = T(u, v);
-    k.extrude('wood', hull(0.044 + k.r(2) * 0.016, 0.014), 0.009, { at: [x, -0.003, z], rot: [0, a + (k.r(3) - 0.5) * 30, 0], color: HULL, lod: 0 });
+    boat(x, z, a + (k.r(2) - 0.5) * 30);
     boats++;
   }
 }
@@ -360,17 +445,20 @@ export default defineLandmark({
   bookmarks: [
     {
       id: 'lake-town-close',
-      distanceKm: 18,
-      elevationDeg: 26,
-      azimuthDeg: 112,
-      fov: 22,
+      distanceKm: 6.8,
+      elevationDeg: 8,
+      azimuthDeg: 195,
+      fov: 28,
       // the aim point sits on the lake bed: lift it to the water surface (≈ 2.4 above the bed here)
       lift: 2.6,
-      aimKm: [1.3, 0.6],
-      tod: 18.2,
+      aimKm: [1.4, 0.7],
+      tod: 17.3,
       dayOfYear: 240,
+      // (the probe's ground line of sight aims at the lake bed under the town's water anchor; the town's
+      // upper body is in clear view)
+      expect: { los: false },
       compare: ['reference/film/lake-town/lake-town-wide.webp', 'reference/concept-art/lake-town/lake-town-alan-lee.jpg'],
-      note: 'dusk from the east-south-east, into the low sun: the stilt town silhouetted on the bright Long Lake, its lanterns and windows lit, the trestle bridge running to the west shore. Not from the south with Erebor behind: at the ×12 relief the mountain stands 18° above the horizon from the town, so a frame holding both shows the town as a speck (that composition is erebor-wide)',
+      note: 'late afternoon (sun ≈ 12°, from the west) from the south-south-west, low over the lake and up the Grand Canal: the roofscape of the stilt town filling the frame, gable fronts and spired towers along the canal, the Master’s tower and the bell tower above the roofs, the lake and the far shore behind the skyline. Erebor stays out: at the ×12 relief it stands 18–25° above the horizon from here (that composition is erebor-wide / w4h-laketown-erebor)',
     },
   ],
 });
