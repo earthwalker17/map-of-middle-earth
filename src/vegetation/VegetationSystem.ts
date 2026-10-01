@@ -15,15 +15,22 @@ import type { AuthoredTree, ForestRecord, TreeCapRecord } from '../landmarks/rec
 import { createClumpGeometry, CROWN_TOP } from './clumpGeometry.ts';
 import { createFoamTexture } from './foamTexture.ts';
 import { createFoliageMaterial, type FoliageMaterialParts } from './foliageMaterial.ts';
-import { CANOPY_CELL, FLOATS_PER_INSTANCE, placeVegetation, type ExclusionCircle } from './placement.ts';
-import { authoredRecords, crownReach } from './authored.ts';
+import { FLOATS_PER_INSTANCE, placeVegetation, type ExclusionCircle } from './placement.ts';
+import { authoredRecords, crownMaxReach } from './authored.ts';
 import { landmarkForestRecords } from './forests.ts';
 import { archOf, retires, spreadOf } from './archetypes.ts';
-import { bakeCanopyShell, SHELL_ON, shellBand, shellBandUniform } from './canopyShell.ts';
+import { bakeCanopyShell, setShellTier } from './canopyShell.ts';
+import { SHELL_ON, shellBand, shellTierScale } from './shellConfig.ts';
 import { applyTreeCaps } from './treeCaps.ts';
 
 /** Spatial chunk size (km) for culling / LOD selection. */
 const CHUNK = 32;
+/**
+ * Preview LOD bias (× the projected size the LOD ladder sees): the explorer's tier steps the placed trees
+ * down the tessellation ladder sooner — the same crowns at the same size, fewer triangles (S4: the forests
+ * hold ≈ 4× the S3 canopy patches at half their size). Hero trees keep the unbiased ladder.
+ */
+const PREVIEW_LOD_BIAS = 0.6;
 /** Extra margin (km) around chunks for the frustum test so off-screen casters still shadow. */
 const SHADOW_MARGIN = 28;
 /**
@@ -33,8 +40,8 @@ const SHADOW_MARGIN = 28;
  * modest; the octahedron LOD keeps the seven sub-crowns (the canopy texture of regional shots)
  * and a three-sided trunk hint; below a few pixels one blob stands in for the cluster.
  */
-const LODS: { detail: number; trunkSides: number; relief: number; whole?: boolean; minPx: number; cap: number }[] = [
-  { detail: 2, trunkSides: 6, relief: 1, minPx: 100, cap: 4000 },
+const LODS: { detail: number; trunkSides: number; relief: number; whole?: boolean; limbs?: boolean; minPx: number; cap: number }[] = [
+  { detail: 2, trunkSides: 6, relief: 1, limbs: true, minPx: 100, cap: 4000 },
   { detail: 1, trunkSides: 6, relief: 0, minPx: 38, cap: 40000 },
   { detail: 0, trunkSides: 4, relief: 0, minPx: 9, cap: Infinity },
   { detail: -1, trunkSides: 3, relief: 0, minPx: 5, cap: Infinity },
@@ -89,8 +96,10 @@ export interface VegetationStats {
   /** canopy patches (retiring archetypes, part of the placed coarse grid) */
   canopy: number;
   fine: number;
-  /** records scaled down by landmark tree-height caps */
+  /** placed / forest records scaled down by landmark tree-height caps */
   capped: number;
+  /** authored (hero) records scaled down by landmark tree-height caps */
+  cappedHero: number;
   /** authored landmark trees (hero list) */
   hero: number;
   /** trees of landmark forests (part of `coarse`) */
@@ -106,6 +115,7 @@ const _frustum = new Frustum();
 const _box = new Box3();
 const _v = new Vector3();
 const _sphere = new Sphere();
+const _band = { near: 0, far: 0 };
 
 /**
  * Forests and scatter: instanced clump-foliage trees (one material, one instanced mesh per LOD —
@@ -147,14 +157,14 @@ export class VegetationSystem implements System {
   private lastKey = '';
   /** diagnostics (probe): force every instance into one LOD bucket, or drop the fine band */
   debug: { forceLod: number | null; noFine: boolean } = { forceLod: null, noFine: false };
-  readonly stats: VegetationStats = { coarse: 0, canopy: 0, fine: 0, hero: 0, forest: 0, chunks: 0, drawn: [], bandRadius: 0, capped: 0 };
+  readonly stats: VegetationStats = { coarse: 0, canopy: 0, fine: 0, hero: 0, forest: 0, chunks: 0, drawn: [], bandRadius: 0, capped: 0, cappedHero: 0 };
 
   constructor(private readonly world: World) {}
 
   init(ctx: InitContext): void {
     this.scene = ctx.scene;
     this.useMaterial(ctx.quality.id);
-    this.lodGeometries = LODS.map((l) => createClumpGeometry({ detail: l.detail, trunkSides: l.trunkSides, relief: l.relief, whole: l.whole }));
+    this.lodGeometries = LODS.map((l) => createClumpGeometry({ detail: l.detail, trunkSides: l.trunkSides, relief: l.relief, whole: l.whole, limbs: l.limbs }));
     // the last bucket: hero geometry (authored trees at LOD0)
     this.lodGeometries.push(createClumpGeometry(HERO_GEOMETRY));
     this.place(ctx.quality.density);
@@ -188,7 +198,7 @@ export class VegetationSystem implements System {
   private buildHero(): void {
     const list = authoredRecords(this.authored, this.world.spec.json.seeds.world + 97);
     this.hero = Float32Array.from(list.data);
-    this.stats.capped += applyTreeCaps(this.hero, FLOATS_PER_INSTANCE, this.caps);
+    this.stats.cappedHero = applyTreeCaps(this.hero, FLOATS_PER_INSTANCE, this.caps);
     const n = list.count;
     this.heroY = new Float32Array(n);
     for (let k = 0; k < n; k++) this.heroY[k] = this.world.heights.sample(this.hero[k * FLOATS_PER_INSTANCE], this.hero[k * FLOATS_PER_INSTANCE + 1]);
@@ -246,20 +256,20 @@ export class VegetationSystem implements System {
     for (const v of woods.data) res.coarse.data.push(v);
     this.stats.forest = woods.count;
     this.stats.capped = applyTreeCaps(res.coarse.data, FLOATS_PER_INSTANCE, this.caps) + applyTreeCaps(res.fine.data, FLOATS_PER_INSTANCE, this.caps);
-    // the far canopy shell: canopy patches (retiring archetypes) go to their own chunked list, and their
-    // colour / cover into the shell texture the terrain samples
+    // the far canopy shell: the canopy patches' colour / cover (retiring archetypes and the standing edge
+    // ring) go into the shell texture the terrain samples; the retiring patches to their own chunked list
     const canopyData: number[] = [];
     if (SHELL_ON) {
-      const keep: number[] = [];
       const F0 = FLOATS_PER_INSTANCE;
       const src = res.coarse.data;
+      const sp = this.world.spec;
+      bakeCanopyShell({ xMin: sp.xMin, zMin: sp.zMin, width: sp.width, depth: sp.depth }, src, F0);
+      const keep: number[] = [];
       for (let k = 0; k < src.length / F0; k++) {
         const dst = retires(archOf(src[k * F0 + 8])) ? canopyData : keep;
         for (let f = 0; f < F0; f++) dst.push(src[k * F0 + f]);
       }
       res.coarse.data = keep;
-      const sp = this.world.spec;
-      bakeCanopyShell({ xMin: sp.xMin, zMin: sp.zMin, width: sp.width, depth: sp.depth }, canopyData, F0, CANOPY_CELL);
     }
     const spec = this.world.spec;
     const ncx = Math.ceil(spec.width / CHUNK);
@@ -388,9 +398,13 @@ export class VegetationSystem implements System {
     const tanY = Math.tan((cam.fov * Math.PI) / 360);
     const pxPerKm = vh / (2 * tanY);
     this.parts.pxPerKm.value = pxPerKm;
-    // the far canopy shell's hand-over band (the terrain reads the same uniform)
-    const [shellNear, shellFar] = shellBand(pxPerKm);
-    shellBandUniform.value.set(shellNear, shellFar);
+    // the far canopy shell's hand-over band (the terrain derives the same band from env.pxPerKm and the
+    // tier controls set here: the preview retires earlier and draws the shell without its relief)
+    const tierScale = shellTierScale(frame.quality.id);
+    setShellTier(tierScale, frame.quality.id !== 'preview');
+    shellBand(pxPerKm, tierScale, _band);
+    const shellNear = _band.near;
+    const shellFar = _band.far;
 
     const e = cam.matrixWorld.elements;
     const key = [cam.fov, cam.aspect, vh, density, this.exclusionsVersion, this.debug.forceLod ?? -1, +this.debug.noFine, ...e].map((v) => v.toFixed(5)).join(',');
@@ -444,8 +458,9 @@ export class VegetationSystem implements System {
       write(this.buckets[lod], src, s, sc, scV);
     };
     /** LOD from the projected size of the sub-crowns (clustered trees have larger ones than canopy patches) */
-    const lodOf = (src: Float32Array, s: number, dist: number, sc: number) =>
-      this.debug.forceLod ?? lodFor((2 * src[s + 2] * sc * (2 - spreadOf(src[s + 8])) * pxPerKm) / Math.max(1, dist));
+    const lodOf = (src: Float32Array, s: number, dist: number, sc: number, bias = 1) =>
+      this.debug.forceLod ?? lodFor((2 * src[s + 2] * sc * (2 - spreadOf(src[s + 8])) * pxPerKm * bias) / Math.max(1, dist));
+    const lodBias = frame.quality.id === 'preview' ? PREVIEW_LOD_BIAS : 1;
 
     // hero list first: authored landmark trees (sphere test with the shadow margin); at LOD0 they take
     // the hero geometry (its own bucket), farther out they win the regular LOD caps
@@ -455,8 +470,8 @@ export class VegetationSystem implements System {
       const hr = this.hero[s + 2];
       const vr = this.hero[s + 3];
       // bounding sphere of the whole tree: trunk foot (1 km below the ground, the deep hero foot) to the
-      // crown top (trunk + crownReach(spread)·vr), crown radius hr
-      const half = (Math.max(0, this.hero[s + 4]) + crownReach(spreadOf(this.hero[s + 8]), archOf(this.hero[s + 8])) * vr + 1) / 2;
+      // tallest crown top (trunk + crownMaxReach(spread, arch)·vr), crown radius hr
+      const half = (Math.max(0, this.hero[s + 4]) + crownMaxReach(spreadOf(this.hero[s + 8]), archOf(this.hero[s + 8])) * vr + 1) / 2;
       const cy = this.heroY[k] - 1 + half;
       _sphere.set(_v.set(this.hero[s], cy, this.hero[s + 1]), Math.hypot(hr, half) + SHADOW_MARGIN);
       if (!_frustum.intersectsSphere(_sphere)) continue;
@@ -478,7 +493,7 @@ export class VegetationSystem implements System {
     for (const { ch, d } of visible) {
       // coarse: per-instance LOD, or the whole chunk at the far LOD when even its largest crown is small
       if (ch.coarseCount > 0) {
-        const farChunk = this.debug.forceLod === null && lodFor((2 * ch.coarseMaxR * pxPerKm) / d) === last;
+        const farChunk = this.debug.forceLod === null && lodFor((2 * ch.coarseMaxR * pxPerKm * lodBias) / d) === last;
         for (let k = ch.coarseStart; k < ch.coarseStart + ch.coarseCount; k++) {
           const s = k * F;
           if (farChunk) {
@@ -486,7 +501,7 @@ export class VegetationSystem implements System {
             continue;
           }
           const dist = _v.set(this.coarse[s] - camPos.x, this.coarseY[k] - camPos.y, this.coarse[s + 1] - camPos.z).length();
-          emit(this.coarse, s, lodOf(this.coarse, s, dist, 1), 1);
+          emit(this.coarse, s, lodOf(this.coarse, s, dist, 1, lodBias), 1);
         }
       }
       // canopy patches: retired into the far canopy shell across [shellNear, shellFar] — the crowns sink
@@ -499,7 +514,7 @@ export class VegetationSystem implements System {
           const sc = shellScale(dist, shellNear, shellFar);
           if (sc < 0.03) continue;
           const scH = 0.5 + 0.5 * sc;
-          emit(this.canopy, s, lodOf(this.canopy, s, dist, scH), scH, sc);
+          emit(this.canopy, s, lodOf(this.canopy, s, dist, scH, lodBias), scH, sc);
         }
       }
       // fine: near-camera band only, crowns grow in over [bandR, 0.7 bandR]
@@ -517,7 +532,7 @@ export class VegetationSystem implements System {
           const sc = band * shell;
           if (sc < 0.03) continue;
           const scH = band * (0.5 + 0.5 * shell);
-          emit(this.fine, s, lodOf(this.fine, s, dist, scH), scH, sc);
+          emit(this.fine, s, lodOf(this.fine, s, dist, scH, lodBias), scH, sc);
         }
       }
     }

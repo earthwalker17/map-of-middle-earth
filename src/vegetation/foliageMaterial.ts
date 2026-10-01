@@ -53,6 +53,14 @@ const {
 
 /** Emission spill on the foliage (P4; inert until W2-D fills spill.ts). */
 const SPILL_ON = true;
+/**
+ * Single-tree hemisphere / ground-bounce fill through the emissive (S4 W2-C, OFF): in the fix round's
+ * renders neither this emissive term (even a flat magenta) nor the lighting model's skyFill addition
+ * changed a single pixel, while an albedo change did — the foliage's additive paths need a look before
+ * this (and the spill on foliage) can do anything. The shaded trees are lifted through the albedo / AO
+ * instead (treeF below).
+ */
+const TREE_FILL_ON = false;
 
 /** Per-kind shader parameters, indexed by `Kind`. */
 function perKind(values: Partial<Record<Kind, number>>, fallback: number): N {
@@ -105,8 +113,9 @@ class FoliageLightingModel extends PhysicalLightingModel {
     reflectedLight.directDiffuse.addAssign(back.mul(rim).mul(m.transColorNode).mul(lightColor));
 
     // glossy evergreen leaves (holly): a tight sheen speckled by the bumped leaf-cluster normals
+    // (only on faces turned to the light: a grazing back-light's half-vector can lie near a face turned away)
     const H = normalize(lightDirection.add(positionViewDirection));
-    const spec = pow(normalView.dot(H).clamp(), 28).mul(m.glossNode);
+    const spec = pow(normalView.dot(H).clamp(), 28).mul(nl.clamp()).mul(m.glossNode);
     reflectedLight.directSpecular.addAssign(spec.mul(lightColor));
   }
 
@@ -237,7 +246,12 @@ export function createFoliageMaterial(world: World, opts: FoliageOptions = {}): 
   const seedU = uint(seed.mul(16777215)).mul(uint(64));
   const hBase = seedU.add(uint(subIdx.mul(8)));
   const h = (k: number) => hash(hBase.add(uint(k)));
-  // per-instance random numbers (the same for every sub-crown: slot 7 of the 8 per-sub-crown slots is unused)
+  // per-sub-crown keys beyond the 8 slots a sub-crown owns (slot k ≥ 8 would be the next sub-crown's k − 8):
+  // salted out of the slot window
+  const HX_SALT = 0x632be5ab;
+  const hx = (k: number) => hash(hBase.add(uint(HX_SALT + k)));
+  // per-instance random numbers (the same for every sub-crown): slots 56 + k (sub-crown 7's window — there
+  // are seven sub-crowns, 0…6; slot 0 of every window and h(8) = the next window's slot 0 are unused)
   const hi = (k: number) => hash(seedU.add(uint(56 + k)));
   const isCentre = subIdx.lessThan(0.5);
   const isWhole = sub.z.greaterThan(0.9);
@@ -248,14 +262,18 @@ export function createFoliageMaterial(world: World, opts: FoliageOptions = {}): 
   const aHolly = archIs(Arch.Holly);
   const aShrub = archIs(Arch.Shrub);
   const aStand = archIs(Arch.ConiferStand);
-  /** the S3 cluster layout (canopy patches, clusters) */
-  const aCluster = archIs(Arch.Canopy).or(archIs(Arch.Cluster));
+  /** forest canopy patches (the retiring ones and the standing edge ring): an irregular, flat-topped layout */
+  const aCanopy = archIs(Arch.Canopy).or(archIs(Arch.CanopyEdge));
+  /** the S3 cluster layout family (canopy patches, clusters: hedges, mallorn tiers) */
+  const aCluster = aCanopy.or(archIs(Arch.Cluster));
   /** archetypes whose sub-crowns stack into one column (never dropped) */
   const aStack = aCon.or(aCol).or(aHolly);
   // broadleaf: 1–2 dominant upper lobes among the ring crowns (never dropped)
   const dom1 = floor(hi(4).mul(5.999)).add(1);
   const dom2 = floor(hi(5).mul(5.999)).add(1);
   const isDom = aBroad.and(isCentre.not()).and(abs(subIdx.sub(dom1)).lessThan(0.5).or(hi(6).lessThan(0.55).and(abs(subIdx.sub(dom2)).lessThan(0.5))));
+  // (canopy patches: flatter sub-crowns, their tops levelled into one undulating surface — see the layout)
+  const syCanopy = mix(float(0.7), float(1.02), h(8));
   const dropped = isCentre.not().and(aStack.not()).and(isDom.not()).and(h(1).lessThan(gap));
   const size = select(dropped, float(0), mix(float(0.6), float(1.2), h(2)));
   const t6 = subIdx.div(6);
@@ -283,9 +301,9 @@ export function createFoliageMaterial(world: World, opts: FoliageOptions = {}): 
   const wWidth = select(aCol, float(0.62), select(aHolly, float(0.8), select(aShrub, float(0.95), float(0.85))));
   const Rw = float(WHOLE).mul(wWidth).mul(mix(float(0.9), float(1.1), h(2)));
   const treeWhole = aCluster.or(aStand).not();
-  const sy = select(isWhole, select(treeWhole, reachA.mul(0.6).div(Rw), syCluster.mul(0.45)), syArch);
+  const sy = select(isWhole, select(treeWhole, reachA.mul(0.6).div(Rw), syCluster.mul(0.45)), select(aCanopy, syCanopy, syArch));
   // whorl taper: each sub-crown narrows upward (a skirt, never a puck), per archetype
-  const taperK = select(aCon, float(0.6), select(aCol, float(0.3), select(aHolly, float(0.4), select(aStand, float(0.8), float(0)))));
+  const taperK = select(aCon, float(0.6), select(aCol, float(0.3), select(aHolly, float(0.22), select(aStand, float(0.8), float(0)))));
   const kSpread = float(1).sub(spread.mul(RING)).div(RNOM);
   const jit = spread.mul(0.16);
   // per-instance asymmetry (broadleaf / shrub) and lean (every tree archetype; conifers less)
@@ -302,6 +320,7 @@ export function createFoliageMaterial(world: World, opts: FoliageOptions = {}): 
     const vSeedU = seedU.toVar();
     const vHBase = hBase.toVar();
     const hb = (k: number) => hash(vHBase.add(uint(k)));
+    const hbx = (k: number) => hash(vHBase.add(uint(HX_SALT + k)));
     const vSpread = spread.toVar();
     const vHVar = hVar.toVar();
     const vSub = sub.toVar();
@@ -325,6 +344,23 @@ export function createFoliageMaterial(world: World, opts: FoliageOptions = {}): 
       const Rc = select(vTreeWhole, vRw, vSub.z.mul(vSize));
       L.assign(vec4(0, Rc.mul(vSy).mul(0.55), 0, Rc));
     })
+      .ElseIf(aCanopy, () => {
+        // forest canopy patch: the cluster ring made irregular per instance (ring angles ±0.5 rad, ring radii
+        // 0.75–1.1), crowns 12 % larger so neighbours overlap, and their tops levelled at one canopy height
+        // (±25 %): a closed, undulating canopy surface, never a pile of separate balls
+        const dl = max(length(vSub.xy), 1e-4);
+        const d0 = vSub.xy.div(dl);
+        const dA = hb(4).sub(0.5);
+        const ca = cos(dA);
+        const sa = sin(dA);
+        const dir = vec2(d0.x.mul(ca).sub(d0.y.mul(sa)), d0.x.mul(sa).add(d0.y.mul(ca)));
+        const ringD = dl.mul(vSpread).mul(mix(float(0.75), float(1.1), hb(5)));
+        const R = vSub.z.mul(vKSpread).mul(vSize).mul(1.12);
+        const top = float(0.6).mul(hb(3).sub(0.5).mul(vHVar.mul(0.8).add(0.3)).add(1));
+        const cy = max(top.sub(R.mul(vSy)), R.mul(vSy).mul(0.25));
+        const xz = select(vCentre, vec2(hb(5).sub(0.5), hb(4).sub(0.5)).mul(vJit), dir.mul(ringD));
+        L.assign(vec4(xz.x, cy, xz.y, R));
+      })
       .ElseIf(aCluster, () => {
         const R = vSub.z.mul(vKSpread).mul(vSize);
         L.assign(vec4(vSub.x.mul(vSpread).add(hb(4).sub(0.5).mul(vJit)), R.mul(vSy).mul(0.55).add(hb(3).sub(0.5).mul(vHVar)), vSub.y.mul(vSpread).add(hb(5).sub(0.5).mul(vJit)), R));
@@ -334,13 +370,13 @@ export function createFoliageMaterial(world: World, opts: FoliageOptions = {}): 
         // asymmetry side; dominant lobes pulled in and lifted; outer crowns droop a little
         const dl = max(length(vSub.xy), 1e-4);
         const d0 = vSub.xy.div(dl);
-        const dA = hb(9).sub(0.5).mul(1.2);
+        const dA = hbx(9).sub(0.5).mul(1.2);
         const ca = cos(dA);
         const sa = sin(dA);
         const dir = vec2(d0.x.mul(ca).sub(d0.y.mul(sa)), d0.x.mul(sa).add(d0.y.mul(ca)));
         const side = dot(dir, vADir);
         const spreadAdj = clamp(vSpread.div(0.55), 0.75, 1.25);
-        const ringD = mix(float(0.45), float(0.95), hb(10))
+        const ringD = mix(float(0.45), float(0.95), hbx(10))
           .mul(0.5)
           .mul(spreadAdj)
           .mul(vAm.mul(side).add(1))
@@ -348,14 +384,15 @@ export function createFoliageMaterial(world: World, opts: FoliageOptions = {}): 
           .mul(select(vShrub, float(1.25), float(1)));
         const Rr = mix(float(0.34), float(0.5), hb(2))
           .mul(vAm.mul(side).mul(0.8).add(1))
-          .mul(select(vDom, float(1.2), float(1)));
+          .mul(select(vDom, float(1.12), float(1)));
         const R = select(vCentre, float(0.56).mul(mix(float(0.92), float(1.08), hb(2))), Rr).mul(select(vDropped, float(0), float(1)));
-        const lift = select(vShrub, float(0), select(vDom, float(0.38), select(vCentre, float(0.18), float(0))));
+        const lift = select(vShrub, float(0), select(vDom, float(0.3), select(vCentre, float(0.18), float(0))));
+        // (the outer ring crowns hang lower: a skirt meeting the trunk wide, never a ball on a stick)
         const cy = R.mul(vSy)
           .mul(0.5)
           .add(hb(3).sub(0.5).mul(vHVar).mul(0.6))
           .add(lift)
-          .sub(select(vCentre, float(0), ringD.mul(0.12)));
+          .sub(select(vCentre.or(vDom), float(0), ringD.mul(0.26)));
         const xz = select(vCentre, vec2(0), dir.mul(ringD)).add(vADir.mul(vAm).mul(0.25));
         L.assign(vec4(xz.x, cy, xz.y, R));
       })
@@ -370,11 +407,13 @@ export function createFoliageMaterial(world: World, opts: FoliageOptions = {}): 
         L.assign(vec4(hb(4).sub(0.5).mul(0.12), vT6.mul(1.75).add(R.mul(vSy).mul(0.6)), hb(5).sub(0.5).mul(0.12), R));
       })
       .ElseIf(aHolly, () => {
-        // a dense ovoid: crowns on a rising spiral, narrowing to a point
-        const ang = vSub.w.mul(2.4).add(vHolly7.mul(6.2832));
-        const R = float(0.78).mul(float(1).sub(pow(vT6, 1.4).mul(0.72))).mul(mix(float(0.9), float(1.1), hb(2)));
-        const dH = float(0.3).mul(float(1).sub(vT6));
-        L.assign(vec4(cos(ang).mul(dH), vT6.mul(1.25).add(R.mul(vSy).mul(0.55)), sin(ang).mul(dH), R));
+        // a dense, broad-shouldered ovoid: crowns on a loose rising spiral (each its own angle and reach,
+        // heavier to one side), a blunt top — a wild holly, not topiary
+        const ang = vSub.w.mul(2.4).add(vHolly7.mul(6.2832)).add(hb(4).sub(0.5).mul(1.1));
+        const R = float(0.78).mul(float(1).sub(pow(vT6, 1.7).mul(0.55))).mul(mix(float(0.86), float(1.12), hb(2)));
+        const dH = float(0.4).mul(float(1).sub(vT6.mul(0.6))).mul(mix(float(0.7), float(1.15), hb(5)));
+        const xz = vec2(cos(ang), sin(ang)).mul(dH).add(vADir.mul(vAm).mul(0.3));
+        L.assign(vec4(xz.x, vT6.mul(1.15).add(R.mul(vSy).mul(0.55)), xz.y, R));
       })
       .Else(() => {
         // conifer stand: the canopy patch layout with spires
@@ -385,16 +424,17 @@ export function createFoliageMaterial(world: World, opts: FoliageOptions = {}): 
   })().toVar();
   const centreU = layout.xyz;
   const R = layout.w;
-  // silhouette breakup: the sub-crown surface displaced +-8 % radially by a lump field of about half its
-  // radius (each sub-crown its own lumps; stable per instance, never swimming with the wind)
+  // silhouette breakup: the sub-crown surface displaced ±9 % radially by a lump field of about two thirds
+  // of its radius — a few large leaf masses, not a noise sphere (each sub-crown its own lumps; stable per
+  // instance, never swimming with the wind)
   let lpS: N = lp;
   if (foam) {
-    const sil = texture3D(foam, lp.mul(2.2).add(vec3(seed.mul(37.1), subIdx.mul(5.3), seed.mul(11.3))).div(FOAM_PERIOD)).level(0).a;
-    lpS = lp.mul(float(1).add(sil.sub(0.5).mul(0.16)));
+    const sil = texture3D(foam, lp.mul(1.5).add(vec3(seed.mul(37.1), subIdx.mul(5.3), seed.mul(11.3))).div(FOAM_PERIOD)).level(0).a;
+    lpS = lp.mul(float(1).add(sil.sub(0.5).mul(0.18)));
   }
   // whorl taper (x, z scaled by s(y) = 1 − k·(y + 0.7)/1.7): conifers' skirts, the pointed tips; whole
   // blobs taper only as conifers (a cone) and holly / columnar (a pointed ovoid)
-  const taperW = select(isWhole, select(aCon, float(0.85), select(aCol.or(aHolly), float(0.45), float(0))), taperK);
+  const taperW = select(isWhole, select(aCon, float(0.85), select(aCol, float(0.45), select(aHolly, float(0.3), float(0)))), taperK);
   const tapS = max(float(1).sub(taperW.mul(clamp(lp.y.add(0.7).div(1.7), 0, 1))), 0.06);
   const lpT = vec3(lpS.x.mul(tapS), lpS.y, lpS.z.mul(tapS));
   const u0 = centreU.add(vec3(lpT.x, lpT.y.mul(sy), lpT.z).mul(R));
@@ -453,15 +493,29 @@ export function createFoliageMaterial(world: World, opts: FoliageOptions = {}): 
   const rz = local.z.mul(cs).sub(local.x.mul(sn));
   const basePos = vec3(iA.x.add(rx).add(wx), ground.add(local.y), iA.y.add(rz).add(wz));
 
+  // cluster height fraction (0 bottom … 1 ≈ top of the centre crown / the archetype's crown top)
+  const uTop = select(aCluster, kSpread.mul(0.42 * 1.55), select(aStand, float(1.05), reachA.mul(0.92)));
+
   // normal: inverse-transpose of the (non-uniform) scale, then the yaw rotation
   // (the whorl taper tilts the surface up: n.y += k/1.7 · (x·nx + z·nz) / s, n.xz /= s)
-  const tapSlope = select(lp.y.add(0.7).lessThan(1.7), taperW.div(1.7), float(0));
+  // (s is constant below y = −0.7, where the clamp holds it at 1: no tilt there)
+  const tapSlope = select(lp.y.greaterThan(-0.7), taperW.div(1.7), float(0));
   const tapN = vec3(ln.x.div(tapS), ln.y.add(tapSlope.mul(lp.x.mul(ln.x).add(lp.z.mul(ln.z))).div(tapS)), ln.z.div(tapS));
   const nCrown = vec3(tapN.x.div(hr), tapN.y.div(vr.mul(sy)), tapN.z.div(hr.mul(aspect)));
   const nGeo = normalize(nCrown);
+  // single trees: the whole crown's shading (an ellipsoid round the crown: lit on the sun side, shaded on
+  // the other) carries the sub-crown lobes as a second order — one leaf mass with lobes, never a pile of
+  // separately shaded balls (none for canopy patches and clusters, less for the spires)
+  const eA = float(0.8);
+  const eB = max(uTop.mul(0.55), 0.3);
+  const eC = uTop.mul(0.45);
+  const nEll = vec3(u.x.div(eA.mul(eA)), u.y.sub(eC).div(eB.mul(eB)), u.z.div(eA.mul(eA)));
+  const nTree = normalize(vec3(nEll.x.div(hr), nEll.y.div(vr), nEll.z.div(hr.mul(aspect))));
+  const treeBlend = select(aBroad.or(aShrub).or(aHolly), float(0.55), select(aCon.or(aCol), float(0.35), float(0))).mul(select(isWhole, float(0), float(1)));
+  const nGeoT = normalize(mix(nGeo, nTree, treeBlend));
   // a leaf mass scatters light from leaves of every orientation: soften the sphere shading of each
   // sub-crown towards the canopy's up (more for canopy patches than for single trees)
-  const nCrownW = normalize(mix(nGeo, vec3(0, 1, 0), spread.mul(0.42)));
+  const nCrownW = normalize(mix(nGeoT, vec3(0, 1, 0), spread.mul(0.42)));
   const nL = select(isTrunk, select(isLimb, limbN, select(isRing, ringN, normalize(ln))), nCrownW);
   const nW = vec3(nL.x.mul(cs).add(nL.z.mul(sn)), nL.y, nL.z.mul(cs).sub(nL.x.mul(sn)));
 
@@ -497,15 +551,12 @@ export function createFoliageMaterial(world: World, opts: FoliageOptions = {}): 
   const warmth = smoothstep(0.24, 0.42, linC.r.sub(linC.b).div(linC.r.add(linC.g).add(linC.b).add(1e-3))).mul(
     select(kindIs(kind, Kind.Oak).or(kindIs(kind, Kind.River)), float(1), float(0)),
   );
-  const hA = h(11);
-  const autumnMix = select(hA.lessThan(0.3), vec3(0.6, 0.78, 0.5), select(hA.greaterThan(0.78), vec3(0.92, 0.6, 0.42), vec3(0.95, 0.88, 0.72)));
+  const hA = hx(11);
+  const autumnMix = select(hA.lessThan(0.3), vec3(0.6, 0.78, 0.5), select(hA.greaterThan(0.78), vec3(0.9, 0.58, 0.4), vec3(0.88, 0.8, 0.6)));
   const albedoV = linC
     .mul(mix(vec3(1), autumnMix, warmth))
     .mul(tone)
     .mul(vec3(float(1).add(warm), 1, float(1).sub(warm.mul(1.5))));
-  // cluster height fraction (0 bottom … 1 ≈ top of the centre crown / the archetype's crown top)
-  const uTop = select(aCluster, kSpread.mul(0.42 * 1.55), select(aStand, float(1.05), reachA.mul(0.92)));
-
   const vNormal = varying(nW, 'vFolNormal');
   const vAlbedo = varying(albedoV, 'vFolAlbedo');
   // (crowns hung low by the height jitter may reach below 0: clamp, negative marks the trunk)
@@ -570,28 +621,32 @@ export function createFoliageMaterial(world: World, opts: FoliageOptions = {}): 
   // crown-scale self shadowing: each sub-crown's underside, and the cluster's lower part
   const subLit = smoothstep(-0.55, 0.8, vSubH);
   const clusterLit = smoothstep(0.0, 0.9, crownH);
-  // single trees (archetypes 1–5) self-shadow harder than canopy patches: dark undersides and a dark crown
-  // base, the depth a real crown has (no cotton-wool puffs)
+  // single trees (archetypes 1–5) self-shadow a little harder than canopy patches (a crown's depth, no
+  // cotton-wool puff) — never into crushed black undersides (the AO floor below)
   const treeF = abs(vArch.sub(3)).lessThan(2.5);
-  const subLo = select(treeF, float(0.55), float(0.7));
-  const clusLo = select(treeF, float(0.66), float(0.8));
+  const subLo = select(treeF, float(0.74), float(0.7));
+  const clusLo = select(treeF, float(0.84), float(0.8));
   let alb: N = vAlbedo.mul(densK.element(ikF)).mul(mix(subLo, float(1), subLit)).mul(mix(clusLo, float(1), clusterLit));
   // warm, sun-bleached crown tops
   // (not on autumn golds: warming them further turns them salmon)
   const warmF = smoothstep(0.24, 0.42, vAlbedo.r.sub(vAlbedo.b).div(vAlbedo.r.add(vAlbedo.g).add(vAlbedo.b).add(1e-3)));
   alb = mix(alb, alb.mul(vec3(1.1, 1.06, 0.86)), smoothstep(0.6, 1.0, crownH).mul(0.3).mul(float(1).sub(warmF)));
-  alb = alb.mul(float(1).sub(vCavity.mul(0.4))).mul(creaseA);
-  // trunks: dark bark, warm silver mallorn trunks in Lórien, pale sick trunks in Mirkwood
-  const bark = select(kindIs(vKind, Kind.Lorien), srgb(0xcfc8b8), select(kindIs(vKind, Kind.Mirkwood), srgb(0x5e5a4e), srgb(0x3b3026)));
+  alb = alb.mul(float(1).sub(vCavity.mul(select(treeF, float(0.28), float(0.4))))).mul(creaseA);
+  // trunks: grey-brown bark (never a saturated red stick under warm light), warm silver mallorn trunks in
+  // Lórien, pale sick trunks in Mirkwood
+  const bark = select(kindIs(vKind, Kind.Lorien), srgb(0xcfc8b8), select(kindIs(vKind, Kind.Mirkwood), srgb(0x5e5a4e), srgb(0x3e3a35)));
   const albedo = select(isTrunkF, bark.mul(barkN), alb);
 
   const ao = select(
     isTrunkF,
     float(0.7),
-    mix(select(treeF, float(0.4), float(0.5)), float(1), subLit)
-      .mul(mix(select(treeF, float(0.5), float(0.6)), float(1), clusterLit))
-      .mul(float(1).sub(vCavity.mul(0.55)))
-      .mul(creaseAO),
+    max(
+      mix(select(treeF, float(0.6), float(0.5)), float(1), subLit)
+        .mul(mix(select(treeF, float(0.7), float(0.6)), float(1), clusterLit))
+        .mul(float(1).sub(vCavity.mul(select(treeF, float(0.4), float(0.55)))))
+        .mul(creaseAO),
+      select(treeF, float(0.5), float(0.35)),
+    ),
   );
 
   const material = new FoliageNodeMaterial();
@@ -602,7 +657,16 @@ export function createFoliageMaterial(world: World, opts: FoliageOptions = {}): 
   material.roughnessNode = float(0.8);
   material.metalnessNode = float(0);
   // the fill matters most when the key light is weak: moonlit night, blue hour, dawn
+  // (S4 note: with three r186 this indirectDiffuse addition has no effect on the render — fill × 40 left
+  // the frame unchanged; the single trees' fill below goes through the emissive instead)
   material.skyFillNode = select(isTrunkF, float(0.3), fillK.element(ikF)).mul(float(1).add(env.night.mul(2.6)).add(env.twilight.mul(0.9)));
+  // single trees (archetypes 1–5): the hemisphere's sky light and the ground bounce on a lone crown's
+  // shaded flank and underside (more on the underside) — no crushed-black silhouettes in a hill's shadow.
+  // Diffuse: albedo · E_hemi(n) · fill / π, through the ambient occlusion
+  const nUp = nFinal.y;
+  const eHemi = mix(env.groundColor, env.skyColor, nUp.mul(0.5).add(0.5)).mul(env.hemiIntensity);
+  const treeFill = select(treeF.and(isTrunkF.not()), clamp(float(0.4).sub(nUp), 0, 1.4).mul(0.6).add(0.45), float(0));
+  const fillE = TREE_FILL_ON ? albedo.mul(eHemi).mul(treeFill).mul(ao).mul(1 / Math.PI) : vec3(0);
   material.transColorNode = select(isTrunkF, vec3(0), vAlbedo.mul(vec3(1.1, 1.3, 0.6)).mul(transK.element(ikF)).mul(0.85));
   material.glossNode = select(isTrunkF.not().and(abs(vArch.sub(Arch.Holly)).lessThan(0.5)), float(0.22), float(0));
   // Lórien: faintly luminous gold (stronger at night), with a warm-gold sheen through twilight (the wood
@@ -615,7 +679,7 @@ export function createFoliageMaterial(world: World, opts: FoliageOptions = {}): 
     .mul(select(isTrunkF, float(1), crownH.mul(0.6).add(0.4)));
   // emission spill (S4 P4): the light of nearby fires, windows and lamps on the leaves (W2-D's
   // spillIrradiance; zero until it lands). Diffuse: albedo · E / π, through the ambient occlusion
-  material.emissiveNode = SPILL_ON ? glow.add(albedo.mul(spillIrradiance(positionWorld, nFinal)).mul(ao).mul(1 / Math.PI)) : glow;
+  material.emissiveNode = SPILL_ON ? glow.add(fillE).add(albedo.mul(spillIrradiance(positionWorld, nFinal)).mul(ao).mul(1 / Math.PI)) : glow.add(fillE);
   // Guard against the post grade: its saturation (>1) extrapolates away from luma and a saturated
   // gold with little blue went negative → pow() → NaN → black crowns. Keep every channel above
   // a small fraction of luma (visually identical, numerically safe).

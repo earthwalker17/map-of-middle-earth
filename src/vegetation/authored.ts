@@ -1,6 +1,6 @@
 import { rand } from '../core/rng.ts';
 import type { AuthoredTree, TreeKind } from '../landmarks/records.ts';
-import { Arch, archReach } from './archetypes.ts';
+import { Arch, archMaxReach, archReach } from './archetypes.ts';
 import { RING } from './clumpGeometry.ts';
 import { InstanceList, Kind, LORIEN_TRUNK_K, pickColor, type Crown } from './placement.ts';
 
@@ -22,8 +22,14 @@ import { InstanceList, Kind, LORIEN_TRUNK_K, pickColor, type Crown } from './pla
  * layouts: tallest sub-crowns; archetypes.ts archReach)
  */
 export function crownReach(spread: number, arch: number = Arch.Cluster): number {
-  if (arch === Arch.Cluster || arch === Arch.Canopy) return 1.8 * (1 - RING * spread);
+  if (arch === Arch.Cluster || arch === Arch.Canopy || arch === Arch.CanopyEdge) return 1.8 * (1 - RING * spread);
   return archReach(arch, spread);
+}
+
+/** the tallest crown top an instance can reach (units of vr; bounds and tree-height caps — archMaxReach) */
+export function crownMaxReach(spread: number, arch: number = Arch.Cluster): number {
+  if (arch === Arch.Cluster || arch === Arch.Canopy || arch === Arch.CanopyEdge) return 1.8 * (1 - RING * spread);
+  return archMaxReach(arch, spread);
 }
 
 /**
@@ -141,10 +147,10 @@ const RECIPES: Record<TreeKind, Recipe> = {
     kind: Kind.Oak,
     crown: (hr, r) => {
       const vr = hr * (0.85 + 0.15 * r(2));
-      return { hr, vr, trunk: vr * (0.5 + 0.15 * r(3)), shape: { spread: 0.62, gap: 0.12, hVar: 0.4, arch: Arch.Broadleaf } };
+      return { hr, vr, trunk: vr * (0.38 + 0.12 * r(3)), shape: { spread: 0.62, gap: 0.12, hVar: 0.4, arch: Arch.Broadleaf } };
     },
     colors: null,
-    stem: [0.24, 0.36],
+    stem: [0.2, 0.3],
   },
   // the Party Tree: very large, broad and full
   party: {
@@ -154,17 +160,17 @@ const RECIPES: Record<TreeKind, Recipe> = {
       return { hr, vr, trunk: vr * 0.45, shape: { spread: 0.68, gap: 0.05, hVar: 0.32, arch: Arch.Broadleaf } };
     },
     colors: [0x4b5e27, 0x53652b],
-    stem: [0.24, 0.36],
+    stem: [0.2, 0.3],
   },
   // holly: a dense, dark, glossy, pointed ovoid reaching low
   holly: {
     kind: Kind.Dark,
     crown: (hr, r) => {
-      const vr = hr * (1.15 + 0.2 * r(2));
-      return { hr, vr, trunk: vr * 0.08, shape: { spread: 0.4, gap: 0, hVar: 0.25, arch: Arch.Holly } };
+      const vr = hr * (1.0 + 0.2 * r(2));
+      return { hr, vr, trunk: vr * 0.16, shape: { spread: 0.4, gap: 0, hVar: 0.3, arch: Arch.Holly } };
     },
     colors: [0x2f4a2a],
-    stem: [0.04, 0.14],
+    stem: [0.1, 0.2],
   },
   // Rivendell's autumn broadleaves
   autumn: {

@@ -264,6 +264,11 @@ export interface ClumpGeometryOptions {
    * with the hero profile, and four primary limbs
    */
   hero?: boolean;
+  /**
+   * primary limbs on a plain trunk (the near LOD of the placed trees, S4): the hero geometry's four limbs,
+   * cheaper (four-sided), so a lifted broadleaf crown shows its branches, not a ball on a stick
+   */
+  limbs?: boolean;
 }
 
 /**
@@ -317,29 +322,35 @@ export function createClumpGeometry(opts: ClumpGeometryOptions): InstancedBuffer
         idx.push(a0, a0 + sides, a1, a1, a0 + sides, a1 + sides);
       }
   };
+  /** the four primary limbs (TRUNK_LIMB tubes; the shader lays them from the upper trunk into the crown) */
+  const limbs = (limbSides: number) => {
+    for (const az of HERO_LIMBS) {
+      const base = P.length / 3;
+      for (const v of LIMB_RINGS)
+        for (let s = 0; s < limbSides; s++) {
+          const a = (s / limbSides) * Math.PI * 2;
+          P.push(Math.cos(a), v, Math.sin(a));
+          N.push(Math.cos(a), 0, Math.sin(a));
+          S.push(az, 0, 0.42, TRUNK_LIMB);
+          part.push(1);
+          cavity.push(0);
+        }
+      for (let r = 0; r + 1 < LIMB_RINGS.length; r++)
+        for (let s = 0; s < limbSides; s++) {
+          const a0 = base + r * limbSides + s;
+          const a1 = base + r * limbSides + ((s + 1) % limbSides);
+          idx.push(a0, a0 + limbSides, a1, a1, a0 + limbSides, a1 + limbSides);
+        }
+    }
+  };
   if (sides > 0) {
     if (opts.hero) {
       tube(HERO_RINGS, TRUNK_RING, 0, () => 1);
-      const limbSides = Math.max(5, Math.round(sides / 2));
-      for (const az of HERO_LIMBS) {
-        const base = P.length / 3;
-        for (const v of LIMB_RINGS)
-          for (let s = 0; s < limbSides; s++) {
-            const a = (s / limbSides) * Math.PI * 2;
-            P.push(Math.cos(a), v, Math.sin(a));
-            N.push(Math.cos(a), 0, Math.sin(a));
-            S.push(az, 0, 0.42, TRUNK_LIMB);
-            part.push(1);
-            cavity.push(0);
-          }
-        for (let r = 0; r + 1 < LIMB_RINGS.length; r++)
-          for (let s = 0; s < limbSides; s++) {
-            const a0 = base + r * limbSides + s;
-            const a1 = base + r * limbSides + ((s + 1) % limbSides);
-            idx.push(a0, a0 + limbSides, a1, a1, a0 + limbSides, a1 + limbSides);
-          }
-      }
-    } else tube([0, 1], TRUNK_PLAIN, 0, (v) => 1 - 0.3 * v);
+      limbs(Math.max(5, Math.round(sides / 2)));
+    } else {
+      tube([0, 1], TRUNK_PLAIN, 0, (v) => 1 - 0.3 * v);
+      if (opts.limbs) limbs(4);
+    }
   }
 
   const g = new InstancedBufferGeometry();
