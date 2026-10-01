@@ -69,8 +69,9 @@ const BAG_END_LEVEL = 0.25;
 /** the Party Field and its tree at the Hill's south-east foot (its long shadow falls east, off the Hill) */
 const PARTY_TREE: V2 = [2.15, 0.4];
 const PARTY_FIELD: V2 = [1.85, 0.5];
-/** the mill on the pond's north-east rim under the Hill's bank, its wheel in the pond on its south-west side */
-const MILL: V2 = [-1.93, -1.35];
+/** the mill on the pond's north-east rim under the Hill's bank, its wheel well out in the water on its
+ * south-west side (the open water reaches ≈ 0.42 km from the pond's centre; survey) */
+const MILL: V2 = [-2.06, -1.24];
 /** the bridge over the Water south-west of the pond, spanning its wet reach (0.8 km here) and no more */
 const BRIDGE_X = -2.45;
 const BRIDGE_Z: [number, number] = [0.8, 1.72];
@@ -101,7 +102,7 @@ const MILL_TRACK: V2[] = [
   [-1.85, 0.2],
   [-1.62, -0.35],
   [-1.64, -0.95],
-  [-1.8, -1.22],
+  [-1.86, -1.2],
 ];
 /** the lane from the bridge's south end up the far bank to Bywater (clear of the Water's flood plain) */
 const BYWATER_LANE: V2[] = [
@@ -228,7 +229,6 @@ export default defineLandmark({
     const t = k.ground(POND[0] + 0.75, POND[1]);
     if (Math.abs(t - (TERRACE_REL - ORIGIN_REL)) > 0.01) throw new Error(`hobbiton: ORIGIN_REL ${ORIGIN_REL} is stale (pond terrace at ${(t + ORIGIN_REL).toFixed(3)} rel. base, expected ${TERRACE_REL})`);
     buildHill(k);
-    buildPond(k);
     buildMill(k);
     // the bridge: two round arches over the Water, humped over the stream, weathered rubble stone
     archBridge(k, BRIDGE_X, BRIDGE_Z[0], BRIDGE_Z[1], { width: 0.11, arches: 2, water: WATER, crown: WATER + 0.34, rise: 0.22, color: 0x857a6a });
@@ -257,19 +257,19 @@ export default defineLandmark({
       aimKm: [-0.25, 0.35],
       tod: 17.8,
       compare: ['reference/film/hobbiton/hobbiton-wide-fotr.jpg', 'reference/photos/hobbiton/bag-end-hill-set.jpg', 'reference/photos/hobbiton/hobbiton-mill-bridge-set.jpg'],
-      note: 'hero (close, 8.5 km): from the south-west in the golden late-afternoon sun (17.8: the lit south-west face of the Hill) — the broad Hill with Bag End under its oak and the rows of round doors along their lanes, the mill pond and the mill at its foot, the Water curving past in front with the double-arched bridge, the Party Tree to the right',
+      note: 'hero (close, 7 km, fov 17): low from the south-south-west in the golden late-afternoon sun (17.8: the lit south-west face of the Hill) — Bag Hill filling the frame: Bag End near the top under its great oak, the rows of round doors on their terraces with gardens, hedges and lanes below them (the mill, the bridge and the Party Field are outside this tight frame: w5i-hobbiton-mill and hobbiton-wide show them)',
     },
     {
       id: 'hobbiton-wide',
       distanceKm: 55,
-      elevationDeg: 14,
+      elevationDeg: 22,
       azimuthDeg: 255,
-      fov: 38,
+      fov: 34,
       lift: 0,
       aimKm: [4, -6],
       tod: 17.8,
       compare: ['reference/film/hobbiton/hobbiton-wide-fotr.jpg'],
-      note: 'the Shire (context, 55 km, pitch 14°): Hobbiton’s Hill on the left third, the Water leading in from the west through the patchwork of hedged fields and woods, the hazy horizon at the top, golden afternoon',
+      note: 'the Shire (context, 55 km, pitch 22°): Hobbiton’s Hill on the left third with Bag End’s oak, the Water leading in from the west through the patchwork of hedged fields and woods to the far downs (the pitch keeps the snowy ranges beyond the frame), golden afternoon',
     },
   ],
 });
@@ -286,12 +286,26 @@ function buildHill(k: ProxyKit): void {
   const [bnx, bnz] = facing(beYaw);
 
   // ---- Bag End: the largest front, the big green door, a window either side, a lamp by the gate
-  const bag = hobbitHole(k, { at: be, w: 0.4, door: DOORS[0], doorR: 0.074, facade: 0xcfae6e, windows: 2, chimney: true, lit: true, spark: true, edge: 'picket', terrace: 0.15, terraceW: 1.5, clump: 1 });
+  const bag = hobbitHole(k, { at: be, w: 0.4, door: DOORS[0], doorR: 0.074, facade: 0xcfae6e, windows: 2, chimney: true, lit: true, spark: true, edge: 'picket', terrace: 0.12, terraceW: 1.05, clump: 1 });
   k.light([bag.gate[0] + bag.r[0] * 0.05, bag.ty + 0.05, bag.gate[1] + bag.r[1] * 0.05], { color: 0xffc070, intensity: 1.0, radius: 0.012, kind: 'lamp' });
   k.cylinder('wood', 0.003, 0.004, 0.05, { at: [bag.gate[0] + bag.r[0] * 0.05, bag.ty - 0.004, bag.gate[1] + bag.r[1] * 0.05], seg: 5, color: TIMBER, lod: 0 });
   placed.push(be);
   // the great oak on the Hill above Bag End: about twice any other tree, a broad spreading crown
-  k.tree('oak', be[0] - bnx * 0.34 + bag.r[0] * 0.06, be[1] - bnz * 0.34 + bag.r[1] * 0.06, { crownKm: 0.46, heightKm: 0.6, color: 0x4a6a26, yawDeg: 200 });
+  k.tree('oak', be[0] - bnx * 0.34 + bag.r[0] * 0.06, be[1] - bnz * 0.34 + bag.r[1] * 0.06, { crownKm: 0.52, heightKm: 0.66, color: 0x4a6a26, yawDeg: 200 });
+  // the gate stair down Bag End's bank to the lane below
+  {
+    const run = Math.max(0.05, (bag.ty - k.ground(bag.gate[0] + bag.n[0] * 0.08, bag.gate[1] + bag.n[1] * 0.08)) * 1.4);
+    const foot: V2 = [bag.gate[0] + bag.n[0] * run, bag.gate[1] + bag.n[1] * run];
+    k.stairs(
+      'weathered',
+      [
+        [bag.gate[0] - bag.n[0] * 0.004, bag.ty - 0.002, bag.gate[1] - bag.n[1] * 0.004],
+        [foot[0], k.ground(foot[0], foot[1]) + 0.002, foot[1]],
+      ],
+      0.03,
+      { stepKm: 0.012, color: 0x857d6c },
+    );
+  }
 
   // ---- the rows (each row's lane runs, east → west)
   const rowLanes: V2[][][] = [];
@@ -324,7 +338,7 @@ function buildHill(k: ProxyKit): void {
         k.ground(p[0], p[1]) < k.ground(lane0.p[0], lane0.p[1]) + 0.05 ||
         placed.some((q) => Math.hypot(q[0] - p[0], q[1] - p[1]) < (q === be ? 0.4 : 0.25)) ||
         k.ground(p[0], p[1]) < WATER + 0.4 ||
-        slope > 1.15;
+        slope > 1.6;
       if (!skip) {
         const i = n++;
         // compass bearing the front faces (house yaw 0 faces +z = south)
@@ -355,11 +369,9 @@ function buildHill(k: ProxyKit): void {
           const side = k.r(8) < 0.5 ? -1 : 1;
           const tx = p[0] + hole.r[0] * side * (hole.hw + 0.07) + hole.n[0] * 0.05;
           const tz = p[1] + hole.r[1] * side * (hole.hw + 0.07) + hole.n[1] * 0.05;
-          k.tree('oak', tx, tz, { crownKm: 0.075 + k.r(9) * 0.03, heightKm: 0.14 + k.r(10) * 0.04, yawDeg: k.r(11) * 360 });
+          const crown = 0.08 + k.r(9) * 0.03;
+          k.tree('oak', tx, tz, { crownKm: crown, heightKm: crown * (1.2 + k.r(10) * 0.2), yawDeg: k.r(11) * 360 });
         }
-        // a short path from the terrace's gate down to the row's lane
-        const g = hole.gate;
-        lane(k, [g, [g[0] + hole.n[0] * 0.06, g[1] + hole.n[1] * 0.06]], 0.022);
       }
       // along the row: fronts 0.3–0.42 km apart (gardens, hedges and trees between)
       s += 0.3 + k.r(2) * 0.12;
@@ -392,17 +404,29 @@ function buildHill(k: ProxyKit): void {
     }
     flush();
   });
-  // shrubs and small trees between the gardens on the face (never on a terrace)
-  k.scatter(
-    { annulus: { at: TOP, r0: 0.3, r1: 1.5, a0: 100, a1: 295 } },
-    30,
-    (_i, x, z, u) => {
-      const l0 = nearest(MAIN_LANE, x, z);
-      if (l0.d < 0.08 || Math.hypot(x - POND[0], z - POND[1]) < 0.9) return;
-      if (u < 0.25) k.tree('oak', x, z, { crownKm: 0.06 + u * 0.12, heightKm: 0.12 + u * 0.15, yawDeg: u * 900 });
-      else k.rock('foliage', 0.024 + u * 0.026, { at: [x, 0, z], seat: 'min', squash: 0.6, lump: 0.35, detail: 1, color: [0x3d5a22, 0x4a6628, 0x55702e][Math.floor(u * 30) % 3], shade: 0.85 + u * 0.3, lod: 0 });
-    },
-    { minSpacing: 0.12, avoid: placed.map((q) => ({ at: q, r: q === be ? 0.36 : 0.22 })) },
+  // hedgerows along the downhill side of the rows' lanes (broken by gaps), a low broad tree here and there
+  // in them — the face between the rows is not left as open lawn dotted with shrubs
+  rowLanes.forEach((runs) =>
+    runs.forEach((run) => {
+      const off = run.map(([x, z]) => {
+        const [fx, fz] = facing(fallLine(k, x, z).yaw);
+        return [x + fx * 0.035, z + fz * 0.035] as V2;
+      });
+      let piece: V2[] = [];
+      off.forEach((p, i) => {
+        const gap = k.r(41) < 0.22 || placed.some((q) => Math.hypot(q[0] - p[0], q[1] - p[1]) < 0.09);
+        if (!gap) piece.push(p);
+        if ((gap || i === off.length - 1) && piece.length >= 2) {
+          hedge(k, piece, 0.026 + k.r(42) * 0.01, 0.034);
+          if (k.r(43) < 0.35) {
+            const [tx, tz] = piece[Math.floor(piece.length / 2)];
+            const crown = 0.08 + k.r(44) * 0.04;
+            k.tree('oak', tx, tz, { crownKm: crown, heightKm: crown * 1.25, yawDeg: k.r(45) * 360 });
+          }
+        }
+        if (gap) piece = [];
+      });
+    }),
   );
   // ramps joining the rows' lanes at both ends, the lowest row to the main lane, Bag End to the top row
   const ends = rowLanes.filter((r) => r.length).map((r) => ({ east: r[0][0], west: r[r.length - 1][r[r.length - 1].length - 1] }));
@@ -424,24 +448,6 @@ function buildHill(k: ProxyKit): void {
         if (q.d < best.d) best = q;
       }
       if (best.d < 0.5) lane(k, [bag.gate, best.p], 0.03);
-    }
-  }
-}
-
-/** reeds round the pond's rim: tufts of three slender pale green-gold blades, except at the mill */
-function buildPond(k: ProxyKit): void {
-  for (let i = 0; i < 22; i++) {
-    const a = (i / 22) * Math.PI * 2 + k.r(1) * 0.15;
-    const r = 0.52 + k.r(2) * 0.07;
-    const x = POND[0] + Math.cos(a) * r;
-    const z = POND[1] + Math.sin(a) * r;
-    if (Math.hypot(x - MILL[0], z - MILL[1]) < 0.3) continue;
-    if (k.r(3) < 0.25) continue;
-    const c = [0x8a9448, 0x7a8a3e, 0x9a9a52][i % 3];
-    for (let j = 0; j < 3; j++) {
-      const ox = (k.r(4) - 0.5) * 0.025;
-      const oz = (k.r(5) - 0.5) * 0.025;
-      k.cone('foliage', 0.005, 0.03 + k.r(6) * 0.02, { at: [x + ox, k.ground(x + ox, z + oz) - 0.01, z + oz], seg: 5, color: c, lod: 0 });
     }
   }
 }
@@ -473,13 +479,13 @@ function buildMill(k: ProxyKit): void {
     at: [mx, up, mz],
     seat: false,
     rot: [0, yaw, 0],
-    pitch: 52,
+    pitch: 58,
     overhang: 0.045,
-    color: 0xdccb9c,
-    roofColor: 0xa58a52,
+    color: 0xd2c194,
+    roofColor: 0x7d6a48,
     roofGrain: 0.65,
     chimney: true,
-    ridge: { color: 0x7a6440, size: 0.016 },
+    ridge: { color: 0x5e4e34, size: 0.018 },
     gableBoards: { color: 0x4a3a28, size: 0.008, horn: 0.012 },
     windows: { count: 2, on: 1, sides: 1, size: 0.012, color: WARM },
   });

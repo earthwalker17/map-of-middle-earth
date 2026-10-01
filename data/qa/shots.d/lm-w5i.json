@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "notes": "S3 W5-I review shots: Hobbiton's terraced rows close up and at dusk, Bree at night (windows), Weathertop at night (the campfire). Landmark bookmarks (hobbiton -close / -wide, bree-close, weathertop-close, grey-havens-close) live in the landmark definitions.",
+  "notes": "S3 W5-I review shots: Hobbiton's terraced rows close up and at dusk, the mill, Bree by day and at night (windows), Weathertop near by day and at night (the campfire), the Havens near. Landmark bookmarks (hobbiton -close / -wide, bree-close, weathertop-close, grey-havens-close) live in the landmark definitions.",
   "shots": [
     {
       "id": "w5i-hobbiton-rows",
@@ -53,15 +53,15 @@
       "camera": {
         "orbit": {
           "place": "bree",
-          "distanceKm": 28,
-          "elevationDeg": 14,
-          "azimuthDeg": 250,
-          "fov": 9.5,
+          "distanceKm": 22,
+          "elevationDeg": 3,
+          "azimuthDeg": 268,
+          "fov": 8,
           "aimKm": [
             0.4,
-            0.1
+            0.05
           ],
-          "lift": 0.3
+          "lift": 0.4
         }
       },
       "compare": [
@@ -76,10 +76,10 @@
         "orbit": {
           "place": "weathertop",
           "distanceKm": 28,
-          "elevationDeg": -1.2,
+          "elevationDeg": -4,
           "azimuthDeg": 150,
           "fov": 12,
-          "lift": -0.2
+          "lift": -0.4
         }
       },
       "compare": [
@@ -112,12 +112,12 @@
         "orbit": {
           "place": "grey-havens",
           "distanceKm": 9,
-          "elevationDeg": 36,
-          "azimuthDeg": 100,
+          "elevationDeg": 30,
+          "azimuthDeg": 104,
           "fov": 30,
           "aimKm": [
             -0.5,
-            1.0
+            0.9
           ],
           "lift": 0.1
         }
@@ -125,7 +125,7 @@
       "compare": [
         "reference/film/grey-havens/grey-havens-wide.webp"
       ],
-      "note": "close on the harbour: quays, arcades, towers, the breakwater light, the swan-ship"
+      "note": "close on the harbour: the quay runs, arcaded halls and stairs, the terraced rows of halls, the towers on the rock crags, the breakwater light, the swan-ship on the sun's path"
     },
     {
       "id": "w5i-hobbiton-mill",
@@ -148,6 +148,28 @@
         "reference/photos/hobbiton/hobbiton-mill-bridge-set.jpg"
       ],
       "note": "the mill pond, the stone-and-timber mill with its waterwheel, the double-arched rubble-stone bridge over the Water"
+    },
+    {
+      "id": "w5i-bree-day",
+      "tod": 16.5,
+      "camera": {
+        "orbit": {
+          "place": "bree",
+          "distanceKm": 6,
+          "elevationDeg": 24,
+          "azimuthDeg": 235,
+          "fov": 32,
+          "aimKm": [
+            0.1,
+            0.0
+          ],
+          "lift": 0.1
+        }
+      },
+      "compare": [
+        "reference/film/bree/bree-gate-night.jpg"
+      ],
+      "note": "Bree close by day: the palisade stakes, the West-gate towers and gallery, the Prancing Pony and its yard, the market, the houses climbing the hill, hedgerows and the wooded crown"
     }
   ]
 }
