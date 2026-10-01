@@ -5,9 +5,8 @@ import type { World } from '../world/World.ts';
 import { createEmissionMaterial } from './emissionMaterial.ts';
 import { aggregates, EMISSION_STRIDE, groupKey, packAggregate, packLight, ROLE, type EmissionArrays } from './lightKinds.ts';
 import { env } from '../materials/environment.ts';
-import { spillU } from './spill.ts';
+import { SPILL_MAX, spillU } from './spill.ts';
 import { buildSpillSources, selectSpill, SPILL_PREVIEW, type SpillSource } from './spillSources.ts';
-import { SPILL_MAX } from './spill.ts';
 
 /** instance capacity of the one sprite draw (static landmark lights + S4 dynamic ones) */
 export const MAX_LIGHTS = 4096;
