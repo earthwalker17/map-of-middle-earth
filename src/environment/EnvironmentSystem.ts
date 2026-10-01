@@ -139,6 +139,7 @@ export class EnvironmentSystem implements System {
     this.hemi.color.copy(skyCol);
     this.hemi.groundColor.copy(dl.groundColor);
     this.hemi.intensity = dl.hemiIntensity;
+    env.hemiIntensity.value = dl.hemiIntensity;
 
     // ---- sky dome + the atmosphere's in-scatter table (the same model, per frame)
     this.skyModel.update(dl, sunDir, siderealAngle(state.tod, state.dayOfYear), ml.sky);

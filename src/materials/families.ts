@@ -4,7 +4,7 @@ import { tsl } from './tsl.ts';
 import { env } from './environment.ts';
 
 // NB: TSL vec3(new Color()) silently yields black in r186 — always use color(Color) for colour constants
-const { Fn, float, vec3, attribute, mx_noise_float, positionWorld, positionLocal, normalGeometry, normalView, positionViewDirection, fwidth, length, smoothstep, mix, clamp, max, abs, sin, step, round, floor, select, hash, dot, sRGBTransferEOTF } = tsl;
+const { Fn, float, vec3, attribute, mx_noise_float, positionWorld, positionLocal, normalGeometry, normalView, normalWorld, cameraPosition, reflect, normalize, positionViewDirection, fwidth, length, smoothstep, mix, clamp, max, abs, sin, step, round, floor, select, hash, dot, sRGBTransferEOTF } = tsl;
 
 /**
  * Material families v2 (S3): every built structure is drawn with ONE of two shared uber materials —
@@ -254,6 +254,17 @@ function structureMaterial(): MeshStandardNodeMaterial {
   m.aoNode = col.a;
   m.roughnessNode = clamp(surf.r.add(pattern.mul(0.08)), 0.04, 1);
   m.metalnessNode = surf.g;
+  // specular ambient: the scene has no environment map, so metals (iron, gold, metal) and glossy dark
+  // stone reflected nothing and went black in shade. Approximate image-based specular with the
+  // hemisphere light's own sky / ground radiance along the reflection vector, Fresnel-weighted
+  // (F0 = 0.04 for stone, the albedo for metals), dimmed by roughness and the baked AO
+  m.emissiveNode = Fn(() => {
+    const v = normalize(cameraPosition.sub(positionWorld));
+    const r = reflect(v.negate(), normalWorld);
+    const sky = mix(vec3(env.groundColor), vec3(env.skyColor), smoothstep(-0.25, 0.55, r.y)).mul(env.hemiIntensity);
+    const f0 = mix(vec3(0.04), albedo, surf.g);
+    return sky.mul(f0).mul(float(1).sub(surf.r.mul(0.45))).mul(col.a);
+  })();
   return m;
 }
 

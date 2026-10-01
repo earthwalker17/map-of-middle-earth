@@ -27,6 +27,8 @@ export const env = {
   golden: uniform(0),
   skyColor: uniform(new Color(0.55, 0.7, 0.9)),
   groundColor: uniform(new Color(0.3, 0.28, 0.22)),
+  /** intensity of the hemisphere (sky / ground) fill light — skyColor / groundColor × this = its radiance */
+  hemiIntensity: uniform(1),
   fogColor: uniform(new Color(0.72, 0.78, 0.84)),
   /** exponential distance fog density per world unit */
   fogDensity: uniform(0.00002),
