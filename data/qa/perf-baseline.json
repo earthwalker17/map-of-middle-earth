@@ -1,29 +1,30 @@
 {
-  "createdAt": "2026-09-30T00:24:54.034Z",
-  "label": "s2",
+  "createdAt": "2026-10-01T10:18:34.568Z",
   "quality": "preview",
   "width": 1280,
   "height": 720,
   "gpu": "intel/gen-11",
   "timings": {
-    "engineCreated": 1371,
-    "worldLoaded": 2541,
-    "init:environment": 3797,
-    "init:terrain": 5265,
-    "init:water": 5528,
-    "init:vegetation": 6125,
-    "init:diorama": 6137,
-    "init:landmarks": 6249,
-    "compiled": 13577,
-    "warm": 14931
+    "engineCreated": 1764,
+    "worldLoaded": 2962,
+    "landmarksBuilt": 7003,
+    "init:environment": 7992,
+    "init:terrain": 9565,
+    "init:water": 9848,
+    "init:vegetation": 10599,
+    "init:diorama": 10621,
+    "init:landmarks": 10626,
+    "init:emission": 10634,
+    "compiled": 16664,
+    "warm": 17678
   },
-  "compileMs": 7328,
-  "bootMs": 14931,
-  "jsHeapMB": 303,
+  "compileMs": 6030,
+  "bootMs": 17678,
+  "jsHeapMB": 349,
   "footprint": {
-    "chromeMB": 1639,
+    "chromeMB": 1643,
     "chromeProcs": 8,
-    "nodeMB": 191
+    "nodeMB": 202
   },
   "views": [
     {
@@ -31,30 +32,42 @@
       "width": 1280,
       "height": 720,
       "frames": 60,
-      "medianMs": 55.099999994039536,
-      "p95Ms": 71.5,
-      "meanMs": 54.973333333308496,
-      "maxMs": 75.60000000149012
+      "medianMs": 56.900000005960464,
+      "p95Ms": 80,
+      "meanMs": 59.75999999940395,
+      "maxMs": 87.59999999403954
     },
     {
       "name": "shire",
       "width": 1280,
       "height": 720,
       "frames": 60,
-      "medianMs": 48,
-      "p95Ms": 52.100000001490116,
-      "meanMs": 48.26000000014901,
-      "maxMs": 52.5
+      "medianMs": 54.400000005960464,
+      "p95Ms": 91.59999999403954,
+      "meanMs": 64.03999999985099,
+      "maxMs": 97.20000000298023
     },
     {
       "name": "anduin-gondor",
       "width": 1280,
       "height": 720,
       "frames": 60,
-      "medianMs": 48.600000001490116,
-      "p95Ms": 57.100000001490116,
-      "meanMs": 50.11499999972681,
-      "maxMs": 58.599999994039536
+      "medianMs": 61.400000005960464,
+      "p95Ms": 99.19999998807907,
+      "meanMs": 67.79666666612029,
+      "maxMs": 116.1000000089407
+    },
+    {
+      "name": "minas-tirith-close",
+      "width": 1280,
+      "height": 720,
+      "frames": 60,
+      "medianMs": 135.5,
+      "p95Ms": 161.29999999701977,
+      "meanMs": 126.51666666716338,
+      "maxMs": 163.40000000596046
     }
-  ]
+  ],
+  "label": "s3",
+  "note": "S3 final code, quiet machine (2026-10-01 18:17). Same-session interleaved A/B vs the S2 code: frame times within ~10-15 % of S2 on noisy runs, compile ~20 % faster; boot +3 s (landmark build + AO). Thermal noise on this host is ±30 %: interleave A/B runs before concluding."
 }
