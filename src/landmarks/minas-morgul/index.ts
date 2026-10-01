@@ -52,7 +52,7 @@ export default defineLandmark({
     const padY = k.ground(C[0], C[1]);
     buildCity(k);
     buildBridge(k, padY);
-    buildTower(k, { at: TOWER, y0: T3_TOP, r: 0.44, keepH: 0.95, shaftH: 3.6 });
+    buildTower(k, { at: TOWER, y0: T3_TOP, r: 0.44, keepH: 1.1, shaftH: 2.6, spireH: 0.9 });
   },
   lookOverride: 'mordor',
   annotation: { title: 'Minas Morgul', subtitle: 'The Tower of Sorcery', blurb: 'Once Minas Ithil, Tower of the Rising Moon — now the stronghold of the Nazgûl.' },
@@ -62,26 +62,26 @@ export default defineLandmark({
       distanceKm: 14,
       elevationDeg: 6,
       azimuthDeg: 203,
-      fov: 44,
-      lift: 3.2,
-      aimKm: [0.3, -1.35],
+      fov: 48,
+      lift: 2.4,
+      aimKm: [0.2, -1.8],
       tod: 21.0,
       dayOfYear: 78,
       compare: ['reference/film/minas-morgul/minas-morgul-gate-bridge-film.jpg', 'reference/concept-art/minas-morgul/nasmith-tower-of-the-moon.jpg'],
-      note: 'night from the south (14 km): the pale citadel tiered against the mountain and its twisted tower filling the frame height, the walls washed green from their feet, the lamp room the one strong light, the statue bridge leading in from below; a March moon 55° up behind the camera (Frodo passed here on 10 March); Mount Doom, Barad-dûr and Cirith Ungol out of frame (right)',
+      note: 'night from the south (14 km): the pale citadel tiered against the mountain (the city ≈ 40 % of the silhouette) and its twisted tower filling the frame height with a little headroom, every wall washed green from its visible foot, the lamp room the one strong light, the pale statue bridge leading in from the bottom third; a March moon 55° up behind the camera (Frodo passed here on 10 March); Mount Doom, Barad-dûr and Cirith Ungol out of frame (right)',
     },
     {
       id: 'minas-morgul-wide',
-      distanceKm: 58,
-      elevationDeg: 11,
-      azimuthDeg: 195,
-      fov: 35,
-      lift: 2,
-      aimKm: [-9, -1.35],
+      distanceKm: 38,
+      elevationDeg: 5,
+      azimuthDeg: 218,
+      fov: 24,
+      lift: -2.3,
+      aimKm: [2.5, -4],
       tod: 21.0,
       dayOfYear: 78,
       compare: ['reference/concept-art/minas-morgul/nasmith-tower-of-the-moon.jpg'],
-      note: 'night, low from the south over southern Ithilien up into the Ephel Dúath: the pale citadel on the right third of the frame in the dark mountain wall, its lamp the one green light; Mount Doom and Barad-dûr cropped out beyond the right edge',
+      note: 'night, low from the south-west up the Morgul vale: the pale citadel on the left third on the vale\'s north wall, the vale and the Morgulduin receding into the Ephel Dúath on the right, its lamp the one green light; Mount Doom and Barad-dûr beyond the right edge (from the west-south-west both stand right behind the citadel)',
     },
   ],
 });

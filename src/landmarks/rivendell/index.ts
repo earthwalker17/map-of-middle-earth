@@ -23,26 +23,27 @@ import { FALLS, LEDGE_N, LEDGE_NE, LEDGE_S, LEDGE_SE, NORTH_FOOT, NORTH_H, PAVIL
  * pavilion at the ledge's level, a notch cut between them is the ravine of a waterfall. Five waterfalls
  * are declared for S4 (no placeholder geometry).
  *
- * The hero looks from over the west-south-west rim down into the gorge with a long lens (the house on
- * its spur on the left third, the gorge receding up-valley), on a late-October morning (side light from
- * the south-east); the wide shows the valley as a dark slot in the moors under the Misty Mountains.
+ * The hero looks up the gorge from beyond the valley lip with a long lens (the house on its spur on the
+ * left third, the gorge head in the upper third) on a late-October afternoon at the film segment's tod
+ * (the low sun from the south-west); the wide shows the valley as a slot cut into the high moorland under
+ * the Misty Mountains.
  */
 
 const STAMPS: LocalStamp[] = [
   // the gorge walls: scarps raising the moor on both sides of the stream — the high, sunlit north wall (3.3,
   // a steep 0.5 km face) behind the Last Homely House's spur, the south wall (2.8); the moor running back
-  // behind the rims (undulating) and falling away, so the valley reads as a deep cleft in the high moorland
-  // (the north moor fades within 0.8 km beyond its ends and back: the valley opens north-west into the
-  // Bruinen's gorge, whose slopes nothing may stand over)
-  { kind: 'scarp', path: NORTH_FOOT, side: 'left', height: NORTH_H, run: 0.5, plateauKm: 1.9, falloff: 0.8, rough: { amp: 0.45, scaleKm: 3.0 }, surface: 'rock' },
-  { kind: 'scarp', path: SOUTH_FOOT, side: 'right', height: SOUTH_H, run: 0.5, plateauKm: 2.2, falloff: 2.6, rough: { amp: 0.35, scaleKm: 3.0 }, surface: 'rock' },
-  // the ledges for the halls, level shelves cut into the walls (the two up-valley shelves only cut down:
-  // nothing is raised toward the stream there)
-  ...[LEDGE_N, LEDGE_S].map((l) => ({ kind: 'flatten' as const, at: l.at, radius: l.r, falloff: 0.3, height: l.h, surface: 'turf' as const })),
+  // 4.5–5 km behind the rims (undulating) and falling gently away, so the valley reads as a deep cleft in
+  // the high moorland. The fades are bounded: a longer north fade lifts the ground west of the main ledge
+  // over the hero's line of sight, a longer south fade carries the stamp box over the hero camera (probe)
+  { kind: 'scarp', path: NORTH_FOOT, side: 'left', height: NORTH_H, run: 0.5, plateauKm: 4.5, falloff: 3.0, rough: { amp: 0.45, scaleKm: 3.0 }, surface: 'rock' },
+  { kind: 'scarp', path: SOUTH_FOOT, side: 'right', height: SOUTH_H, run: 0.5, plateauKm: 5.0, falloff: 2.5, rough: { amp: 0.35, scaleKm: 3.0 }, surface: 'rock' },
+  // the ledges for the halls, level shelves cut into the walls (≥ 1.2 km across, so the heightfield holds
+  // them); the north-east shelf only cuts down into its wall
+  ...[LEDGE_N, LEDGE_S, LEDGE_SE].map((l) => ({ kind: 'flatten' as const, at: l.at, radius: l.r, falloff: 0.3, height: l.h, surface: 'turf' as const })),
   // the rock spur of the pavilion at the main ledge's level, and the waterfall's ravine cut between them
   { kind: 'flatten', at: PAVILION.at, radius: 0.28, falloff: 0.3, height: PAVILION.h, surface: 'rock' },
   { kind: 'flatten', at: [RAVINE_X, PAVILION.at[1] - 0.1], radius: 0.14, falloff: 0.22, height: 0.75, lowerOnly: true, surface: 'rock' },
-  ...[LEDGE_NE, LEDGE_SE].map((l) => ({ kind: 'flatten' as const, at: l.at, radius: l.r, falloff: 0.3, height: l.h, lowerOnly: true, surface: 'turf' as const })),
+  { kind: 'flatten', at: LEDGE_NE.at, radius: LEDGE_NE.r, falloff: 0.3, height: LEDGE_NE.h, lowerOnly: true, surface: 'turf' },
 ];
 
 export default defineLandmark({
@@ -52,7 +53,7 @@ export default defineLandmark({
   stamps: STAMPS,
   // the valley, its rims, the terraces and the gorge floor are cleared of the placed vegetation (its broad
   // clumps are far too big beside the halls; the landmark's own woods and authored trees stay)
-  vegetationExclusion: [{ at: [0.5, 0], r: 4.5 }, ...[LEDGE_N, LEDGE_S, LEDGE_NE, LEDGE_SE].map((l) => ({ at: l.at, r: l.r + 0.2 })), ...STREAM.filter((_, i) => i % 2 === 0).map((at) => ({ at, r: 1.0 }))],
+  vegetationExclusion: [{ at: [0.5, 0], r: 4.5 }, ...STREAM.filter((p, i) => i % 2 === 0 && Math.hypot(p[0] - 0.5, p[1]) + 1.0 > 4.5).map((at) => ({ at, r: 1.0 }))],
   trees: TREES,
   forests: FORESTS,
   // ribbon falls for S4 (EffectsSystem); the rock under them is darker (wet) today (halls.ts)
@@ -62,28 +63,30 @@ export default defineLandmark({
   bookmarks: [
     {
       id: 'rivendell-close',
-      distanceKm: 10,
-      elevationDeg: 19,
-      azimuthDeg: 248,
-      fov: 24,
-      lift: 0.5,
-      aimKm: [0.8, 1.2],
-      tod: 10.5,
+      distanceKm: 9.5,
+      elevationDeg: 11,
+      azimuthDeg: 256,
+      fov: 21,
+      lift: 1.0,
+      aimKm: [2.4, 1.4],
+      tod: 16.3,
       dayOfYear: 298,
       compare: ['reference/film/rivendell/rivendell-valley-fotr.jpg', 'reference/concept-art/rivendell/rivendell-alan-lee.png', 'reference/bigatures/rivendell/rivendell-weta-mini.png'],
-      note: 'hero (10 km, long lens): from over the west-south-west rim down into the deep gorge on a late-October morning — the Last Homely House on its spur on the left third (honey-cream halls, swept verdigris and bronze roofs, slender towers with ogee caps, the round Council court, terraces cantilevered over the gorge), the sheer walls and the stream receding up the gorge past the shelf halls, golden woods on the floor; the falls are S4 effects',
+      note: 'hero (long lens from beyond the valley lip, framed as at 6.5 km with a 28° lens): looking up the gorge on a late-October afternoon (the film segment\'s tod; the low sun from the south-west, behind the right shoulder) — the Last Homely House on its spur on the left third (honey-cream halls, swept verdigris and bronze roofs, slender towers with ogee caps, the round Council court, terraces cantilevered over the gorge), the sheer walls with their wet gullies and the stream receding up the gorge to its head in the upper third, golden woods; the south-ledge group framed out; the falls are S4 effects. The probe measures 0 px for a subject whose stamp box contains the camera\'s near corners (the gorge\'s plateaus): visibility is still checked',
+      expect: { minSubjectPx: 0 },
     },
     {
       id: 'rivendell-wide',
-      distanceKm: 45,
-      elevationDeg: 17,
-      azimuthDeg: 250,
-      fov: 35,
-      lift: 1.0,
-      tod: 10.5,
+      distanceKm: 30,
+      elevationDeg: 11,
+      azimuthDeg: 240,
+      fov: 26,
+      lift: 3,
+      aimKm: [3, 1],
+      tod: 16.3,
       dayOfYear: 298,
       compare: ['reference/concept-art/rivendell/rivendell-alan-lee.png', 'reference/concept-art/rivendell/rivendell-descent-john-howe.jpg'],
-      note: 'from the west-south-west over the Bruinen: the hidden valley, a deep dark slot cut into the moors below the Misty Mountains, on a late-October morning',
+      note: 'from the south-west over the Bruinen (30 km, long lens): the hidden valley, a deep slot cut into the high moorland below the Misty Mountains (the rims run on into the moor), the halls on their spur, on a late-October afternoon. The mountains rise ≈ 25° over the valley seen from the west: no sky fits with the valley in a ≤ 40° lens (probe)',
     },
   ],
 });

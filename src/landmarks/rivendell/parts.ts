@@ -120,7 +120,7 @@ export interface HallOpts {
   cross?: boolean;
   /** an arcaded loggia along the front at the foot */
   loggia?: boolean;
-  /** a slender balcony along the front */
+  /** a slender balcony along the front (default on) */
   balcony?: boolean;
   /** an explicit floor (local y) on a built terrace instead of seating on the ground */
   floor?: number;

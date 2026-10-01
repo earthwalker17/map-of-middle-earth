@@ -1,20 +1,22 @@
-import { hexToLinear, linearToSrgbBytes } from '../../materials/families.ts';
 import type { ProxyKit } from '../kit/ProxyKit.ts';
 import { SINK } from '../kit/ProxyKit.ts';
 import { elevation } from '../osgiliath/elev.ts';
 import type { V2, V3 } from '../records.ts';
-import { BRIDGE_END, C, GATE, GATE_OUT, PAD_C, T2, T2_TOP, T3, T3_TOP, TOWER, WALL } from './layout.ts';
+import { BRIDGE_END, C, GATE, GATE_OUT, PAD_C, T2, T2_C, T2_TOP, T3, T3_TOP, TOWER, WALL } from './layout.ts';
+import { type Band, E0, GLOW, GLOW_HOT, wash, washFull } from './wash.ts';
 
 /**
  * The stone and the corpse-light (the RotK gate still, Nasmith's Tower of the Moon): PALE, ghostly stone
- * (albedo ≈ 0.3–0.4: moonlit it reads bone-grey, by day a pale grey-green) washed from below by a green
- * light. Every outer face — curtain, terrace faces, towers, gate blades, keep blocks, houses — carries
- * thin night-gated `emissiveGreen` skins in fine bands from its foot to ≈ 40 % of its height, the light
- * strongest at the foot and falling smoothly (∝ (1 − t)^1.7) to nothing, the paint drifting from a clear
- * emerald to a pale white-green so the upper bands' daytime albedo (¼ of the paint) nears the stone's;
- * the light pools on the ground at every wall foot (flat glow strips: the halo at the base) and spills
- * down the retaining plinths. Windows are few, small, dim slits; the gate mouth burns; the Tower's lamp
- * room is the one strong light (tower.ts).
+ * (albedo ≈ 0.35–0.45: moonlit it reads bone-grey, by day a pale grey-green) washed from below by a green
+ * light. Every outer face — curtain, tier walls, bastions, gate blades and towers, keep blocks, houses,
+ * the bridge's parapets and statues (and the Tower's keep and the lower third of its shaft, tower.ts) —
+ * carries night-gated `emissiveGreen` skins in fine bands from its visible foot up (≈ 45 % of the height on
+ * towers and blocks, 70 % on the curtain, the whole height on the tier walls — whose feet the curtain
+ * hides — fading to a third), one saturated emerald paint in every band, the strength falling smoothly
+ * (wash.ts); the light pools on the level ground at every wall foot (flat glow strips: the halo at the
+ * base) and spills down the retaining plinths. A wall standing on a lower tier rises from that tier's
+ * top, so its wash starts at its visible foot. Windows are few, small, dim slits; the gate mouth burns; the Tower's lamp room is
+ * the one strong light (tower.ts).
  */
 const STONE = 0xaeb2ab;
 const STONE_HI = 0xbabeb7;
@@ -24,57 +26,20 @@ const PLINTH = 0x7e837d;
 const ROCK = 0x5d625e;
 const ROOF = [0x4f5652, 0x5a605c, 0x474d4a];
 const GATE_STONE = 0x939891;
-const BRIDGE_STONE = 0x8e928c;
-const STATUE = 0x5f6560;
-/**
- * The wash's paints, foot → top: a dark emerald (strong green light at night, a dark damp foot by day —
- * a glow skin's daytime albedo is ¼ of its paint) drifting to a near-white green whose daytime albedo
- * nears the pale stone's (so by day the walls darken toward their feet like weathered stone; at night
- * the strengths make the green light fade up the wall).
- */
-export const GLOW = 0x0a6a32;
-const GLOW_PALE = 0xe4eee6;
-/** hotter green for the gate mouth and the window slits */
-const GLOW_HOT = 0x2ee87a;
+const BRIDGE_STONE = 0xa6aaa3;
+const STATUE = 0x9da29b;
 
 const DEG = 180 / Math.PI;
 
-/** linear-space mix of two sRGB hex colours, back to hex */
-function mixHex(a: number, b: number, t: number): number {
-  const la = hexToLinear(a);
-  const lb = hexToLinear(b);
-  const [r, g, bl] = linearToSrgbBytes([la[0] + (lb[0] - la[0]) * t, la[1] + (lb[1] - la[1]) * t, la[2] + (lb[2] - la[2]) * t]);
-  return (r << 16) | (g << 8) | bl;
-}
-const lumG = (hex: number): number => hexToLinear(hex)[1];
-
-/** a glow band up a face: from f0 to f1 (fractions of the face height, or km — see the caller), paint, strength */
-interface Band {
-  f0: number;
-  f1: number;
-  color: number;
-  s: number;
-}
-/**
- * The wash: `n` bands from the foot up to `top` (fraction of the height), emitting `e0`·(1 − t)^0.9 in
- * green (linear) at fraction t of the washed zone; the paint drifts from the emerald toward a grey green
- * (the hue holds — no white — and the upper bands' daytime albedo comes nearer the pale stone's).
- */
-function wash(n: number, top: number, e0: number): Band[] {
-  return Array.from({ length: n }, (_, i) => {
-    const tm = (i + 0.5) / n;
-    const color = mixHex(GLOW, GLOW_PALE, tm ** 2.5);
-    const e = e0 * (1 - tm) ** 0.9;
-    return { f0: (top * i) / n, f1: (top * (i + 1)) / n, color, s: Math.min(15, e / lumG(color)) };
-  });
-}
-/** foot emission of the wash (linear green) */
-const E0 = 0.35;
-const WALL_WASH = wash(14, 0.45, E0);
-const TIER_WASH = wash(10, 0.45, E0 * 0.9);
-const TOWER_WASH = wash(8, 0.42, E0 * 0.9);
-const SMALL_WASH = wash(4, 0.4, E0 * 0.7);
-const RIB_WASH = wash(5, 0.42, E0 * 0.8);
+/** the curtain: its whole front shows, the light climbing 70 % of it */
+const WALL_WASH = wash(28, 0.7, E0);
+/** the tier walls: their upper parts show over the wall in front, so the light climbs all the way */
+const TIER_WASH = washFull(20, E0 * 0.9, 0.3);
+const TOWER_WASH = wash(16, 0.42, E0 * 0.9);
+const SMALL_WASH = wash(8, 0.4, E0 * 0.7);
+const RIB_WASH = wash(8, 0.42, E0 * 0.8);
+/** the bridge's flanks: three bands over the deck's edge and the parapet, fainter */
+const BRIDGE_WASH = wash(3, 1, E0 * 0.5);
 
 /** outward unit direction from a centre */
 function outward(p: V2, c: V2 = C): V2 {
@@ -260,11 +225,13 @@ function wallSeg(k: ProxyKit, a: V2, b: V2, o: SegOpts): number {
 
 /**
  * A bastion: a battered six-sided tower with a flat top and a low parapet, the wash round its foot;
- * `cap` > 0: a short faceted pyramid roof instead (the tall towers against the mountain).
+ * `cap` > 0: a short faceted pyramid roof instead (the tall towers against the mountain). Its top is at
+ * local y `top`; its foot on `base` (a lower tier's top) or the lowest ground under it.
  */
-function bastion(k: ProxyKit, p: V2, r: number, h: number, cap: number, base?: number, lod?: 0 | 1 | 2): void {
+function bastion(k: ProxyKit, p: V2, r: number, top: number, cap: number, base?: number, lod?: 0 | 1 | 2, shade = 0.97): void {
   const pts: V2[] = Array.from({ length: 8 }, (_, j): V2 => [p[0] + Math.cos((j / 8) * Math.PI * 2) * r, p[1] + Math.sin((j / 8) * Math.PI * 2) * r]);
   const b0 = base ?? Math.min(...[...pts, p].map(([x, z]) => k.ground(x, z))) - SINK;
+  const h = top - b0;
   const rr = (y: number) => r * (1 - 0.12 * (y / h));
   k.lathe(
     'weathered',
@@ -277,7 +244,7 @@ function bastion(k: ProxyKit, p: V2, r: number, h: number, cap: number, base?: n
       [rr(h) * 0.9, h + 0.02],
       [0, h + 0.02],
     ],
-    { at: [p[0], b0, p[1]], seg: 6, color: STONE_HI, shade: 0.97, lod },
+    { at: [p[0], b0, p[1]], seg: 6, color: STONE_HI, shade, lod },
   );
   for (const g of TOWER_WASH)
     k.lathe(
@@ -286,17 +253,17 @@ function bastion(k: ProxyKit, p: V2, r: number, h: number, cap: number, base?: n
         [rr(g.f0 * h) + 0.004, g.f0 * h],
         [rr(g.f1 * h) + 0.004, g.f1 * h],
       ],
-      { at: [p[0], b0, p[1]], seg: 6, color: g.color, glow: { strength: g.s, gate: 'night' }, lod: 0 },
+      { at: [p[0], b0, p[1]], seg: 6, color: g.color, glow: { strength: g.s, gate: 'night' }, lod: g.f0 > 0.1 ? 0 : 1 },
     );
   if (cap > 0) k.cone('weathered', rr(h) * 1.05, cap, { at: [p[0], b0 + h + 0.02, p[1]], seg: 4, rot: [0, 45, 0], color: ROOF[0], faceted: true, lod });
 }
 
 /** a box block (keep hall, gate tower): pale, its wash as slightly larger shells round its lower part */
-function block(k: ProxyKit, p: V2, w: number, d: number, h: number, yawDeg: number, y0: number, o: { roof?: 'flat' | 'gable'; color?: number; washBands?: Band[] } = {}): void {
+function block(k: ProxyKit, p: V2, w: number, d: number, h: number, yawDeg: number, y0: number, o: { roof?: 'flat' | 'gable'; color?: number; washBands?: Band[]; shade?: number } = {}): void {
   if (o.roof === 'gable')
-    k.house('weathered', 'slate', w, d, h, { at: [p[0], y0, p[1]], rot: [0, yawDeg, 0], seat: false, roof: 'gable', pitch: 58, overhang: 0.008, color: o.color ?? STONE, roofColor: ROOF[1] });
+    k.house('weathered', 'slate', w, d, h, { at: [p[0], y0, p[1]], rot: [0, yawDeg, 0], seat: false, roof: 'gable', pitch: 58, overhang: 0.008, color: o.color ?? STONE, shade: o.shade, roofColor: ROOF[1] });
   else {
-    k.box('weathered', w, h, d, { at: [p[0], y0, p[1]], rot: [0, yawDeg, 0], color: o.color ?? STONE });
+    k.box('weathered', w, h, d, { at: [p[0], y0, p[1]], rot: [0, yawDeg, 0], color: o.color ?? STONE, shade: o.shade });
     k.box('weathered', w + 0.03, 0.03, d + 0.03, { at: [p[0], y0 + h, p[1]], rot: [0, yawDeg, 0], color: STONE_LO, lod: 0 });
   }
   for (const g of o.washBands ?? SMALL_WASH)
@@ -304,30 +271,37 @@ function block(k: ProxyKit, p: V2, w: number, d: number, h: number, yawDeg: numb
 }
 
 /**
- * A fin blade (the film's great blades flanking the gate): a thin pale blade `t` thick, `len` long at its
- * foot (from the wall outwards along `dir`), rising to a point `h` above its foot; the wash on both flanks.
+ * A great blade flanking the gate (the film's): a broad, tapered pale fin standing out from the wall
+ * along `dir` — `t` thick at its foot, thinning to a knife edge — `len` long at its foot and rising to a
+ * point `h` above the wall's foot. It is seated on the curtain's retaining plinth: its outer end is pulled
+ * in until the ground under it lies no deeper than the plinth's foot (0.45 below the wall's foot), so it
+ * never hangs down the falling shelf; its base on the lowest ground under it. The wash on both flanks.
  */
 export function fin(k: ProxyKit, at: V2, dir: V2, len: number, h: number, t: number, shade = 1): void {
   const yaw = -Math.atan2(dir[1], dir[0]) * DEG;
-  const sec = (l0: number, l1: number, y: number, z0 = -t / 2, z1 = t / 2) => ({ outline: rectO(l0, l1, z0, z1), y });
-  const ends: V2[] = [-0.08, len].flatMap((l): V2[] => [-t / 2, t / 2].map((w): V2 => [at[0] + dir[0] * l - dir[1] * w, at[1] + dir[1] * l + dir[0] * w]));
-  const base = Math.min(...[...ends, at].map(([x, z]) => k.ground(x, z))) - SINK;
-  k.loft('weathered', [sec(-0.08, len, 0), sec(-0.08, len * 0.45, h * 0.55), sec(-0.06, len * 0.08, h * 0.92), sec(-0.05, -0.02, h)], { at: [at[0], base, at[1]], rot: [0, yaw, 0], color: STONE_HI, shade });
-  // the blade's outer edge at height y (on the first loft span, y ≤ 0.55 h)
-  const l1 = (y: number) => len - (len * 0.55 * y) / (h * 0.55);
+  const pt = (l: number, w: number): V2 => [at[0] + dir[0] * l - dir[1] * w, at[1] + dir[1] * l + dir[0] * w];
+  const gAt = k.ground(at[0], at[1]);
+  const lowAt = (l: number) => Math.min(k.ground(...pt(l, -t / 2)), k.ground(...pt(l, t / 2)));
+  let L = len;
+  while (L > 0.15 && lowAt(L) < gAt - 0.45) L -= 0.02;
+  const base = Math.min(gAt, lowAt(-0.08), lowAt(L), lowAt(L / 2)) - SINK;
+  const H = h + (gAt - SINK - base);
+  const sec = (l0: number, l1: number, y: number, hw: number) => ({ outline: rectO(l0, l1, -hw, hw), y });
+  k.loft('weathered', [sec(-0.08, L, 0, t / 2), sec(-0.08, L * 0.5, H * 0.5, t * 0.32), sec(-0.06, L * 0.1, H * 0.9, t * 0.14), sec(-0.05, -0.02, H, 0.01)], {
+    at: [at[0], base, at[1]],
+    rot: [0, yaw, 0],
+    color: STONE_HI,
+    shade,
+  });
+  // the flank's half thickness and the blade's outer edge at height y (first loft span, y ≤ 0.5 H)
+  const hw = (y: number) => t / 2 + (t * 0.32 - t / 2) * (y / (H * 0.5));
+  const l1 = (y: number) => L - L * 0.5 * (y / (H * 0.5));
   for (const g of TOWER_WASH) {
-    const y0 = g.f0 * h * 0.8;
-    const y1 = g.f1 * h * 0.8;
+    const y0 = g.f0 * H * 0.8;
+    const y1 = g.f1 * H * 0.8;
     for (const s of [-1, 1]) {
-      const z0 = s > 0 ? t / 2 + 0.001 : -t / 2 - 0.004;
-      const z1 = s > 0 ? t / 2 + 0.004 : -t / 2 - 0.001;
-      k.loft('emissiveGreen', [sec(-0.07, l1(y0), y0, z0, z1), sec(-0.07, l1(y1), y1, z0, z1)], {
-        at: [at[0], base, at[1]],
-        rot: [0, yaw, 0],
-        color: g.color,
-        glow: { strength: g.s, gate: 'night' },
-        lod: 0,
-      });
+      const skin = (y: number) => ({ outline: rectO(-0.07, l1(y), s > 0 ? hw(y) + 0.001 : -hw(y) - 0.004, s > 0 ? hw(y) + 0.004 : -hw(y) - 0.001), y });
+      k.loft('emissiveGreen', [skin(y0), skin(y1)], { at: [at[0], base, at[1]], rot: [0, yaw, 0], color: g.color, glow: { strength: g.s, gate: 'night' }, lod: 0 });
     }
   }
 }
@@ -338,27 +312,82 @@ function slit(k: ProxyKit, p: V3, n: V2, w = 0.012, h = 0.04, strength = 0.9): v
   k.box('emissiveGreen', 0.005, h, w, { at: [p[0] + n[0] * 0.002, p[1], p[2] + n[1] * 0.002], rot: [0, yaw, 0], color: GLOW_HOT, glow: { strength, gate: 'night' }, lod: 0 });
 }
 
-/** a closed polygon's segments, with the polygon's centroid */
+/** a closed polygon's segments */
 function ringSegs(poly: V2[]): { a: V2; b: V2 }[] {
   return poly.map((a, i) => ({ a, b: poly[(i + 1) % poly.length] }));
 }
 
+/** even-odd point-in-polygon test */
+function inside(poly: V2[], p: V2): boolean {
+  let c = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, zi] = poly[i];
+    const [xj, zj] = poly[j];
+    if (zi > p[1] !== zj > p[1] && p[0] < ((xj - xi) * (p[1] - zi)) / (zj - zi) + xi) c = !c;
+  }
+  return c;
+}
+
+/** parameters t ∈ (0, 1) where the segment a → b crosses the polygon's edges */
+function crossings(a: V2, b: V2, poly: V2[]): number[] {
+  const out: number[] = [];
+  const rx = b[0] - a[0];
+  const rz = b[1] - a[1];
+  for (const { a: c, b: d } of ringSegs(poly)) {
+    const sx = d[0] - c[0];
+    const sz = d[1] - c[1];
+    const den = rx * sz - rz * sx;
+    if (Math.abs(den) < 1e-12) continue;
+    const t = ((c[0] - a[0]) * sz - (c[1] - a[1]) * sx) / den;
+    const u = ((c[0] - a[0]) * rz - (c[1] - a[1]) * rx) / den;
+    if (t > 1e-6 && t < 1 - 1e-6 && u >= 0 && u <= 1) out.push(t);
+  }
+  return out;
+}
+
+/** a polygon moved `d` km toward its centre `c` (each vertex along its direction from the centre) */
+const shrink = (poly: V2[], c: V2, d: number): V2[] =>
+  poly.map((p): V2 => {
+    const o = outward(p, c);
+    return [p[0] - o[0] * d, p[1] - o[1] * d];
+  });
+
+/** a lower tier a terrace may stand on: its wall line, centre and top */
+interface Tier {
+  poly: V2[];
+  centre: V2;
+  top: number;
+}
+
 /**
  * A raised terrace (tier): its battered retaining wall round the polygon (pale, washed, a halo on the
- * level ground at its foot), its level top a pale infill slab; top at local y = `top`.
+ * level ground at its foot), its level top a pale infill slab; top at local y = `top`. Where the wall
+ * stands on a lower tier (`below`), it rises from that tier's top — its line is split where it crosses
+ * the lower tier's edge — so its wash and halo start at its visible foot (never inside the lower tier's
+ * infill); elsewhere it rises from the lowest ground under it.
  */
-function terrace(k: ProxyKit, poly: V2[], centre: V2, top: number, parapet: number, seed: number): void {
+function terrace(k: ProxyKit, poly: V2[], centre: V2, top: number, parapet: number, seed: number, below?: Tier): void {
   // the infill: a slab of the polygon (shrunk a little inside the wall line), from the ground to the top
-  const inner = poly.map((p): V2 => {
-    const d = outward(p, centre);
-    return [p[0] - d[0] * 0.05, p[1] - d[1] * 0.05];
-  });
+  const inner = shrink(poly, centre, 0.05);
   const g0 = Math.min(...poly.map(([x, z]) => k.ground(x, z))) - SINK;
   k.extrude('weathered', inner.map(([x, z]): V2 => [x - centre[0], z - centre[1]]), top - g0, { at: [centre[0], g0, centre[1]], color: STONE_LO });
+  // the lower tier's level top (inside its own wall)
+  const onTop = below ? shrink(below.poly, below.centre, 0.07) : [];
+  const lerp = (a: V2, b: V2, t: number): V2 => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
   for (const [i, { a, b }] of ringSegs(poly).entries()) {
-    const ga = Math.min(k.ground(a[0], a[1]), k.ground(b[0], b[1]));
-    const base = ga - SINK;
-    wallSeg(k, a, b, { h: top + parapet - base, t: 0.12, tt: 0.07, shade: 0.94 + 0.12 * k.r(seed + i), centre, glow: TIER_WASH, base, halo: true });
+    const cuts = [0, ...(below ? crossings(a, b, onTop) : []), 1].sort((p, q) => p - q);
+    for (let j = 0; j + 1 < cuts.length; j++) {
+      const pa = lerp(a, b, cuts[j]);
+      const pb = lerp(a, b, cuts[j + 1]);
+      if (Math.hypot(pb[0] - pa[0], pb[1] - pa[1]) < 0.03) continue;
+      const mid = lerp(a, b, (cuts[j] + cuts[j + 1]) / 2);
+      const raised = below !== undefined && inside(onTop, mid);
+      const base = raised ? below.top - SINK : Math.min(k.ground(pa[0], pa[1]), k.ground(pb[0], pb[1])) - SINK;
+      // the halo needs level ground 0.2 km out from the face: on a lower tier only where its top reaches
+      const o = outward(mid, centre);
+      const halo = !raised || [pa, pb].every((q) => inside(onTop, [q[0] + o[0] * 0.22, q[1] + o[1] * 0.22]));
+      wallSeg(k, pa, pb, { h: top + parapet - base, t: 0.12, tt: 0.07, shade: 0.94 + 0.12 * k.r(seed + i * 4 + j), centre, glow: TIER_WASH, base, halo });
+    }
   }
 }
 
@@ -381,30 +410,33 @@ export function buildCity(k: ProxyKit): void {
     if (i === 0 || i === WALL.length - 1) return;
     // two tall capped towers against the mountain (north-east), round bastions elsewhere
     const north = p[1] < C[1] - 0.6 && p[0] > C[0] - 0.4;
-    if (north) bastion(k, p, 0.17, 1.6 + 0.3 * k.r(60 + i), 0.45);
+    if (north) bastion(k, p, 0.17, 2.2 + 0.3 * k.r(60 + i), 0.45);
     else if (i % 2) bastion(k, p, 0.17, 1.15 + 0.15 * k.r(70 + i), 0);
   });
 
   // ---- tier 2 and the keep terrace (tier 3), stacked toward the mountain
-  terrace(k, T2, [T2.reduce((s, p) => s + p[0], 0) / T2.length, T2.reduce((s, p) => s + p[1], 0) / T2.length], T2_TOP, 0.14, 100);
-  terrace(k, T3, TOWER, T3_TOP, 0.16, 200);
-  // bastions on the terraces' corners (varied heights)
+  terrace(k, T2, T2_C, T2_TOP, 0.14, 100);
+  // the keep terrace's walls inside the second tier rise from its top
+  const t2top = shrink(T2, T2_C, 0.07);
+  terrace(k, T3, TOWER, T3_TOP, 0.16, 200, { poly: T2, centre: T2_C, top: T2_TOP });
+  // bastions on the terraces' corners (varied heights), on the second tier's top where they stand on it
   T2.forEach((p, i) => {
     if (i % 3 !== 1) return;
     bastion(k, p, 0.12, T2_TOP + 0.55 + 0.25 * k.r(110 + i), 0, undefined, 0);
   });
   T3.forEach((p, i) => {
     if (i % 4 !== 2) return;
-    bastion(k, p, 0.11, T3_TOP + 0.6 + 0.3 * k.r(210 + i), 0, undefined, 0);
+    const onT2 = inside(shrink(t2top, T2_C, 0.12), p);
+    bastion(k, p, 0.11, T3_TOP + 0.6 + 0.3 * k.r(210 + i), 0, onT2 ? T2_TOP - SINK : undefined, 0);
   });
-  // keep blocks on the keep terrace round the Tower: heavy halls of uneven height
+  // keep blocks on the keep terrace round the Tower: heavy halls of uneven height, weathered unevenly
   for (let j = 0; j < 7; j++) {
     const a = (j / 7) * Math.PI * 2 + 0.4 + 0.25 * (k.r(300 + j) - 0.5);
-    const rr = 0.8 + 0.05 * k.r(310 + j);
+    const rr = 0.64 + 0.05 * k.r(310 + j);
     const p: V2 = [TOWER[0] + Math.cos(a) * rr, TOWER[1] + Math.sin(a) * rr];
     const yawDeg = -a * DEG + 90;
     const h = 0.32 + 0.38 * k.r(320 + j);
-    block(k, p, 0.24 + 0.12 * k.r(330 + j), 0.16, h, yawDeg, T3_TOP - SINK, { roof: j % 3 === 1 ? 'gable' : 'flat', color: j % 2 ? STONE : STONE_HI });
+    block(k, p, 0.24 + 0.12 * k.r(330 + j), 0.16, h, yawDeg, T3_TOP - SINK, { roof: j % 3 === 1 ? 'gable' : 'flat', color: j % 2 ? STONE : STONE_HI, shade: 0.84 + 0.16 * k.r(350 + j) });
     if (k.r(340 + j) < 0.5) slit(k, [p[0] + Math.cos(a) * 0.082, T3_TOP + h * 0.6, p[1] + Math.sin(a) * 0.082], [Math.cos(a), Math.sin(a)]);
   }
 
@@ -412,10 +444,10 @@ export function buildCity(k: ProxyKit): void {
   // towers of different heights behind them
   const side: V2 = [GATE_OUT[1], -GATE_OUT[0]];
   for (const s of [-1, 1]) {
-    const at: V2 = [GATE[0] + side[0] * s * 0.19, GATE[1] + side[1] * s * 0.19];
-    fin(k, at, GATE_OUT, 0.6, 2.4, 0.08, 1.05);
-    const tp: V2 = [GATE[0] + side[0] * s * 0.34 - GATE_OUT[0] * 0.12, GATE[1] + side[1] * s * 0.34 - GATE_OUT[1] * 0.12];
-    block(k, tp, 0.22, 0.24, s > 0 ? 1.55 : 1.3, -Math.atan2(side[1], side[0]) * DEG, k.ground(tp[0], tp[1]) - SINK, { color: STONE_HI, washBands: TOWER_WASH });
+    const at: V2 = [GATE[0] + side[0] * s * 0.24, GATE[1] + side[1] * s * 0.24];
+    fin(k, at, GATE_OUT, 0.45, 2.5, 0.2, 1.05);
+    const tp: V2 = [GATE[0] + side[0] * s * 0.36 - GATE_OUT[0] * 0.12, GATE[1] + side[1] * s * 0.36 - GATE_OUT[1] * 0.12];
+    block(k, tp, 0.22, 0.24, s > 0 ? 1.9 : 1.6, -Math.atan2(side[1], side[0]) * DEG, k.ground(tp[0], tp[1]) - SINK, { color: STONE_HI, washBands: TOWER_WASH, shade: s > 0 ? 0.95 : 0.88 });
   }
   const gy = k.ground(GATE[0], GATE[1]);
   const gyaw = -Math.atan2(side[1], side[0]) * DEG;
@@ -440,18 +472,9 @@ export function buildCity(k: ProxyKit): void {
     const d = outward(p);
     return [p[0] - d[0] * 0.2, p[1] - d[1] * 0.2];
   });
-  const t2out = T2.map((p): V2 => {
-    const d = outward(p, TOWER);
-    return [p[0] + d[0] * 0.1, p[1] + d[1] * 0.1];
-  });
-  const t3out = T3.map((p): V2 => {
-    const d = outward(p, TOWER);
-    return [p[0] + d[0] * 0.08, p[1] + d[1] * 0.08];
-  });
-  const t2in = T2.map((p): V2 => {
-    const d = outward(p, TOWER);
-    return [p[0] - d[0] * 0.08, p[1] - d[1] * 0.08];
-  });
+  const t2out = shrink(T2, T2_C, -0.1);
+  const t3out = shrink(T3, TOWER, -0.08);
+  const t2in = shrink(T2, T2_C, 0.08);
   const house = (i: number, x: number, z: number, u: number, y: number | null, lift: number) => {
     const w = 0.09 + 0.09 * u;
     const d = 0.07 + 0.05 * k.r(100 + i);
@@ -561,28 +584,31 @@ export function buildBridge(k: ProxyKit, padY: number): void {
     clean.push(q);
   }
   elevation(k, 'weathered', a, b, [...outline, ...clean], width, { color: BRIDGE_STONE, shade: 0.95 });
-  // parapet kerbs, their inner faces lit green from below (the light of the river and the gate)
+  // pale parapets, and the faint corpse-light washing up the bridge's flanks from below (three bands
+  // over the deck's edge and the parapet's outer face, night): the bridge reads as a pale lit line
+  // against the dark spur
+  const band = (y0: number, y1: number): V2[] => [
+    [0, deckY(0) + y0],
+    [L, deckY(L) + y0],
+    [L, deckY(L) + y1],
+    [0, deckY(0) + y1],
+  ];
+  const line = (off: number): [V2, V2] => [
+    [a[0] - dir[1] * off, a[1] + dir[0] * off],
+    [b[0] - dir[1] * off, b[1] + dir[0] * off],
+  ];
   for (const s of [-1, 1]) {
-    const off = (width / 2 - 0.014) * s;
-    const pa: V2 = [a[0] - dir[1] * off, a[1] + dir[0] * off];
-    const pb: V2 = [b[0] - dir[1] * off, b[1] + dir[0] * off];
-    elevation(
-      k,
-      'weathered',
-      pa,
-      pb,
-      [
-        [0, deckY(0) - 0.01],
-        [L, deckY(L) - 0.01],
-        [L, deckY(L) + 0.028],
-        [0, deckY(0) + 0.028],
-      ],
-      0.026,
-      { color: BRIDGE_STONE, shade: 0.88, lod: 0 },
-    );
+    const [pa, pb] = line((width / 2 - 0.015) * s);
+    elevation(k, 'weathered', pa, pb, band(-0.01, 0.045), 0.03, { color: 0xb2b6af, shade: 0.95, lod: 0 });
+    const [qa, qb] = line((width / 2 + 0.0025) * s);
+    for (const g of BRIDGE_WASH) {
+      const y0 = -deck + (deck + 0.045) * g.f0;
+      const y1 = -deck + (deck + 0.045) * g.f1;
+      elevation(k, 'emissiveGreen', qa, qb, band(y0, y1), 0.003, { color: g.color, glow: { strength: g.s, gate: 'night' }, lod: 0 });
+    }
   }
-  // statues along both parapets: plinth, a hunched cloaked body leaning in over the road, a hooded
-  // head; a dim green glint under the hood (LOD0)
+  // statues along both parapets: a plinth faintly lit green (the light pooling at their feet), a hunched
+  // cloaked body leaning in over the road, a hooded head; a dim green glint under the hood (LOD0)
   const ns = Math.floor(L / 0.3);
   for (let i = 1; i < ns; i++) {
     const u = (i / ns) * L;
@@ -592,7 +618,7 @@ export function buildBridge(k: ProxyKit, padY: number): void {
       const px = a[0] + dir[0] * u - dir[1] * off;
       const pz = a[1] + dir[1] * u + dir[0] * off;
       const yaw = -Math.atan2(dir[1], dir[0]) * DEG;
-      k.box('weathered', 0.06, 0.03, 0.06, { at: [px, y, pz], rot: [0, yaw, 0], color: PLINTH, lod: 0 });
+      k.box('emissiveGreen', 0.06, 0.03, 0.06, { at: [px, y, pz], rot: [0, yaw, 0], color: GLOW, glow: { strength: SMALL_WASH[1].s, gate: 'night' }, lod: 0 });
       // the body: a tapering hunched cloak (a 5-sided cone, leaning toward the road)
       const lean: V3 = [8 * dir[0] * s, 0, -8 * dir[1] * s];
       k.cylinder('weathered', 0.012, 0.03, 0.085, { at: [px, y + 0.03, pz], rot: lean, seg: 5, color: STATUE, lod: 0 });

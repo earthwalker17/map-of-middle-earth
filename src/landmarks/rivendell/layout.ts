@@ -41,8 +41,8 @@ export const SOUTH_H = 2.8;
  * sunlit north wall, one across the gorge on the south wall, two smaller shelves further up the valley */
 export const LEDGE_N = { at: [0.15, -1.62] as V2, r: 0.9, h: 1.25 };
 export const LEDGE_S = { at: [-1.6, 1.95] as V2, r: 0.85, h: 0.95 };
-export const LEDGE_NE = { at: [2.25, -2.2] as V2, r: 0.45, h: 1.7 };
-export const LEDGE_SE = { at: [1.3, 0.95] as V2, r: 0.42, h: 1.5 };
+export const LEDGE_NE = { at: [2.25, -2.25] as V2, r: 0.6, h: 1.7 };
+export const LEDGE_SE = { at: [1.35, 1.1] as V2, r: 0.6, h: 1.3 };
 /**
  * the pavilion on a rock spur east of the main ledge at the ledge's level, across the ravine of a
  * waterfall (a notch cut into the wall between them): the thin bridge leaps the ravine

@@ -20,8 +20,8 @@ export const PAD_FALL = 0.4;
 /** the pad's centre (a little south of the city's, so the shelf runs on in front of the gate) */
 export const PAD_C: V2 = [C[0], C[1] + 0.2];
 
-/** the Tower of the Moon (centre of its base), a little behind the city's middle, away from the gate */
-export const TOWER: V2 = [C[0] + 0.18, C[1] - 0.32];
+/** the Tower of the Moon (centre of its base): behind the city's middle, up-slope to the north-east */
+export const TOWER: V2 = [C[0] + 0.22, C[1] - 0.4];
 
 /** the outer wall, an open path from the gate's east jamb round the city to its west jamb (local km) */
 export const WALL: V2[] = (
@@ -55,13 +55,16 @@ function polar(c: V2, r: number, n: number, wobble: number, phase: number): V2[]
 }
 
 /**
- * The tiers stacked toward the mountain (north-east): the second terrace ring (top 0.85 above the shelf, its parapet over the curtain)
- * and the keep terrace round the Tower (top 1.45); the Tower stands on the keep terrace.
+ * The tiers stacked up toward the mountain (north-east): the second terrace ring (top 1.3 above the shelf,
+ * its parapet well over the curtain) and the keep terrace round the Tower (top 2.1), set back toward the
+ * north-east inside it so a broad step of the second tier shows in front; the Tower stands on the keep
+ * terrace. Walls of the keep terrace that stand inside the second tier rise from its top (city.ts).
  */
-export const T2: V2[] = polar([C[0] + 0.12, C[1] - 0.23], 1.05, 10, 0.05, 0.3);
-export const T2_TOP = 0.85;
-export const T3: V2[] = polar(TOWER, 0.92, 9, 0.04, 0.1);
-export const T3_TOP = 1.45;
+export const T2_C: V2 = [C[0] + 0.12, C[1] - 0.23];
+export const T2: V2[] = polar(T2_C, 1.05, 10, 0.05, 0.3);
+export const T2_TOP = 1.3;
+export const T3: V2[] = polar(TOWER, 0.86, 9, 0.04, 0.1);
+export const T3_TOP = 2.1;
 
 /** the far end of the bridge on the south bank */
 export const BRIDGE_END: V2 = [GATE[0] - 0.6, GATE[1] + 4.6];

@@ -1,5 +1,6 @@
 import type { ProxyKit } from '../kit/ProxyKit.ts';
 import type { V2 } from '../records.ts';
+import { E0, wash } from './wash.ts';
 
 /** the Tower's stone: pale, ghostly grey with a faint green cast (moonlit it reads bone-white) */
 export const TOWER_STONE = 0xb2b6af;
@@ -66,6 +67,8 @@ export interface TowerSpec {
   keepH: number;
   /** shaft height above the keep, km */
   shaftH: number;
+  /** the needle's height above the crown's lamp, km */
+  spireH: number;
 }
 
 /** corpse-light greens: the shaft slits (dim), the lamp room (the one strong light, burning always) */
@@ -78,9 +81,10 @@ const LIGHT = 0x3cf08a;
  * rises and tapering, broken by three band rings; then the lamp room — a green-burning core behind eight
  * piers that twist 40° round it — and over it the crown: eight blades sweeping 80° round the axis as they
  * rise, swelling out and then drawing in to a faceted needle, an open spiral of thorns round a second,
- * smaller lamp (nothing like Barad-dûr's fork or Orthanc's four horns). The corpse-light: dim green slits
- * between the fins (dusk gate: a quarter by day), the lamp room always, the brightest light of the city.
- * Returns local heights for the caller.
+ * smaller lamp (nothing like Barad-dûr's fork or Orthanc's four horns). The corpse-light: the wash up the
+ * keep and the lower third of the shaft (wash.ts bands following the fins, night), dim green slits between
+ * the fins (night), the lamp room — the brightest light of the city — burning at a quarter by day (dusk
+ * gate). Returns local heights for the caller.
  */
 export function buildTower(k: ProxyKit, s: TowerSpec): { crownY: number; topY: number; shaftTop: number } {
   const [x, z] = s.at;
@@ -107,6 +111,41 @@ export function buildTower(k: ProxyKit, s: TowerSpec): { crownY: number; topY: n
     }),
     { at: [x, y1, z], color: TOWER_STONE },
   );
+  // the wash: from the keep's foot up over the keep and the lower third of the shaft, skins a hair proud
+  // of the fins (twisted and scaled with the shaft), the strength falling with height
+  const keepR = (y: number): number => {
+    const f = y / s.keepH;
+    if (f <= 0.85) return 1.55 + (1.42 - 1.55) * (f / 0.85);
+    if (f <= 0.92) return 1.42 + (1.5 - 1.42) * ((f - 0.85) / 0.07);
+    return 1.5 + (1.3 - 1.5) * ((f - 0.92) / 0.08);
+  };
+  const zone = s.keepH + s.shaftH / 3;
+  const W = wash(16, 1, E0 * 0.55);
+  for (const g of W) {
+    const ya = g.f0 * zone;
+    const yb = g.f1 * zone;
+    const glow = { strength: g.s, gate: 'night' as const };
+    const lod = g.f0 < 0.2 ? 1 : 0;
+    // the keep part of the band (its outline follows the keep's batter; the band ends split at its kinks)
+    if (ya < s.keepH) {
+      const top = Math.min(yb, s.keepH);
+      const ys = [ya, ...[0.85, 0.92].map((f) => f * s.keepH).filter((y) => y > ya && y < top), top];
+      k.loft(
+        'emissiveGreen',
+        ys.map((y) => ({ outline: finStar(s.r * keepR(y) * 1.012), y })),
+        { at: [x, base, z], color: g.color, glow, lod },
+      );
+    }
+    if (yb > s.keepH) {
+      const t0 = (Math.max(ya, s.keepH) - s.keepH) / s.shaftH;
+      const t1 = (yb - s.keepH) / s.shaftH;
+      k.loft(
+        'emissiveGreen',
+        [t0, t1].map((t) => ({ outline: finStar(s.r * 1.012), y: t * s.shaftH, rotDeg: twistAt(t), scale: scaleAt(t) })),
+        { at: [x, y1, z], color: g.color, glow, lod },
+      );
+    }
+  }
   // band rings breaking the shaft (a little proud of the fin tips, twisted with it)
   for (const t of [0.37, 0.64, 0.87]) {
     const dt = 0.05 / s.shaftH;
@@ -134,7 +173,7 @@ export function buildTower(k: ProxyKit, s: TowerSpec): { crownY: number; topY: n
         const t = t0 + ((t1 - t0) * i) / m;
         return { outline: ring(s.r * CORE), y: t * s.shaftH, rotDeg: twistAt(t) + 11.25, scale: scaleAt(t) };
       }),
-      { at: [x, y1, z], color: GLOW_CORE, glow: { strength: 0.35, gate: 'dusk' } },
+      { at: [x, y1, z], color: GLOW_CORE, glow: { strength: 0.35, gate: 'night' } },
     );
   }
   // ---- the lamp room: a green core behind eight piers twisting 40° round it
@@ -158,7 +197,7 @@ export function buildTower(k: ProxyKit, s: TowerSpec): { crownY: number; topY: n
       { outline: ring(cr * 0.78), y: 0.05 },
       { outline: ring(cr * 0.82), y: LH + 0.04 },
     ],
-    { at: [x, shaftTop, z], color: GLOW_LAMP, glow: { strength: 1.1 } },
+    { at: [x, shaftTop, z], color: GLOW_LAMP, glow: { strength: 1.1, gate: 'dusk' } },
   );
   const PIERS = 8;
   for (let j = 0; j < PIERS; j++) {
@@ -172,7 +211,7 @@ export function buildTower(k: ProxyKit, s: TowerSpec): { crownY: number; topY: n
   // magic lights in the lamp room (always on): the one strong accent
   for (let j = 0; j < 4; j++) {
     const [px, pz] = turned(45 + 90 * j, -tw, cr * 0.84);
-    k.light([x + px, shaftTop + LH * 0.55, z + pz], { color: LIGHT, intensity: 1.0, radius: 0.04, kind: 'magic' });
+    k.light([x + px, shaftTop + LH * 0.55, z + pz], { color: LIGHT, intensity: 1.0, radius: 0.04, kind: 'magic', gate: 'dusk' });
   }
   // ---- the crown: a cap ring over the lamp room, then eight twisted blades and a faceted needle
   const capY = shaftTop + LH;
@@ -202,9 +241,9 @@ export function buildTower(k: ProxyKit, s: TowerSpec): { crownY: number; topY: n
     k.loft('weathered', secs, { at: [x, crownY, z], color: big ? TOWER_STONE : CROWN_STONE, lod: big ? 1 : 0 });
   }
   // the second lamp inside the crown and the needle rising out of it
-  k.cone('emissiveGreen', cr * 0.45, CH * 0.5, { at: [x, crownY, z], seg: 8, color: GLOW_LAMP, glow: { strength: 0.9 } });
-  const spireH = 1.1;
+  k.cone('emissiveGreen', cr * 0.45, CH * 0.5, { at: [x, crownY, z], seg: 8, color: GLOW_LAMP, glow: { strength: 0.9, gate: 'dusk' } });
+  const spireH = s.spireH;
   k.cone('weathered', cr * 0.3, spireH + CH * 0.5, { at: [x, crownY + CH * 0.35, z], seg: 6, rot: [0, tw, 0], color: TOWER_STONE, faceted: true });
-  k.light([x, crownY + CH * 0.3, z], { color: LIGHT, intensity: 0.8, radius: 0.05, kind: 'magic' });
+  k.light([x, crownY + CH * 0.3, z], { color: LIGHT, intensity: 0.8, radius: 0.05, kind: 'magic', gate: 'dusk' });
   return { crownY, topY: crownY + CH * 0.35 + spireH + CH * 0.5, shaftTop };
 }

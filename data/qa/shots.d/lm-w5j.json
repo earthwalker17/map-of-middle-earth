@@ -1,20 +1,20 @@
 {
   "version": 1,
-  "notes": "S3 W5-J review shots: Rivendell from above (the gorge, the ledges, the halls), Rivendell's hero at dusk (windows and lamps on), Minas Morgul's hero by day (the pale stone, the wash's daytime albedo), the Black Gate's hero at dusk (braziers). Landmark bookmarks (rivendell / black-gate / minas-morgul -close / -wide) live in the landmark definitions.",
+  "notes": "S3 W5-J review shots: Rivendell from above (the gorge, the ledges, the halls), Rivendell's hero at dusk (windows and lamps on), Minas Morgul's hero by day (the pale stone, the wash's daytime albedo), the Black Gate's hero at night (braziers). Landmark bookmarks (rivendell / black-gate / minas-morgul -close / -wide) live in the landmark definitions.",
   "shots": [
     {
       "id": "w5j-riv-over",
-      "tod": 10.5,
+      "tod": 16.3,
       "dayOfYear": 298,
       "camera": { "orbit": { "place": "rivendell", "distanceKm": 9, "elevationDeg": 42, "azimuthDeg": 200, "fov": 40, "lift": 0.8, "aimKm": [0.8, 0.6] } },
       "compare": ["reference/concept-art/rivendell/rivendell-alan-lee.png", "reference/bigatures/rivendell/rivendell-weta-mini.png"],
-      "note": "from above the south rim: the gorge, both ledges with the halls, the cantilevered terraces, the ravine bridge, the sheer walls, the golden woods"
+      "note": "from above the south rim: the gorge, both ledges with the halls, the shelf halls on their platforms, the cantilevered terraces, the ravine bridge, the sheer walls and their wet gullies, the golden woods"
     },
     {
       "id": "w5j-riv-dusk",
       "tod": 17.4,
       "dayOfYear": 298,
-      "camera": { "orbit": { "place": "rivendell", "distanceKm": 10, "elevationDeg": 19, "azimuthDeg": 248, "fov": 24, "lift": 0.5, "aimKm": [0.8, 1.2] } },
+      "camera": { "orbit": { "place": "rivendell", "distanceKm": 9.5, "elevationDeg": 11, "azimuthDeg": 256, "fov": 21, "lift": 1.0, "aimKm": [2.4, 1.4] } },
       "compare": ["reference/film/rivendell/rivendell-valley-fotr.jpg"],
       "note": "the hero framing at dusk: warm windows, lamps on the balustrades, the court and the pavilions (night gate)"
     },
@@ -22,17 +22,17 @@
       "id": "w5j-mm-day",
       "tod": 13.0,
       "dayOfYear": 78,
-      "camera": { "orbit": { "place": "minas-morgul", "distanceKm": 14, "elevationDeg": 6, "azimuthDeg": 203, "fov": 44, "lift": 3.2, "aimKm": [0.3, -1.35] } },
+      "camera": { "orbit": { "place": "minas-morgul", "distanceKm": 14, "elevationDeg": 6, "azimuthDeg": 203, "fov": 48, "lift": 2.4, "aimKm": [0.2, -1.8] } },
       "compare": ["reference/concept-art/minas-morgul/nasmith-tower-of-the-moon.jpg"],
-      "note": "the hero framing by day: the pale ghostly stone, the tiers stacked against the mountain, the wash's daytime albedo (a damp green-grey foot, no emerald), the twisted crown"
+      "note": "the hero framing by day: the pale ghostly stone, the tiers stacked against the mountain, the wash's daytime albedo (a dark green foot until the glow material keeps the stone's albedo by day), the lamp room at a quarter, the twisted crown"
     },
     {
-      "id": "w5j-bg-dusk",
+      "id": "w5j-bg-night",
       "tod": 20.6,
       "dayOfYear": 200,
-      "camera": { "orbit": { "place": "black-gate", "distanceKm": 36, "elevationDeg": -4, "azimuthDeg": 316, "fov": 40, "lift": 5.5 } },
+      "camera": { "orbit": { "place": "black-gate", "distanceKm": 26.2, "elevationDeg": -11.5, "azimuthDeg": 320.5, "fov": 48, "lift": 5.0 } },
       "compare": ["reference/concept-art/black-gate/howe-the-black-gates.jpg"],
-      "note": "the hero framing at dusk: the braziers on the gate towers, the wall walk and the Towers' lanterns, the lit slits"
+      "note": "the hero framing at night: the braziers on the gate towers, the wall walk and the Towers' lanterns, the lit slits"
     }
   ]
 }

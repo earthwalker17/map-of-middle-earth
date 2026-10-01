@@ -3,7 +3,7 @@ import type { ProxyKit } from '../kit/ProxyKit.ts';
 import { SINK } from '../kit/ProxyKit.ts';
 import type { ForestDecl, TreeDecl, V2 } from '../types.ts';
 import { FLOOR, LEDGE_N, LEDGE_NE, LEDGE_S, LEDGE_SE, PAVILION, RAVINE_X, STREAM_WE } from './layout.ts';
-import { archedBridge, BRONZE, deck, elvenTower, gallery, hall, LAMP, offsetPath, pavilion, STONE2, TRIM, VERDIGRIS } from './parts.ts';
+import { archedBridge, BRONZE, deck, elvenTower, gallery, hall, type HallOpts, LAMP, offsetPath, pavilion, STONE2, TRIM, VERDIGRIS } from './parts.ts';
 
 /**
  * The halls, towers, court, galleries, terraces, bridge, rock and trees of Rivendell (local km, heading
@@ -21,6 +21,8 @@ import { archedBridge, BRONZE, deck, elvenTower, gallery, hall, LAMP, offsetPath
 const SEED = hashString('rivendell-halls');
 /** grey rock of the gorge walls, a little warm (matches the terrain's rock; lit gold by the low sun) */
 const ROCK = 0x5d605c;
+/** the dark, wet rock of the gullies under the falls */
+const ROCK_WET = 0x34383a;
 /** autumn crowns: varied golden ochres, a few still green-gold */
 const AUTUMN = [0xc9a040, 0xd4ae4c, 0xb8922f, 0xc69838, 0xa8862e, 0xdcbc5c, 0x9c963e];
 /** feathery birches: pale gold */
@@ -34,10 +36,21 @@ const onS = (u: number, v: number): V2 => [LEDGE_S.at[0] + u, LEDGE_S.at[1] + v]
 
 /** halls on the two up-valley shelves: position, yaw, width, lit window slots per side, roof */
 const SHELF_HALLS: { at: V2; yaw: number; w: number; lit: number; roof: number }[] = [
-  { at: [LEDGE_NE.at[0] - 0.12, LEDGE_NE.at[1] + 0.12], yaw: -15, w: 0.3, lit: 2, roof: VERDIGRIS },
-  { at: [LEDGE_SE.at[0] + 0.05, LEDGE_SE.at[1] - 0.1], yaw: 162, w: 0.3, lit: 2, roof: BRONZE },
-  { at: [LEDGE_SE.at[0] - 0.22, LEDGE_SE.at[1] + 0.12], yaw: 170, w: 0.22, lit: 1, roof: VERDIGRIS },
+  { at: [LEDGE_NE.at[0] - 0.05, LEDGE_NE.at[1] - 0.08], yaw: -15, w: 0.3, lit: 2, roof: VERDIGRIS },
+  { at: [LEDGE_SE.at[0] + 0.05, LEDGE_SE.at[1] - 0.05], yaw: 162, w: 0.3, lit: 2, roof: BRONZE },
+  { at: [LEDGE_SE.at[0] - 0.22, LEDGE_SE.at[1] + 0.14], yaw: 170, w: 0.22, lit: 1, roof: VERDIGRIS },
 ];
+
+/**
+ * The back terraces of the main ledge: (u, v) from its centre, size, yaw, roof. Each slides toward the
+ * ledge's middle (to no less than SLIDE_MIN of the way out) until it stands where the wall has only begun
+ * to rise (buildNorthLedge); KEEP_OUT covers the whole slide.
+ */
+const BACK_TERRACES = [
+  { u: -0.36, v: -0.8, w: 0.5, d: 0.3, yaw: 4, roof: VERDIGRIS },
+  { u: 0.42, v: -0.74, w: 0.44, d: 0.28, yaw: -10, roof: BRONZE },
+] as const;
+const SLIDE_MIN = 0.55;
 
 export function buildRivendell(k: ProxyKit): void {
   buildNorthLedge(k);
@@ -45,9 +58,9 @@ export function buildRivendell(k: ProxyKit): void {
   // the two up-valley shelves: their lips, halls, a tower and a pavilion each
   ledgeLip(k, LEDGE_NE, 120, 250);
   ledgeLip(k, LEDGE_SE, 290, 410);
-  for (const h of SHELF_HALLS) hall(k, { at: h.at, yaw: h.yaw, w: h.w, d: 0.15, h: 0.12, windows: h.lit, roof: h.roof });
-  pavilion(k, [LEDGE_NE.at[0] - 0.25, LEDGE_NE.at[1] + 0.3], 0.035, false);
-  pavilion(k, [LEDGE_SE.at[0] - 0.05, LEDGE_SE.at[1] - 0.32], 0.035, false, undefined, BRONZE);
+  for (const h of SHELF_HALLS) terraceHall(k, h.at, { yaw: h.yaw, w: h.w, d: 0.15, h: 0.12, windows: h.lit, roof: h.roof });
+  pavilion(k, [LEDGE_NE.at[0] - 0.3, LEDGE_NE.at[1] + 0.05], 0.035, false);
+  pavilion(k, [LEDGE_SE.at[0] + 0.2, LEDGE_SE.at[1] - 0.15], 0.035, false, undefined, BRONZE);
   elvenTower(k, [LEDGE_NE.at[0] + 0.05, LEDGE_NE.at[1] - 0.25], 0.034, 0.36, { lit: 2, roof: VERDIGRIS });
   elvenTower(k, [LEDGE_SE.at[0] + 0.25, LEDGE_SE.at[1] + 0.05], 0.032, 0.3, { lit: 2 });
   // the pavilion on its rock spur and the thin, level bridge to it across the waterfall's ravine
@@ -73,6 +86,50 @@ export function buildRivendell(k: ProxyKit): void {
 
 /** a ledge: its centre, radius and level (layout.ts) */
 type Ledge = { at: V2; r: number; h: number };
+
+/** the four corners of a w × d rectangle turned by `yaw` (deg), relative to its centre */
+function corners(w: number, d: number, yaw: number): V2[] {
+  const cy = Math.cos((yaw * Math.PI) / 180);
+  const sy = Math.sin((yaw * Math.PI) / 180);
+  const c = (a: number, b: number): V2 => [a * cy + b * sy, -a * sy + b * cy];
+  return [c(-w / 2, -d / 2), c(w / 2, -d / 2), c(w / 2, d / 2), c(-w / 2, d / 2)];
+}
+
+/** the ground's relief (max − min) under an outline placed at `c` */
+function relief(k: ProxyKit, c: V2, outline: V2[]): number {
+  const gs = [...outline.map(([x, z]) => k.ground(c[0] + x, c[1] + z)), k.ground(c[0], c[1])];
+  return Math.max(...gs) - Math.min(...gs);
+}
+
+/**
+ * A hall on a built terrace: a low cream platform (its foot following the ground, its downhill face a
+ * retaining wall) with the hall standing on its level top — never a turf wedge hanging down the slope.
+ * The spot is searched within 0.25 km of `at` for the flattest ground (relief ≤ 0.12 under the platform);
+ * where there is none the hall is left out rather than raised on a pedestal.
+ */
+function terraceHall(k: ProxyKit, at: V2, o: Omit<HallOpts, 'at' | 'floor'>): void {
+  const outline = corners(o.w + 0.06, o.d + 0.06, o.yaw);
+  let best: { c: V2; r: number } | null = null;
+  for (const [ring, n] of [
+    [0, 1],
+    [0.08, 8],
+    [0.16, 12],
+    [0.25, 16],
+  ] as const) {
+    for (let j = 0; j < n; j++) {
+      const a = (j / n) * Math.PI * 2;
+      const c: V2 = [at[0] + Math.cos(a) * ring, at[1] + Math.sin(a) * ring];
+      const r = relief(k, c, outline);
+      if (!best || r < best.r - 1e-6) best = { c, r };
+    }
+    if (best && best.r <= 0.05) break;
+  }
+  if (!best || best.r > 0.12) return;
+  const c = best.c;
+  const top = Math.max(...outline.map(([x, z]) => k.ground(c[0] + x, c[1] + z)), k.ground(c[0], c[1])) + 0.03;
+  k.extrude('stone', outline, 0.03, { at: [c[0], 0, c[1]], followGround: true, color: STONE2 });
+  hall(k, { ...o, at: c, floor: top });
+}
 
 /** points on an arc round a ledge centre, clockwise from compass bearing `from` to `to`, radius `rim` */
 function arc(l: Ledge, from: number, to: number, rim: number, n: number): V2[] {
@@ -181,7 +238,6 @@ function cantilevers(k: ProxyKit, l: Ledge, b0: number, b1: number, out: number,
   });
   cols2.push(atBearing(l, b0 + 6, q0 + out * 1.3 - 0.015));
   deck(k, lo, l.h - drop + 0.012, [0, 1, 2], cols2);
-  return;
 }
 
 /** the Last Homely House and its court on the north ledge */
@@ -197,24 +253,14 @@ function buildNorthLedge(k: ProxyKit): void {
   hall(k, { at: onN(0.66, 0.12), yaw: -25, w: 0.3, d: 0.17, h: 0.15, windows: 1, loggia: true });
   // terraces stepping up the ledge's back where the wall begins to rise: platforms of cream masonry
   // (their downhill faces retaining walls) with halls on them
-  for (const [u, v, w, d, yaw, roof] of [
-    [-0.36, -0.8, 0.5, 0.3, 4, VERDIGRIS],
-    [0.42, -0.74, 0.44, 0.28, -10, BRONZE],
-  ] as const) {
-    const cy = Math.cos((yaw * Math.PI) / 180);
-    const sy = Math.sin((yaw * Math.PI) / 180);
-    const corner = (a: number, b: number): V2 => [a * cy + b * sy, -a * sy + b * cy];
-    const outline = [corner(-w / 2, -d / 2), corner(w / 2, -d / 2), corner(w / 2, d / 2), corner(-w / 2, d / 2)];
+  for (const { u, v, w, d, yaw, roof } of BACK_TERRACES) {
+    const outline = corners(w, d, yaw);
     // slide it toward the ledge's middle until it stands where the wall has only begun to rise (a
     // platform 0.05–0.2 above the ledge on its uphill side, never a tower up the cliff)
     let f = 1;
-    const relief = (c: V2) => {
-      const gs = [...outline.map(([x, z]) => k.ground(c[0] + x, c[1] + z)), k.ground(c[0], c[1])];
-      return Math.max(...gs) - Math.min(...gs);
-    };
-    while (f > 0.55 && relief(onN(u * f, v * f)) > 0.18) f -= 0.03;
+    while (f > SLIDE_MIN && relief(k, onN(u * f, v * f), outline) > 0.18) f -= 0.03;
     const c = onN(u * f, v * f);
-    if (relief(c) > 0.18) continue;
+    if (relief(k, c, outline) > 0.18) continue;
     const top = Math.max(...outline.map(([x, z]) => k.ground(c[0] + x, c[1] + z))) + 0.05;
     k.extrude('stone', outline, 0.05, { at: [c[0], 0, c[1]], followGround: true, color: STONE2 });
     hall(k, { at: c, yaw, w: w * 0.8, d: d * 0.66, h: 0.17, rise: 0.19, windows: 2, roof, floor: top });
@@ -282,30 +328,44 @@ function buildSouthLedge(k: ProxyKit): void {
 }
 
 /**
- * The gorge's sheer walls: faceted rock faces (kit cliffs) seated at the foot of the stamped scarps on
- * both sides (the wall behind the main ledge is the terrain's own rock), each about as tall as the terrain rises within 0.8 km behind its
- * foot (so the face meets the slope above and never stands proud as a fin), strata, buttresses and
- * gullies; gaps where the ledges and the ravine break the walls.
+ * Points of a west → east path between x = xa and x = xb (xa < xb), every ≤ `step` km along it, the two
+ * ends interpolated exactly (the offset stream lines run monotonically east).
+ */
+function spanX(path: V2[], xa: number, xb: number, step: number): V2[] {
+  const out: V2[] = [];
+  for (let i = 0; i + 1 < path.length; i++) {
+    const [ax, az] = path[i];
+    const [bx, bz] = path[i + 1];
+    const lo = Math.max(xa, Math.min(ax, bx));
+    const hi = Math.min(xb, Math.max(ax, bx));
+    if (hi <= lo || bx === ax) continue;
+    const L = (Math.hypot(bx - ax, bz - az) * (hi - lo)) / Math.abs(bx - ax);
+    const n = Math.max(1, Math.ceil(L / step));
+    for (let j = 0; j <= n; j++) {
+      const x = lo + ((hi - lo) * j) / n;
+      const p: V2 = [x, az + ((bz - az) * (x - ax)) / (bx - ax)];
+      const last = out[out.length - 1];
+      if (!last || Math.hypot(last[0] - p[0], last[1] - p[1]) > 1e-6) out.push(p);
+    }
+  }
+  return out;
+}
+
+/** half width of the wet gully under a fall, km */
+const GULLY = 0.08;
+
+/**
+ * The gorge's sheer walls: faceted, stratified rock faces (kit cliffs) seated at the foot of the stamped
+ * scarps on both sides (the wall behind the main ledge is the terrain's own rock). Each face is 0.6 of
+ * the terrain's rise within 0.8 km behind its foot (the kit's jagged skyline reaches at most ≈ 0.8 of it,
+ * so the top always meets the slope below the rim: no fin, no pointed shard against the sky), its foot
+ * resampled every 0.12 km, the ends barely tapered. Under each declared fall the face breaks into a
+ * dark, water-worn gully set 0.06 km back into the wall (the wet streak); gaps where the ledges and the
+ * ravine break the walls.
  */
 function gorgeCliffs(k: ProxyKit): void {
   const north = offsetPath(STREAM_WE, FLOOR + 0.12);
   const south = offsetPath(STREAM_WE, -(FLOOR + 0.12));
-  const pick = (path: V2[], x0: number, x1: number): V2[] => {
-    // resample the offset line every ≤ 0.25 km between x0 and x1
-    const out: V2[] = [];
-    for (let i = 0; i + 1 < path.length; i++) {
-      const [ax, az] = path[i];
-      const [bx, bz] = path[i + 1];
-      const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / 0.25));
-      for (let j = 0; j < n; j++) {
-        const t = j / n;
-        const x = ax + (bx - ax) * t;
-        const z = az + (bz - az) * t;
-        if (x >= x0 && x <= x1) out.push([x, z]);
-      }
-    }
-    return out;
-  };
   /** the terrain's rise within `d` km behind the foot (into the wall: the left of the walking direction) */
   const rise = (pts: V2[], i: number, d: number): number => {
     const a = pts[Math.max(0, i - 1)];
@@ -316,21 +376,30 @@ function gorgeCliffs(k: ProxyKit): void {
     const [x, z] = pts[i];
     return k.ground(x + nx * d, z + nz * d) - k.ground(x, z);
   };
-  const face = (pts: V2[], wet: number[]) => {
-    if (pts.length < 3) return;
-    // as tall as the wall rises within 0.8 km (its top meets the rim), less a little for the jagged skyline
-    const hs = pts.map((_, i) => Math.min(3.4, Math.max(0.25, rise(pts, i, 0.8) * 0.74)));
-    k.cliff('weathered', pts, hs, { color: ROCK, rough: 0.32, strata: 0.6, depth: 1.1, soft: 0.6, taper: 0.4 });
-    // the falls' wet rock is the S4 waterfalls' own halo (a separate dark strip here stood proud of the
-    // face's jagged skyline as an obelisk)
-    void wet;
+  const heights = (pts: V2[], f: number) => pts.map((_, i) => Math.min(3.0, Math.max(0.2, rise(pts, i, 0.8) * f)));
+  /** one wall between x0 and x1 (`east`: walking east, i.e. the north wall), broken by gullies at `falls` */
+  const wall = (path: V2[], x0: number, x1: number, east: boolean, falls: number[]) => {
+    const cuts = [x0, ...falls.flatMap((f) => [f - GULLY, f + GULLY]), x1];
+    for (let i = 0; i + 1 < cuts.length; i++) {
+      const wet = i % 2 === 1;
+      let pts = spanX(path, cuts[i], cuts[i + 1], wet ? 0.05 : 0.12);
+      if (!east) pts = pts.reverse();
+      if (pts.length < 2) continue;
+      if (wet) {
+        // the gully: set back into the wall, a little lower than its neighbours, dark and smoother
+        const back = offsetPath(pts, 0.06);
+        k.cliff('weathered', back, heights(back, 0.55), { color: ROCK_WET, rough: 0.3, strata: 0.5, depth: 1.0, soft: 0.7, taper: 0 });
+      } else {
+        k.cliff('weathered', pts, heights(pts, 0.6), { color: ROCK, rough: 0.5, strata: 1.0, depth: 1.1, soft: 0.45, taper: 0.08 });
+      }
+    }
   };
-  // north wall: walking east, the face looks right = south, toward the stream
-  face(pick(north, 1.9, 6.6), [3.4]);
-  // south wall: walking west, the face looks right = north, toward the stream
-  face(pick(south, -3.8, -2.5).reverse(), []);
-  face(pick(south, -0.75, 0.85).reverse(), [-0.3]);
-  face(pick(south, 1.85, 6.6).reverse(), [3.05]);
+  // north wall: walking east, the face looks right = south, toward the stream (a fall at x 3.4)
+  wall(north, 1.9, 6.6, true, [3.4]);
+  // south wall: walking west, the face looks right = north (falls at x −0.3 and 3.05)
+  wall(south, -3.8, -2.5, false, []);
+  wall(south, -0.75, 0.85, false, [-0.3]);
+  wall(south, 1.85, 6.6, false, [3.05]);
 }
 
 /** keep-out circles: halls, towers, the court, the pavilion (trees never stand in a roof) */
@@ -339,7 +408,12 @@ const KEEP_OUT: { at: V2; r: number }[] = [
   { at: LEDGE_N.at, r: LEDGE_N.r - 0.05 },
   { at: LEDGE_S.at, r: LEDGE_S.r - 0.1 },
   { at: PAVILION.at, r: 0.1 },
-  ...SHELF_HALLS.map((h) => ({ at: h.at, r: 0.22 })),
+  // the shelf halls (their spot is searched within 0.25 km) and the back terraces' whole slide
+  ...SHELF_HALLS.map((h) => ({ at: h.at, r: 0.42 })),
+  ...BACK_TERRACES.map(({ u, v, w, d }) => {
+    const fm = (1 + SLIDE_MIN) / 2;
+    return { at: onN(u * fm, v * fm), r: ((1 - SLIDE_MIN) / 2) * Math.hypot(u, v) + Math.hypot(w, d) / 2 + 0.03 };
+  }),
 ];
 
 /** Wooded bands (local polylines). `conifer` / `birch`: shares; `scale`: crown size factor range. */
@@ -373,11 +447,12 @@ const BANDS: Band[] = [
   // the main spur's slopes falling to the stream below the house: small golden trees and firs
   { path: arc(LEDGE_N, 115, 300, LEDGE_N.r + 0.38, 8), hw: 0.22, n: 26, conifer: 0.35, birch: 0.25, scale: [0.35, 0.6], maxSlope: 76 },
   { path: FOOT_S, hw: 0.2, n: 17, conifer: 0.3, birch: 0.25, scale: [0.45, 0.75] },
-  // the woods on the moor over the gorge's rims
-  { path: RIM_N, hw: 0.6, n: 16, conifer: 0.5, birch: 0.15, scale: [0.4, 0.7] },
-  { path: RIM_S, hw: 0.6, n: 18, conifer: 0.5, birch: 0.15, scale: [0.4, 0.7] },
-  { path: RIM_N2, hw: 0.5, n: 6, conifer: 0.55, birch: 0.1, scale: [0.4, 0.7] },
-  { path: RIM_S2, hw: 0.5, n: 7, conifer: 0.55, birch: 0.1, scale: [0.4, 0.7] },
+  // the woods on the moor over the gorge's rims, 2 km and more from the halls: bigger crowns, so the
+  // clumped stands read as massed colour from the wide
+  { path: RIM_N, hw: 0.6, n: 16, conifer: 0.5, birch: 0.15, scale: [0.6, 1.0] },
+  { path: RIM_S, hw: 0.6, n: 18, conifer: 0.5, birch: 0.15, scale: [0.6, 1.0] },
+  { path: RIM_N2, hw: 0.5, n: 6, conifer: 0.55, birch: 0.1, scale: [0.6, 1.0] },
+  { path: RIM_S2, hw: 0.5, n: 7, conifer: 0.55, birch: 0.1, scale: [0.6, 1.0] },
 ];
 
 /** a point `t` (0..1) of the way along a polyline, and the unit normal there */
@@ -403,18 +478,20 @@ const pathLength = (p: V2[]) => p.slice(1).reduce((a, q, i) => a + Math.hypot(q[
 /**
  * The woods of the gorge floor and the rims as landmark forests (placed by the vegetation system:
  * chunked, LOD-capped, thinned with the quality density): golden ochre broadleaves, pale-gold birches and
- * slender firs, kept small (≤ ~0.25 km, against the main hall 0.49 high), dense, clumped by stand noise, never
- * inside the halls' keep-out circles. The gorge faces are sheer rock (kit cliffs): no trees there.
+ * slender firs, kept small near the halls (≤ ~0.25 km, against the main hall 0.49 high), dense and
+ * strongly clumped by stand noise (crowns touching in stands, shadowed gaps between), never inside the
+ * halls' keep-out circles. The gorge faces are sheer rock (kit cliffs): no trees there.
  */
 export const FORESTS: ForestDecl[] = WOOD_BANDS.map((b) => ({
   area: { band: { path: b.path, halfWidth: b.hw } },
-  density: (b.n * 16) / Math.max(0.05, pathLength(b.path) * 2 * b.hw * 0.45),
+  // dense enough that, clumped, the crowns touch into stands with shadowed gaps between them
+  density: (b.n * 40) / Math.max(0.05, pathLength(b.path) * 2 * b.hw * 0.45),
   species: [
     { kind: 'autumn', share: 1 - b.conifer - b.birch, crownKm: [0.1 * b.scale[0], 0.1 * b.scale[1]], heightFactor: [2.0, 2.4], colors: AUTUMN },
     { kind: 'poplar', share: b.birch, crownKm: [0.06 * b.scale[0], 0.06 * b.scale[1]], heightFactor: [3.2, 3.8], colors: BIRCH },
     { kind: 'conifer', share: b.conifer, crownKm: [0.06 * b.scale[0], 0.06 * b.scale[1]], heightFactor: [4.0, 4.6], colors: CONIFER },
   ],
-  clump: { scaleKm: 0.25, amount: 0.7 },
+  clump: { scaleKm: 0.25, amount: 0.9 },
   edgeKm: 0.05,
   // the spur's slopes are steep (trees cling to them); elsewhere no trees on the sheer faces
   maxSlopeDeg: b.maxSlope ?? 62,
