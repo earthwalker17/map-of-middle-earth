@@ -52,12 +52,18 @@ const DEFAULT_FLICKER: Partial<Record<LightKind, number>> = { fire: 0.28, lava: 
  * so a town's windows sum into a visible cluster. Elven lamps are capped lower (a tight blue-white
  * spark, not a smudge over the whole wood).
  */
-export const WIDE_CAP: Record<LightKind, number> = { window: 6, lamp: 3, fire: 6, lava: 0, eye: 0, beacon: 0, magic: 0, ithildin: 0 };
+export const WIDE_CAP: Record<LightKind, number> = { window: 6, lamp: 3, fire: 6, lava: 6, eye: 6, beacon: 0, magic: 0, ithildin: 0 };
 
-/** wide-gain class packed into the shader (0 none, 1 cap 6, 2 cap 3) */
+/**
+ * Focal kinds (Mount Doom's lava, the Eye): their gain only starts far out (emissionMaterial.ts
+ * FOCAL_KM), so hero shots keep their tuned glow while overviews keep Mordor's ember as a focal point.
+ */
+const FOCAL: Partial<Record<LightKind, true>> = { lava: true, eye: true };
+
+/** wide-gain class packed into the shader (0 none, 1 cap 6, 2 cap 3, 3 focal: cap 6 from FOCAL_KM) */
 function wideClass(kind: LightKind): number {
   const c = WIDE_CAP[kind];
-  return c <= 0 ? 0 : c > 4.5 ? 1 : 2;
+  return c <= 0 ? 0 : FOCAL[kind] ? 3 : c > 4.5 ? 1 : 2;
 }
 
 /**

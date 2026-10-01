@@ -26,6 +26,8 @@ const HALO_MAX_PX = 64;
 const NUDGE_PX = 2;
 /** wide-shot gain: (dist / WIDE_KM)^0.75, clamped to [1, cap] — cap 6 (windows, fires) or 3 (lamps) */
 const WIDE_KM = 30;
+/** focal kinds (lava, the Eye) start gaining only from here (cap 6): overview embers, untouched heroes */
+const FOCAL_KM = 120;
 /**
  * Settlement aggregation (EmissionSystem): members fade out and the group's aggregate sprite fades in as
  * the group's projected diameter falls from AGG_PX[1] to AGG_PX[0] px.
@@ -86,8 +88,10 @@ export function createEmissionMaterial(): NodeMaterial {
   const flick = max(float(1).add(C.a.mul(sin(env.tFx.mul(A.y).add(phi)).mul(sin(env.tFx.mul(A.z).add(phi.mul(1.7)).add(1.3))))), 0);
 
   // ---- wide-shot gain: a town's windows sum into a warm few-pixel cluster in overviews
-  const wideCap = select(wideCls.greaterThan(1.5), float(3), float(6));
-  const wideGain = select(wideCls.greaterThan(0.5), clamp(pow(dist.div(WIDE_KM), 0.75), float(1), wideCap), float(1));
+  const isFocal = wideCls.greaterThan(2.5);
+  const wideCap = select(isFocal, float(6), select(wideCls.greaterThan(1.5), float(3), float(6)));
+  const wideKm = select(isFocal, float(FOCAL_KM), float(WIDE_KM));
+  const wideGain = select(wideCls.greaterThan(0.5), clamp(pow(dist.div(wideKm), 0.75), float(1), wideCap), float(1));
 
   // ---- settlement crossfade: members → the group's aggregate as the group shrinks to a few pixels
   const role = G.y;

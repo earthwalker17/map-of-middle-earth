@@ -212,7 +212,7 @@ export default defineLandmark({
     },
     {
       id: 'moria-wide',
-      distanceKm: 60,
+      distanceKm: 42,
       elevationDeg: 10,
       azimuthDeg: 245,
       fov: 35,

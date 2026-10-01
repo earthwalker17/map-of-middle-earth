@@ -261,15 +261,15 @@ export default defineLandmark({
     },
     {
       id: 'hobbiton-wide',
-      distanceKm: 55,
+      distanceKm: 40,
       elevationDeg: 22,
       azimuthDeg: 255,
       fov: 34,
       lift: 0,
-      aimKm: [4, -6],
+      aimKm: [3, -4],
       tod: 17.8,
       compare: ['reference/film/hobbiton/hobbiton-wide-fotr.jpg'],
-      note: 'the Shire (context, 55 km, pitch 22°): Hobbiton’s Hill on the left third with Bag End’s oak, the Water leading in from the west through the patchwork of hedged fields and woods to the far downs (the pitch keeps the snowy ranges beyond the frame), golden afternoon',
+      note: 'the Shire (context, 40 km — at 55 km the S3 final critics lost the Hill —, pitch 22°): Hobbiton’s Hill on the left third with Bag End’s oak, the Water leading in from the west through the patchwork of hedged fields and woods to the far downs (the pitch keeps the snowy ranges beyond the frame), golden afternoon',
     },
   ],
 });

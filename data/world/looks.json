@@ -19,7 +19,7 @@
     },
     "shire": {
       "ground": {"ecotone": 0.3, "grass": "#4f9a3a", "dry": "#95ad50", "soil": "#6b5536", "rock": "#736d62", "dryness": 0.2, "pattern": 0.5, "spots": [{"place": "hobbiton", "radiusKm": 6, "turf": 1, "grass": "#468a28", "dry": "#72a23c", "dryness": 0.1}]},
-      "grade": {"tint": "#fff4e4", "saturation": 1.03, "contrast": 0.98, "lift": [0.0015, 0.0012, 0.0004], "bloom": 0.12, "spots": [{"place": "hobbiton", "radiusKm": 14, "tint": "#fff0da", "saturation": 1.12, "contrast": 1.02}]},
+      "grade": {"tint": "#fff4e4", "saturation": 1.03, "contrast": 0.98, "lift": [0.0015, 0.0012, 0.0004], "bloom": 0.12, "spots": [{"place": "hobbiton", "radiusKm": 14, "tint": "#fff8ef", "saturation": 1.12, "contrast": 1.02}]},
       "atmo": {"tint": [1.07, 1.03, 0.92], "density": 0.85, "sky": [1.02, 1.0, 0.97]}
     },
     "enedwaith": {

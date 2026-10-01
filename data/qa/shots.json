@@ -10,7 +10,7 @@
     { "id": "shire", "tod": 16.0, "camera": { "orbit": { "place": "hobbiton", "distanceKm": 140, "elevationDeg": 30, "azimuthDeg": 200, "fov": 35 } }, "compare": ["reference/film/hobbiton"] },
     { "id": "misty-moria", "tod": 14.0, "camera": { "orbit": { "place": "moria", "distanceKm": 184, "elevationDeg": 26, "azimuthDeg": 245, "fov": 35, "aimKm": [13.6, 6.3] } }, "compare": ["reference/film/caradhras", "reference/film/moria"] },
     { "id": "rohan-isengard", "tod": 16.0, "camera": { "orbit": { "targetKm": [835, 775], "distanceKm": 280, "elevationDeg": 30, "azimuthDeg": 165, "fov": 35 } }, "compare": ["reference/film/isengard", "reference/film/rohan"] },
-    { "id": "anduin-gondor", "tod": 15.0, "camera": { "orbit": { "targetKm": [1110, 660], "distanceKm": 320, "elevationDeg": 30, "azimuthDeg": 215, "fov": 35 } }, "compare": ["reference/film/minas-tirith"] },
+    { "id": "anduin-gondor", "tod": 15.0, "camera": { "orbit": { "targetKm": [1110, 660], "distanceKm": 320, "elevationDeg": 36, "azimuthDeg": 110, "fov": 35 } }, "compare": ["reference/film/minas-tirith"] },
     { "id": "mordor", "tod": 17.0, "camera": { "orbit": { "targetKm": [1235, 662], "distanceKm": 240, "elevationDeg": 34, "azimuthDeg": 250, "fov": 35 } }, "compare": ["reference/film/mordor", "reference/film/mount-doom", "reference/film/barad-dur"] },
     { "id": "erebor-long-lake", "tod": 12.0, "camera": { "orbit": { "targetKm": [1265, 1155], "distanceKm": 176, "elevationDeg": 30, "azimuthDeg": 190, "fov": 35 } }, "compare": ["reference/film/erebor", "reference/film/lake-town"] }
   ]
