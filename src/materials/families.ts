@@ -1,11 +1,12 @@
 import { MeshStandardNodeMaterial, type Material } from 'three/webgpu';
 import type { LightGate } from '../landmarks/records.ts';
-import { tsl } from './tsl.ts';
+import { tsl, type TslNode } from './tsl.ts';
 import { env } from './environment.ts';
 import { strata, strataFootprint, strataSteep } from './strata.ts';
+import { gateCode, gateNode } from './gates.ts';
 
 // NB: TSL vec3(new Color()) silently yields black in r186 — always use color(Color) for colour constants
-const { Fn, If, float, vec3, attribute, mx_noise_float, positionWorld, positionLocal, normalGeometry, normalView, normalWorld, cameraPosition, reflect, normalize, positionViewDirection, fwidth, length, smoothstep, mix, clamp, max, abs, sin, step, round, floor, select, hash, dot, sRGBTransferEOTF } = tsl;
+const { Fn, If, float, vec3, attribute, mx_noise_float, positionWorld, positionLocal, normalGeometry, normalView, normalWorld, cameraPosition, reflect, normalize, positionViewDirection, fwidth, length, smoothstep, mix, clamp, max, abs, sin, step, floor, select, hash, dot, sRGBTransferEOTF } = tsl;
 
 /**
  * Noise class of rock faces (kit cliffs, `ProxyKit.cliff`): stone noise WITHOUT the masonry coursing +
@@ -36,7 +37,8 @@ const KIT_STRATA_CONTRAST = 3.0;
  *                  ground contact (0..31, 31 = free; kit/ao.ts): classes 0 stone (+ coursing) · 1 wood
  *                  streak · 2 fibre / thatch · 3 smooth · 4 foliage (leaf clumps). The contact term is the
  *                  ONLY baked darkening applied to the albedo (× mix(1, contact, 0.3) at the foot of a part).
- *      glow      → r strength / GLOW_MAX, g gate code / 3 (0 always · 1 night · 2 dusk · 3 event),
+ *      glow      → r strength / GLOW_MAX, g gate code × 32 / 255 (materials/gates.ts: 0 night · 1 nightDim ·
+ *                  2 dusk · 3 always · 4.. event slots),
  *                  b flicker depth, a unused
  *
  * Positions and normals are Float32 — four vertex buffers per draw in total.
@@ -73,6 +75,8 @@ export interface GlowPreset {
   gate: LightGate;
   /** 0..1 deterministic flicker depth (env.tFx + world position) */
   flicker: number;
+  /** gate 'event': the SceneState.events channel (materials/gates.ts EVENT_SLOT) */
+  event?: string;
 }
 
 export interface FamilyPreset {
@@ -128,7 +132,11 @@ export const FAMILY_IDS = Object.keys(FAMILY) as FamilyId[];
 export type MaterialKey = 'structure' | 'glow';
 export const MATERIAL_KEYS: readonly MaterialKey[] = ['structure', 'glow'];
 
-export const GATE_CODE: Record<LightGate, number> = { always: 0, night: 1, dusk: 2, event: 3 };
+/**
+ * Glow vertices carry the shared gate code (materials/gates.ts) in `surf.g` = code × GATE_STEP / 255
+ * (codes 0..7: night, nightDim, dusk, always, event slots).
+ */
+const GATE_STEP = 32;
 
 /** AO floor of a family's vertices (kit/ao.ts). */
 export function aoFloor(fam: FamilyId): number {
@@ -183,7 +191,7 @@ export interface FamilyVertex {
 }
 
 /** Optional per-part overrides of a glow family's preset. */
-export type GlowOverride = Partial<Pick<GlowPreset, 'strength' | 'gate' | 'flicker'>>;
+export type GlowOverride = Partial<Pick<GlowPreset, 'strength' | 'gate' | 'flicker' | 'event'>>;
 
 /**
  * Pack a family (+ optional absolute paint / shade / legacy tint / glow override) into vertex bytes.
@@ -195,27 +203,16 @@ export function familyVertex(fam: FamilyId, paint?: number, shade = 1, tint?: nu
   const u = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 255);
   if (p.glow) {
     const gl = { ...p.glow, ...glow };
-    return { color: [r, g, b, 255], surf: [u(gl.strength / GLOW_MAX), GATE_CODE[gl.gate] * 85, u(gl.flicker), 0] };
+    return { color: [r, g, b, 255], surf: [u(gl.strength / GLOW_MAX), gateCode(gl.gate, undefined, gl.event) * GATE_STEP, u(gl.flicker), 0] };
   }
   return { color: [r, g, b, 255], surf: [u(p.roughness), u(p.metalness), u(p.grain), p.noise * 32 + CONTACT_LEVELS] };
 }
 
 // ------------------------------------------------------------------ shaders
 
-/**
- * Light gate as a function of the env uniforms (records.ts LightGate), shared with the EmissionSystem
- * semantics: always 1 · night: smoothstep(0.2, 0.7, night) + 0.4·twilight (clamped) · dusk:
- * 0.25 + 0.75·max(night, golden) · event: 0 (switched by the S4 timeline).
- */
-export function gateNode(code: unknown): unknown {
-  const c = round(code);
-  const night = clamp(smoothstep(0.2, 0.7, env.night).add(env.twilight.mul(0.4)), 0, 1);
-  const dusk = float(0.25).add(max(env.night, env.golden).mul(0.75));
-  // code 0 → 1, 1 → night, 2 → dusk, 3 → 0
-  const isAlways = float(1).sub(step(0.5, c));
-  const isNight = step(0.5, c).mul(float(1).sub(step(1.5, c)));
-  const isDusk = step(1.5, c).mul(float(1).sub(step(2.5, c)));
-  return isAlways.add(isNight.mul(night)).add(isDusk.mul(dusk));
+/** The glow vertices' gate (materials/gates.ts gateNode) from their `surf.g` byte. */
+function glowGate(surfG: TslNode): TslNode {
+  return gateNode(surfG.mul(255 / GATE_STEP));
 }
 
 function structureMaterial(): MeshStandardNodeMaterial {
@@ -324,7 +321,7 @@ function glowMaterial(): MeshStandardNodeMaterial {
     const peak = max(paint.r, max(paint.g, paint.b));
     const hot = paint.add(vec3(peak).sub(paint).mul(vec3(0.2, 0.6, 0.1)));
     const c = mix(paint, hot, ndv.mul(ndv).mul(0.6)).mul(ndv.mul(0.4).add(0.8));
-    return c.mul(surf.r.mul(GLOW_MAX)).mul(gateNode(surf.g.mul(3))).mul(max(f, 0.2));
+    return c.mul(surf.r.mul(GLOW_MAX)).mul(glowGate(surf.g)).mul(max(f, 0.2));
   })();
   return m;
 }

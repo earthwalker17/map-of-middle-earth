@@ -11,6 +11,7 @@ import { KeyShadow, type ShadowBounds } from './shadows.ts';
 import { CloudField } from './clouds.ts';
 import { RegionLook } from './regionLook.ts';
 import { CloudLayer, deckUnderside } from './cloudLayer.ts';
+import { writeEvents } from '../materials/gates.ts';
 
 const { positionWorld } = tsl;
 
@@ -118,6 +119,7 @@ export class EnvironmentSystem implements System {
     env.cloudCoverage.value = state.weather.cloudCoverage;
     env.wind.value.set(state.weather.wind[0], state.weather.wind[1]);
     env.tod.value = state.tod;
+    writeEvents(state.events, env.events.value);
     env.cameraPos.value.copy(camera.position);
     // projected-size scale shared by every system that sizes things in pixels (emission sprites,
     // vegetation LOD): px per km at 1 km view depth for the render target being drawn

@@ -2,9 +2,10 @@ import { AdditiveBlending, DoubleSide, NodeMaterial } from 'three/webgpu';
 import { tsl, type TslNode } from '../materials/tsl.ts';
 import { env } from '../materials/environment.ts';
 import { atmosphere } from '../materials/atmosphere.ts';
+import { gateNode } from '../materials/gates.ts';
 
 type N = TslNode;
-const { Fn, abs, attribute, cameraProjectionMatrix, cameraViewMatrix, clamp, exp, float, floor, length, max, pow, select, sin, smoothstep, sqrt, varying, vec2, vec3, vec4 } = tsl;
+const { Fn, attribute, cameraProjectionMatrix, cameraViewMatrix, clamp, exp, float, floor, length, max, pow, select, sin, smoothstep, sqrt, varying, vec2, vec3, vec4 } = tsl;
 
 /** smallest Gaussian σ (px): a sub-pixel light keeps its energy as a stable ~1.4 px sparkle */
 const SIGMA_MIN_PX = 0.6;
@@ -72,16 +73,10 @@ export function createEmissionMaterial(): NodeMaterial {
   const z = max(pView.z.negate(), 1e-4);
   const pxPerKm = env.pxPerKm;
 
-  // ---- time-of-day gate (codes: lightKinds.ts gateCode)
+  // ---- gate: time of day / timeline event (the shared table, materials/gates.ts)
   const wideCls = floor(A.x.add(0.5).div(8));
   const code = A.x.sub(wideCls.mul(8));
-  const isCode = (k: number): N => abs(code.sub(k)).lessThan(0.5);
-  // windows / lamps: ramp in through blue hour, off by day and in golden hour (the glow families'
-  // night gate, families.ts gateNode)
-  const gNight = clamp(smoothstep(0.2, 0.7, env.night).add(env.twilight.mul(0.4)), 0, 1);
-  const gDim = smoothstep(0.35, 0.95, env.night);
-  const gDusk = float(0.25).add(max(env.night, env.golden).mul(0.75));
-  const gate = select(isCode(0), gNight, select(isCode(1), gDim, select(isCode(2), gDusk, select(isCode(3), float(1), float(0)))));
+  const gate = gateNode(code);
 
   // ---- deterministic flicker (effect clock only)
   const phi = A.w;
