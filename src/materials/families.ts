@@ -40,7 +40,7 @@ const KIT_STRATA_CONTRAST = 3.0;
  *                  ONLY baked darkening applied to the albedo (× mix(1, contact, 0.3) at the foot of a part).
  *      glow      → r strength / GLOW_MAX, g gate code × 32 / 255 (materials/gates.ts: 0 night · 1 nightDim ·
  *                  2 dusk · 3 always · 4.. event slots),
- *                  b flicker depth, a unused
+ *                  b flicker depth, a albedo under the emission spill (GlowPreset.spill; 0 = self-luminous)
  *
  * Positions and normals are Float32 — four vertex buffers per draw in total.
  */
@@ -78,6 +78,12 @@ export interface GlowPreset {
   flicker: number;
   /** gate 'event': the SceneState.events channel (materials/gates.ts EVENT_SLOT) */
   event?: string;
+  /**
+   * albedo under the emission spill (0..1, default 0): a skin that stands for lit stone (the Morgul
+   * wall wash) takes the spill of nearby sources like the stone under it; self-luminous skins (lava,
+   * windows, ithildin, the Eye) keep 0 — they are not lit by their own lights. Packed in `surf.a`.
+   */
+  spill?: number;
 }
 
 export interface FamilyPreset {
@@ -101,11 +107,11 @@ export const CONTACT_WEIGHT = 0.3;
 /** Bits of `surf.a` holding the contact term (the noise class sits above them). */
 export const CONTACT_LEVELS = 31;
 
-/** albedo under the emission spill of glow geometry (the stone a glow skin lies on; spill.ts) */
-const GLOW_SPILL_ALBEDO = 0.3;
-
 /** Strength encoding range of glow vertices (surf.r × GLOW_MAX). */
 export const GLOW_MAX = 16;
+
+/** albedo under the emission spill of a stone-like glow skin (GlowPreset.spill; spill.ts) */
+const GLOW_SPILL_ALBEDO = 0.3;
 
 export const FAMILY: Record<FamilyId, FamilyPreset> = {
   stone: { albedo: 0xd9d3c4, roughness: 0.82, metalness: 0, grain: 0.22, noise: NOISE.stone },
@@ -125,7 +131,7 @@ export const FAMILY: Record<FamilyId, FamilyPreset> = {
   // glow families: lamps / fires light up at night (the Lórien flets no longer glow at noon), lava and
   // Morgul magic always burn, ithildin wakes under the moon
   emissive: { albedo: 0xff7a1a, roughness: 0.6, metalness: 0, grain: 0, noise: NOISE.smooth, glow: { color: 0xff7a1a, strength: 4.5, gate: 'night', flicker: 0.06 } },
-  emissiveGreen: { albedo: 0x7ee6a0, roughness: 0.6, metalness: 0, grain: 0, noise: NOISE.smooth, glow: { color: 0x7ee6a0, strength: 2.4, gate: 'always', flicker: 0.12 } },
+  emissiveGreen: { albedo: 0x7ee6a0, roughness: 0.6, metalness: 0, grain: 0, noise: NOISE.smooth, glow: { color: 0x7ee6a0, strength: 2.4, gate: 'always', flicker: 0.12, spill: GLOW_SPILL_ALBEDO } },
   lava: { albedo: 0xff3a0a, roughness: 0.6, metalness: 0, grain: 0, noise: NOISE.smooth, glow: { color: 0xff3a0a, strength: 3.2, gate: 'always', flicker: 0.18 } },
   ithildin: { albedo: 0xdff3ff, roughness: 0.6, metalness: 0, grain: 0, noise: NOISE.smooth, glow: { color: 0xdff3ff, strength: 2.0, gate: 'night', flicker: 0.02 } },
 };
@@ -207,7 +213,7 @@ export function familyVertex(fam: FamilyId, paint?: number, shade = 1, tint?: nu
   const u = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 255);
   if (p.glow) {
     const gl = { ...p.glow, ...glow };
-    return { color: [r, g, b, 255], surf: [u(gl.strength / GLOW_MAX), gateCode(gl.gate, undefined, gl.event) * GATE_STEP, u(gl.flicker), 0] };
+    return { color: [r, g, b, 255], surf: [u(gl.strength / GLOW_MAX), gateCode(gl.gate, undefined, gl.event) * GATE_STEP, u(gl.flicker), u(gl.spill ?? 0)] };
   }
   return { color: [r, g, b, 255], surf: [u(p.roughness), u(p.metalness), u(p.grain), p.noise * 32 + CONTACT_LEVELS] };
 }
@@ -331,9 +337,11 @@ function glowMaterial(): MeshStandardNodeMaterial {
     const hot = paint.add(vec3(peak).sub(paint).mul(vec3(0.2, 0.6, 0.1)));
     const c = mix(paint, hot, ndv.mul(ndv).mul(0.6)).mul(ndv.mul(0.4).add(0.8));
     const glow = c.mul(surf.r.mul(GLOW_MAX)).mul(glowGate(surf.g)).mul(max(f, 0.2));
-    // S4 W2-D: a glow skin lies on stone (the Morgul wash bands cover most of each washed face): it takes
-    // the emission spill like the pale stone under it, so the spill's falloff shows through the skin
-    return glow.add(spillIrradiance(positionWorld, normalWorld).mul(GLOW_SPILL_ALBEDO / Math.PI));
+    // S4 W2-D: a skin that stands for lit stone (the Morgul wash bands cover most of each washed face;
+    // GlowPreset.spill, surf.a) takes the emission spill like the stone under it, so the spill's falloff
+    // shows through the skin; self-luminous skins (surf.a = 0: lava, windows, ithildin) are not lit by
+    // their own lights
+    return glow.add(spillIrradiance(positionWorld, normalWorld).mul(surf.a.mul(1 / Math.PI)));
   })();
   return m;
 }

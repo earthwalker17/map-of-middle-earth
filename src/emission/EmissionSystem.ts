@@ -6,7 +6,7 @@ import { createEmissionMaterial } from './emissionMaterial.ts';
 import { aggregates, EMISSION_STRIDE, groupKey, packAggregate, packLight, ROLE, type EmissionArrays } from './lightKinds.ts';
 import { env } from '../materials/environment.ts';
 import { SPILL_MAX, spillU } from './spill.ts';
-import { buildSpillSources, selectSpill, SPILL_PREVIEW, type SpillSource } from './spillSources.ts';
+import { buildSpillSources, selectSpill, SPILL_PREVIEW, type SpillFrame, type SpillSource } from './spillSources.ts';
 
 /** instance capacity of the one sprite draw (static landmark lights + S4 dynamic ones) */
 export const MAX_LIGHTS = 4096;
@@ -38,6 +38,8 @@ export class EmissionSystem implements System {
   private staticCount = 0;
   /** static spill sources (spillSources.ts), built once from the records */
   private spill: SpillSource[] = [];
+  /** the selection's input, rewritten in full every frame (no per-frame allocation; no state carried) */
+  private readonly spillFrame: SpillFrame = { focus: [0, 0, 0], focusDist: 0, gate: { night: 0, twilight: 0, golden: 0, events: [0, 0, 0, 0] }, tFx: 0, n: 0, halos: false };
 
   constructor(
     private readonly world: World,
@@ -182,14 +184,23 @@ export class EmissionSystem implements System {
     const preview = frame.quality.id === 'preview';
     const [tx, ty, tz] = state.camera.target;
     const ev = env.events.value;
-    const n = selectSpill(this.spill, {
-      focus: [tx, ty, tz],
-      focusDist: Math.hypot(camera.position.x - tx, camera.position.y - ty, camera.position.z - tz),
-      gate: { night: env.night.value, twilight: env.twilight.value, golden: env.golden.value, events: [ev.x, ev.y, ev.z, ev.w] },
-      tFx: state.tFx,
-      n: preview ? SPILL_PREVIEW : SPILL_MAX,
-      halos: !preview,
-    });
+    const f = this.spillFrame;
+    f.focus[0] = tx;
+    f.focus[1] = ty;
+    f.focus[2] = tz;
+    f.focusDist = Math.hypot(camera.position.x - tx, camera.position.y - ty, camera.position.z - tz);
+    f.gate.night = env.night.value;
+    f.gate.twilight = env.twilight.value;
+    f.gate.golden = env.golden.value;
+    const evs = f.gate.events as number[];
+    evs[0] = ev.x;
+    evs[1] = ev.y;
+    evs[2] = ev.z;
+    evs[3] = ev.w;
+    f.tFx = state.tFx;
+    f.n = preview ? SPILL_PREVIEW : SPILL_MAX;
+    f.halos = !preview;
+    const n = selectSpill(this.spill, f);
     spillU.count.value = n;
     spillU.haloOn.value = preview ? 0 : 1;
     this.stats.spill = n;

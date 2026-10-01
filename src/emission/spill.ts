@@ -15,12 +15,13 @@ import { tsl, type TslNode } from '../materials/tsl.ts';
  *  - spillCol[i] = (c.rgb, r0)        near-field irradiance c (linear, gate · flicker · selection weight
  *                                     applied) and the core radius r0 (km): E(d) = c / (1 + (d / r0)²)
  *  - spillAux[i] = (halo, glint, 0, 0) halo gain (lava, the Eye, magic, beacons; 0 = no halo) and glint gain
- * Counts are uniforms (dynamic loops): `spillCount` (4 preview, 8 review / final), `haloOn` (0 in preview).
+ * Counts are uniforms (dynamic loops): `spillU.count` (≤ 4 preview, ≤ 8 review / final) and `spillU.haloOn`
+ * (0 in preview).
  * Frames without lit sources near the focus run zero iterations.
  */
 
 type N = TslNode;
-const { Fn, If, Loop, atan, clamp, dot, float, int, length, max, min, normalize, sqrt, uniform, uniformArray, vec3 } = tsl;
+const { Fn, If, Loop, atan, clamp, dot, float, int, length, log, max, min, sqrt, step, uniform, uniformArray, vec3 } = tsl;
 
 /** Maximum number of spill sources uploaded per frame (review/final; preview uses fewer). */
 export const SPILL_MAX = 8;
@@ -32,12 +33,16 @@ export const HALO_RAY_KM = 600;
 const WRAP = 0.3;
 /** halo: scattering per unit regional density (× the source's radiant intensity × the airlight integral) */
 const HALO_SIGMA = 0.008;
-/** halo: soft cap of the summed in-scatter (radiance): a glow in the air, never a sun disc */
-const HALO_CAP = 0.3;
+/**
+ * halo: knee of the soft compression of the summed in-scatter (radiance): cap · ln(1 + s / cap) keeps a
+ * slope everywhere (a peaked glow that keeps falling off — no flat-topped disc) while a crater's core
+ * grows only logarithmically (never a sun disc)
+ */
+const HALO_CAP = 0.12;
 
 const vec4s = (): Vector4[] => Array.from({ length: SPILL_MAX }, () => new Vector4());
 
-/** The uniforms the EmissionSystem writes every frame (spillSources.ts selectSpill → uploadSpill). */
+/** The uniforms the EmissionSystem writes every frame (spillSources.ts selectSpill writes spillArrays()). */
 export const spillU = {
   pos: uniformArray(vec4s(), 'vec4'),
   col: uniformArray(vec4s(), 'vec4'),
@@ -83,8 +88,8 @@ export function spillIrradiance(p: N, n: N): N {
 /**
  * Light scattered toward the eye by the haze along the segment `from` → `to` (halos round strong
  * sources: lava, the Eye, magic, beacons). Per source the analytic point-light airlight integral
- * ∫ dt / (h² + (t − t0)²) = (atan((L − t0)/h) − atan(−t0/h)) / h along the ray (h ≥ the core radius r0,
- * so the glow is finite at the source), × the source's radiant intensity c·r0², the halo gain and the
+ * ∫ dt / (h² + (t − t0)²) = (atan((L − t0)/h) − atan(−t0/h)) / h along the ray (h = √(h₀² + r0²) with the
+ * passing distance h₀ and the core radius r0: finite at the source, a smooth peak), × the source's radiant intensity c·r0², the halo gain and the
  * local haze `density` (the regional density multiplier, 1 = clear air); faded out where the ray passes
  * farther than the source's reach; soft-capped. Review / final only (preview: zero).
  */
@@ -104,7 +109,9 @@ export function spillInScatter(from: N, to: N, density: N): N {
           const c = spillU.col.element(i);
           const m = a.xyz.sub(F);
           const t0 = dot(m, u);
-          const h = max(sqrt(max(dot(m, m).sub(t0.mul(t0)), 0)), c.w);
+          // passing distance with a smooth core: √(h² + r0²) (finite at the source; no flat-topped disc of
+          // radius r0, which max(h, r0) gave)
+          const h = sqrt(max(dot(m, m).sub(t0.mul(t0)), 0).add(c.w.mul(c.w)));
           // the ray passes within the source's reach: a smooth window in the passing distance (no disc edge)
           const hx = clamp(h.div(a.w), 0, 1);
           const hw = float(1).sub(hx.mul(hx));
@@ -114,8 +121,8 @@ export function spillInScatter(from: N, to: N, density: N): N {
         });
       });
       const s = sum.mul(max(density, 0).mul(HALO_SIGMA));
-      // soft cap per channel: s / (1 + s / cap)
-      out.assign(s.div(vec3(1).add(s.div(HALO_CAP))));
+      // soft compression per channel: cap · ln(1 + s / cap)
+      out.assign(log(vec3(1).add(s.div(HALO_CAP))).mul(HALO_CAP));
     });
     return out;
   })();
@@ -147,7 +154,9 @@ export function spillGlint(p: N, V: N, n: N, roughness: N): N {
         const c = spillU.col.element(i);
         const d = sqrt(max(d2, 1e-8));
         const l = L.div(d);
-        const Hh = normalize(l.add(Vv));
+        // half vector, guarded against l = −V (normalize(0) → NaN)
+        const hv = l.add(Vv);
+        const Hh = hv.div(max(length(hv), 1e-6));
         const nh = clamp(dot(Nn, Hh), 0, 1);
         const vh = clamp(dot(Vv, Hh), 0, 1);
         // the source's angular radius widens the lobe (a bigger source, a broader glint)
@@ -161,7 +170,9 @@ export function spillGlint(p: N, V: N, n: N, roughness: N): N {
         const E = float(1).div(float(1).add(d2.div(c.w.mul(c.w))));
         const x2 = d2.div(R2);
         const win = clamp(float(1).sub(x2.mul(x2)), 0, 1);
-        sum.addAssign(c.xyz.mul(D.mul(F).mul(E).mul(win).mul(gg).div(nv.mul(4))));
+        // a source below the surface's tangent plane throws no glint
+        const above = step(0, dot(Nn, l));
+        sum.addAssign(c.xyz.mul(D.mul(F).mul(E).mul(win).mul(gg).mul(above).div(nv.mul(4))));
       });
     });
     return sum;

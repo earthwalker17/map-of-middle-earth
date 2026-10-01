@@ -108,12 +108,14 @@ function powerOf(r: LightRecord): number {
 }
 
 /**
- * The lit pall over a big lava source: the ash and fume above a crater glow red and light the slopes
- * round it from above (a light at the crater's rim only grazes a cone's flanks). A lava source of reach
- * ≥ PALL.minR gets a spill-only companion `lift`·R above it, reach `reach`·R, core `core`·R, power
- * `power`·J (no halo — the halo of the crater itself is the glow in the air; no glint).
+ * The lit pall over a crater: the ash and fume above it glow red and light the slopes round it from
+ * above (a light at the crater's rim only grazes a cone's flanks). A lava record whose emitter radius is
+ * ≥ PALL.minRadius (a crater — not the small lights of a flow or a door) gets a spill-only companion
+ * `lift`·R above it, reach `reach`·R, core `core`·R, power `power`·J and a faint halo of its own
+ * (`halo` × the lava halo gain: the glow rises from the crater toward the ash above it); no glint.
+ * Palls of one landmark merge (key landmark|lava-pall).
  */
-const PALL = { minR: 4, lift: 0.5, reach: 2.2, core: 0.5, power: 2.5 };
+const PALL = { minRadius: 0.4, lift: 0.5, reach: 2.2, core: 0.5, power: 2.5, halo: 0.5 };
 
 /** singles of one landmark, kind, gate and reach closer than this × the reach merge into one source */
 const MERGE_K = 0.25;
@@ -183,9 +185,23 @@ export function buildSpillSources(records: LightRecord[]): SpillSource[] {
       halo: HALO_GAIN[r.kind],
       glint: GLINT_GAIN[r.kind],
     };
-    mergeOrPush(out, src);
-    if (r.kind === 'lava' && R >= PALL.minR)
-      out.push({ ...src, key: `${src.key}|pall`, p: [r.p[0], r.p[1] + PALL.lift * R, r.p[2]], R: PALL.reach * R, r0: PALL.core * R, J: PALL.power * J, halo: 0, glint: 0, flicker: [...src.flicker] });
+    if (r.kind === 'lava' && rr >= PALL.minRadius) {
+      const pall: SpillSource = {
+        key: `${r.landmark}|lava-pall`,
+        p: [r.p[0], r.p[1] + PALL.lift * R, r.p[2]],
+        R: PALL.reach * R,
+        r0: PALL.core * R,
+        color: [src.color[0], src.color[1], src.color[2]],
+        J: PALL.power * J,
+        gate: src.gate,
+        kind: 'lava',
+        flicker: [src.flicker[0], src.flicker[1], src.flicker[2], src.flicker[3]],
+        halo: PALL.halo * HALO_GAIN.lava,
+        glint: 0,
+      };
+      mergeOrPush(out, src);
+      mergeOrPush(out, pall);
+    } else mergeOrPush(out, src);
   }
   for (const key of keys) {
     const g = groups.get(key)!;
@@ -253,11 +269,22 @@ const smooth = (e0: number, e1: number, x: number): number => {
 const _score: number[] = [];
 const _idx: number[] = [];
 const _gate: number[] = [];
+/** order of the candidates: score descending, ties by index (deterministic) */
+const byScore = (a: number, b: number): number => _score[b] - _score[a] || a - b;
 
 /**
- * Select and upload the frame's sources: score s = J · gate · R² / (d² + R²) (d = source → focus), the
- * top n (ties by index), each weighted w = clamp((s − s₍ₙ₊₁₎) / (0.25 s), 0, 1) so a source fades out
- * before it is replaced (no pop). Writes spill.ts's arrays; returns the number of sources uploaded.
+ * How much of a source's spill can reach the frame: the visible ground round the focus spans about
+ * FOCUS_SPAN × the focus distance; a source whose reach ends short of it lights nothing on screen and
+ * keeps no slot for its spill (its halo, seen from afar, still counts — scaled by its halo gain).
+ */
+const FOCUS_SPAN = 0.5;
+
+/**
+ * Select and upload the frame's sources: score s = J · gate · R² / (d² + R²) · max(reach, halo)
+ * (d = source → focus; reach = 1 − (max(0, d − FOCUS_SPAN · focusDist) / R)², clamped: 0 when the
+ * source's light cannot reach the ground in view; halo = its halo gain when halos are on), the top n
+ * (ties by index), each weighted w = clamp((s − s₍ₙ₊₁₎) / (0.25 s), 0, 1) so a source fades out before it
+ * is replaced (no pop). Writes spill.ts's arrays (spillArrays()); returns the number of sources uploaded.
  */
 export function selectSpill(sources: SpillSource[], f: SpillFrame): number {
   const { pos, col, aux } = spillArrays();
@@ -276,11 +303,14 @@ export function selectSpill(sources: SpillSource[], f: SpillFrame): number {
     const dy = s.p[1] - f.focus[1];
     const dz = s.p[2] - f.focus[2];
     const R2 = s.R * s.R;
-    const sc = (s.J * g * R2) / (dx * dx + dy * dy + dz * dz + R2);
+    const d2 = dx * dx + dy * dy + dz * dz;
+    const beyond = Math.max(0, Math.sqrt(d2) - FOCUS_SPAN * f.focusDist) / s.R;
+    const reach = Math.max(0, 1 - beyond * beyond);
+    const sc = ((s.J * g * R2) / (d2 + R2)) * Math.max(reach, f.halos ? s.halo : 0);
     _score.push(sc);
     if (sc > 0) _idx.push(i);
   }
-  _idx.sort((a, b) => _score[b] - _score[a] || a - b);
+  _idx.sort(byScore);
   const n = Math.min(f.n, SPILL_MAX, _idx.length);
   const next = _idx.length > n ? _score[_idx[n]] : 0;
   const haloW = f.halos ? 1 - smooth(HALO_FOCUS_KM[0], HALO_FOCUS_KM[1], f.focusDist) : 0;

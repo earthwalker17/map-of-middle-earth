@@ -113,10 +113,6 @@ const lin = (c: RGB): N => vec3(c[0], c[1], c[2]);
 
 /** deep-water scatter albedo of landmark pools (lake attribute waterPool = 1): dark peaty teal */
 const POOL_DEEP: RGB = [0.007, 0.014, 0.016];
-/** least share of a rippled reflection lobe that passes over an occluder's top (sees the sky) */
-const LOBE_SKY = 0.1;
-/** sky share of a near, steep reflection hit (a stamp wall under an unseen landmark) */
-const STAMP_SKY = 0.55;
 
 /** Debug view selector shared by all water materials (0 = beauty). Dev/QA only. */
 export const waterDebug: N = uniform(0, 'int');
@@ -351,6 +347,14 @@ export function createWaterMaterial(opts: WaterMaterialOptions): MeshStandardNod
         const hh = hs(vec2(0, 0));
         const slope = float(1).sub(nH.y);
         const alb = coarseGroundAlbedo(groundPalette(groundTex, huv, true), hh, slope, southness(hitP.z), nH.z.negate(), nH.x);
+        // Reflections of landmarks standing in the water (the S3 'black holes' under the Argonath's
+        // plinths and Tol Brandir): the march sees only the heightfield, so it hits the landmark's stamp
+        // (Tol Brandir's 1.2 km plateau) and mirrors that short, dark lozenge with sky where the tall
+        // spire should be. The reflected stone is legitimately dark against the bright sky (F ≈ 0.3 of a
+        // dark rock); what is wrong is the missing silhouette above the stamp. A sky-share fallback made
+        // every dark bank and cliff reflection milky (S4 W2-D critic) and was removed; the real fix is
+        // landmark occluder proxies in the march (contract request: analytic upright proxies from the
+        // landmark bounds of `onRiver` places, tested along the reflected ray).
         // the key under the ash deck (S4 W1-A contract: the Dead Marshes' pools no longer mirror the land
         // 2–4× brighter than the land itself), the hemisphere fill at its intensity, and (review / final)
         // the emission spill: lava, beacons and lit towns light the land their reflection shows
@@ -362,16 +366,7 @@ export function createWaterMaterial(opts: WaterMaterialOptions): MeshStandardNod
         if (!preview) lit = lit.add(spillIrradiance(hitP, nH));
         const groundRad = alb.mul(lit).mul(1 / Math.PI);
         const hazed = atmosphere.apply(groundRad, origin, vec3(hitP.x, max(hitP.y, hh), hitP.z), quality.atmosphere.inScatter, true);
-        // the reflection-miss fallback (the S3 'black holes' by the Argonath plinths). Root cause: the
-        // march sees only the heightfield, so where a landmark stands in the water (the kings' plinths, Tol
-        // Brandir) it hits the stamp under it and shades it as ground in its own shadow (≈ 1/20 of the sky
-        // it hides) instead of the lit stone above it — over the lake's near-black body that is a hole.
-        // (1) a rippled surface's reflection lobe is a cone: part of it always passes over an occluder's top
-        // (≥ LOBE_SKY, growing with the ripple slope); (2) a NEAR, STEEP hit — a stamp wall standing in the
-        // water, where the unseen landmark is — falls back further toward the darkened sky.
-        const nearSteep = smoothstep(0.4, 0.75, slope).mul(float(1).sub(smoothstep(1.0, 6.0, hitT)));
-        const lobeSky = max(clamp(sigma.mul(2.5).add(LOBE_SKY), LOBE_SKY, 0.5), nearSteep.mul(STAMP_SKY));
-        out.assign(mix(out, hazed, occ.mul(float(1).sub(lobeSky))));
+        out.assign(mix(out, hazed, occ));
       });
       return out;
     })();
@@ -397,10 +392,9 @@ export function createWaterMaterial(opts: WaterMaterialOptions): MeshStandardNod
   }
   if (isRiver) {
     const edge = float(1).sub(smoothstep(0.72, 1.0, abs(flow!.y)));
-    // S4 W2-D (P4): a ribbon reaching into a baked lake (Lake-town's outflow on the Long Lake) gives way
-    // to the lake inside its mask — no lighter river strip with a hard edge across the lake's body
-    const inLake = smoothstep(0.35, 0.65, texture(world.water, uv0).g);
-    alpha = alpha.mul(edge).mul(flow!.w).mul(float(1).sub(inLake));
+    // (S4 W2-D P4: a ribbon running inside a baked lake at the lake's level fades out there through
+    // flow.w — rivers.ts lakeYield)
+    alpha = alpha.mul(edge).mul(flow!.w);
   }
 
   const material = new MeshStandardNodeMaterial({ transparent: true, side: FrontSide });
