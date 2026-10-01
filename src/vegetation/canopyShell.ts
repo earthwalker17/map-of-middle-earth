@@ -252,7 +252,7 @@ export function canopyShell(p: N, footprintKm: N, forest: N): CanopyShellSample 
   const ampT = float(1).sub(smoothstep(CROWN_CELL / 3.5, CROWN_CELL / 1.3, fpMin)).toVar();
   // (called inside the terrain material's Fn: the branch joins its stack)
   If(weight.greaterThan(1e-3).and(ampT.greaterThan(0.01)), () => {
-    // two sizes of crown: the canopy's own (≈ 1 km) and the smaller fill between them
+    // two sizes: clumps of crowns (CROWN_CELL) and the smaller crowns between them
     const big = crownDomes(pq, CROWN_CELL, 0.55, 17);
     const small = crownDomes(pq, CROWN_CELL * 0.47, 0.5, 29);
     const smallH = small.h.mul(0.8);
