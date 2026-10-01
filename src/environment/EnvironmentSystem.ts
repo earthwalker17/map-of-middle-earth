@@ -84,6 +84,8 @@ export class EnvironmentSystem implements System {
 
   init(ctx: InitContext): void {
     const { scene, quality } = ctx;
+    // preview graphs leave out the review / final-only atmosphere terms (halos, valley mist)
+    atmosphere.full = quality.id !== 'preview';
     atmosphere.bindWorld(this.world);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(quality.shadowMapSize, quality.shadowMapSize);

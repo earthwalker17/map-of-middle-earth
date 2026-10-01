@@ -239,7 +239,7 @@ export class VegetationSystem implements System {
     let parts = this.materials.get(tier);
     if (!parts) {
       this.foam ??= createFoamTexture(this.world.spec.json.seeds.world + 71);
-      parts = createFoliageMaterial(this.world, { microTaps: tier === 'preview' ? 1 : 2, foam: this.foam });
+      parts = createFoliageMaterial(this.world, { microTaps: tier === 'preview' ? 1 : 2, spill: tier !== 'preview', foam: this.foam });
       this.materials.set(tier, parts);
     }
     this.parts = parts;

@@ -197,7 +197,8 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     // ---- noise (km): 60 planar; 12, 3 and 0.9 in 3D (they vary along a cliff's fall line, so no
     // rock term is constant down a face — the vertical smear of a planar noise on steep ground)
     const n1 = mx_noise_float(p.xz.mul(1 / 60));
-    const n2 = mx_noise_float(p.mul(1 / 12));
+    // (preview: planar — the explorer does not pay for the 3D noise; stills / film are review / final)
+    const n2 = preview ? mx_noise_float(p.xz.mul(1 / 12)) : mx_noise_float(p.mul(1 / 12));
     const n3 = mx_noise_float(p.mul(1 / 3));
 
     // regional ground look (its ecotones are domain-warped and dithered in the texture itself)
@@ -387,7 +388,8 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     // in uniform control flow. Gentler, rounded rock below the slope range stays unbanded (contour rings);
     // a curvature fade was tried and dropped (the 0.4 km Laplacian is noisy on rugged faces and erased the beds).
     const strataDn = vec3(0).toVar();
-    if (STRATA_ON) {
+    // strata, the volcanic crust and the emission spill are review / final only (preview perf: the explorer)
+    if (STRATA_ON && !preview) {
       const sW = smoothstep(STRATA_SLOPE[0], STRATA_SLOPE[1], slope)
         .mul(rock)
         .mul(float(1).sub(snow))
@@ -450,7 +452,7 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     const nRelief = nM.toVar();
     // gentle volcanic ground: the baked sub-km ripples of the plain shade like dunes under a raking sun
     const flatV = smoothstep(0.6, 0.95, pal.volcanic).mul(float(1).sub(smoothstep(0.12, 0.32, slope)));
-    if (CRUST_ON) {
+    if (CRUST_ON && !preview) {
       const volc = pal.volcanic.toVar();
       If(volc.greaterThan(VOLCANIC.volcanic[0]).and(fp.lessThan(VOLCANIC.fade[1])), () => {
         const c = volcanicCrust({ p, fp, slope, volcanic: volc, n2, n3, n4, n5: n5f, doom: doomXZ, preview });
@@ -574,6 +576,6 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
   material.metalnessNode = float(0);
   // fissure glow + the light the emission spill throws onto the ground (W2-D; zero until it lands):
   // Lambertian albedo · E / π
-  material.emissiveNode = outGlow.add(outAlbedo.mul(spillIrradiance(positionWorld, outNormal)).mul(1 / Math.PI));
+  material.emissiveNode = preview ? outGlow : outGlow.add(outAlbedo.mul(spillIrradiance(positionWorld, outNormal)).mul(1 / Math.PI));
   return material;
 }

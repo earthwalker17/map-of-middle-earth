@@ -189,6 +189,12 @@ export class Atmosphere {
   private readonly valleyTex: N;
   /** valley-mist strength: 0 (no world yet) until bindWorld / enableValleyMist */
   private readonly valleyGain = uniform(0);
+  /**
+   * Graph-level tier switch (set by EnvironmentSystem before any material is built): false on the
+   * preview tier, whose graphs leave out the review / final-only terms entirely — the light halos (W2-D)
+   * and the valley mist — so the explorer neither compiles nor runs them (S4 perf pass).
+   */
+  full = true;
 
   constructor() {
     this.lut = new DataTexture(this.lutData, LUT_AZ, LUT_ROWS, RGBAFormat, HalfFloatType);
@@ -314,7 +320,7 @@ export class Atmosphere {
     const n = ids.length;
     if (world.terrainMask) {
       this.valleyTex.value = world.terrainMask;
-      this.enableValleyMist(true);
+      this.enableValleyMist(this.full);
     }
     const field = lookField(world);
     const w = new Float32Array(n);
@@ -747,7 +753,8 @@ export class Atmosphere {
     const lit = env.keyColor.mul(keyMist).add(env.skyColor.mul(env.hemiIntensity.mul(MIST_SKY)));
     const mistCol = mix(vec3(dot(lit, vec3(...LUM_W))), lit, MIST_SAT).mul(chroma);
     cInf = mix(cInf, mistCol, clamp(tauMist.div(max(tau, 1e-4)), 0, 1));
-    const out = color.mul(T).add(cInf.mul(vec3(1).sub(T))).add(spillInScatter(from, to, reg.a)); // + W2-D halos round strong lights
+    const lit0 = color.mul(T).add(cInf.mul(vec3(1).sub(T)));
+    const out = this.full ? lit0.add(spillInScatter(from, to, reg.a)) : lit0; // + W2-D halos round strong lights (review / final graphs)
     // an additive light source seen through the haze: extinction only, softened by `emissiveFog`
     // (< 1: the light also scatters forward in the haze around it, so it survives the veil better)
     return emissive ? out.add(emissive.mul(T.pow(emissiveFog))) : out;

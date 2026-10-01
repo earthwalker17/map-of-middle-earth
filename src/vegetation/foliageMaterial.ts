@@ -170,6 +170,8 @@ export interface FoliageOptions {
    * porosity). The preview tier uses 1, stills and film 2.
    */
   microTaps?: 0 | 1 | 2;
+  /** emission spill on the leaves (review / final; the preview tier leaves it out of the graph) */
+  spill?: boolean;
   /** shared foam texture (built once per system; created here when omitted) */
   foam?: Data3DTexture;
 }
@@ -679,7 +681,7 @@ export function createFoliageMaterial(world: World, opts: FoliageOptions = {}): 
     .mul(select(isTrunkF, float(1), crownH.mul(0.6).add(0.4)));
   // emission spill (S4 P4): the light of nearby fires, windows and lamps on the leaves (W2-D's
   // spillIrradiance; zero until it lands). Diffuse: albedo · E / π, through the ambient occlusion
-  material.emissiveNode = SPILL_ON ? glow.add(fillE).add(albedo.mul(spillIrradiance(positionWorld, nFinal)).mul(ao).mul(1 / Math.PI)) : glow.add(fillE);
+  material.emissiveNode = SPILL_ON && (opts.spill ?? true) ? glow.add(fillE).add(albedo.mul(spillIrradiance(positionWorld, nFinal)).mul(ao).mul(1 / Math.PI)) : glow.add(fillE);
   // Guard against the post grade: its saturation (>1) extrapolates away from luma and a saturated
   // gold with little blue went negative → pow() → NaN → black crowns. Keep every channel above
   // a small fraction of luma (visually identical, numerically safe).
