@@ -132,7 +132,13 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
   code, flicker. Contact is the only baked term on the albedo (`× mix(1, contact, 0.3)`). Landmark-local
   fwidth-faded noise (≈9, 37, 140 /km) + stone coursing on walls. Glow = paint × strength × gate × flicker
   (gates from env: always · night = clamp(smoothstep(0.2, 0.7, night) + 0.4·twilight) · dusk =
-  0.25 + 0.75·max(night, golden) · event = 0 until S4). `materialFor(key)` resolves geometry keys;
+  0.25 + 0.75·max(night, golden) · event = the light's `SceneState.events` channel). **Gates (S4,
+  materials/gates.ts)** are ONE table shared by the emission sprites and the glow family: codes night 0,
+  nightDim 1 (ithildin), dusk 2, always 3, event 4 + slot (`EVENT_SLOT`: beacons → x, morgul-beam → y of
+  `env.vec4 events`), a TSL `gateNode` and a CPU mirror `gateCPU` (spill selection); glow vertices store
+  surf.g = code·32 and surf.a = the glow preset's spill albedo (only emissiveGreen: the Morgul skins take the
+  green wall-wash spill). Structures, glow skins, terrain, foliage and water add `albedo · spillIrradiance / π`
+  (emission spill, see EmissionSystem). `materialFor(key)` resolves geometry keys;
   `familyVertex(fam, paint?, shade?, tint?, glow?)` packs a vertex (also used for GLBs). Specular ambient:
   the scene has no environment map, so `structure` adds a Fresnel-weighted (F0 0.04 → albedo for metals)
   hemisphere sky / ground radiance along the reflection vector (`env.skyColor / groundColor ×
@@ -172,7 +178,7 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
    breakup (lush ↔ straw); snow v3 (ragged scoured cap rims, wind scouring, crisp margins); a terrain
    `emissiveNode` = fissure glow + albedo · `spillIrradiance` / π (emission spill hook, emission/spill.ts) and
    the `canopyShell()` hook in the forest-floor block (vegetation/canopyShell.ts). The terrain fragment stage
-   samples 14 textures (S4 budget: 15 incl. the canopy texture; the WebGPU limit is 16).
+   samples 15 textures (S4 budget, frozen: 13 S3 + atmo2 + the canopy shell; the WebGPU limit is 16).
    `groundMaps.ts` builds CPU masks at init: stamp turf/presence (stamped − base), shore bands, the Shire field
    mask (from `fields.ts`). Detail: 6 CC0-derived layers (`tools/textures/prep.mjs` → `public/textures/terrain`,
    luminance-normalised so the palette keeps the hue; preview 512²×4 planar, review 512²×6, final 1024²×6
@@ -183,7 +189,11 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
    reflection, env.tFx waves, shore foam; sea plane, earcut lakes at manifest levels (+ landmark pools from
    `setPools`, merged into the lake mesh with a `waterPool` attribute), merged river ribbons
    built from the baked v2 points/levels as-is (flat across; whitewater only at declared falls or steep baked
-   grades; the v1 heuristic stays as a fallback). Waterfalls → effects (S4).
+   grades; the v1 heuristic stays as a fallback). Waterfalls → effects (S4). S4: emission spill on the body
+   and foam plus `spillGlint` (lights reflect), pools (`waterPool`) with deep scatter (no black slabs), the
+   reflected sky and land honour the ash deck (`env.deckSky`, deck shadow) and `env.horizonTint`. The
+   reflection march sees only the heightfield (landmark geometry such as the Argonath / Tol Brandir is
+   invisible to it — known residual).
 4. `VegetationSystem` (vegetation/) — hashed world-grid placement from forest/look/water masks, forest types
    (Mirkwood, Fangorn, Lórien + emergent mallorns, old, Ithilien groves, deciduous), glades/stands, a Barren
    rule (Mordor, Dagorlad, the Morannon approach, sparse Brown Lands/Emyn Muil), hedgerows on the shared field
@@ -198,6 +208,19 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
    hero list BEFORE the chunks (they win the LOD0 cap; never excluded, barren-ruled or thinned) with a
    dedicated hero trunk geometry (flared, tapered, limbs) at LOD0; `mallornFrame()` gives landmarks the
    trunk / tier geometry to seat flets and lamps. Visible chunks are filled nearest-first.
+   **Crown archetypes (S4, archetypes.ts):** the record's shape word packs spread + 2·gapQ + 128·arch (no new
+   vertex buffer, still 7 of 8): Canopy 0, Broadleaf 1 (asymmetric lobes, lean, visible trunk), Conifer 2 (one
+   record, stacked tapered whorls), Columnar 3, Holly 4, Shrub 5, ConiferStand 6, Cluster 7 (S3 layout: hedges,
+   mallorn tiers), CanopyEdge 8 (a forest's standing outer ring, review / final); the vertex stage picks the
+   layout per instance and the far blob gets a per-archetype profile. Field / hedgerow trees at believable
+   scale (lognormal crown radius ≈ 0.19 km) in copses; forest crowns ≈ 0.2–0.45 km; quality density thins
+   counts but never resizes crowns (preview = final). **Tree caps** (`setTreeCaps(landmarkTreeCaps)`,
+   treeCaps.ts): placed, forest and authored trees inside a landmark's cap circle stay below its height.
+   **Far canopy shell** (canopyShell.ts + shellConfig.ts): a 512×307 RGBA8 canopy colour / cover texture baked
+   from the retiring canopy records at placement; the terrain's forest-floor block draws it (the terrain's 15th
+   texture) with crown-dome relief (review / final), while Canopy / ConiferStand instances sink into it across
+   a band defined in screen pixels (a 0.6 km crown going 9 → 5 px; preview retires at 0.7×); near the camera
+   the same sample darkens the floor between standing crowns. Roads fade under the shell.
    **Landmark forests** (S3, forests.ts): `setForests(records)` — landmark `ForestDecl`s (area: circle /
    annulus / polygon / band; density per km²; species mix with crown / height ranges and palettes; stand
    clumping; edge feather; clearings; slope and lowest-ground limits) placed as ordinary coarse instances
@@ -223,6 +246,16 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
    camera), with a visibility floor. `gradeUniforms.glowKeep` (RegionLook: 0.9·max(night, twilight)) exempts
    bright glows from the night desaturation and soft-compresses their peak (hue kept); 0 by day.
    `env.pxPerKm` / `env.viewportH` are written by EnvironmentSystem.
+   **Emission spill (S4, emission/spill.ts + spillSources.ts):** at init the records become spill sources
+   (reach by kind: lava 6 km, eye 4, magic 2, beacon 2, fire 0.8, ithildin 0.4, lamp 0.35; windows through their
+   settlement aggregates; explicit `spillKm`; `sprite: false` spill-only sources such as the Morgul wall-wash;
+   Doom's crater adds a lit pall source above it). Each frame a PURE selection scores the lit sources against
+   the camera focus (energy × gate × reach), keeps the top N (8 review / final, 4 preview, ties by index) with
+   weights that fade at the cut (no popping) and uploads `spillU` (pos / col / aux uniform arrays, count,
+   haloOn). `spillIrradiance(p, n)` (wrap-Lambert, finite core, windowed at the reach) lights terrain,
+   structures, Morgul glow skins, foliage and water; `spillInScatter` adds analytic point-light airlight halos
+   for lava / eye / magic / beacons in the shared fog (`atmosphere.apply`) and the dome (review / final only,
+   soft-capped: no sun disc); `spillGlint` puts GGX glints of the sources on water.
 8. (later) `EffectsSystem`, `RouteSystem`, `AnnotationSystem`.
 
 ## Landmarks (src/landmarks)
