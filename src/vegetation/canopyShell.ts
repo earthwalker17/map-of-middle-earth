@@ -61,8 +61,11 @@ const KIND_RESPONSE: Record<number, [number, number, number]> = {
 const DEFAULT_RESPONSE: [number, number, number] = [0.8, 0.88, 0.43];
 /** mean of the crown shading (lit tops / crevices) where the relief has faded out */
 const SHELL_MEAN_LIT = 0.86;
-/** crown dome grid (km per cell): the canopy patches' sub-crowns are ≈ 0.2–0.45 km across */
-const CROWN_CELL = 0.5;
+/**
+ * crown dome grid (km per cell): clumps of the canopy patches' crowns (≈ 0.2–0.45 km across each) — the
+ * speckle that reads as canopy where the shell takes over (a crown under 9 px) must survive pixel averaging
+ */
+const CROWN_CELL = 0.8;
 
 const shellData = new Uint8Array(SHELL_W * SHELL_H * 4);
 export const canopyTexture = new DataTexture(shellData, SHELL_W, SHELL_H, RGBAFormat, UnsignedByteType);
@@ -237,14 +240,15 @@ export function canopyShell(p: N, footprintKm: N, forest: N): CanopyShellSample 
   const base = pow(max(tex.rgb, vec3(0)), vec3(2.2)).toVar();
   const albedo = base.mul(SHELL_MEAN_LIT).toVar();
   const dn = vec3(0).toVar();
-  const fp = footprintKm.toVar();
+  // (the terrain's footprint is the long axis of the pixel footprint: the shell uses the short one below)
+  void footprintKm;
   const pq = p.xz.toVar();
   // relief amplitude: the crowns' relief resolves while a dome spans more than a few pixels; their tones
   // (the speckle of lit and shaded crowns that reads as canopy) down to a pixel or two
-  const amp = float(1).sub(smoothstep(CROWN_CELL / 9, CROWN_CELL / 3.5, fp)).toVar();
-  // (the speckle fades on the pixel footprint's short axis: at grazing angles the long axis, across the
-  // view, would erase it long before the standing instance crowns lose theirs)
+  // (both fade on the pixel footprint's short axis: at grazing angles the long axis, along the view, would
+  // erase them long before the standing instance crowns lose theirs; the accumulation resolves the rest)
   const fpMin = min(length(dFdx(p.xz)), length(dFdy(p.xz))).toVar();
+  const amp = float(1).sub(smoothstep(CROWN_CELL / 9, CROWN_CELL / 3.5, fpMin)).toVar();
   const ampT = float(1).sub(smoothstep(CROWN_CELL / 3.5, CROWN_CELL / 1.3, fpMin)).toVar();
   // (called inside the terrain material's Fn: the branch joins its stack)
   If(weight.greaterThan(1e-3).and(ampT.greaterThan(0.01)), () => {
@@ -258,10 +262,10 @@ export function canopyShell(p: N, footprintKm: N, forest: N): CanopyShellSample 
     const tone = select(winBig, big.tone, small.tone).sub(0.5);
     dn.assign(vec3(tilt.x, 0, tilt.y).mul(amp));
     // lit crown tops, dark low gaps between the crowns; each crown its own tone and a little warm / cool
-    const lit = mix(float(SHELL_MEAN_LIT), mix(float(0.36), float(1.12), smoothstep(0.0, CROWN_CELL * 0.3, h)), amp.mul(0.6).add(0.4));
+    const lit = mix(float(SHELL_MEAN_LIT), mix(float(0.26), float(1.22), smoothstep(0.0, CROWN_CELL * 0.3, h)), amp.mul(0.5).add(0.5));
     const crown = base
       .mul(lit)
-      .mul(tone.mul(0.5).add(1))
+      .mul(tone.mul(0.7).add(1))
       .mul(vec3(float(1).add(tone.mul(0.12)), 1, float(1).sub(tone.mul(0.2))));
     albedo.assign(mix(base.mul(SHELL_MEAN_LIT), crown, ampT));
   });
