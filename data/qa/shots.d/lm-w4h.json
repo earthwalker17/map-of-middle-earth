@@ -1,0 +1,169 @@
+{
+  "version": 1,
+  "notes": "S3 W4-H review shots: Lake-town close over the canals (day / dusk), hero framing candidates. Landmark bookmarks (erebor -close / -wide, lake-town / dale / dol-guldur -close) live in the landmark definitions.",
+  "shots": [
+    {
+      "id": "w4h-laketown-near",
+      "tod": 16.0,
+      "camera": {
+        "orbit": {
+          "place": "lake-town",
+          "distanceKm": 9,
+          "elevationDeg": 30,
+          "azimuthDeg": 160,
+          "fov": 35,
+          "lift": 2.6,
+          "aimKm": [
+            1.45,
+            0.6
+          ]
+        }
+      },
+      "compare": [
+        "reference/film/lake-town/lake-town-wide.webp",
+        "reference/concept-art/lake-town/lake-town-alan-lee.jpg"
+      ],
+      "note": "afternoon, close: the canals, gable fronts, turrets, piles, the Master's house and the bell tower"
+    },
+    {
+      "id": "w4h-erebor-gate",
+      "tod": 16.0,
+      "camera": {
+        "orbit": {
+          "place": "erebor",
+          "distanceKm": 10,
+          "elevationDeg": 8,
+          "azimuthDeg": 195,
+          "fov": 35,
+          "lift": 1.8,
+          "aimKm": [
+            0.2,
+            0.9
+          ]
+        }
+      },
+      "compare": [
+        "reference/film/erebor/erebor-front-gate-statues.webp",
+        "reference/bigatures/erebor/erebor-front-gate-weta-mini.jpg"
+      ],
+      "note": "afternoon, close: the Front Gate in its recess, the two kings with their axes, the terrace and the river's outlet, the braziers"
+    },
+    {
+      "id": "w4h-dale-near",
+      "tod": 16.0,
+      "camera": {
+        "orbit": {
+          "place": "dale",
+          "distanceKm": 9,
+          "elevationDeg": 16,
+          "azimuthDeg": 210,
+          "fov": 35,
+          "lift": 0.5,
+          "aimKm": [
+            -1.0,
+            -0.8
+          ]
+        }
+      },
+      "compare": [
+        "reference/film/dale/dale-ruins-dos.jpg"
+      ],
+      "note": "afternoon, close: the pale town on the spur, walls and towers, the domed hall and bell towers, the bridge"
+    },
+    {
+      "id": "w4h-dolguldur-near",
+      "tod": 15.0,
+      "camera": {
+        "orbit": {
+          "place": "dol-guldur",
+          "distanceKm": 9,
+          "elevationDeg": 12,
+          "azimuthDeg": 200,
+          "fov": 35,
+          "lift": 1.6
+        }
+      },
+      "compare": [
+        "reference/film/dol-guldur/dol-guldur-silhouette-auj.png",
+        "reference/film/dol-guldur/dol-guldur-dos.webp"
+      ],
+      "note": "afternoon, close: the triangle of broken walls, the splintered crown, the bridge"
+    },
+    {
+      "id": "w4h-t-lt75-200",
+      "tod": 18.2,
+      "dayOfYear": 200,
+      "camera": {
+        "orbit": {
+          "place": "lake-town",
+          "distanceKm": 20,
+          "elevationDeg": 18,
+          "azimuthDeg": 75,
+          "fov": 22,
+          "lift": 2.6,
+          "aimKm": [
+            1.3,
+            0.6
+          ]
+        }
+      }
+    },
+    {
+      "id": "w4h-t-lt75-240",
+      "tod": 18.2,
+      "dayOfYear": 240,
+      "camera": {
+        "orbit": {
+          "place": "lake-town",
+          "distanceKm": 20,
+          "elevationDeg": 18,
+          "azimuthDeg": 75,
+          "fov": 22,
+          "lift": 2.6,
+          "aimKm": [
+            1.3,
+            0.6
+          ]
+        }
+      }
+    },
+    {
+      "id": "w4h-t-lt110-200",
+      "tod": 18.2,
+      "dayOfYear": 200,
+      "camera": {
+        "orbit": {
+          "place": "lake-town",
+          "distanceKm": 20,
+          "elevationDeg": 18,
+          "azimuthDeg": 110,
+          "fov": 22,
+          "lift": 2.6,
+          "aimKm": [
+            1.3,
+            0.6
+          ]
+        }
+      }
+    },
+    {
+      "id": "w4h-t-lt110-240",
+      "tod": 18.2,
+      "dayOfYear": 240,
+      "camera": {
+        "orbit": {
+          "place": "lake-town",
+          "distanceKm": 20,
+          "elevationDeg": 18,
+          "azimuthDeg": 110,
+          "fov": 22,
+          "lift": 2.6,
+          "aimKm": [
+            1.3,
+            0.6
+          ]
+        }
+      }
+    }
+  ]
+}

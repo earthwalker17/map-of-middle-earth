@@ -1,5 +1,8 @@
+import type { ProxyKit } from '../kit/ProxyKit.ts';
+import type { V2 } from '../records.ts';
 import { defineLandmark } from '../types.ts';
 import type { LocalStamp } from '../types.ts';
+import { buildGate, G, GATE_STAMPS } from './gate.ts';
 
 /**
  * Erebor, the Lonely Mountain (research §13): ONE massive mountain alone on the plain, with ridged
@@ -46,30 +49,70 @@ const MASSIF: LocalStamp = {
   snowCap: 0.7,
 };
 
-/** the massif's rock (looks.json erebor spot rock #63646a, a little lighter as dressed stone) */
-const GATE_STONE = 0x75736d;
+/**
+ * Ravenhill (research §13): the ruined dwarf watch-post near the end of the south-western spur (238°
+ * from the summit, Ravenhill's arm of the gate valley) — a squat octagonal tower on a bastion ring on
+ * the crest, a watch-fire on its top.
+ */
+/** on the spur's crest (the crest runs along z ≈ −2.2 here, ≈ 18.5, some 10.7 above the gate) */
+const RAVENHILL: V2 = [-11.4, -2.2];
+
+function ravenhill(k: ProxyKit): void {
+  // on the crest, levelled a little by the landmark's stamps
+  const [x, z] = RAVENHILL;
+  k.wallPath('stone', [
+    [x - 0.28, z - 0.2],
+    [x + 0.22, z - 0.3],
+    [x + 0.34, z + 0.12],
+    [x - 0.05, z + 0.34],
+    [x - 0.34, z + 0.14],
+  ], 0.12, 0.05, { closed: true, followGround: true, step: 0.08, color: 0x6b6e69, batter: 0.2, crenel: { w: 0.04, h: 0.035, gap: 0.03, lod: 0 }, lod: 1 });
+  k.tower('stone', 0.14, 0.42, { at: [x, 0, z], seat: 'min', sides: 8, taper: 0.08, roof: 'crenel', color: 0x707773, lod: 1 });
+  k.tower('stone', 0.07, 0.28, { at: [x + 0.18, 0, z - 0.1], seat: 'min', sides: 8, roof: 'none', color: 0x666964, lod: 0 });
+  // tumbled blocks round the ruined post (LOD0)
+  k.scatter(
+    { annulus: { at: [x, z], r0: 0.38, r1: 0.7 } },
+    10,
+    (_i, rx, rz, u) => k.rock('weathered', 0.035 + u * 0.04, { at: [rx, 0, rz], seat: true, squash: 0.6, lump: 0.3, detail: 1, color: 0x6b6e69, lod: 0 }),
+    { minSpacing: 0.12 },
+  );
+  k.light([x, k.ground(x, z) + 0.5, z], { kind: 'fire', color: 0xff9a40, intensity: 2.2, radius: 0.05, flicker: 0.35 });
+}
 
 /** Erebor, the Lonely Mountain: a lone massif with ridged spurs; the Front Gate guarded by carved kings. */
 export default defineLandmark({
   id: 'erebor',
   placeId: 'erebor',
   tier: 'A',
-  // the massif, then the head of the gate valley: a level floor opening south with the gate at its
-  // north rim, where the face rises (the river issues across it; lowering toward the water is what the
-  // river guard allows)
-  stamps: [MASSIF, { kind: 'flatten', at: [0, 2.2], radius: 2.4, falloff: 2.2, height: 0.2 }],
+  // the massif; the head of the gate valley, a level floor opening south (the river issues across it);
+  // the gate court cut into the mountain's foot (gate.ts GATE_STAMPS, lowerOnly: they never raise) —
+  // the terrain's sheer rock is the recess wall, the façade and the kings' plinths are let into it
+  stamps: [
+    MASSIF,
+    { kind: 'flatten', at: [0, 2.2], radius: 2.4, falloff: 2.2, height: 0.2 },
+    ...GATE_STAMPS,
+    // Ravenhill's seat on the spur crest
+    { kind: 'flatten', at: RAVENHILL, radius: 0.5, falloff: 0.45, height: 'auto', strength: 0.85 },
+  ],
+  vegetationExclusion: [{ at: G(0, 0.6), r: 2.6 }],
   proxy: (k) => {
-    // the Front Gate placeholder on the south face (rebuilt in W4): dressed stone in the mountain's rock
-    // tint, only the door recess dark; every part kit-seated on the LOWEST ground under its footprint
-    // (sunk 0.02 km) with its uphill back let into the rising face — never floating over the slope or the
-    // river bank in front (local y = 0 is the ground at the gate, where the river issues)
-    k.box('stone', 3.2, 2.8, 0.6, { at: [0, 0, 0.2], color: GATE_STONE, seat: 'min' });
-    k.box('darkStone', 1.0, 1.8, 0.12, { at: [0, 0, 0.52], seat: 'min' });
-    for (const s of [-1, 1]) k.box('stone', 0.7, 3.8, 0.6, { at: [s * 2.2, 0, 0.3], color: GATE_STONE, shade: 1.06, seat: 'min' });
+    buildGate(k);
+    ravenhill(k);
   },
   annotation: { title: 'Erebor', subtitle: 'The Lonely Mountain', blurb: 'The great Dwarf-kingdom under the mountain, once held by the dragon Smaug.' },
   bookmarks: [
-    { id: 'erebor-close', distanceKm: 60, elevationDeg: 10, azimuthDeg: 200, fov: 35, lift: 12, tod: 18.0, note: 'dusk from the south: the lone massif with ridged spurs, the gate and the river leaving it' },
-    { id: 'erebor-wide', distanceKm: 140, elevationDeg: 6, azimuthDeg: 168, fov: 35, lift: 4, tod: 18.0, note: 'from the south over the Long Lake and Lake-town, Erebor alone on the northern plain, its summit clear of the far ranges' },
+    {
+      id: 'erebor-close',
+      distanceKm: 62,
+      elevationDeg: 6,
+      azimuthDeg: 185,
+      fov: 35,
+      lift: 12,
+      tod: 18.0,
+      dayOfYear: 240,
+      compare: ['reference/film/erebor/erebor-lonely-mountain-dos.jpg', 'reference/film/erebor/erebor-front-gate-statues.webp', 'reference/bigatures/erebor/erebor-front-gate-weta-mini.jpg'],
+      note: 'golden evening (the prologue) from the south: the lone massif with its ridged spurs and snow cap in the last warm light, the Front Gate at its foot — the two kings flanking the carved façade, braziers burning — the River Running leaving it, the watch-fire on Ravenhill (the western spur)',
+    },
+    { id: 'erebor-wide', distanceKm: 140, elevationDeg: 6, azimuthDeg: 168, fov: 35, lift: 4, tod: 18.0, dayOfYear: 240, note: 'from the south over the Long Lake and Lake-town, Erebor alone on the northern plain, its summit clear of the far ranges' },
   ],
 });
