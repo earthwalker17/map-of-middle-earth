@@ -386,7 +386,11 @@ export class SkyModel {
     const clear = mix(hazeHorRaw, this.skyBase(dir), smoothstep(0.0, 0.1, h)).mul(tint);
     // under an ash deck the dome is overcast: a low-contrast mottled ceiling in perspective,
     // the deck underside's radiance overhead, merging into the horizon haze
-    const sky = mix(clear, this.overcast(dir, hazeHor), env.deck);
+    // (behind a uniform branch: frames without a deck never evaluate the overcast noise)
+    const sky = vec3(clear).toVar();
+    If(env.deck.greaterThan(0.001), () => {
+      sky.assign(mix(clear, this.overcast(dir, hazeHor), env.deck));
+    });
     const base = mix(hazeDir, sky, step(0, h));
     // studio void: a fraction of the horizon haze, lifted a little on the sun's side and just
     // under a low sun, darkest straight down, plus a faint floor so the night void stays navy

@@ -41,8 +41,16 @@ const VALLEY_MIST_TOP = 40;
  * Optical depth of the valley-mist layer per unit of valley mist (seen straight down) and the
  * shallowest view it is integrated for (grazing rays see at most 1 / MIST_MIN_SIN of it).
  */
-const MIST_SIGMA = 0.03;
-const MIST_MIN_SIN = 0.15;
+const MIST_SIGMA = 0.05;
+const MIST_MIN_SIN = 0.2;
+/**
+ * The mist lies on the valley floor: atmo2.G stores the local floor height (the lowest ground within
+ * ±MIST_FLOOR_KM, / MIST_FLOOR_RANGE world units) and the mist thins out above it with this scale
+ * height, so cliffs and valley sides rise out of it (no mist curtains on the walls).
+ */
+const MIST_FLOOR_KM = 5;
+const MIST_FLOOR_RANGE = 64;
+const MIST_THICK = 2.2;
 /** atmo2.B stores the regional mist gain / MIST_SCALE (RGBA8) */
 const MIST_SCALE = 3;
 /**
@@ -118,7 +126,9 @@ export class Atmosphere {
   readonly haze: DataTexture;
   /**
    * Second regional field (S4, RGBA8 over the map frame, same LookField weights as the haze):
-   * R = ash-deck cover, G = deck tone (luma), B = valley-mist gain / MIST_SCALE, A = cloud-cap boost.
+   * R = ash-deck cover, G = the valley floor height for the mist (/ MIST_FLOOR_RANGE; the deck's
+   * tone is baked into the deck mesh and the dome reads env.deckTone, so G carries the floor instead),
+   * B = valley-mist gain / MIST_SCALE, A = cloud-cap boost.
    */
   readonly atmo2: DataTexture;
   /** CPU copies of the static fields (eye-haze lookups, the deck mesh bake) */
@@ -389,14 +399,24 @@ export class Atmosphere {
     const d = this.haze.image.data as Uint16Array;
     for (let i = 0; i < px.length; i++) d[i] = DataUtils.toHalfFloat(px[i]);
     this.haze.needsUpdate = true;
+    // the valley floor for the mist: the lowest ground within ±MIST_FLOOR_KM of the texel centre
+    const floor = new Float32Array(HAZE_W * HAZE_H);
+    for (let y = 0; y < HAZE_H; y++)
+      for (let x = 0; x < HAZE_W; x++) {
+        const cx = spec.xMin + ((x + 0.5) / HAZE_W) * spec.width;
+        const cz = spec.zMin + ((y + 0.5) / HAZE_H) * spec.depth;
+        let lo = Infinity;
+        for (let j = -2; j <= 2; j++)
+          for (let i = -2; i <= 2; i++) lo = Math.min(lo, world.heights.sample(cx + (i * MIST_FLOOR_KM) / 2, cz + (j * MIST_FLOOR_KM) / 2));
+        floor[y * HAZE_W + x] = Math.max(0, lo);
+      }
     const t2 = this.atmo2.image.data as Uint8Array;
     const u8 = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 255);
     for (let i = 0; i < HAZE_W * HAZE_H; i++) {
       const o = i * 4;
       const c = dA[o];
-      const lum = c > 1e-6 ? (0.2126 * dA[o + 1] + 0.7152 * dA[o + 2] + 0.0722 * dA[o + 3]) / c : 0;
       t2[o] = u8(c);
-      t2[o + 1] = u8(lum);
+      t2[o + 1] = u8(floor[i] / MIST_FLOOR_RANGE);
       t2[o + 2] = u8(dB[o + 2] / MIST_SCALE);
       t2[o + 3] = u8(dB[o + 3]);
     }
@@ -508,9 +528,13 @@ export class Atmosphere {
       const uv = vec2(to.x.sub(f.x).mul(f.z), to.z.sub(f.y).mul(f.w));
       const g = this.valleyTex.sample(uv).level(0).g;
       // the regional gain: the named dales gather it, the ash plains and open downs much less
-      const regional = texture(this.atmo2, uv).level(0).b.mul(MIST_SCALE);
+      const a2 = texture(this.atmo2, uv).level(0);
+      const regional = a2.b.mul(MIST_SCALE);
+      // thinning above the valley floor (the walls rise out of the mist)
+      const above = max(to.y.sub(a2.g.mul(MIST_FLOOR_RANGE)), 0);
+      const lying = exp(above.div(-MIST_THICK));
       // soft valley edges (the mask is coarse): the mist thins out over the valley sides
-      out.assign(smoothstep(0, 1, clamp(float(0.47).sub(g).mul(2.6), 0, 1)).mul(gain).mul(regional));
+      out.assign(smoothstep(0, 1, clamp(float(0.47).sub(g).mul(2.6), 0, 1)).mul(gain).mul(regional).mul(lying));
     });
     return out;
   }
@@ -520,7 +544,7 @@ export class Atmosphere {
     return this.field2(xz, explicitLod).r;
   }
 
-  /** atmo2 (all channels) at world xz: deck cover, deck tone luma, mist gain / 3, cap boost. */
+  /** atmo2 (all channels) at world xz: deck cover, mist floor / MIST_FLOOR_RANGE, mist gain / 3, cap boost. */
   field2(xz: N, explicitLod = false): N {
     const f = this.hazeFrame;
     const t = texture(this.atmo2, vec2(xz.x.sub(f.x).mul(f.z), xz.y.sub(f.y).mul(f.w)));

@@ -6,7 +6,7 @@ import { deckLook } from '../materials/looks.ts';
 import type { QualityTier } from '../core/quality.ts';
 import type { World } from '../world/World.ts';
 import { SLAB } from '../diorama/slabSpec.ts';
-import { CloudField, DETAIL, PERIOD_X, PERIOD_Z } from './clouds.ts';
+import { CLOUD_CAPS, CloudField, DETAIL, PERIOD_X, PERIOD_Z } from './clouds.ts';
 
 type N = TslNode;
 const { Fn, abs, attribute, clamp, float, max, mix, normalize, positionWorld, smoothstep, texture, vec2, vec3, vec4 } = tsl;
@@ -273,7 +273,8 @@ export class CloudLayer {
       const dv = texture(tex, uv.mul(DETAIL).add(vec2(0.37, 0.61))).g.sub(0.5);
       const v = m.r.add(dv.mul(detail ? 0.16 : 0.12));
       const c = env.cloudCoverage;
-      const cl = clamp(c.mul(m.b.mul(1.3).add(0.35)), 0, 1);
+      const f2 = atmosphere.field2(P.xz);
+      const cl = clamp(c.mul(m.b.mul(1.3).add(0.35)).add(f2.a.mul(CLOUD_CAPS)), 0, 1);
       const th = float(1).sub(cl);
       // a little crisper than the shadow's wide penumbra: the cloud body over its soft shadow
       const dens = smoothstep(th.sub(0.02), th.add(0.13), v).mul(clamp(c.mul(40), 0, 1));
@@ -302,7 +303,7 @@ export class CloudLayer {
       // edge-on (the sheet has no thickness), and env.cloudVis for the framing
       const ex = smoothstep(0, CUMULUS_EDGE_KM, P.x.sub(SLAB.xMin)).mul(smoothstep(0, CUMULUS_EDGE_KM, float(SLAB.xMax).sub(P.x)));
       const ez = smoothstep(0, CUMULUS_EDGE_KM, P.z.sub(SLAB.zMin)).mul(smoothstep(0, CUMULUS_EDGE_KM, float(SLAB.zMax).sub(P.z)));
-      const noDeck = float(1).sub(smoothstep(0.05, 0.4, atmosphere.deckCover(P.xz)));
+      const noDeck = float(1).sub(smoothstep(0.05, 0.4, f2.r));
       const edgeOn = smoothstep(0.4, 3, abs(P.y.sub(cam.y)));
       // (a camera under the ash deck sees none: the pall hides the sky beyond)
       const a = dens.mul(0.9).mul(ex).mul(ez).mul(noDeck).mul(edgeOn).mul(fromAbove).mul(env.cloudVis).mul(float(1).sub(env.deck));
