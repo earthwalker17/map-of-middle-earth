@@ -1,9 +1,9 @@
 import type { ProxyKit } from '../kit/ProxyKit.ts';
-import type { V2, V3 } from '../records.ts';
+import type { V2 } from '../records.ts';
 
-/** the Tower's stone: near-black with a faint teal cast (the film's #2b4f4c in its lit parts); opaque */
-export const TOWER_STONE = 0x3a4341;
-const CROWN_STONE = 0x323a38;
+/** the Tower's stone: pale, ghostly grey with a faint green cast (moonlit it reads bone-white) */
+export const TOWER_STONE = 0xb2b6af;
+const CROWN_STONE = 0x9ca19b;
 const D2R = Math.PI / 180;
 
 /**
@@ -19,7 +19,7 @@ export function finStar(r: number): V2[] {
   });
 }
 
-/** a circle of `n` points, radius `r` (glowing cores between the fins) */
+/** a circle of `n` points, radius `r` (glowing cores) */
 function ring(r: number, n = 16): V2[] {
   return Array.from({ length: n }, (_, j): V2 => [Math.cos((j / n) * Math.PI * 2) * r, Math.sin((j / n) * Math.PI * 2) * r]);
 }
@@ -42,6 +42,20 @@ function turned(theta: number, rotDeg: number, r: number): V2 {
   return [Math.cos(a) * r, Math.sin(a) * r];
 }
 
+/** a thin quad section (radial depth `dr`, tangential width `w`) centred at radius `r`, angle `a` (deg) */
+function blade(r: number, aDeg: number, w: number, dr: number): V2[] {
+  const a = aDeg * D2R;
+  const c = Math.cos(a);
+  const s = Math.sin(a);
+  // radial (c, s), tangential (−s, c)
+  return [
+    [c * (r - dr / 2) - s * (-w / 2), s * (r - dr / 2) + c * (-w / 2)],
+    [c * (r + dr / 2) - s * (-w / 2), s * (r + dr / 2) + c * (-w / 2)],
+    [c * (r + dr / 2) - s * (w / 2), s * (r + dr / 2) + c * (w / 2)],
+    [c * (r - dr / 2) - s * (w / 2), s * (r - dr / 2) + c * (w / 2)],
+  ];
+}
+
 export interface TowerSpec {
   at: V2;
   /** ground (local y) under the tower */
@@ -54,17 +68,18 @@ export interface TowerSpec {
   shaftH: number;
 }
 
-/** corpse-light greens: the slits (dim, deep), the lantern (the one light that burns by day) */
-const GLOW_CORE = 0x00873a;
-const GLOW_LANTERN = 0x2bc46a;
-const LIGHT = 0x1fe070;
+/** corpse-light greens: the shaft slits (dim), the lamp room (the one strong light, burning always) */
+const GLOW_CORE = 0x0f8a45;
+const GLOW_LAMP = 0x1ee070;
+const LIGHT = 0x3cf08a;
 
 /**
- * The Tower of the Moon: a battered keep, then a shaft of deep fin sections twisting 120° as it rises
- * and tapering, broken by three band rings; an open lantern stage (the fins run on up as piers round a
- * green-burning core); a flared crown ring with jagged spikes leaning out round a faceted spire. The
- * corpse-light burns inside: green cores show in the recesses between the fins in three bands (dusk gate:
- * a quarter by day), the lantern glows always; a few magic lights sit on the slits and in the lantern bays.
+ * The Tower of the Moon: a battered keep, then a pale shaft of deep fin sections twisting 120° as it
+ * rises and tapering, broken by three band rings; then the lamp room — a green-burning core behind eight
+ * piers that twist 40° round it — and over it the crown: eight blades sweeping 80° round the axis as they
+ * rise, swelling out and then drawing in to a faceted needle, an open spiral of thorns round a second,
+ * smaller lamp (nothing like Barad-dûr's fork or Orthanc's four horns). The corpse-light: dim green slits
+ * between the fins (dusk gate: a quarter by day), the lamp room always, the brightest light of the city.
  * Returns local heights for the caller.
  */
 export function buildTower(k: ProxyKit, s: TowerSpec): { crownY: number; topY: number; shaftTop: number } {
@@ -72,20 +87,20 @@ export function buildTower(k: ProxyKit, s: TowerSpec): { crownY: number; topY: n
   const base = s.y0 - 0.05;
   // ---- the keep: a heavy battered star, no twist
   k.loft(
-    'darkStone',
+    'weathered',
     [
       { outline: finStar(s.r * 1.55), y: 0 },
       { outline: finStar(s.r * 1.42), y: s.keepH * 0.85 },
       { outline: finStar(s.r * 1.5), y: s.keepH * 0.92 },
       { outline: finStar(s.r * 1.3), y: s.keepH },
     ],
-    { at: [x, base, z], color: TOWER_STONE, shade: 0.95 },
+    { at: [x, base, z], color: TOWER_STONE, shade: 0.92 },
   );
   // ---- the shaft: twisted fin sections
   const y1 = base + s.keepH;
   const n = 14;
   k.loft(
-    'darkStone',
+    'weathered',
     Array.from({ length: n + 1 }, (_, i) => {
       const t = i / n;
       return { outline: finStar(s.r), y: t * s.shaftH, rotDeg: twistAt(t), scale: scaleAt(t) };
@@ -96,7 +111,7 @@ export function buildTower(k: ProxyKit, s: TowerSpec): { crownY: number; topY: n
   for (const t of [0.37, 0.64, 0.87]) {
     const dt = 0.05 / s.shaftH;
     k.loft(
-      'darkStone',
+      'weathered',
       [
         { outline: finStar(s.r * 1.08), y: t * s.shaftH, rotDeg: twistAt(t), scale: scaleAt(t) },
         { outline: finStar(s.r * 1.08), y: (t + dt) * s.shaftH, rotDeg: twistAt(t + dt), scale: scaleAt(t + dt) },
@@ -104,84 +119,92 @@ export function buildTower(k: ProxyKit, s: TowerSpec): { crownY: number; topY: n
       { at: [x, y1, z], color: CROWN_STONE },
     );
   }
-  // glowing cores in the recesses (bands of the shaft): a circle between the recess and rib radii,
-  // twisted and scaled like the shaft, so it shows only as slits between the fins
+  // dim glowing cores in the recesses (two short bands of the shaft): a circle between the recess and rib
+  // radii, twisted and scaled like the shaft, so it shows only as slits between the fins
   const CORE = 0.57;
   const bandsT: [number, number][] = [
-    [0.16, 0.3],
-    [0.45, 0.57],
-    [0.71, 0.8],
+    [0.47, 0.56],
+    [0.74, 0.8],
   ];
   for (const [t0, t1] of bandsT) {
-    const m = 4;
+    const m = 3;
     k.loft(
       'emissiveGreen',
       Array.from({ length: m + 1 }, (_, i) => {
         const t = t0 + ((t1 - t0) * i) / m;
         return { outline: ring(s.r * CORE), y: t * s.shaftH, rotDeg: twistAt(t) + 11.25, scale: scaleAt(t) };
       }),
-      { at: [x, y1, z], color: GLOW_CORE, glow: { strength: 0.55, gate: 'dusk' } },
+      { at: [x, y1, z], color: GLOW_CORE, glow: { strength: 0.35, gate: 'dusk' } },
     );
   }
-  // magic lights on the slits: two per band on alternating recesses (dusk gate: dim by day)
-  bandsT.forEach(([t0, t1], b) => {
-    for (let j = 0; j < 2; j++) {
-      const t = t0 + (t1 - t0) * (0.35 + 0.3 * j);
-      const theta = 22.5 * (1 + 2 * ((4 * j + b * 3) % 8));
-      const [px, pz] = turned(theta, twistAt(t), s.r * scaleAt(t) * CORE * 0.99 + 0.006);
-      k.light([x + px, y1 + t * s.shaftH, z + pz], { color: LIGHT, intensity: 0.3, radius: 0.016, kind: 'magic', gate: 'dusk' });
-    }
-  });
-  // ---- the lantern stage: a green core, the fins running on up round it as piers
+  // ---- the lamp room: a green core behind eight piers twisting 40° round it
   const shaftTop = y1 + s.shaftH;
   const sc = scaleAt(1);
   const tw = twistAt(1);
   const cr = s.r * sc;
-  const LH = 0.34;
+  const LH = 0.46;
+  // its floor: a flared ring
+  k.loft(
+    'weathered',
+    [
+      { outline: finStar(cr * 1.02), y: -0.02, rotDeg: tw },
+      { outline: finStar(cr * 1.3), y: 0.08, rotDeg: tw + 3 },
+    ],
+    { at: [x, shaftTop, z], color: CROWN_STONE },
+  );
   k.loft(
     'emissiveGreen',
     [
-      { outline: ring(cr * 0.7), y: -0.03 },
-      { outline: ring(cr * 0.7), y: LH + 0.02 },
+      { outline: ring(cr * 0.78), y: 0.05 },
+      { outline: ring(cr * 0.82), y: LH + 0.04 },
     ],
-    { at: [x, shaftTop, z], color: GLOW_LANTERN, glow: { strength: 0.5 } },
+    { at: [x, shaftTop, z], color: GLOW_LAMP, glow: { strength: 1.1 } },
   );
-  for (let j = 0; j < 16; j += 2) {
-    const rr = cr * (j % 4 === 0 ? 1.02 : 0.84);
-    const [ax, az] = turned(j * 22.5, tw, 1);
-    const yaw = -Math.atan2(az, ax) / D2R;
-    const len = rr - cr * 0.6;
-    k.box('darkStone', len, LH, 0.045, { at: [x + ax * (cr * 0.6 + len / 2), shaftTop, z + az * (cr * 0.6 + len / 2)], rot: [0, yaw, 0], color: CROWN_STONE, lod: 0 });
+  const PIERS = 8;
+  for (let j = 0; j < PIERS; j++) {
+    const a0 = (j / PIERS) * 360 + tw;
+    k.loft(
+      'weathered',
+      [0, 0.25, 0.5, 0.75, 1].map((t) => ({ outline: blade(cr * 1.0, a0 + 40 * t, 0.07 * (1 - 0.25 * Math.sin(Math.PI * t)), 0.07), y: 0.08 + t * (LH - 0.08) })),
+      { at: [x, shaftTop, z], color: TOWER_STONE, lod: 1 },
+    );
   }
+  // magic lights in the lamp room (always on): the one strong accent
   for (let j = 0; j < 4; j++) {
-    const [px, pz] = turned(22.5 + 90 * j, tw, cr * 0.7 + 0.01);
-    k.light([x + px, shaftTop + LH * 0.5, z + pz], { color: LIGHT, intensity: 0.5, radius: 0.026, kind: 'magic' });
+    const [px, pz] = turned(45 + 90 * j, -tw, cr * 0.84);
+    k.light([x + px, shaftTop + LH * 0.55, z + pz], { color: LIGHT, intensity: 1.0, radius: 0.04, kind: 'magic' });
   }
-  // ---- the crown: a flared ring over the lantern
-  const crownY = shaftTop + LH;
+  // ---- the crown: a cap ring over the lamp room, then eight twisted blades and a faceted needle
+  const capY = shaftTop + LH;
   k.loft(
-    'darkStone',
+    'weathered',
     [
-      { outline: finStar(cr * 1.05), y: 0, rotDeg: tw },
-      { outline: finStar(cr * 1.5), y: 0.13, rotDeg: tw + 4 },
-      { outline: finStar(cr * 1.42), y: 0.22, rotDeg: tw + 6 },
+      { outline: finStar(cr * 1.05), y: 0, rotDeg: tw + 40 },
+      { outline: finStar(cr * 1.45), y: 0.1, rotDeg: tw + 44 },
+      { outline: finStar(cr * 1.3), y: 0.16, rotDeg: tw + 46 },
     ],
-    { at: [x, crownY, z], color: CROWN_STONE },
+    { at: [x, capY, z], color: CROWN_STONE },
   );
-  const rimY = crownY + 0.22;
-  // jagged spikes: one per fin, leaning out, uneven (the great fins tallest)
-  for (let j = 0; j < 16; j += 2) {
-    const big = j % 4 === 0;
-    const R = cr * 1.42 * (big ? 0.92 : 0.72);
-    const [ax, az] = turned(j * 22.5, tw + 6, 1);
-    const h = (big ? 0.66 : 0.36) * (0.75 + 0.5 * k.r(900 + j));
-    const lean = big ? 13 : 20;
-    // lean outwards: tilt the tip towards (ax, az) (Euler x tilts +y towards +z, z tilts it towards −x)
-    const rot: V3 = [lean * az, 0, -lean * ax];
-    k.cone('darkStone', big ? 0.075 : 0.05, h, { at: [x + ax * R, rimY - 0.05, z + az * R], rot, seg: 4, color: 0x2a3230, lod: big ? 1 : 0 });
+  const crownY = capY + 0.14;
+  const CH = 1.35;
+  const BL = 8;
+  for (let j = 0; j < BL; j++) {
+    const a0 = (j / BL) * 360 + tw + 44;
+    const big = j % 2 === 0;
+    const h = CH * (big ? 1 : 0.78);
+    const secs = Array.from({ length: 8 }, (_, i) => {
+      const t = i / 7;
+      // swell out, then draw in to the axis: an open, flame-like spiral
+      const r = cr * 1.3 * (1 + 0.38 * Math.sin(Math.PI * Math.min(1, t * 1.25))) * (1 - 0.92 * t ** 1.6);
+      const w = (big ? 0.11 : 0.08) * (1 - 0.85 * t) + 0.008;
+      return { outline: blade(r, a0 + 80 * t, w, 0.045 * (1 - 0.6 * t) + 0.01), y: t * h };
+    });
+    k.loft('weathered', secs, { at: [x, crownY, z], color: big ? TOWER_STONE : CROWN_STONE, lod: big ? 1 : 0 });
   }
-  // the central spire, faceted
-  const spireH = 1.05;
-  k.cone('darkStone', cr * 0.62, spireH, { at: [x, rimY - 0.02, z], seg: 8, rot: [0, tw, 0], color: CROWN_STONE, faceted: true });
-  return { crownY: rimY, topY: rimY + spireH, shaftTop };
+  // the second lamp inside the crown and the needle rising out of it
+  k.cone('emissiveGreen', cr * 0.45, CH * 0.5, { at: [x, crownY, z], seg: 8, color: GLOW_LAMP, glow: { strength: 0.9 } });
+  const spireH = 1.1;
+  k.cone('weathered', cr * 0.3, spireH + CH * 0.5, { at: [x, crownY + CH * 0.35, z], seg: 6, rot: [0, tw, 0], color: TOWER_STONE, faceted: true });
+  k.light([x, crownY + CH * 0.3, z], { color: LIGHT, intensity: 0.8, radius: 0.05, kind: 'magic' });
+  return { crownY, topY: crownY + CH * 0.35 + spireH + CH * 0.5, shaftTop };
 }

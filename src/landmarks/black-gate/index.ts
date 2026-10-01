@@ -61,7 +61,7 @@ const STAMPS: LocalStamp[] = [
   },
   // 3. shelves for the Towers of the Teeth on the flanks, ~6 above the floor (the heightfield holds a
   //    ~2 km ledge; the towers' buttressed feet follow the rest)
-  ...TOWERS.map((at) => ({ kind: 'flatten' as const, at, radius: 0.8, falloff: 1.0, height: 0, surface: 'rock' as const })),
+  ...TOWERS.map((at) => ({ kind: 'flatten' as const, at, radius: 1.4, falloff: 1.0, height: 0, surface: 'rock' as const })),
 ];
 
 /** The Morannon: a black wall of iron closing Cirith Gorgor, flanked by the Towers of the Teeth. */
@@ -80,11 +80,11 @@ export default defineLandmark({
   bookmarks: [
     {
       id: 'black-gate-close',
-      distanceKm: 30,
-      elevationDeg: 3,
-      azimuthDeg: 314,
+      distanceKm: 36,
+      elevationDeg: -4,
+      azimuthDeg: 316,
       fov: 40,
-      lift: 7,
+      lift: 5.5,
       tod: 16.0,
       compare: ['reference/film/black-gate/black-gate-rotk-4k.webp', 'reference/film/black-gate/black-gate-towers-rotk.jpg', 'reference/concept-art/black-gate/howe-the-black-gates.jpg'],
       note: 'from the Dagorlad ash plain (the Dead Marshes road), the plated wall spanning the pass between the two craggy ridges, the Towers of the Teeth high on the flanks, Udûn and Mordor beyond; afternoon (16 h: the sun in the west, 35° up, ~50° off the face) in a high, neutral light, so the iron reads grey',
@@ -95,7 +95,7 @@ export default defineLandmark({
       elevationDeg: 1.5,
       azimuthDeg: 312,
       fov: 32,
-      lift: 4,
+      lift: 9,
       aimKm: [8, -7],
       tod: 16.0,
       compare: ['reference/film/black-gate/black-gate-towers-rotk.jpg'],

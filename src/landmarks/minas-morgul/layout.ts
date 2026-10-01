@@ -45,5 +45,23 @@ export const WALL: V2[] = (
 export const GATE: V2 = [C[0] - 0.065, C[1] + 1.6];
 export const GATE_OUT: V2 = [-0.13, 0.99];
 
+/** a closed polygon round `c`: `n` points at radius r·(1 + wobble), phase-shifted */
+function polar(c: V2, r: number, n: number, wobble: number, phase: number): V2[] {
+  return Array.from({ length: n }, (_, j): V2 => {
+    const a = (j / n) * Math.PI * 2 + phase;
+    const rr = r * (1 + wobble * Math.sin(3 * a + 0.7) + 0.5 * wobble * Math.cos(5 * a));
+    return [c[0] + Math.cos(a) * rr, c[1] + Math.sin(a) * rr];
+  });
+}
+
+/**
+ * The tiers stacked toward the mountain (north-east): the second terrace ring (top 0.85 above the shelf, its parapet over the curtain)
+ * and the keep terrace round the Tower (top 1.45); the Tower stands on the keep terrace.
+ */
+export const T2: V2[] = polar([C[0] + 0.12, C[1] - 0.23], 1.05, 10, 0.05, 0.3);
+export const T2_TOP = 0.85;
+export const T3: V2[] = polar(TOWER, 0.92, 9, 0.04, 0.1);
+export const T3_TOP = 1.45;
+
 /** the far end of the bridge on the south bank */
 export const BRIDGE_END: V2 = [GATE[0] - 0.6, GATE[1] + 4.6];
