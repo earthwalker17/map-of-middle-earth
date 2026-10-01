@@ -8,14 +8,21 @@ import { TERRAIN_SHADE as TS, alpineAt, groundLookTexture, groundPalette, rockAt
 import type { GroundMaps } from './groundMaps.ts';
 import { stampSnowCaps } from '../world/stamps.ts';
 import type { TerrainDetail } from './terrainTextures.ts';
+import { strata } from '../materials/strata.ts';
+import { VOLCANIC, volcanicCrust } from './volcanic.ts';
+import { spillIrradiance } from '../emission/spill.ts';
+import { canopyShell } from '../vegetation/canopyShell.ts';
 
 type N = TslNode;
 
 const {
   Fn,
+  If,
   abs,
   attribute,
   clamp,
+  dFdx,
+  dFdy,
   float,
   fract,
   fwidth,
@@ -73,6 +80,11 @@ const POOL_GRAIN = [Math.cos(0.7), Math.sin(0.7)] as const;
 
 /** stamp snow caps the terrain shader reads (world/stamps.ts `snowCap`; unused slots have reach 0) */
 const MAX_SNOW_CAPS = 4;
+/** strata on steep rock: visible over this slope range (1 − n.y) */
+const STRATA_SLOPE = [0.26, 0.5] as const;
+/** S4 switches (P1/P2 on; P3/P4 items ship switched off until they read right) */
+const STRATA_ON = true;
+const CRUST_ON = true;
 
 /**
  * Terrain material family (the only terrain material in the project).
@@ -132,12 +144,17 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
   const du = 1 / world.heights.width;
   const dv = 1 / world.heights.height;
   const e = world.heights.texel;
+  // Orodruin (cinder, basalt and fissure glow are strongest around it)
+  const doomPlace = world.places.get('mount-doom');
+  const doomXZ = vec2(doomPlace?.x ?? 1e6, doomPlace?.z ?? 1e6);
 
-  // outputs of the one surface pass, read by the normal / roughness / AO slots (the colour slot is
-  // built first, so these are assigned before they are read)
+  // outputs of the one surface pass, read by the normal / roughness / AO / emissive slots (the colour
+  // slot is built first, so these are assigned before they are read)
   const outNormal = property('vec3', 'terrainNormalW');
   const outRough = property('float', 'terrainRough');
   const outAO = property('float', 'terrainAO');
+  const outAlbedo = property('vec3', 'terrainAlbedo');
+  const outGlow = property('vec3', 'terrainGlow');
 
   const surface = Fn(() => {
     const p = positionWorld;
@@ -171,9 +188,10 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     const water = texture(world.water, uv);
     const lc = texture(world.landcover, uv);
 
-    // ---- noise (km): 60 and 12 planar; 3 and 0.9 in 3D (no stretching on steep faces)
+    // ---- noise (km): 60 planar; 12, 3 and 0.9 in 3D (they vary along a cliff's fall line, so no
+    // rock term is constant down a face — the vertical smear of a planar noise on steep ground)
     const n1 = mx_noise_float(p.xz.mul(1 / 60));
-    const n2 = mx_noise_float(p.xz.mul(1 / 12));
+    const n2 = mx_noise_float(p.mul(1 / 12));
     const n3 = mx_noise_float(p.mul(1 / 3));
 
     // regional ground look (its ecotones are domain-warped and dithered in the texture itself)
@@ -217,12 +235,16 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     const lowland = float(1).sub(smoothstep(9, 18, hC)).mul(float(1).sub(pal.rockiness));
     // crests below the alpine zone turn to rock too (no grass rims on mountain ridges)
     const subalpine = smoothstep(line.sub(17), line.sub(9), hEff).mul(float(1).sub(turf));
+    // ... except where a landmark stamp kept its faces rock (surface 'rock', or a stamp on rocky ground:
+    // Rivendell's scarps, the Argonath gorge) — those walls read as soil-brown under the bank rule
+    const rockStamp = stamped.mul(float(1).sub(turf));
     const bankTurf = max(water.a.mul(0.85), lowland.mul(0.6))
       .mul(float(1).sub(pal.rockiness))
+      .mul(float(1).sub(rockStamp))
       .mul(float(1).sub(alpineRaw))
       .mul(float(1).sub(smoothstep(BANK_TURF_SLOPE[0], BANK_TURF_SLOPE[1], slope)));
     const rockBase = max(
-      rockAt(slope.add(n2.mul(0.035)).add(crest.mul(0.06).add(pal.rockiness.mul(crest).mul(0.12))).sub(hollow.mul(0.03)), alpine, max(turf, bankTurf), pal.rockiness),
+      rockAt(slope.add(n2.mul(0.035)).add(n3.mul(0.02)).add(crest.mul(0.06).add(pal.rockiness.mul(crest).mul(0.12))).sub(hollow.mul(0.03)), alpine, max(turf, bankTurf), pal.rockiness),
       smoothstep(0.1, 0.5, crest.add(n3.mul(0.15))).mul(subalpine).mul(0.85),
       smoothstep(0.08, 0.4, crest.add(slope.mul(1.4)).add(n3.mul(0.12))).mul(pal.rockiness).mul(0.85),
     );
@@ -237,7 +259,8 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     );
 
     // ---- CC0 detail layers: soft ground (two layers) and hard ground (one layer), triplanar in
-    // review/final; preview projects both from above and fades the soft grain on steep faces
+    // review/final; preview projects the soft grain from above (faded on steep faces) and the hard layer
+    // biplanar (top + the dominant side axis)
     let lumSoft: N = float(1);
     let lumHard: N = float(1);
     let dN: N = vec3(0);
@@ -248,15 +271,26 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
       const idx = (v: N): N => int(v).toVar();
       const volc = pal.volcanic;
       const warp = vec2(n1, n2).mul(0.45);
-      const iA = idx(select(volc.greaterThan(0.5), float(detail.index('ash')), float(detail.index('meadow'))));
-      const iB = idx(select(volc.greaterThan(0.75), float(detail.index('ash')), float(detail.index('dry'))));
+      // volcanic ground (Gorgoroth, and Dagorlad's 0.5) takes the ash grain, never meadow
+      const iA = idx(select(volc.greaterThan(0.35), float(detail.index('ash')), float(detail.index('meadow'))));
+      const iB = idx(select(volc.greaterThan(0.6), float(detail.index('ash')), float(detail.index('dry'))));
       const iH = idx(select(snowBase.greaterThan(0.5), float(detail.index('snow')), select(scree.mul(rockBase).greaterThan(0.45), float(detail.index('scree')), float(detail.index('rock')))));
       // the two soft layers at one projection, blended by dryness
       const softAt = (uv: N): N => mix(texture(T, uv).depth(iA), texture(T, uv).depth(iB), dryness);
-      // tangent-space detail normal (0.5 = flat) → world perturbation for each projection
+      // tangent-space detail normal (0.5 = flat) → world perturbation for each projection: x along the
+      // projection's u axis, y along its v axis (OpenGL green, v grows with the texture rows)
       const nx = (t: N): N => t.r.mul(2).sub(1);
       const ny = (t: N): N => t.g.mul(2).sub(1).negate();
       const topN = (t: N): N => vec3(nx(t), 0, ny(t));
+      // side projections mirrored on the negative faces (a west face shows its texture the same way round
+      // as an east face) — u runs to the face's right, so the u axis flips with the face: the detail
+      // normals follow the mirror and east / west / north / south faces are lit consistently
+      const sx = select(nM.x.lessThan(0), float(-1), float(1));
+      const sz = select(nM.z.lessThan(0), float(-1), float(1));
+      const uvX = (tile: number): N => vec2(p.z.mul(sx).negate(), p.y).mul(1 / tile);
+      const uvZ = (tile: number): N => vec2(p.x.mul(sz), p.y).mul(1 / tile);
+      const sideXN = (t: N): N => vec3(0, ny(t), nx(t).mul(sx).negate());
+      const sideZN = (t: N): N => vec3(nx(t).mul(sz), ny(t), 0);
       let soft: N;
       let softN: N;
       let hard: N;
@@ -267,22 +301,31 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
         soft = softAt(p.xz.mul(1 / SOFT_TILE).add(warp));
         softN = topN(soft);
         softSteep = float(1).sub(smoothstep(SOFT_STEEP[0], SOFT_STEEP[1], slope));
-        hard = texture(T, p.xz.mul(1 / HARD_TILE)).depth(iH);
-        hardN = topN(hard);
+        // biplanar hard layer: top + the dominant side axis (+1 fetch). Gradients are taken from the
+        // continuous world position, so the switch between the two side axes never shows a mip seam
+        const hTop = texture(T, p.xz.mul(1 / HARD_TILE)).depth(iH);
+        const useX = abs(nM.x).greaterThan(abs(nM.z));
+        const dpx = dFdx(p);
+        const dpy = dFdy(p);
+        const gx = select(useX, vec2(dpx.z, dpx.y), vec2(dpx.x, dpx.y)).mul(1 / HARD_TILE);
+        const gy = select(useX, vec2(dpy.z, dpy.y), vec2(dpy.x, dpy.y)).mul(1 / HARD_TILE);
+        const hSide = texture(T, select(useX, uvX(HARD_TILE), uvZ(HARD_TILE))).grad(gx, gy).depth(iH);
+        const wt0 = pow(nM.y, 4);
+        const ws0 = pow(max(abs(nM.x), abs(nM.z)), 4);
+        const wt = wt0.div(wt0.add(ws0));
+        hard = mix(hSide, hTop, wt);
+        hardN = topN(hTop).mul(wt).add(select(useX, sideXN(hSide), sideZN(hSide)).mul(float(1).sub(wt)));
       } else {
         // triplanar weights (sharpened): top xz, side faces zy / xy — turf on steep stamp flanks
         // and banks (the Minas Tirith cone) keeps an unstretched grain like the rock does
         const bw0 = pow(abs(nM), vec3(4));
         const bw = bw0.div(bw0.x.add(bw0.y).add(bw0.z));
-        const tri = (top: N, sx: N, sz: N): [N, N] => [
-          top.mul(bw.y).add(sx.mul(bw.x)).add(sz.mul(bw.z)),
-          topN(top)
-            .mul(bw.y)
-            .add(vec3(0, ny(sx), nx(sx)).mul(bw.x))
-            .add(vec3(nx(sz), ny(sz), 0).mul(bw.z)),
+        const tri = (top: N, tx: N, tz: N): [N, N] => [
+          top.mul(bw.y).add(tx.mul(bw.x)).add(tz.mul(bw.z)),
+          topN(top).mul(bw.y).add(sideXN(tx).mul(bw.x)).add(sideZN(tz).mul(bw.z)),
         ];
-        [soft, softN] = tri(softAt(p.xz.mul(1 / SOFT_TILE).add(warp)), softAt(p.zy.mul(1 / SOFT_TILE).add(warp)), softAt(p.xy.mul(1 / SOFT_TILE).add(warp)));
-        [hard, hardN] = tri(texture(T, p.xz.mul(1 / HARD_TILE)).depth(iH), texture(T, p.zy.mul(1 / HARD_TILE)).depth(iH), texture(T, p.xy.mul(1 / HARD_TILE)).depth(iH));
+        [soft, softN] = tri(softAt(p.xz.mul(1 / SOFT_TILE).add(warp)), softAt(uvX(SOFT_TILE).add(warp)), softAt(uvZ(SOFT_TILE).add(warp)));
+        [hard, hardN] = tri(texture(T, p.xz.mul(1 / HARD_TILE)).depth(iH), texture(T, uvX(HARD_TILE)).depth(iH), texture(T, uvZ(HARD_TILE)).depth(iH));
       }
       // fade by texel footprint: the grain resolves at mid distance; far off (tile < ~10 px) the
       // regional palette alone carries the ground and no tile can repeat visibly
@@ -302,7 +345,17 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     const rockTint = pal.rock.mul(vec3(float(1).add(n2.mul(0.05)), float(1), float(1).sub(n2.mul(0.05))));
     const rockFace = rockTint.mul(float(0.86).add(n2.mul(0.1)).add(n3.mul(0.12)).add(n4.mul(0.06))).mul(brush);
     const screeCol = mix(pal.rock, srgbNode(TS.scree), float(0.5).mul(float(1).sub(pal.volcanic.mul(0.7)))).mul(float(1.02).add(n4.mul(0.06)));
-    const rockCol = mix(rockFace, screeCol, scree).mul(lumHard);
+    const rockCol = mix(rockFace, screeCol, scree).mul(lumHard).toVar();
+
+    // ---- strata on steep rock: bedding planes across the face (hard beds pale and proud with lit ledge
+    // tops, soft beds dark and recessed), folded by the 60 km noise and wiggled by the 3 km one — the
+    // horizontal structure that breaks the fall-line smear of the 0.4 km relief and masks
+    if (STRATA_ON) {
+      const sW = smoothstep(STRATA_SLOPE[0], STRATA_SLOPE[1], slope).mul(rock).mul(float(1).sub(snow)).mul(float(1).sub(scree.mul(0.7)));
+      const st = strata(p, nM, n1.mul(2.2).add(n3.mul(0.35)), n3.mul(0.8).add(n2.mul(0.6)), { preview });
+      rockCol.assign(rockCol.mul(mix(float(1), st.lum, sW)).mul(mix(vec3(1), st.tint, sW)));
+      dN = dN.add(st.dn.mul(sW));
+    }
 
     // ---- ground: grass ↔ dry, micro-pattern, alpine turf, soil on slopes, relief tint
     const ground = mix(pal.grass, pal.dry, dryness).toVar();
@@ -322,23 +375,48 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     // forest floor under the canopies: darker, richer litter and moss (the canopy is vegetation's)
     const floorCol = mix(pal.grass.mul(0.5), pal.soil.mul(0.62), float(0.45).add(n3.mul(0.2))).mul(float(0.8).add(n4.mul(0.18)));
     ground.assign(mix(ground, floorCol, lc.r.mul(0.9)));
+    // far canopy shell (S4 W2-C; weight 0 until it lands): the forest's own canopy surface replaces the
+    // floor — and the slope rock under it — and carries its own relief
+    const shell = canopyShell(p, fp, lc.r);
+    ground.assign(mix(ground, shell.albedo, shell.weight));
 
-    // volcanic plains (Gorgoroth): a cracked ash plain — fissures along the zero set of the 3 km
-    // noise, broken into segments that taper to nothing (the 0.9 km noise sets both the width and
-    // the gaps, so no loop closes), wider and darker in places (12 km); faded once they would
-    // shrink below a pixel, so the plain stays quiet at regional range
-    const crackFade = float(1).sub(smoothstep(0.12, 0.35, fp));
-    const crackOpen = clamp(n4.mul(1.7).add(n2.mul(0.5)).add(0.25), 0, 1);
-    const crackW = crackOpen.mul(0.05).add(0.002);
-    const cracks = float(1)
-      .sub(smoothstep(crackW.mul(0.3), crackW, abs(n3)))
-      .mul(smoothstep(0.05, 0.3, crackOpen))
-      .mul(smoothstep(0.7, 0.95, pal.volcanic))
-      .mul(flatGround(slope))
-      .mul(crackFade);
-    ground.assign(ground.mul(float(1).sub(cracks.mul(float(0.42).add(n2.mul(0.15))))));
+    // ---- volcanic ground (Gorgoroth, Dagorlad, Nurn): cracked ash crust plates, basalt flow lobes,
+    // cinder round Doom, fissure glow (volcanic.ts). Branch: the rest of the world never pays for it,
+    // nor does volcanic ground too far off for any crack to resolve
+    const crustDn = vec3(0).toVar();
+    const crustW = float(0).toVar();
+    const crustRough = float(0.95).toVar();
+    const glow = vec3(0).toVar();
+    // the relief normal the shading uses (review / final: on the volcanic plains, the broad normal)
+    const nRelief = nM.toVar();
+    // gentle volcanic ground: the baked sub-km ripples of the plain shade like dunes under a raking sun
+    const flatV = smoothstep(0.6, 0.95, pal.volcanic).mul(float(1).sub(smoothstep(0.12, 0.32, slope)));
+    if (CRUST_ON) {
+      const volc = pal.volcanic.toVar();
+      If(volc.greaterThan(VOLCANIC.volcanic[0]).and(fp.lessThan(VOLCANIC.fade[1])), () => {
+        const c = volcanicCrust({ p, fp, slope, volcanic: volc, n2, n3, n4, doom: doomXZ, preview });
+        ground.assign(mix(ground, c.col(ground), c.w));
+        rockCol.assign(mix(rockCol, rockCol.mul(vec3(1.3, 0.92, 0.8)), c.cinder));
+        crustDn.assign(c.dn);
+        crustW.assign(c.w);
+        crustRough.assign(c.rough);
+        glow.assign(c.glow);
+        if (!preview) {
+          // the plain's broad relief (taps 3 texels out, ≈ 1.2 km): its ripples no longer shade, the
+          // landforms (the cone, the ranges' feet) still do — offline tiers only (+4 fetches, here only)
+          const o = 3;
+          const bL = texture(hTex, uv.sub(vec2(du * o, 0))).level(0).r;
+          const bR = texture(hTex, uv.add(vec2(du * o, 0))).level(0).r;
+          const bU = texture(hTex, uv.sub(vec2(0, dv * o))).level(0).r;
+          const bD = texture(hTex, uv.add(vec2(0, dv * o))).level(0).r;
+          const nBroad = normalize(vec3(bL.sub(bR), float(2 * e * o), bU.sub(bD)));
+          const k = smoothstep(0.6, 0.95, volc).mul(float(1).sub(smoothstep(0.15, 0.3, float(1).sub(nBroad.y)))).mul(0.85).mul(c.w);
+          nRelief.assign(normalize(mix(nM, nBroad, k)));
+        }
+      });
+    }
 
-    const col = mix(ground, rockCol, rock).toVar();
+    const col = mix(ground, rockCol, rock.mul(float(1).sub(shell.weight))).toVar();
     const snowCol = srgbNode(TS.snow).mul(float(0.97).add(n4.mul(0.03))).mul(mix(float(1), lumHard, 0.6));
     col.assign(mix(col, snowCol, snow));
 
@@ -391,24 +469,32 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     col.assign(mix(col, srgbNode(TS.channel), channel.mul(0.9)));
 
     // ---- micro relief: CC0 detail normals or procedural fallback
+    // gentle volcanic ground: keep only part of the relief normal's tilt (the crust's plates and clinker
+    // carry the relief there, not the baked ripples)
+    const kH = float(1).sub(flatV.mul(1 - VOLCANIC.flatten));
+    const nB = normalize(vec3(nRelief.x.mul(kH), nRelief.y, nRelief.z.mul(kH)));
     let nW: N;
     if (detail) {
-      nW = normalize(nM.add(dN));
+      nW = normalize(nB.add(dN).add(crustDn).add(shell.dn.mul(shell.weight)));
     } else {
       const dFade = float(1).sub(smoothstep(0.05, 0.6, fp));
       const dx = mx_noise_float(p.mul(1 / 0.7).add(vec3(3.1, 0, 7.7)));
       const dz = mx_noise_float(p.mul(1 / 0.7).add(vec3(11.3, 0, 1.9)));
       const amt = dFade.mul(float(0.12).add(rock.mul(0.2)));
-      nW = normalize(nM.add(vec3(dx, 0, dz).mul(amt)));
+      nW = normalize(nB.add(vec3(dx, 0, dz).mul(amt)).add(dN).add(crustDn).add(shell.dn.mul(shell.weight)));
     }
 
     // ---- outputs
-    const occl = ao.mul(float(1).sub(max(curv, 0).mul(0.12)));
+    // (no curvature darkening in the volcanic plains' ripple troughs)
+    const occl = ao.mul(float(1).sub(max(curv, 0).mul(0.12).mul(float(1).sub(flatV))));
     col.assign(col.mul(mix(float(0.8), float(1), occl)));
     outNormal.assign(nW);
     outAO.assign(mix(float(1), occl, 0.85));
-    const rough = mix(mix(float(0.92), float(0.82), rock), float(0.55), snow);
+    const rough = mix(mix(mix(float(0.92), crustRough, crustW), float(0.82), rock), float(0.55), snow);
     outRough.assign(mix(mix(rough, float(0.24), pools.mul(0.85)), float(0.12), channel));
+    outAlbedo.assign(col);
+    // fissure glow on open ground only (never on the rock faces or under snow / water)
+    outGlow.assign(glow.mul(float(1).sub(rock)).mul(float(1).sub(channel)));
     return col;
   });
 
@@ -420,5 +506,8 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
   material.roughnessNode = outRough;
   material.aoNode = outAO;
   material.metalnessNode = float(0);
+  // fissure glow + the light the emission spill throws onto the ground (W2-D; zero until it lands):
+  // Lambertian albedo · E / π
+  material.emissiveNode = outGlow.add(outAlbedo.mul(spillIrradiance(positionWorld, outNormal)).mul(1 / Math.PI));
   return material;
 }

@@ -14,8 +14,11 @@ import type { QualityTier } from '../core/quality.ts';
  */
 export const DETAIL_LAYERS = ['meadow', 'dry', 'rock', 'snow', 'scree', 'ash'] as const;
 export type DetailLayer = (typeof DETAIL_LAYERS)[number];
-/** what a missing layer falls back to (preview has 4 layers) */
-export const DETAIL_FALLBACK: Record<DetailLayer, DetailLayer> = { meadow: 'meadow', dry: 'dry', rock: 'rock', snow: 'snow', scree: 'rock', ash: 'dry' };
+/**
+ * what a missing layer falls back to (preview has 4 layers): ash → the broken stony grain of the rock
+ * layer (withered grass on Gorgoroth read as a field), under the procedural crust (volcanic.ts)
+ */
+export const DETAIL_FALLBACK: Record<DetailLayer, DetailLayer> = { meadow: 'meadow', dry: 'dry', rock: 'rock', snow: 'snow', scree: 'rock', ash: 'rock' };
 
 export interface TerrainDetail {
   texture: DataArrayTexture;
