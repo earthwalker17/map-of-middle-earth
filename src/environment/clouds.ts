@@ -3,6 +3,7 @@ import { tsl, type TslNode } from '../materials/tsl.ts';
 import { env } from '../materials/environment.ts';
 import { rand } from '../core/rng.ts';
 import { SLAB } from '../diorama/slabSpec.ts';
+import { atmosphere } from '../materials/atmosphere.ts';
 
 type N = TslNode;
 const { clamp, float, max, smoothstep, step, texture, vec2 } = tsl;
@@ -10,10 +11,18 @@ const { clamp, float, max, smoothstep, step, texture, vec2 } = tsl;
 /** texels of the tileable cloud field and its period in km (≈ 3.2 km per texel) */
 const TEX_W = 512;
 const TEX_H = 320;
-const PERIOD_X = 1638.4;
-const PERIOD_Z = 1024;
+export const PERIOD_X = 1638.4;
+export const PERIOD_Z = 1024;
+/**
+ * Cumulus caps (S4 P4): extra local cloud coverage over the peaks named by looks.json atmo spots
+ * `cap` (Caradhras, Mindolluin, Erebor) at full cap weight; 0 switches the caps off.
+ * OFF (unfinished): the cumulus sheet rides at env.cloudHeight, ~20 km above the summits, so a boost
+ * there reads as a cloud over the range, not a cap hugging the peak (needs a cap layer at the
+ * summit height; the atmo2.A field and the data are in place).
+ */
+export const CLOUD_CAPS = 0;
 /** the detail channel repeats this many times faster (and is offset) */
-const DETAIL = 3.3;
+export const DETAIL = 3.3;
 
 /**
  * Tileable value-noise fBm on a periodic lattice (cells per tile in x/y per octave).
@@ -103,7 +112,7 @@ export class CloudField {
    * 0..1 cloud cover over world point p (where its ray to the key light meets the deck).
    * detail = false (preview tier) skips the edge-detail fetch.
    */
-  cover(p: N, detail = true): N {
+  cover(p: N, detail = true, cap: N = float(0)): N {
     const L = env.keyDir;
     const t = max(env.cloudHeight.sub(p.y), 0).div(max(L.y, 0.1));
     const q = p.xz.add(L.xz.mul(t)).sub(env.wind.mul(env.tFx));
@@ -112,7 +121,8 @@ export class CloudField {
     const v = detail ? m.r.add(texture(this.texture, uv.mul(DETAIL).add(vec2(0.37, 0.61))).g.sub(0.5).mul(0.12)) : m.r;
     // local coverage: the weather-system field gathers the patches (mean stays ≈ cloudCoverage)
     const c = env.cloudCoverage;
-    const cl = clamp(c.mul(m.b.mul(1.3).add(0.35)), 0, 1);
+    // (+ the cap boost over the high peaks: atmo2.A × CLOUD_CAPS, S4 P4)
+    const cl = clamp(c.mul(m.b.mul(1.3).add(0.35)).add(cap.mul(CLOUD_CAPS)), 0, 1);
     const th = float(1).sub(cl);
     // wide, soft penumbra: the deck is a diffuse cloud, not a cut-out
     return smoothstep(th.sub(0.1), th.add(0.16), v).mul(clamp(c.mul(40), 0, 1));
@@ -128,8 +138,16 @@ export class CloudField {
     return inX.mul(inZ).mul(smoothstep(-0.6, -0.05, p.y));
   }
 
-  /** Multiplier on the key light at p. */
-  lightFactor(p: N, detail = true): N {
-    return float(1).sub(this.cover(p, detail).mul(env.cloudShadow).mul(CloudField.slabTop(p)));
+  /**
+   * Multiplier on the key light at p: the darker of the drifting cloud shadows and the ash deck
+   * (atmo2.R × env.deckShadow — the overcast under Mordor's pall), on the slab top only.
+   * `shadows = false` keeps only the deck.
+   */
+  lightFactor(p: N, detail = true, shadows = true): N {
+    // one atmo2 tap: R = deck cover, A = cloud-cap boost (at the fragment: the caps are broad)
+    const f2 = atmosphere.field2(p.xz);
+    const deck = f2.r.mul(env.deckShadow);
+    const shade = shadows ? max(this.cover(p, detail, f2.a).mul(env.cloudShadow), deck) : deck;
+    return float(1).sub(shade.mul(CloudField.slabTop(p)));
   }
 }
