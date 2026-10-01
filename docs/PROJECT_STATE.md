@@ -158,14 +158,41 @@ south edge is a clean diorama cut through the Bay of Belfalas; a squarer board w
   use bookmark compare lists.
 - **W3 (merged):** Mount Doom, Barad-dûr, Black Gate (E); Minas Morgul, Cirith Ungol, Osgiliath, Henneth
   Annûn (F). 14/24 landmarks at status s3; check: LOD0 191k tris, 14.9 MB, 320 lights, build ≈1 s (AO 0.56 s).
-- **W4 (running):** Minas Tirith, Helm's Deep, Isengard (G); Erebor gate, Dale, Lake-town, Dol Guldur (H).
-  Hero checkpoint renders + critics in parallel.
+- **W4 (merged):** Minas Tirith, Helm's Deep, Isengard (G); Erebor gate, Dale, Lake-town, Dol Guldur (H).
+  21/24 at s3; all 31 bookmarks meet their framing gates; LOD0 427k tris, 33 MB, 870 lights; boot-time
+  landmark build ≈3.1 s (AO 1.75 s — over its 0.4 s budget: S6 worker / AO budget).
+- **Hero checkpoint** (`renders/qa/20261001-091745`, critic-s3-checkpoint.json): blind recognizability
+  **21/21 top-1** (7 hero pauses × 3 critics); film-look means 1.2–2.5 / 4 (atmosphere 1–2, 18/28 toy
+  flags), driven mostly by shared systems. No Blender follow-up triggered (Barad-dûr, Moria read).
+  **User decision (2026-10-01): S3 stays landmarks-only;** the shared-system findings open S4 (below).
+- **Specular ambient** for landmark structures (no environment map: metals / glossy dark stone went black in
+  shade).
+- **W5 (running):** Bree, Weathertop, Grey Havens + Hobbiton P1 (I); Rivendell, Black Gate, Minas Morgul P1
+  reworks (J).
 - **Blender spike (W2-D phase 1, merged): GO.** `pnpm models` (headless Blender 4.5 under the lock, 10 min
   timeout, `--verify` byte-identical), runtime GLB loader (families by `fam:<id>`, shared AO). Argonath king
   GLB (39k tris/king, 1.06 MB) vs the TS-v2 figure: 3/3 blind critics preferred the GLB in every readable
   pair (low pass, rear, 6 km king; conf 0.7–0.85) and recognised it as the Argonath; compile unchanged,
   boot +0.2–0.4 s. Follow-ups (Barad-dûr → Moria gate → Orthanc) only if their TS-v2 builds fail the hero
   checkpoint.
+
+## S4 priorities from the S3 hero checkpoint (shared systems; ranked)
+1. **Mordor / Dagorlad sky and ash deck:** `env.skyTint` only multiplies the clear sky and fades out below
+   ~14°; add a region-driven overcast ash deck (CloudField coverage / colour per looks.json), red underglow
+   toward Doom, heavier Mordor haze so the outer world disappears from Doom / Gate frames.
+2. **Emission lights its surroundings:** a deterministic surface-irradiance term from the brightest records
+   in the shared families + terrain (lava, Morgul wall-wash, windows, ithildin), volumetric halos in the
+   in-scatter for strong kinds (no crater "sun disc"), emission reflected in water.
+3. **Vegetation archetypes and scale:** asymmetric multi-lobed broadleaf / pointed conifer / holly crowns,
+   hedgerows and copses, scale spread, a merged canopy shell beyond ~30 km (crowns read as confetti
+   / lollipops at 10–20× real size), per-landmark tree-height caps.
+4. **Terrain material:** triplanar rock with strata on steep slopes (no vertical smear), grass breakup (no
+   felt / clay), cracked ash crust + basalt instead of Mordor dune ripples; audit ground albedo (mordor /
+   dagorlad spots render as sand / beige).
+5. **Atmosphere:** stronger aerial perspective beyond ~40 km, valley mist (Sirannon, Rivendell, Anduin,
+   Morgul vale), cloud caps, night moon key light + fewer stars.
+6. **Water and effects:** waterfalls (ribbons, plunge pools, spray), reflection-miss fallback (black holes by
+   the Argonath plinths), banks without levee lips, readable smoke / plumes (Doom), the Morgul beam.
 
 ## S4+ backlog
 - **Mordor mood (S4):** ash ceiling, plume, red under-glow, bloomed lava/Eye.
