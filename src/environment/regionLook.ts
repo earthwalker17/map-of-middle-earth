@@ -1,7 +1,7 @@
 import { Color, Vector3 } from 'three/webgpu';
 import type { SceneState } from '../core/types.ts';
 import type { World } from '../world/World.ts';
-import { atmoLook, deckLook, DEFAULT_HAZE_RAMP, gradeLook, isLookRegion, sampleRegionWeights, type AtmoLook, type DeckLook, type GradeLook, type GradeSpot } from '../materials/looks.ts';
+import { atmoLook, DECK_DEFAULT_HEIGHT, deckLook, DEFAULT_HAZE_RAMP, gradeLook, isLookRegion, sampleRegionWeights, strongestDeck, type AtmoLook, type DeckLook, type GradeLook, type GradeSpot } from '../materials/looks.ts';
 import { gradeUniforms } from '../render/PostPipeline.ts';
 import { env } from '../materials/environment.ts';
 
@@ -17,6 +17,14 @@ const BASE = { saturation: 1.1, contrast: 1.1, bloomStrength: 0.12, bloomRadius:
 const NIGHT = { saturation: 0.42, tint: new Color(0.85, 0.95, 1.15), exposure: 0.4, contrast: 1.0, redKeep: 0.75 };
 /** How strongly SceneState.lookOverride pulls the grade towards its region. */
 const OVERRIDE = 0.85;
+/**
+ * Weight of the strongest deck's shadow / height / tone in the focus blend of the decks: the blend
+ * is (Σ cover·value + DECK_PRIOR·prior) / (Σ cover + DECK_PRIOR), continuous as a deck enters the
+ * focus (a hard "no deck → defaults" switch popped the key light by ~30 % on the Dagorlad edge).
+ */
+const DECK_PRIOR = 0.02;
+/** below this focus deck cover the deck spots fade out (they move an existing pall, never make one) */
+const DECK_SPOT_MIN = 0.05;
 
 const smooth = (e0: number, e1: number, x: number) => {
   const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
@@ -53,7 +61,9 @@ export class RegionLook {
    * The focus-blended ash deck (S4; wide views fade it like the grade): cover 0..1, tone (linear),
    * base height, key shadow — what the dome, the hemisphere and the key light read this frame.
    */
-  readonly deck = { cover: 0, tone: new Color(0.25, 0.25, 0.25), height: 40, shadow: 0 };
+  readonly deck = { cover: 0, tone: new Color(0.25, 0.25, 0.25), height: DECK_DEFAULT_HEIGHT, shadow: 0 };
+  /** the prior of the deck blend (the data's strongest deck) */
+  private readonly deckPrior: DeckLook;
   /** the focus-blended regional in-scatter tint (atmo.tint; the dome's horizon) */
   readonly horizonTint = new Color(1, 1, 1);
   /** the focus-blended haze distance ramp (atmo.ramp; env.hazeRamp) */
@@ -70,6 +80,7 @@ export class RegionLook {
     this.grades = ids.map((id) => gradeLook(id));
     this.atmos = ids.map((id) => atmoLook(id));
     this.decks = ids.map((id) => deckLook(id));
+    this.deckPrior = strongestDeck(ids);
     for (const d of this.decks)
       for (const s of d.spots) {
         const p = world.places.get(s.place);
@@ -171,20 +182,18 @@ export class RegionLook {
       for (let i = 0; i < 4; i++) ramp[i] += a * A.ramp[i];
     }
     const deck = this.deck;
-    if (dc > 1e-5) {
-      deck.tone.setRGB(dr / dc, dg / dc, db / dc);
-      deck.height = dh / dc;
-      deck.shadow = ds / dc;
-    } else {
-      deck.tone.setRGB(0.25, 0.25, 0.25);
-      deck.height = 40;
-      deck.shadow = 0;
-    }
-    // deck spots: the cover moves towards the spot's by the focus distance to the place
+    const P = this.deckPrior;
+    const E = DECK_PRIOR;
+    const den = dc + E;
+    deck.tone.setRGB((dr + E * P.tone.r) / den, (dg + E * P.tone.g) / den, (db + E * P.tone.b) / den);
+    deck.height = (dh + E * P.height) / den;
+    deck.shadow = (ds + E * P.shadow) / den;
+    // deck spots: the cover moves towards the spot's by the focus distance to the place (faded
+    // in with the focus cover itself, so a spot never pops a deck into or out of existence)
     for (const sp of this.deckSpots) {
       const q = Math.hypot(tx - sp.x, tz - sp.z) / sp.r;
-      const a = Math.exp(-q * q) * regional;
-      if (a < 1e-4 || dc <= 1e-5) continue;
+      const a = Math.exp(-q * q) * regional * Math.min(1, dc / DECK_SPOT_MIN);
+      if (a < 1e-6) continue;
       dc += (sp.cover - dc) * a;
     }
     deck.cover = Math.min(1, dc);

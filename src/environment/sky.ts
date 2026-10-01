@@ -1,7 +1,7 @@
 import { BackSide, Color, Matrix3, Matrix4, Mesh, MeshBasicNodeMaterial, SphereGeometry, Vector3 } from 'three/webgpu';
 import { tsl, type TslNode } from '../materials/tsl.ts';
 import { env } from '../materials/environment.ts';
-import { atmosphere } from '../materials/atmosphere.ts';
+import { atmosphere, DECK_HAZE_CHROMA } from '../materials/atmosphere.ts';
 import { celestialPole, type Daylight } from './timeOfDay.ts';
 
 type N = TslNode;
@@ -382,16 +382,22 @@ export class SkyModel {
     // the haze at infinity in this direction (at or below the horizon) and at the horizon
     const hazeDir = atmosphere.inScatter(vec3(dir.x, min(h, 0), dir.z)).mul(env.horizonTint);
     const hazeHorRaw = atmosphere.inScatter(vec3(dir.x, 0, dir.z));
-    const hazeHor = hazeHorRaw.mul(env.horizonTint);
     const clear = mix(hazeHorRaw, this.skyBase(dir), smoothstep(0.0, 0.1, h)).mul(tint);
     // under an ash deck the dome is overcast: a low-contrast mottled ceiling in perspective,
     // the deck underside's radiance overhead, merging into the horizon haze
     // (behind a uniform branch: frames without a deck never evaluate the overcast noise)
+    // the overcast horizon is the colour the haze under the deck converges to (atmosphere.apply:
+    // env.deckSky × the regional chroma), so far land meets the overcast sky without a seam
+    const lumW = vec3(0.2126, 0.7152, 0.0722);
+    const ht = vec3(env.horizonTint);
+    const deckHor = env.deckSky.mul(mix(vec3(1), ht.div(max(dot(ht, lumW), 0.05)), DECK_HAZE_CHROMA));
     const sky = vec3(clear).toVar();
+    const below = vec3(hazeDir).toVar();
     If(env.deck.greaterThan(0.001), () => {
-      sky.assign(mix(clear, this.overcast(dir, hazeHor), env.deck));
+      sky.assign(mix(clear, this.overcast(dir, deckHor), env.deck));
+      below.assign(mix(hazeDir, deckHor, env.deck));
     });
-    const base = mix(hazeDir, sky, step(0, h));
+    const base = mix(below, sky, step(0, h));
     // studio void: a fraction of the horizon haze, lifted a little on the sun's side and just
     // under a low sun, darkest straight down, plus a faint floor so the night void stays navy
     const dh = normalize(vec2(dir.x, dir.z.add(1e-5)));
@@ -400,7 +406,9 @@ export class SkyModel {
     const nearH = float(1).sub(smoothstep(0.0, 0.12, h.negate()));
     const sunSide = pow(az, 3).mul(0.25).add(1).add(pow(az, 10).mul(nearH).mul(u.sunGlow.mul(4)));
     const down = float(1).sub(smoothstep(0.2, 1.0, h.negate()).mul(0.5));
-    const voidCol = hazeHor.mul(u.voidLevel).add(env.voidColor).mul(sunSide.mul(down));
+    // (from the UNTINTED horizon: the studio backdrop of the floating diorama never drifts with
+    // the region in focus; the tinted band just below the horizon blends into it)
+    const voidCol = hazeHorRaw.mul(u.voidLevel).add(env.voidColor).mul(sunSide.mul(down));
     // haze band just below the horizon, fully void by ~17° down
     const sd = clamp(h.negate().div(u.voidFalloff), 0, 1);
     const t = float(1).sub(pow(float(1).sub(sd), 3));
@@ -415,15 +423,15 @@ export class SkyModel {
     return vec4(col, 1);
   });
 
-  /** Overcast sky under an ash deck for a direction above the horizon. */
-  private overcast(dir: N, hazeHor: N): N {
+  /** Overcast sky under an ash deck for a direction above the horizon (`horizon`: its colour at h = 0). */
+  private overcast(dir: N, horizon: N): N {
     const h = dir.y;
     // a virtual ceiling OVERCAST_CEILING above the eye, drifting with the deck
     const pc = vec2(dir.x, dir.z).div(max(h, 0.035)).mul(OVERCAST_CEILING).sub(env.wind.mul(env.tFx).mul(0.45));
     const n0 = mx_noise_float(vec3(pc.div(OVERCAST_SCALES[0]), 1.3));
     const n1 = mx_noise_float(vec3(pc.div(OVERCAST_SCALES[1]), 4.1));
     const mott = n0.mul(0.16).add(n1.mul(0.08)).add(1);
-    return mix(hazeHor, env.deckSky.mul(mott), smoothstep(0.0, 0.3, h));
+    return mix(horizon, env.deckSky.mul(mott), smoothstep(0.0, 0.3, h));
   }
 
   /** Camera-centred sky sphere pinned just inside the (reversed-Z) far plane. */

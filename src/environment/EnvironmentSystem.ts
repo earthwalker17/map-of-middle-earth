@@ -10,7 +10,6 @@ import { SkyModel } from './sky.ts';
 import { KeyShadow, type ShadowBounds } from './shadows.ts';
 import { CloudField } from './clouds.ts';
 import { RegionLook } from './regionLook.ts';
-import { deckLook } from '../materials/looks.ts';
 import { CloudLayer, deckUnderside } from './cloudLayer.ts';
 
 const { positionWorld } = tsl;
@@ -21,9 +20,18 @@ const RAMP_FOCUS_KM = 250;
 const RAMP_SCALE = [0.25, 1.3] as const;
 /** extra air gain for mid and regional shots (env.hazeGain = 1 + this at close range) */
 const FILM_AIR = 1.5;
+/**
+ * Overcast fill: under the deck the light the pall takes from the key comes back as diffuse sky
+ * light — the hemisphere fill rises by DECK_FILL × focus cover × deck shadow (flat, shadowless
+ * grey-steel light under the pall: lit : shadow ≈ 1.4 at the Black Gate instead of 2.1).
+ */
+const DECK_FILL = 0.8;
+/** the ash haze ramp (km) as multiples of the focus distance: the subject clear, the world behind it gone */
+const ASH_RAMP_K = [1.1, 2.0] as const;
 
 const _focus = new Vector3();
 const _tone = new Color();
+const _gnd = new Color();
 const lumC = (c: Color) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
 const smooth = (e0: number, e1: number, x: number) => {
   const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
@@ -66,14 +74,11 @@ export class EnvironmentSystem implements System {
   readonly regionLook: RegionLook;
   readonly cloudLayer: CloudLayer;
   private bounds!: ShadowBounds;
-  /** the strongest deck shadow of the data (the pall's key shadow when no deck is in focus) */
-  private readonly deckShadowMax: number;
   private readonly radiance = this.skyModel.radianceCPU.bind(this.skyModel);
 
   constructor(readonly world: World) {
     this.regionLook = new RegionLook(world);
     this.cloudLayer = new CloudLayer(world, this.clouds);
-    this.deckShadowMax = Math.max(0, ...world.lookRegions.map((id) => deckLook(id).shadow));
   }
 
   init(ctx: InitContext): void {
@@ -102,7 +107,8 @@ export class EnvironmentSystem implements System {
       yMin: SLAB.plinthBottom - 1,
       yMax: 62,
     };
-    scene.fogNode = atmosphere.fogNode(quality.atmosphere.inScatter);
+    // (preview: the along-ray regional haze skips its mid-point tap)
+    scene.fogNode = atmosphere.fogNode(quality.atmosphere.inScatter, quality.id !== 'preview');
   }
 
   evaluate(frame: FrameContext): void {
@@ -157,8 +163,9 @@ export class EnvironmentSystem implements System {
     // ---- region grade + sky tint + ash deck around the camera focus (pure in SceneState)
     this.regionLook.evaluate(state, camera.position, dl.night);
     const deck = this.regionLook.deck;
-    // the key light under the pall: per fragment atmo2.R × this (relaxed for the whole-table views)
-    env.deckShadow.value = (deck.shadow > 0 ? deck.shadow : this.deckShadowMax) * (1 - 0.5 * wide);
+    // the key light under the pall: per fragment atmo2.R × this (relaxed for the whole-table views;
+    // the focus blend is continuous — RegionLook leans on the strongest deck as its weight → 0)
+    env.deckShadow.value = deck.shadow * (1 - 0.5 * wide);
     env.deckTone.value.copy(deck.tone);
     // the dome turns overcast only while the camera is under the deck
     env.deck.value = smooth(0.1, 0.5, deck.cover) * (1 - smooth(deck.height - 6, deck.height + 4, camera.position.y));
@@ -171,8 +178,12 @@ export class EnvironmentSystem implements System {
     const r = this.regionLook.ramp;
     const k = Math.min(RAMP_SCALE[1], Math.max(RAMP_SCALE[0], focusDist / RAMP_FOCUS_KM));
     env.hazeRamp.value.set(r[0] * k, r[1] * k, r[2], r[3]);
-    env.hazeGain.value = 1 + FILM_AIR * (1 - smooth(90, 500, focusDist));
+    env.hazeGain.value = 1 + FILM_AIR * (1 - smooth(60, 320, focusDist));
+    const a0 = Math.min(170, Math.max(10, ASH_RAMP_K[0] * focusDist));
+    atmosphere.ashRamp.value.set(a0, Math.min(320, Math.max(a0 + 20, ASH_RAMP_K[1] * focusDist)));
     atmosphere.updateEye(camera.position, deck.height);
+    // valley mist: regional and closer shots only (no channel ribbons in the wide views)
+    atmosphere.mistVis.value = 1 - smooth(170, 380, focusDist);
 
     // ---- hemisphere (moonlit sky adds a cool lift at night); under the deck the sky fill turns
     // flat grey-steel: desaturated towards the deck tone and dimmed (diffuse overcast light)
@@ -180,7 +191,7 @@ export class EnvironmentSystem implements System {
     skyCol.r += 0.012 * ml.sky;
     skyCol.g += 0.02 * ml.sky;
     skyCol.b += 0.042 * ml.sky;
-    env.clearSkyColor.value.copy(skyCol);
+    env.clearSkyColor.value.copy(skyCol).multiplyScalar(dl.hemiIntensity);
     if (deck.cover > 0) {
       const L = lumC(skyCol);
       const tl = lumC(deck.tone) || 1;
@@ -191,11 +202,14 @@ export class EnvironmentSystem implements System {
     env.groundColor.value.copy(dl.groundColor);
     this.hemi.color.copy(skyCol);
     this.hemi.groundColor.copy(dl.groundColor);
-    this.hemi.intensity = dl.hemiIntensity;
-    env.hemiIntensity.value = dl.hemiIntensity;
+    // overcast fill: what the pall takes from the key comes back as diffuse light
+    const hemiI = dl.hemiIntensity * (1 + DECK_FILL * deck.cover * env.deckShadow.value);
+    this.hemi.intensity = hemiI;
+    env.hemiIntensity.value = hemiI;
     // the overcast dome's colour: the deck underside's radiance (CPU mirror of the deck shader)
-    deckUnderside(deck.tone, env.keyColor.value, env.keyIntensity.value, env.keyDir.value.y, env.clearSkyColor.value, dl.groundColor, dl.hemiIntensity, env.deckSky.value);
-    this.cloudLayer.evaluate();
+    _gnd.copy(dl.groundColor).multiplyScalar(hemiI);
+    deckUnderside(deck.tone, env.keyColor.value, env.keyIntensity.value, env.keyDir.value.y, env.clearSkyColor.value, _gnd, env.deckSky.value);
+    this.cloudLayer.evaluate(focusDist);
 
     // ---- sky dome + the atmosphere's in-scatter table (the same model, per frame)
     this.skyModel.update(dl, sunDir, siderealAngle(state.tod, state.dayOfYear), ml.sky);

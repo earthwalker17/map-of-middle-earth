@@ -1,4 +1,4 @@
-import { BufferAttribute, BufferGeometry, DoubleSide, Mesh, MeshBasicNodeMaterial, PlaneGeometry } from 'three/webgpu';
+import { BufferAttribute, BufferGeometry, DoubleSide, Mesh, MeshBasicNodeMaterial, PlaneGeometry, Vector2 } from 'three/webgpu';
 import { tsl, type TslNode } from '../materials/tsl.ts';
 import { env } from '../materials/environment.ts';
 import { atmosphere, type DeckSample } from '../materials/atmosphere.ts';
@@ -9,8 +9,9 @@ import { SLAB } from '../diorama/slabSpec.ts';
 import { CLOUD_CAPS, CloudField, DETAIL, PERIOD_X, PERIOD_Z } from './clouds.ts';
 
 type N = TslNode;
-const { Fn, abs, attribute, clamp, float, max, mix, normalize, positionWorld, smoothstep, texture, vec2, vec3, vec4 } = tsl;
+const { Fn, abs, attribute, clamp, dot, float, max, mix, normalize, positionWorld, smoothstep, texture, uniform, vec2, vec3, vec4 } = tsl;
 
+const _glow: [number, number, number] = [0, 0, 0];
 /** grid cell of the ash-deck mesh (km) and the cover below which a cell is not drawn */
 const DECK_CELL_KM = 4;
 const DECK_MIN_COVER = 0.02;
@@ -18,22 +19,42 @@ const DECK_MIN_COVER = 0.02;
 const DECK_SCALE = 2.2;
 /** the deck drifts slower than the cumulus (a heavy pall) */
 const DECK_DRIFT = 0.45;
+/** billows (review / final): a second, domain-warped tap this much finer than the masses */
+const DECK_BILLOW_SCALE = 3.4;
+const DECK_BILLOW = 0.4;
 /**
  * The deck's red underglow: radiance per unit of looks.json glow strength. The glow is absolute
  * light (the fires below), so it dominates the dim dusk / night underside and only warms the
  * bright daytime one.
  */
 const GLOW_RADIANCE = 0.3;
-/** the glow sees the haze's transmittance to this power (it lights the ash around it) */
-const DECK_GLOW_FOG = 0.35;
+/** the glow's Gaussian is windowed to 0 between these multiples of its radius */
+const GLOW_CUT = [1.4, 2.2] as const;
+/** the glow sees the haze's transmittance to this power (it lights the ash around it; < 1 survives the veil) */
+const DECK_GLOW_FOG = 0.7;
+/**
+ * The deck underside's light model, shared by the shader and its CPU mirror (deckUnderside, the
+ * overcast dome's colour): transmitted key light and grey sky light (thin → thick cloud), the
+ * ground bounce, the mottling's brightness (base + slope · n) and the saturation it keeps (the
+ * film's desaturated steel overcast). The mirror evaluates it at the mean thickness / mottling.
+ */
+const UNDER = { trans: [0.3, 0.1], sky: [0.55, 0.4], skySat: 0.1, gnd: 0.45, nBase: 1.12, nSlope: -0.35, sat: 0.35, meanThick: 0.6, meanN: 0.5 } as const;
+/** the sunlit top's brightness on the deck tone (charcoal-brown ash from above, not cream cotton) */
+const DECK_TOP_GAIN = 0.5;
+/** view elevation (|sin|) below which the underside flattens into the overcast dome colour (no grazing streaks) */
+const DECK_GRAZE = [0.02, 0.14] as const;
 /** opacity of the deck seen from below at full cover (a little light leaks through the thinnest parts) */
 const DECK_UNDER_OPACITY = 0.97;
 /** visible cumulus: self-shadow probe distance towards the light (km) */
 const CUMULUS_PROBE_KM = 7;
 /** opacity of the cumulus seen from above (a veil; the land stays the subject) */
-const CUMULUS_TOP_OPACITY = 0.1;
+const CUMULUS_TOP_OPACITY = 0.05;
 /** soft fade of the cumulus sheet inside the slab edges (km): no cloud ever overhangs the void */
 const CUMULUS_EDGE_KM = 25;
+/** the cumulus fade out towards their own horizon (view |sin elevation| to the sheet): no hard far edge */
+const CUMULUS_GRAZE = [0.03, 0.14] as const;
+/** the cumulus fade out with the night (flat sheets read as painted strokes under a moon) */
+const CUMULUS_NIGHT_FADE = 1;
 
 /**
  * The environment's visible cloud layers (S4), both in the shared environment material family:
@@ -56,6 +77,11 @@ const CUMULUS_EDGE_KM = 25;
 export class CloudLayer {
   deck: Mesh | null = null;
   cumulus: Mesh | null = null;
+  /**
+   * Near fade of the deck seen from above (km from the camera, per frame from the shot's focus
+   * distance): the pall nearer than the subject thins out so it never veils the foreground.
+   */
+  private readonly deckNear = uniform(new Vector2(0, 1));
 
   constructor(
     private readonly world: World,
@@ -65,7 +91,7 @@ export class CloudLayer {
   /** Build the meshes (after atmosphere.bindWorld, which bakes the deck field). */
   build(quality: QualityTier): Mesh[] {
     const out: Mesh[] = [];
-    this.deck = this.buildDeck();
+    this.deck = this.buildDeck(quality);
     if (this.deck) out.push(this.deck);
     if (quality.clouds.layer) {
       this.cumulus = this.buildCumulus(quality);
@@ -79,17 +105,41 @@ export class CloudLayer {
    * is skipped entirely when its gate is closed (whole-table views, a camera under the deck) — a
    * pure function of the frame's uniforms.
    */
-  evaluate(): void {
+  evaluate(focusDist: number): void {
+    this.deckNear.value.set(0.35 * focusDist, 0.85 * focusDist);
     if (this.cumulus) {
       this.cumulus.position.y = env.cloudHeight.value;
       this.cumulus.updateMatrixWorld();
-      this.cumulus.visible = env.cloudVis.value > 1e-3 && env.deck.value < 0.999;
+      this.cumulus.visible =
+        env.cloudVis.value > 1e-3 && env.deck.value < 0.999 && env.cloudCoverage.value > 1e-3 && env.night.value * CUMULUS_NIGHT_FADE < 0.999;
     }
+  }
+
+  /** the decks' red underglows (looks.json deck.glow, resolved at build) */
+  private readonly glows: { x: number; z: number; r: number; c: [number, number, number] }[] = [];
+
+  /**
+   * The underglow radiance on the pall over world (x, z) (before the time-of-day gain env.deckGlow):
+   * a Gaussian around each glow place with a windowed tail — the fires light the pall over Doom,
+   * not the far night ceiling (Minas Morgul's sky stays cold). CPU; the deck mesh bakes it.
+   */
+  glowAt(x: number, z: number, out: [number, number, number]): [number, number, number] {
+    out[0] = out[1] = out[2] = 0;
+    for (const g of this.glows) {
+      const q = Math.hypot(x - g.x, z - g.z) / g.r;
+      if (q > GLOW_CUT[1]) continue;
+      const c = Math.min(1, Math.max(0, (q - GLOW_CUT[0]) / (GLOW_CUT[1] - GLOW_CUT[0])));
+      const w = Math.exp(-q * q) * (1 - c * c * (3 - 2 * c));
+      out[0] += g.c[0] * w;
+      out[1] += g.c[1] * w;
+      out[2] += g.c[2] * w;
+    }
+    return out;
   }
 
   // ---------------------------------------------------------------- ash deck
 
-  private buildDeck(): Mesh | null {
+  private buildDeck(quality: QualityTier): Mesh | null {
     if (!atmosphere.hasDeck) return null;
     const s: DeckSample = { cover: 0, r: 0, g: 0, b: 0, height: 0, topOpacity: 0 };
     // footprint of the deck (cells with any cover), inside the slab top
@@ -119,7 +169,8 @@ export class CloudLayer {
     const H = j1 - j0 + 1;
 
     // glows of every deck (deduplicated): Gaussian red light under the pall around a place
-    const glows: { x: number; z: number; r: number; c: [number, number, number] }[] = [];
+    const glows = this.glows;
+    glows.length = 0;
     const seen = new Set<string>();
     for (const id of this.world.lookRegions) {
       const g = deckLook(id).glow;
@@ -148,20 +199,10 @@ export class CloudLayer {
         a[v * 4 + 1] = s.r;
         a[v * 4 + 2] = s.g;
         a[v * 4 + 3] = s.b;
-        let gr = 0;
-        let gg = 0;
-        let gb = 0;
-        for (const g of glows) {
-          const q = Math.hypot(x - g.x, z - g.z) / g.r;
-          if (q > 3) continue;
-          const w = Math.exp(-q * q);
-          gr += g.c[0] * w;
-          gg += g.c[1] * w;
-          gb += g.c[2] * w;
-        }
-        b[v * 4] = gr;
-        b[v * 4 + 1] = gg;
-        b[v * 4 + 2] = gb;
+        const gl = this.glowAt(x, z, _glow);
+        b[v * 4] = gl[0];
+        b[v * 4 + 1] = gl[1];
+        b[v * 4 + 2] = gl[2];
         b[v * 4 + 3] = s.topOpacity;
         covers[v] = s.cover;
       }
@@ -185,8 +226,9 @@ export class CloudLayer {
     mat.transparent = true;
     mat.depthWrite = false;
     mat.side = DoubleSide;
+    mat.forceSinglePass = true; // a flat sheet: one pass, one pipeline (not back then front)
     mat.fog = false; // the shader applies the aerial perspective itself (the glow survives it)
-    const shade = this.deckShade();
+    const shade = this.deckShade(quality.id !== 'preview');
     mat.colorNode = shade.rgb;
     mat.opacityNode = shade.a;
     const mesh = new Mesh(geo, mat);
@@ -197,9 +239,10 @@ export class CloudLayer {
     return mesh;
   }
 
-  /** The deck's radiance (rgb) and opacity (a). */
-  private deckShade(): N {
+  /** The deck's radiance (rgb) and opacity (a). `billows` (review / final) adds the finer, warped tap. */
+  private deckShade(billows: boolean): N {
     const tex = this.clouds.texture;
+    const near = this.deckNear;
     return Fn(() => {
       const P = positionWorld;
       const A = attribute('deckA', 'vec4');
@@ -207,39 +250,59 @@ export class CloudLayer {
       const cam = env.cameraPos;
       const cover = A.x;
       const tone = A.yzw;
+      const lumW = vec3(0.2126, 0.7152, 0.0722);
       // 1 when the camera is under the deck (its ceiling), 0 above it (its sunlit top)
       const below = smoothstep(-1.5, 1.5, P.y.sub(cam.y));
       // mottling: one tap of the cloud field — R = the equalised masses, G = finer detail
       const q = P.xz.sub(env.wind.mul(env.tFx).mul(DECK_DRIFT));
       const t = texture(tex, vec2(q.x.mul(DECK_SCALE / PERIOD_X), q.y.mul(DECK_SCALE / PERIOD_Z)));
-      const n = t.r.mul(0.62).add(t.g.mul(0.38));
+      let n: N = t.r.mul(0.62).add(t.g.mul(0.38));
+      if (billows) {
+        // billows: a finer tap, its domain warped by the first (roiling, not airbrushed), widening
+        // the density range of the pall
+        const w = vec2(t.g.sub(0.5), t.r.sub(0.5)).mul(0.06);
+        const uv2 = vec2(q.x.mul((DECK_SCALE * DECK_BILLOW_SCALE) / PERIOD_X), q.y.mul((DECK_SCALE * DECK_BILLOW_SCALE) / PERIOD_Z)).add(w).add(vec2(0.31, 0.17));
+        const t2 = texture(tex, uv2);
+        n = clamp(n.add(t2.r.sub(0.5).mul(DECK_BILLOW)).add(t2.g.sub(0.5).mul(DECK_BILLOW * 0.5)), 0, 1);
+      }
       // ragged edges and thin spots: the mottling thresholded by the cover (cover 0.95 → solid)
       const th = float(1).sub(cover);
       const dens = smoothstep(th.sub(0.14), th.add(0.22), n.mul(0.85).add(cover.mul(0.15)));
       const thick = clamp(dens.mul(n.mul(0.7).add(0.5)), 0, 1);
 
-      // light: the key on a horizontal plane, the clear sky above, the ground bounce below
+      // light: the key on a horizontal plane, the clear sky above (env.clearSkyColor: irradiance),
+      // the ground bounce below
       const eKey = env.keyColor.mul(env.keyIntensity).mul(max(env.keyDir.y, 0));
-      const eSky = env.clearSkyColor.mul(env.hemiIntensity);
+      const eSky = vec3(env.clearSkyColor);
       const eGnd = env.groundColor.mul(env.hemiIntensity);
-      // underside: what the pall lets through (thin parts glow brighter) + a little of the ground
-      // (the sky light arrives diffused through the ash: grey, not blue)
-      const skyGrey = mix(vec3(eSky.dot(vec3(0.2126, 0.7152, 0.0722))), eSky, 0.1);
-      const trans = mix(float(0.3), float(0.1), thick);
-      const under = tone.mul(eKey.mul(trans).add(skyGrey.mul(mix(float(0.55), float(0.4), thick))).add(eGnd.mul(0.45)));
+      // underside (UNDER, mirrored on the CPU for the dome): what the pall lets through (thin parts
+      // glow brighter), the sky light diffused grey through the ash and a little of the ground,
+      // desaturated to the film's steel overcast
+      const skyGrey = mix(vec3(dot(eSky, lumW)), eSky, UNDER.skySat);
+      const trans = mix(float(UNDER.trans[0]), float(UNDER.trans[1]), thick);
+      const skyW = mix(float(UNDER.sky[0]), float(UNDER.sky[1]), thick);
+      const under0 = tone.mul(eKey.mul(trans).add(skyGrey.mul(skyW)).add(eGnd.mul(UNDER.gnd))).mul(n.mul(UNDER.nSlope).add(UNDER.nBase));
+      const underM = mix(vec3(dot(under0, lumW)), under0, UNDER.sat);
+      // grazing views flatten into the overcast dome's colour: no stretched streaks towards the horizon
+      const camDist = max(P.sub(cam).length(), 1e-3);
+      const vSin = abs(P.y.sub(cam.y)).div(camDist);
+      const under = mix(vec3(env.deckSky), underM, smoothstep(DECK_GRAZE[0], DECK_GRAZE[1], vSin));
       // the fires below light the underside (thicker cloud scatters more of it back)
       const glow = B.xyz.mul(env.deckGlow).mul(thick.mul(0.5).add(0.6));
-      // top: sunlit ash cloud with a faint key rim where it thins
+      // top: sunlit charcoal-brown ash with a faint key rim where it thins
       const rim = float(1).sub(dens).mul(0.4).add(0.6);
-      const top = tone.mul(1.4).mul(eKey.mul(n.mul(0.45).add(0.55)).mul(rim).add(eSky.mul(0.55)));
-      const surf = mix(top, under.mul(n.mul(-0.35).add(1.12)), below);
+      const top0 = tone.mul(DECK_TOP_GAIN).mul(eKey.mul(n.mul(0.45).add(0.55)).mul(rim).add(eSky.mul(0.55)));
+      const top = mix(vec3(dot(top0, lumW)), top0, UNDER.sat);
+      const surf = mix(top, under, below);
       // fogged here (the material has fog off) so the fires' glow takes only part of the veil
-      const col = atmosphere.apply(surf, env.cameraPos, P, true, false, true, mix(glow.mul(0.25), glow, below), DECK_GLOW_FOG);
+      const col = atmosphere.apply(surf, env.cameraPos, P, true, false, true, mix(glow.mul(0.25), glow, below), DECK_GLOW_FOG, billows);
       // opacity: dense from below; from above the authored top opacity, relaxed for high eyes so
-      // the whole-table views read the plateau and Doom's ember through a trace of the pall
+      // the whole-table views read the plateau and Doom's ember through a trace of the pall, and
+      // faded nearer than the subject (the pall never veils the foreground)
       const table = float(1).sub(smoothstep(250, 1000, cam.y).mul(0.88));
+      const nearFade = smoothstep(near.x, near.y, camDist);
       // from above the pall breaks into masses with the plateau between them
-      const aAbove = smoothstep(th.add(0.12), th.add(0.6), n).mul(dens).mul(B.w).mul(table);
+      const aAbove = smoothstep(th.add(0.12), th.add(0.6), n).mul(dens).mul(B.w).mul(table).mul(nearFade);
       const aBelow = dens.mul(DECK_UNDER_OPACITY);
       return vec4(col, clamp(mix(aAbove, aBelow, below), 0, 1));
     })();
@@ -255,6 +318,7 @@ export class CloudLayer {
     mat.transparent = true;
     mat.depthWrite = false;
     mat.side = DoubleSide;
+    mat.forceSinglePass = true; // a flat sheet: one pass, one pipeline
     const shade = this.cumulusShade(quality.id === 'final');
     mat.colorNode = shade.rgb;
     mat.opacityNode = shade.a;
@@ -291,33 +355,42 @@ export class CloudLayer {
       const body = smoothstep(th, th.add(0.3), v);
 
       const eKey = env.keyColor.mul(env.keyIntensity).mul(max(L.y, 0.05));
-      const eSky = env.clearSkyColor.mul(env.hemiIntensity);
+      const eSky = vec3(env.clearSkyColor);
       const eGnd = env.groundColor.mul(env.hemiIntensity);
       const albedo = vec3(0.86, 0.87, 0.88);
       const top = albedo.mul(eKey.mul(lit.mul(0.75).add(0.25)).add(eSky.mul(0.75)));
-      // underside: grey in the body, bright at the thin edges (light through them)
-      const under = albedo.mul(eSky.mul(0.55).add(eGnd.mul(0.6)).add(eKey.mul(float(1).sub(body).mul(0.45).add(0.06))));
+      // underside: grey in the body, brighter at the thin edges (light through them; no bright
+      // rims under a moon — moonlit cloud is dim grey)
+      const rimK = float(1).sub(body).mul(0.45).mul(float(1).sub(env.night)).add(0.06);
+      const under = albedo.mul(eSky.mul(0.55).add(eGnd.mul(0.6)).add(eKey.mul(rimK)));
       const below = smoothstep(-0.5, 0.5, P.y.sub(cam.y));
       const col = mix(top, under, below);
       // seen from above the cumulus are a faint veil over their shadows (the land stays the
       // subject: no cotton wool over the model), and the nearest ones fade out of the lens
-      const camDist = P.sub(cam).length();
+      const camDist = max(P.sub(cam).length(), 1e-3);
       const fromAbove = mix(float(CUMULUS_TOP_OPACITY).mul(smoothstep(25, 110, camDist)), float(1), below);
+      // towards the sheet's own horizon the flat layer fades (no hard far edge, no streaks)
+      const graze = smoothstep(CUMULUS_GRAZE[0], CUMULUS_GRAZE[1], abs(P.y.sub(cam.y)).div(camDist));
+      const nightFade = float(1).sub(env.night.mul(CUMULUS_NIGHT_FADE));
 
       // no cloud over the void (soft inside the slab edges), none inside the ash deck, none
       // edge-on (the sheet has no thickness), and env.cloudVis for the framing
       const ex = smoothstep(0, CUMULUS_EDGE_KM, P.x.sub(SLAB.xMin)).mul(smoothstep(0, CUMULUS_EDGE_KM, float(SLAB.xMax).sub(P.x)));
       const ez = smoothstep(0, CUMULUS_EDGE_KM, P.z.sub(SLAB.zMin)).mul(smoothstep(0, CUMULUS_EDGE_KM, float(SLAB.zMax).sub(P.z)));
-      const noDeck = float(1).sub(smoothstep(0.05, 0.4, f2.r));
+      const noDeck = float(1).sub(smoothstep(0.02, 0.2, f2.r));
       const edgeOn = smoothstep(0.4, 3, abs(P.y.sub(cam.y)));
       // (a camera under the ash deck sees none: the pall hides the sky beyond)
-      const a = dens.mul(0.9).mul(ex).mul(ez).mul(noDeck).mul(edgeOn).mul(fromAbove).mul(env.cloudVis).mul(float(1).sub(env.deck));
+      const a = dens.mul(0.9).mul(ex).mul(ez).mul(noDeck).mul(edgeOn).mul(fromAbove).mul(graze).mul(nightFade).mul(env.cloudVis).mul(float(1).sub(env.deck));
       return vec4(col, a);
     })();
   }
 }
 
-/** Underside radiance of an overcast deck of linear tone (r, g, b) for the dome (CPU mirror of the shader at mean thickness). */
+/**
+ * Underside radiance of an overcast deck of linear tone (r, g, b) — the overcast dome's colour and
+ * the haze under the deck: the CPU mirror of the deck shader's underside (UNDER) at the mean
+ * thickness and mottling. `sky` and `gnd` are the sky / ground irradiance (colour × intensity).
+ */
 export function deckUnderside(
   tone: { r: number; g: number; b: number },
   key: { r: number; g: number; b: number },
@@ -325,10 +398,21 @@ export function deckUnderside(
   keyY: number,
   sky: { r: number; g: number; b: number },
   gnd: { r: number; g: number; b: number },
-  hemiI: number,
   out: { setRGB(r: number, g: number, b: number): unknown },
 ): void {
-  const k = keyI * Math.max(keyY, 0) * 0.22;
-  const ch = (t: number, kc: number, s: number, g: number) => t * (kc * k + s * hemiI * 0.52 + g * hemiI * 0.45) * 0.96;
-  out.setRGB(ch(tone.r, key.r, sky.r, gnd.r), ch(tone.g, key.g, sky.g, gnd.g), ch(tone.b, key.b, sky.b, gnd.b));
+  const lum = (r: number, g: number, b: number) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  const t = UNDER.meanThick;
+  const trans = UNDER.trans[0] + (UNDER.trans[1] - UNDER.trans[0]) * t;
+  const skyW = UNDER.sky[0] + (UNDER.sky[1] - UNDER.sky[0]) * t;
+  const ls = lum(sky.r, sky.g, sky.b);
+  const grey = (c: number) => ls + (c - ls) * UNDER.skySat;
+  const k = keyI * Math.max(keyY, 0) * trans;
+  const m = UNDER.nBase + UNDER.nSlope * UNDER.meanN;
+  const ch = (tc: number, kc: number, sc: number, gc: number) => tc * (kc * k + grey(sc) * skyW + gc * UNDER.gnd) * m;
+  const r = ch(tone.r, key.r, sky.r, gnd.r);
+  const g = ch(tone.g, key.g, sky.g, gnd.g);
+  const b = ch(tone.b, key.b, sky.b, gnd.b);
+  const l = lum(r, g, b);
+  const sat = (c: number) => l + (c - l) * UNDER.sat;
+  out.setRGB(sat(r), sat(g), sat(b));
 }

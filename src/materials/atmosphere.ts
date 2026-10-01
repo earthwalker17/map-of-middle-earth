@@ -9,12 +9,13 @@ import {
   RGBAFormat,
   RepeatWrapping,
   UnsignedByteType,
+  Vector2,
   Vector3,
   Vector4,
 } from 'three/webgpu';
 import { tsl, type TslNode } from './tsl.ts';
 import { env } from './environment.ts';
-import { atmoLook, deckLook, lookColor, lookField } from './looks.ts';
+import { atmoLook, DECK_DEFAULT_HEIGHT, DECK_DEFAULT_TOP, deckLook, lookColor, lookField, strongestDeck, type DeckLook } from './looks.ts';
 import type { World } from '../world/World.ts';
 import { SLAB } from '../diorama/slabSpec.ts';
 
@@ -25,23 +26,27 @@ const { Fn, If, abs, atan, clamp, dot, exp, float, length, max, min, mix, output
 const LUT_AZ = 96;
 const LUT_ROWS = 16;
 /**
- * Valley mist: the ground haze layer thickens over valleys (World.terrainMask G < 0.5) when the sun
- * is low (env.golden, env.twilight) or a bright moon is up — golden-hour, dawn and moonlit mist in
- * the dales. Multiplier on the ground layer at full strength (a clearly valley-bottom endpoint,
- * golden hour), times the regional mist gain (atmo2.B: looks.json atmo `mist` + the named dales).
- * Reviewed (terrain look round 2) at veg-shire-golden, env-shadow-golden, overview-golden and the
- * dawn minas-tirith-close, mist on vs off: the wave-2 value 3.5 whitened distant hollows into
- * snow-like patches; 1.4 reads as a translucent veil in the dales that trees stand in.
- * S4: drawn in every tier (the mask fetches sit behind the same uniform / height pre-tests).
+ * Valley mist (S4 model): its own thin layer lying on the valley floor — optical depth
+ * valley · VALLEY_MIST · regional gain · MIST_SIGMA / max(sinEl, MIST_MIN_SIN) · exp(−(y − floor) / MIST_THICK),
+ * where `valley` is the terrain analysis' valley index (World.terrainMask G < 0.5) × the low-sun /
+ * moonlit gate (golden hour, dawn twilight, a bright moon), the regional gain is atmo2.B (looks.json
+ * atmo `mist` + the named dales) and the floor is atmo2.G. Its in-scatter is the pale horizon light
+ * tinted by the region (Morgul's green), not the dark view-direction haze. VALLEY_MIST was 1.4 in S3,
+ * calibrated against the old formula (a multiplier on the ground haze layer); it was kept and
+ * re-checked visually against the S4 layer (rivendell / anduin dawn, veg-shire-golden).
+ * Drawn in every tier since S4 (the mask fetches sit behind the uniform / height pre-tests).
  */
 export const VALLEY_MIST = 1.4;
-/** above this height (world units; ~6 e-folds of the ground layer) no fragment can gather mist */
+/**
+ * Pre-test bound: above this height (world units) no fragment can gather mist — the highest named
+ * dale floors (~25) plus a few MIST_THICK; the mask and atmo2 are never fetched above it.
+ */
 const VALLEY_MIST_TOP = 40;
 /**
  * Optical depth of the valley-mist layer per unit of valley mist (seen straight down) and the
  * shallowest view it is integrated for (grazing rays see at most 1 / MIST_MIN_SIN of it).
  */
-const MIST_SIGMA = 0.05;
+const MIST_SIGMA = 0.03;
 const MIST_MIN_SIN = 0.2;
 /**
  * The mist lies on the valley floor: atmo2.G stores the local floor height (the lowest ground within
@@ -50,20 +55,41 @@ const MIST_MIN_SIN = 0.2;
  */
 const MIST_FLOOR_KM = 5;
 const MIST_FLOOR_RANGE = 64;
-const MIST_THICK = 2.2;
+const MIST_THICK = 2.0;
+/**
+ * Mist in-scatter: a bright droplet cloud lit by the key light (any orientation: MIST_KEY of its
+ * irradiance) and the sky fill (MIST_SKY), desaturated by MIST_SAT and tinted by the regional
+ * chroma (Morgul's green) — pale and luminous at dawn, dim blue-grey under the moon, never the dark
+ * view-direction haze.
+ */
+const MIST_KEY = 0.11;
+const MIST_SKY = 0.45;
+const MIST_SAT = 0.45;
 /** atmo2.B stores the regional mist gain / MIST_SCALE (RGBA8) */
 const MIST_SCALE = 3;
 /**
  * Ash haze under a deck (S4): an extra exponential layer, ASH_SIGMA per km at sea level per unit of
  * deck cover, scale height 1 / ASH_FALLOFF — the air under Mordor's pall is thick with ash, so the
  * outer world disappears from the Doom and Gate frames (low rays), while the steep rays of a high
- * camera cross little of it (the plateau stays readable from above). It fades in over ASH_RAMP km,
- * so the heroes at 25–55 km stay clear while the world beyond ~150 km is gone, and is halved for a
- * camera above the deck (the pall itself carries the gloom).
+ * camera cross little of it (the plateau stays readable from above). It fades in over the shot's
+ * ash ramp (Atmosphere.ashRamp: from ~1.1 × to ~2 × the focus distance), so the subject stays clear
+ * while the world behind it is gone, and is halved for a camera above the deck (the pall itself
+ * carries the gloom).
  */
-const ASH_SIGMA = 0.03;
+const ASH_SIGMA = 0.08;
 const ASH_FALLOFF = 0.05;
-const ASH_RAMP = [30, 220] as const;
+/**
+ * The ash haze's distance ramp (km), written per frame from the shot (EnvironmentSystem: ×1.1 → ×2
+ * the focus distance): the subject stays clear, the world behind it disappears into the pall.
+ */
+const ASH_RAMP_DEFAULT = [30, 220] as const;
+/**
+ * Under a deck the haze's in-scatter is the overcast's own light (env.deckSky, the dome's colour)
+ * keeping this much of the regional chroma (Doom's red, Morgul's green), so far land fades into the
+ * overcast horizon without a seam (the dome's horizon uses the same colour).
+ */
+export const DECK_HAZE_CHROMA = 0.6;
+const LUM_W = [0.2126, 0.7152, 0.0722] as const;
 
 /** Regional haze texture over the map frame (≈ 6.3 km per texel before the blur). */
 const HAZE_W = 256;
@@ -143,6 +169,17 @@ export class Atmosphere {
   readonly eyeDeck = uniform(0);
   /** gain on the ash haze: 1 under the deck, ½ for a camera well above it */
   readonly ashGain = uniform(1);
+  /** distance ramp of the ash haze (km): fades in from x to y (focus-scaled per frame) */
+  readonly ashRamp = uniform(new Vector2(ASH_RAMP_DEFAULT[0], ASH_RAMP_DEFAULT[1]));
+  /** 1 while the camera is under the focus deck (its rays see the overcast's light), 0 above it */
+  readonly eyeUnder = uniform(0);
+  /**
+   * Valley-mist framing gate (per frame from the shot's focus distance): the dales' mist is a
+   * regional / close-shot feature — wide shots would draw it as crisp ribbons along every channel.
+   */
+  readonly mistVis = uniform(1);
+  /** the data's strongest deck: prior of the CPU deck blends (continuous at the deck's edge) */
+  private deckPrior: DeckLook = strongestDeck([]);
   private readonly lutData = new Uint16Array(LUT_AZ * LUT_ROWS * 4);
   private readonly lutLin = new Float32Array(LUT_AZ * LUT_ROWS * 3);
   private lutKey = '';
@@ -271,6 +308,7 @@ export class Atmosphere {
     const ids = world.lookRegions;
     const looks = ids.map((id) => atmoLook(id));
     const decks = ids.map((id) => deckLook(id));
+    this.deckPrior = strongestDeck(ids);
     const spec = world.spec;
     const n = ids.length;
     if (world.terrainMask) {
@@ -460,20 +498,23 @@ export class Atmosphere {
     if (!this.deckA || !this.deckB) {
       out.cover = 0;
       out.r = out.g = out.b = 0.25;
-      out.height = 40;
-      out.topOpacity = 0.35;
+      out.height = DECK_DEFAULT_HEIGHT;
+      out.topOpacity = DECK_DEFAULT_TOP;
       return out;
     }
     const a = this.sampleCPU(this.deckA, x, z, this._s4);
     const b = this.sampleCPU(this.deckB, x, z, this._s4b);
+    // un-premultiply with a small prior (the strongest deck): continuous where the cover → 0
+    const P = this.deckPrior;
+    const E = 0.02;
     const c = a[0];
-    const ok = c > 1e-6;
+    const den = c + E;
     out.cover = c;
-    out.r = ok ? a[1] / c : 0.25;
-    out.g = ok ? a[2] / c : 0.25;
-    out.b = ok ? a[3] / c : 0.25;
-    out.height = ok ? b[0] / c : 40;
-    out.topOpacity = ok ? b[1] / c : 0.35;
+    out.r = (a[1] + E * P.tone.r) / den;
+    out.g = (a[2] + E * P.tone.g) / den;
+    out.b = (a[3] + E * P.tone.b) / den;
+    out.height = (b[0] + E * P.height) / den;
+    out.topOpacity = (b[1] + E * P.topOpacity) / den;
     return out;
   }
 
@@ -482,8 +523,12 @@ export class Atmosphere {
    * costs one texture tap less) and its gate — the eye sample only counts while the camera is over
    * the slab footprint (an overview camera far outside the frame sees the map through clear air).
    */
-  updateEye(cam: Vector3, deckHeight = 40): void {
-    this.ashGain.value = 1 - 0.5 * Math.min(1, Math.max(0, (cam.y - deckHeight) / 60));
+  updateEye(cam: Vector3, deckHeight = DECK_DEFAULT_HEIGHT): void {
+    const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+    // a camera above the pall sees its top, not the ash under it (the regional view stays readable)
+    this.ashGain.value = 1 - 0.85 * clamp01((cam.y - deckHeight) / 60);
+    const u = clamp01((cam.y - (deckHeight - 6)) / 10);
+    this.eyeUnder.value = 1 - u * u * (3 - 2 * u);
     const S = 30;
     const inside = Math.min(Math.min(cam.x - SLAB.xMin, SLAB.xMax - cam.x), Math.min(cam.z - SLAB.zMin, SLAB.zMax - cam.z)) / S;
     this.eyeIn.value = Math.min(1, Math.max(0, inside));
@@ -521,7 +566,7 @@ export class Atmosphere {
   valleyMist(to: N): N {
     // low sun (golden hour, dawn twilight) or a bright moon up at night
     const lowSun = max(max(env.golden, env.twilight.mul(0.8)), env.night.mul(env.moonIllum).mul(0.5));
-    const gain = lowSun.mul(this.valleyGain);
+    const gain = lowSun.mul(this.valleyGain).mul(this.mistVis);
     const out = float(0).toVar();
     If(gain.greaterThan(0).and(to.y.lessThan(VALLEY_MIST_TOP)), () => {
       const f = this.hazeFrame;
@@ -533,8 +578,10 @@ export class Atmosphere {
       // thinning above the valley floor (the walls rise out of the mist)
       const above = max(to.y.sub(a2.g.mul(MIST_FLOOR_RANGE)), 0);
       const lying = exp(above.div(-MIST_THICK));
-      // soft valley edges (the mask is coarse): the mist thins out over the valley sides
-      out.assign(smoothstep(0, 1, clamp(float(0.47).sub(g).mul(2.6), 0, 1)).mul(gain).mul(regional).mul(lying));
+      // soft valley edges (the mask is coarse): the mist thins out over the valley sides, and only
+      // clear valleys gather it (shallow hollows and stream channels on the slopes stay clear: no
+      // blotches, no ribbons tracing the streams)
+      out.assign(smoothstep(0.03, 0.2, float(0.47).sub(g)).mul(gain).mul(regional).mul(lying));
     });
     return out;
   }
@@ -565,14 +612,19 @@ export class Atmosphere {
    * disappears from the Doom and Gate frames), while the steep rays of a high camera are still
    * governed by the air at their end (overviews unchanged). One extra fetch over `regional`.
    */
-  rayRegional(from: N, to: N, explicitLod = false, eye = true): N {
+  rayRegional(from: N, to: N, explicitLod = false, eye = true, midTap = true): N {
     const k = env.airFalloff;
     const end = this.regional(to.xz, explicitLod);
-    const mid = this.regional(from.xz.add(to.xz).mul(0.5), explicitLod);
     const wE = exp(k.mul(max(to.y, 0)).negate());
-    const wM = exp(k.mul(max(from.y.add(to.y).mul(0.5), 0)).negate()).mul(2);
-    let sum = end.mul(wE).add(mid.mul(wM));
-    let wt = wE.add(wM);
+    let sum = end.mul(wE);
+    let wt = wE;
+    if (midTap) {
+      // (preview skips this tap: the end point and the eye carry the blend)
+      const mid = this.regional(from.xz.add(to.xz).mul(0.5), explicitLod);
+      const wM = exp(k.mul(max(from.y.add(to.y).mul(0.5), 0)).negate()).mul(2);
+      sum = sum.add(mid.mul(wM));
+      wt = wt.add(wM);
+    }
     if (eye) {
       const wC = exp(k.mul(max(from.y, 0)).negate()).mul(this.eyeIn);
       sum = sum.add(this.eyeHaze.mul(wC));
@@ -636,17 +688,26 @@ export class Atmosphere {
     const table = float(1).sub(smoothstep(350, 1400, from.y).mul(0.65));
     const air = smoothstep(r.x, r.y, d).mul(min(density, 1)).mul(table).mul(env.hazeGain);
     const local = smoothstep(r.z, r.w, d).mul(max(density.sub(1), 0)).mul(table);
-    // valley mist is a local feature too (short ramp): a thin layer lying IN the dale at the ray's
-    // end (S4: relative to the valley floor, not to sea level — the S3 term rode the ground layer,
-    // which is ~0 in the high dales of Rivendell or the Sirannon), seen through 1 / sin(elevation)
-    // of it; only on the slab top (never the cut faces or the void)
+    let tau = layers.mul(air.add(local)).add(this.mistDepth(from, to, valley)).add(env.fogDensity.mul(d.mul(frac)));
+    // ash under a deck (local feature: the shot's ash ramp, relaxed for whole-table views)
+    if (ash) tau = tau.add(layer(float(ASH_FALLOFF)).mul(ASH_SIGMA).mul(ash).mul(smoothstep(this.ashRamp.x, this.ashRamp.y, d)).mul(table).mul(this.ashGain));
+    return tau;
+  }
+
+  /**
+   * Optical depth of the valley mist (`valley` = valleyMist(to)): a thin layer lying IN the dale at
+   * the ray's end (relative to the valley floor, not to sea level — the S3 term rode the ground
+   * layer, which is ~0 in the high dales of Rivendell or the Sirannon), seen through
+   * 1 / sin(elevation) of it, faded in like the local haze; only on the slab top (never the cut
+   * faces or the void).
+   */
+  mistDepth(from: N, to: N, valley: N): N {
+    const ray = to.sub(from);
+    const d = length(ray);
+    const r = env.hazeRamp;
     const sinEl = abs(ray.y).div(max(d, 1e-3));
     const onTop = step(SLAB.xMin + 0.5, to.x).mul(step(to.x, SLAB.xMax - 0.5)).mul(step(SLAB.zMin + 0.5, to.z)).mul(step(to.z, SLAB.zMax - 0.5)).mul(step(0, to.y));
-    const mist = valley.mul(MIST_SIGMA).div(max(sinEl, MIST_MIN_SIN)).mul(smoothstep(r.z, r.w, d)).mul(onTop);
-    let tau = layers.mul(air.add(local)).add(mist).add(env.fogDensity.mul(d.mul(frac)));
-    // ash under a deck (local feature: the short ramp, relaxed for whole-table views)
-    if (ash) tau = tau.add(layer(float(ASH_FALLOFF)).mul(ASH_SIGMA).mul(ash).mul(smoothstep(ASH_RAMP[0], ASH_RAMP[1], d)).mul(table).mul(this.ashGain));
-    return tau;
+    return valley.mul(MIST_SIGMA).div(max(sinEl, MIST_MIN_SIN)).mul(smoothstep(r.z, r.w, d)).mul(onTop);
   }
 
   /**
@@ -654,9 +715,11 @@ export class Atmosphere {
    * colour · T + C∞ · tint · (1 − T). `inScatter = false` (quality tier) uses grey extinction.
    * Must run inside a TSL Fn (the valley-mist pre-test is a branch).
    */
-  apply(color: N, from: N, to: N, inScatter = true, explicitLod = false, fromCamera = false, emissive: N | null = null, emissiveFog = 1): N {
-    const reg = this.rayRegional(from, to, explicitLod, fromCamera);
-    const tau = this.opticalDepth(from, to, reg.a, this.valleyMist(to), this.rayDeck(from, to, explicitLod, fromCamera));
+  apply(color: N, from: N, to: N, inScatter = true, explicitLod = false, fromCamera = false, emissive: N | null = null, emissiveFog = 1, midTap = true): N {
+    const reg = this.rayRegional(from, to, explicitLod, fromCamera, midTap);
+    const ash = this.rayDeck(from, to, explicitLod, fromCamera);
+    const tauMist = this.mistDepth(from, to, this.valleyMist(to));
+    const tau = this.opticalDepth(from, to, reg.a, float(0), ash).add(tauMist);
     const beta = inScatter ? env.extinction : vec3(1);
     const T = exp(beta.mul(tau).negate());
     const ray = to.sub(from);
@@ -666,9 +729,23 @@ export class Atmosphere {
       // thin haze is aerosol (Mie) scattering, close to neutral; the sky's blue builds up only over
       // long paths — so a thin veil stays grey (dark forests do not turn teal) and thick haze at
       // the horizon takes the full sky colour (no seam with the dome)
-      const grey = dot(cInf, vec3(0.2126, 0.7152, 0.0722));
+      const grey = dot(cInf, vec3(...LUM_W));
       cInf = mix(vec3(grey), cInf, mix(float(0.55), float(1), smoothstep(0, 0.6, tau)));
     }
+    // the region's chroma (luminance-normalised tint: Doom's red, Morgul's green)
+    const chroma = reg.rgb.div(max(dot(reg.rgb, vec3(...LUM_W)), 0.05));
+    if (fromCamera) {
+      // under the ash deck the haze glows with the overcast's own light — the dome's colour — so
+      // far land fades into the overcast horizon (no seam), never brighter than the sky above it
+      const k = smoothstep(0.1, 0.45, ash).mul(this.eyeUnder);
+      cInf = mix(cInf, env.deckSky.mul(mix(vec3(1), chroma, DECK_HAZE_CHROMA)), k);
+    }
+    // the valley mist scatters the low sun / moon and the sky light (pale), tinted by its region
+    // (under the ash deck the key reaching the mist is the pall's: grey, not sunlit white)
+    const keyMist = float(1).sub(ash.mul(env.deckShadow)).mul(env.keyIntensity).mul(MIST_KEY);
+    const lit = env.keyColor.mul(keyMist).add(env.skyColor.mul(env.hemiIntensity.mul(MIST_SKY)));
+    const mistCol = mix(vec3(dot(lit, vec3(...LUM_W))), lit, MIST_SAT).mul(chroma);
+    cInf = mix(cInf, mistCol, clamp(tauMist.div(max(tau, 1e-4)), 0, 1));
     const out = color.mul(T).add(cInf.mul(vec3(1).sub(T)));
     // an additive light source seen through the haze: extinction only, softened by `emissiveFog`
     // (< 1: the light also scatters forward in the haze around it, so it survives the veil better)
@@ -676,8 +753,8 @@ export class Atmosphere {
   }
 
   /** `scene.fogNode`: the material output seen through the atmosphere from the camera. */
-  fogNode(inScatter = true): N {
-    return Fn(() => vec4(this.apply(output.rgb, env.cameraPos, positionWorld, inScatter, false, true), output.a))();
+  fogNode(inScatter = true, midTap = true): N {
+    return Fn(() => vec4(this.apply(output.rgb, env.cameraPos, positionWorld, inScatter, false, true, null, 1, midTap), output.a))();
   }
 }
 

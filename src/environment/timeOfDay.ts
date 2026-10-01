@@ -66,8 +66,12 @@ export function celestialPole(out = new Vector3(), latDeg = LATITUDE_DEG): Vecto
   return out.set(0, Math.sin(latDeg * D2R), -Math.cos(latDeg * D2R));
 }
 
-/** hemisphere fill lift at full night (S4; see daylight) */
-const HEMI_NIGHT_LIFT = 0.9;
+/**
+ * Hemisphere fill lift at full night (S4; see daylight): 0.9 (the brief's value) crushed moon
+ * shadows to pure black (2.9 % / 3.5 % black pixels in env-night-moon / env-moonpath); 1.3 keeps a
+ * blue-grey shadow floor while the doubled moon key still reads ≥ 3 : 1.
+ */
+const HEMI_NIGHT_LIFT = 1.3;
 /** moon key light at full moon, high in a dark sky (S4: 0.85 → 1.8, a readable moonlit key) */
 const MOON_KEY = 1.8;
 
@@ -288,7 +292,7 @@ export function daylight(sunDir: Vector3): Daylight {
 
   // The dark-side tables were calibrated against the S1 double-sRGB capture bug (darks lifted ~4×);
   // with the fixed single encode, lift the night regime back so moonlit terrain stays readable.
-  // S4: the hemisphere fill gets a smaller lift (1 + 0.9·night, was 1 + 2·night, which flattened
+  // S4: the hemisphere fill gets a smaller lift (1 + 1.3·night, was 1 + 2·night, which flattened
   // the nights) — the moon key carries the moonlit read (key : fill ≥ 3 : 1, moon shadows, rims);
   // the dome's night sky keeps the full lift.
   const nightLift = 1 + 2 * night;

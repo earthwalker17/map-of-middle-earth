@@ -774,19 +774,38 @@ export function atmoLook(id: string): AtmoLook {
   };
 }
 
+/** Base height of a deck that does not author one, and of "no deck" (world units). */
+export const DECK_DEFAULT_HEIGHT = 40;
+/** Opacity seen from above of a deck that does not author one. */
+export const DECK_DEFAULT_TOP = 0.35;
+
 export function deckLook(id: string): DeckLook {
   const d = ((looksJson.regions as Record<string, { deck?: DeckJson }>)[id]?.deck ?? null) as DeckJson | null;
-  if (!d) return { cover: 0, tone: new Color(0.25, 0.25, 0.25), shadow: 0, height: 40, topOpacity: 0.35, glow: null, spots: [] };
+  if (!d) return { cover: 0, tone: new Color(0.25, 0.25, 0.25), shadow: 0, height: DECK_DEFAULT_HEIGHT, topOpacity: DECK_DEFAULT_TOP, glow: null, spots: [] };
   const g = d.glow;
   return {
     cover: Math.min(1, Math.max(0, d.cover ?? 0.9)),
     tone: lookColor(d.tone, '#808080'),
     shadow: Math.min(1, Math.max(0, d.shadow ?? 0.6)),
-    height: d.height ?? 40,
-    topOpacity: Math.min(1, Math.max(0, d.topOpacity ?? 0.35)),
+    height: d.height ?? DECK_DEFAULT_HEIGHT,
+    topOpacity: Math.min(1, Math.max(0, d.topOpacity ?? DECK_DEFAULT_TOP)),
     glow: g ? { place: g.place, color: lookColor(g.color, '#ff4a1a'), radiusKm: g.radiusKm ?? 80, strength: g.strength ?? 0.5 } : null,
     spots: (d.spots ?? []).map((s) => ({ place: s.place, radiusKm: s.radiusKm, cover: Math.min(1, Math.max(0, s.cover ?? 0)) })),
   };
+}
+
+/**
+ * The data's strongest deck (largest cover · shadow): the prior every focus blend of the decks
+ * leans on as its deck weight goes to 0, so the blended shadow / height / tone stay continuous
+ * when a deck region enters the focus (no pop on a camera move into the Dagorlad).
+ */
+export function strongestDeck(ids: readonly string[]): DeckLook {
+  let best = deckLook('');
+  for (const id of ids) {
+    const d = deckLook(id);
+    if (d.cover * d.shadow > best.cover * best.shadow) best = d;
+  }
+  return best;
 }
 
 export function isLookRegion(id: string | null | undefined): id is RegionId {

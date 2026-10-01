@@ -67,8 +67,9 @@ export const env = {
    */
   hazeRamp: uniform(new Vector4(35, 700, 2, 30)),
   /**
-   * S4: gain on the distance-ramped air of the aerial perspective ("film air"): 1 for the whole-table
-   * views, up to 2.5 for mid shots, so the land beyond the subject veils in layered haze.
+   * S4: gain on the distance-ramped air of the aerial perspective ("film air"): 1 for regional and
+   * whole-table views (focus ≥ 320 km), up to 2.5 for mid shots (≤ 60 km), so the land beyond the
+   * subject veils in layered haze while the regional views stay clear (no milky veil).
    */
   hazeGain: uniform(1),
   /** multiplier on the sky dome from the region the camera looks at (Mordor's charcoal sky) */
@@ -83,7 +84,10 @@ export const env = {
   deckTone: uniform(new Color(0.25, 0.25, 0.25)),
   /** 0..1 key-light darkening under full deck cover (× atmo2.R per fragment) */
   deckShadow: uniform(0),
-  /** radiance of the overcast deck's underside seen from below (the dome's overcast colour) */
+  /**
+   * radiance of the overcast deck's underside seen from below (CPU mirror of the deck shader): the
+   * dome's overcast colour and, × the regional chroma, the in-scatter of the haze under the deck
+   */
   deckSky: uniform(new Color(0.1, 0.1, 0.1)),
   /** time-of-day gain on the deck's red underglow (stronger at dusk and night) */
   deckGlow: uniform(0),
@@ -91,7 +95,7 @@ export const env = {
   horizonTint: uniform(new Color(1, 1, 1)),
   /** 0..1 opacity gate of the visible cumulus layer (regional shots; overviews stay a clean model) */
   cloudVis: uniform(0),
-  /** the clear-sky hemisphere irradiance before the deck's overcast pull (lights the deck's top) */
+  /** the clear-sky hemisphere irradiance (colour × intensity) before the deck's overcast pull and fill (lights the decks and cumulus) */
   clearSkyColor: uniform(new Color(0.55, 0.7, 0.9)),
   // ---- added by S3 emission (src/emission) ----
   /** screen pixels per km at 1 km view depth: viewportHeight / (2·tan(fov/2)) — projected sizes in px */
