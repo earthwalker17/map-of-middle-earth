@@ -62,6 +62,8 @@ export const env = {
    * Distance ramp of the aerial perspective (km from the camera): the air layers fade in from
    * x (clear near field) to y (full haze); the regional excess (Mordor's fumes, elven luminous
    * haze, marsh damp) — local features rather than a distance cue — fades in from z to w.
+   * S4: written every frame by the EnvironmentSystem (focus-blended looks.json atmo.ramp, its
+   * distances scaled with the shot's focus distance).
    */
   hazeRamp: uniform(new Vector4(35, 700, 2, 30)),
   /**
@@ -77,7 +79,7 @@ export const env = {
   // ---- added by S4 W1-A (sky / ash deck / clouds; written by the EnvironmentSystem) ----
   /** 0..1 overcast of the dome: the focus's ash-deck cover while the camera is under the deck */
   deck: uniform(0),
-  /** the focus-blended deck tone (linear, albedo-like) */
+  /** the focus-blended deck tone (linear, albedo-like; for systems that merge into the pall, e.g. plumes) */
   deckTone: uniform(new Color(0.25, 0.25, 0.25)),
   /** 0..1 key-light darkening under full deck cover (× atmo2.R per fragment) */
   deckShadow: uniform(0),

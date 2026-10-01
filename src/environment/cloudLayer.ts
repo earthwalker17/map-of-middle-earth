@@ -74,11 +74,16 @@ export class CloudLayer {
     return out;
   }
 
-  /** Per frame: the cumulus sheet rides at env.cloudHeight. */
+  /**
+   * Per frame (after the env uniforms are written): the cumulus sheet rides at env.cloudHeight and
+   * is skipped entirely when its gate is closed (whole-table views, a camera under the deck) — a
+   * pure function of the frame's uniforms.
+   */
   evaluate(): void {
     if (this.cumulus) {
       this.cumulus.position.y = env.cloudHeight.value;
       this.cumulus.updateMatrixWorld();
+      this.cumulus.visible = env.cloudVis.value > 1e-3 && env.deck.value < 0.999;
     }
   }
 

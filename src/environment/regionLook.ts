@@ -185,7 +185,7 @@ export class RegionLook {
       const q = Math.hypot(tx - sp.x, tz - sp.z) / sp.r;
       const a = Math.exp(-q * q) * regional;
       if (a < 1e-4 || dc <= 1e-5) continue;
-      dc += (Math.min(dc, sp.cover) - dc) * a;
+      dc += (sp.cover - dc) * a;
     }
     deck.cover = Math.min(1, dc);
     this.horizonTint.setRGB(ht[0], ht[1], ht[2]);
