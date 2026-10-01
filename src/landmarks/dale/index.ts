@@ -234,7 +234,7 @@ function buildDale(k: ProxyKit): void {
         const cs = [-1, 1].flatMap((a) => [-1, 1].map((b) => k.ground(x + Math.cos(ny) * a * (w / 2) + Math.sin(ny) * b * (dd / 2), z - Math.sin(ny) * a * (w / 2) + Math.cos(ny) * b * (dd / 2))));
         return Math.max(...cs, k.ground(x, z)) - Math.min(...cs, k.ground(x, z));
       };
-      const DIG = 0.42;
+      const DIG = 0.34;
       if (span(d) - DIG * h > 0.022) d = 0.055;
       if (span(d) - DIG * h > 0.022) continue;
       const i = n++;
@@ -353,6 +353,7 @@ export default defineLandmark({
   vegetationExclusion: [
     { at: CITY.at, r: 2.2 },
     { at: [1.5, -7], r: 7 },
+    { at: [12, 3], r: 4.5 },
   ],
   proxy: buildDale,
   annotation: { title: 'Dale', subtitle: 'City of Men below the Mountain', blurb: 'Once a merry town of bells and toys, laid waste by Smaug and rebuilt by Bard.' },

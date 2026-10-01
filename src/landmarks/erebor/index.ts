@@ -10,13 +10,15 @@ import { buildGate, G, GATE_STAMPS } from './gate.ts';
  * River Running issues (places.json offset); the summit sits over the DEM summit, 8.7 km north
  * (azimuth summit → gate ≈ 197°).
  *
- * A broad, heavy body (radius 8 km, a gently concave profile) standing well above the ranges on the
- * northern horizon, with six long spurs whose shoulders hold a third to a half of its height — the heavy,
- * snow-capped mountain of the film (a stamp snow cap above 0.7 of its height). The
- * gate valley between the south-east arm (132°) and Ravenhill's south-west arm (238°) stays open — nothing
- * within ~40° of the gate line — so the river leaves the mountain down its own valley (it flows S then SE
- * from the gate); those two arms are the highest, flanking the gate. Surface 'auto': the foothills keep
- * their turf, the steep upper mountain its rock.
+ * A broad, heavy, straight-sided body (radius 8 km, its top tenth blunted) standing above the ranges on
+ * the northern horizon, with six long spurs whose shoulders hold three-quarters of its height near the
+ * peak and run out long toward the plain, five shorter rib spurs between them on the faces, and a broad
+ * shoulder peak on the west (the left of the Desolation of Smaug frame) — the heavy, snow-capped mountain
+ * of the film (stamp snow caps; the ground look's lowered snow line). The gate valley between the
+ * south-east arm (132°) and Ravenhill's south-west arm (238°) stays open — nothing within ~40° of the
+ * gate line — so the river leaves the mountain down its own valley (it flows S then SE from the gate);
+ * those two arms keep lower shoulders. Surface 'auto': the foothills keep their turf, the steep upper
+ * mountain its rock.
  */
 const SUMMIT_AT: [number, number] = [2.545, -8.348];
 const DEG = Math.PI / 180;
@@ -56,9 +58,10 @@ const MASSIF: LocalStamp = {
   // steep flanks: ridged spurs with deep V valleys between them
   flankSlope: 2.3,
   rough: { amp: 1.2, scaleKm: 3.6, ridged: true },
-  // the snow-capped upper mountain of the film: snow above 0.6 of the height on all but the sheerest
-  // faces (the ground look's lowered snow line adds gully streaks below it)
-  snowCap: 0.6,
+  // the snow-capped upper mountain of the film: snow above 0.45 of the height on all but the sheerest
+  // faces — the ribs' sheer faces break its edge into streaks (the ground look's lowered snow line adds
+  // gully snow below it)
+  snowCap: 0.45,
 };
 
 /** the top tenth blunted: a soft cut of the summit (the 12× relief made a needle of it) */
@@ -137,7 +140,13 @@ export default defineLandmark({
     // Ravenhill's seat on the spur crest
     { kind: 'flatten', at: RAVENHILL, radius: 0.5, falloff: 0.45, height: 'auto', strength: 0.85 },
   ],
-  vegetationExclusion: [{ at: G(0, 0.6), r: 2.6 }],
+  // the gate court, and the Desolation of the Dragon on the plain before the gate (no scrub clumps)
+  vegetationExclusion: [
+    { at: G(0, 0.6), r: 2.6 },
+    { at: [5, 9], r: 10 },
+    { at: [-7, 13], r: 6 },
+    { at: [25, -11], r: 3 },
+  ],
   proxy: (k) => {
     buildGate(k);
     ravenhill(k);

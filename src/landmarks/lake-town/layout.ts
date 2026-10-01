@@ -10,8 +10,9 @@ import type { V2 } from '../records.ts';
  * The town (≈ 3.4 × 2.6 km) is ONE continuous timber deck on piles in the middle of the lake — an
  * organically grown stilt town, not a raft park: an irregular outline with harbour notches and jetties,
  * cut by a broad Grand Canal running the town's length (south-south-west → north-north-east, the hero's
- * view), a cross canal through the western half and narrower side canals (one to two house widths) that
- * run in from the lake and end inside the town, bridged over here and there. Everything here is a pure
+ * view), a cross canal running west from it and narrower side canals (one to two house widths) that run in
+ * from the lake — all of them ending inside the town (only the Grand Canal divides it), bridged over here
+ * and there. Everything here is a pure
  * function of the town frame (u, v): the deck mask, the canals, the house regions.
  *
  * Town frame: (u, v) turned by YAW (u ≈ east-south-east, v ≈ south-south-west), centred on C.
@@ -25,8 +26,8 @@ export const DECK = 0.075;
 export const DECK_T = 0.028;
 /** the Grand Canal: centre line u and width (twice the widest side canal) */
 export const GRAND = { u: 0.05, w: 0.3 };
-/** the cross canal: centre line v and width; it runs through the western half only */
-export const CROSS = { v: 0.2, w: 0.1 };
+/** the cross canal: centre line v and width; it runs west from the Grand Canal and ends inside the town at u0 */
+export const CROSS = { v: 0.2, w: 0.1, u0: -0.72 };
 
 const SEED = 0x1a4e70;
 const DEG = Math.PI / 180;
@@ -86,14 +87,14 @@ interface SideCanal {
   from: number;
   to: number;
 }
-/** side canals: in from the lake, ending inside the town (one to two house widths wide) */
+/** side canals: in from the lake 0.5–0.8 km, ending inside the town (one to two house widths wide) */
 export const SIDE_CANALS: SideCanal[] = [
-  { axis: 'u', at: -0.72, w: 0.1, from: -9, to: -0.5 },
-  { axis: 'u', at: 0.8, w: 0.085, from: -9, to: -0.38 },
-  { axis: 'u', at: -0.34, w: 0.12, from: 0.66, to: 9 },
-  { axis: 'u', at: 0.62, w: 0.09, from: 0.42, to: 9 },
-  { axis: 'v', at: -0.98, w: 0.085, from: CROSS.v, to: 9 },
-  { axis: 'v', at: 1.0, w: 0.1, from: -9, to: -0.34 },
+  { axis: 'u', at: -0.72, w: 0.1, from: -9, to: -0.95 },
+  { axis: 'u', at: 0.8, w: 0.085, from: -9, to: -0.85 },
+  { axis: 'u', at: -0.34, w: 0.12, from: 1.0, to: 9 },
+  { axis: 'u', at: 0.62, w: 0.09, from: 0.85, to: 9 },
+  { axis: 'v', at: -0.98, w: 0.085, from: 0.7, to: 9 },
+  { axis: 'v', at: 1.0, w: 0.1, from: -9, to: -0.7 },
 ];
 
 /** canal edge wander: each edge drifts ±0.012 km in 0.06 km steps (no ruler-straight canals) */
@@ -102,7 +103,7 @@ const wander = (key: number, s: number): number => (rand(SEED, key * 1009 + Math
 /** in a canal (Grand, cross or a side canal)? `margin` widens every canal (keep-out for houses) */
 export function inCanal(u: number, v: number, margin = 0): boolean {
   if (Math.abs(u - GRAND.u - wander(1, v)) < GRAND.w / 2 + margin) return true;
-  if (u < GRAND.u && Math.abs(v - CROSS.v - wander(2, u)) < CROSS.w / 2 + margin) return true;
+  if (u < GRAND.u && u > CROSS.u0 - margin && Math.abs(v - CROSS.v - wander(2, u)) < CROSS.w / 2 + margin) return true;
   for (let i = 0; i < SIDE_CANALS.length; i++) {
     const c = SIDE_CANALS[i];
     const [along, across] = c.axis === 'u' ? [u, v] : [v, u];

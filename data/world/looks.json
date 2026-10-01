@@ -38,7 +38,7 @@
       "atmo": {"tint": [0.84, 0.9, 0.83], "density": 1.3, "sky": [0.93, 0.96, 0.91], "spots": [{"place": "dol-guldur", "radiusKm": 14, "tint": [0.82, 0.95, 0.92], "density": 1.5}]}
     },
     "wilderland": {
-      "ground": {"grass": "#5a8452", "dry": "#7f9068", "soil": "#665e4c", "rock": "#666769", "dryness": 0.36, "pattern": 0.5, "spots": [{"place": "erebor", "radiusKm": 26, "snowline": -9, "grass": "#6c6f66", "dry": "#7a7c74", "dryness": 0.7, "rock": "#63646a", "turf": 0}]},
+      "ground": {"grass": "#5a8452", "dry": "#7f9068", "soil": "#665e4c", "rock": "#666769", "dryness": 0.36, "pattern": 0.5, "spots": [{"place": "erebor", "radiusKm": 26, "snowline": -12, "grass": "#6c6f66", "dry": "#7a7c74", "dryness": 0.7, "rock": "#63646a", "turf": 0}]},
       "grade": {"tint": "#f6f4ee", "saturation": 0.97, "contrast": 1.04},
       "atmo": {"tint": [0.96, 1.0, 1.02], "density": 1.05}
     },

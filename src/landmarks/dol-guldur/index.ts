@@ -199,15 +199,14 @@ function buildFortress(k: ProxyKit): void {
     k.light([x + r * 0.6, g + crown[i][3] * 0.62, z + r * 0.6], { kind: 'magic', color: GLOW, intensity: 0.5, radius: 0.025, flicker: 0.2, gate: 'dusk' });
   }
 
-  // ---- the crag under the walls: broken bands of dark rock round the upper hill (gaps for the bridge
-  // and the western breach), faces looking out and down the slope, their ends buried
+  // ---- the crag under the walls: broken bands of dark rock on the north-west and east of the upper hill
+  // (the south-west has the scarp's step), faces looking out and down the slope, their ends buried
   for (const [b0, b1, hs] of [
-    [20, -75, [0.25, 0.55, 0.7, 0.5, 0.25]],
-    [-95, -190, [0.3, 0.6, 0.75, 0.55, 0.3]],
-    [-210, -290, [0.25, 0.5, 0.6, 0.3]],
+    [20, -75, [0.16, 0.3, 0.38, 0.28, 0.16]],
+    [-210, -290, [0.16, 0.3, 0.34, 0.18]],
   ] as [number, number, number[]][]) {
     const path: V2[] = hs.map((_h, i) => polar(b0 + ((b1 - b0) * i) / (hs.length - 1), 1.3 + 0.07 * Math.sin(i * 2.1)));
-    k.cliff('weathered', path, hs, { color: CRAG, rough: 0.6, strata: 0.4, soft: 0.45, depth: 0.5, taper: 0.3, lod: 1 });
+    k.cliff('weathered', path, hs, { color: CRAG, rough: 0.7, strata: 0.45, soft: 0.35, depth: 0.35, taper: 0.25, lod: 1 });
   }
   // crag shards along the lip of the summit (LOD0)
   for (let b = 75; b < 400; b += 37) {
@@ -225,7 +224,7 @@ function buildFortress(k: ProxyKit): void {
   k.bridge('weathered', [start[0], y0, start[1]], [end[0], y1, end[1]], { width: 0.07, arches: 9, deck: 0.05, color: WALL[2] });
   // the gatehouse at the bridge head and a watch tower on the knob
   brokenTower(k, gateV[0] + 0.05, gateV[1] - 0.02, 0.06, 0.32, 4, TOWER[2], 1, false);
-  brokenTower(k, KNOB[0], KNOB[1], 0.07, 0.4, 5, TOWER[0], 1, false);
+  brokenTower(k, KNOB[0], KNOB[1], 0.07, 0.52, 5, TOWER[0], 1, false);
   // fallen blocks on the slopes below the breaches
   k.scatter(
     { annulus: { at: [0, 0], r0: R + 0.1, r1: R + 0.6, a0: 0, a1: 360 } },

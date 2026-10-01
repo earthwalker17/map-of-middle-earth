@@ -85,7 +85,7 @@ function buildTown(k: ProxyKit): void {
       if (openWater(r.u0 - 0.04, vc)) pile(r.u0 + 0.004, vc);
       if (openWater(r.u1 + 0.04, vc)) pile(r.u1 - 0.004, vc);
     }
-    for (let u = r.u0 + 0.03; u < r.u1 - 0.02; u += 0.065) {
+    for (let u = r.u0 + 0.03; u < r.u1 - 0.02; u += 0.085) {
       if (!insideTown(u, r.v - 0.03)) pile(u, r.v + 0.004);
       if (!insideTown(u, r.v + DV + 0.03)) pile(u, r.v + DV - 0.004);
     }
@@ -93,7 +93,7 @@ function buildTown(k: ProxyKit): void {
 
   // ---------------------------------------------------------------- houses
   let houseN = 0;
-  let windowBudget = 34;
+  let windowBudget = 36;
   const storeys = (p: number[]): number => {
     const x = k.r(20);
     let a = 0;
@@ -131,7 +131,7 @@ function buildTown(k: ProxyKit): void {
       // carved gable boards with short horns (the film's town), ridge caps on some
       ...(roof === 'gable' && i % 5 !== 4 ? { gableBoards: { color: 0x4a443c, size: 0.0045, horn: 0.008 } } : {}),
       ...(i % 3 === 0 && roof === 'gable' ? { ridge: { color: 0x3b4246, size: 0.006 } } : {}),
-      ...(i % 7 === 2 ? { chimney: true } : {}),
+      ...(i % 11 === 2 ? { chimney: true } : {}),
     });
     if (o.lit > 0 && windowBudget > 0 && k.r(6) < o.lit) {
       windowBudget--;
@@ -184,8 +184,9 @@ function buildTown(k: ProxyKit): void {
       if (fits(u, vc, deep, along, 0, null)) {
         const n_ = storeys([0.05, 0.35, 0.4, 0.2]);
         const tall = k.r(4) < 0.05;
-        // lit windows: the canal fronts in the near (south-south-west) two-thirds of the canal
-        const lit = vc > -0.6 ? 0.55 : 0.2;
+        // lit windows: a share of the canal fronts in the near (south-south-west) half of the canal (seen
+        // at a grazing angle from the hero: most windows go on the fronts that face it, below)
+        const lit = vc > 0.3 ? 0.22 : 0.05;
         house(u, vc, along, deep, 0.032 * n_ + 0.012, [-side, 0], { gable: k.r(5) < 0.7, lod: n % 2 === 0 ? 2 : 1, lit, tall });
         n++;
       }
@@ -195,7 +196,8 @@ function buildTown(k: ProxyKit): void {
 
   // ---- 2. the blocks: back-to-back rows of houses in each region's own slightly turned frame, alleys
   // between the pairs of rows, now and then a gap; storeys 1–4 (taller towards the middle and the canal)
-  const regions = [0, 1, 2, 3, 4, 5, 6, 12, 13, 14];
+  // (the southern regions first: their outer rows face the hero and get the window budget first)
+  const regions = [3, 13, 6, 2, 12, 5, 1, 4, 0, 14];
   for (const reg of regions) {
     const rho = regionYaw(reg);
     let t = -1.55 + k.r(1) * 0.08;
@@ -218,8 +220,9 @@ function buildTown(k: ProxyKit): void {
             const mid = Math.hypot(u / 1.7, v / 1.3) < 0.55;
             const n_ = storeys(edge ? [0.35, 0.45, 0.2, 0] : mid ? [0.1, 0.35, 0.35, 0.2] : [0.25, 0.45, 0.25, 0.05]);
             const face = rotST(0, sgn, rho);
-            // lit windows on the fronts that face the hero (south-south-west, +v)
-            const lit = face[1] > 0.5 ? (v > -0.4 ? 0.22 : 0.08) : 0;
+            // lit windows on the fronts that face the hero (south-south-west, +v), most on the outer rows
+            // it sees (the inner fronts hide behind the next row's backs)
+            const lit = face[1] > 0.5 ? (edge && v > 0 ? 0.65 : v > -0.4 ? 0.18 : 0.06) : 0;
             const lod: 0 | 1 | 2 = edge ? (n % 3 === 0 ? 2 : 1) : n % 4 === 0 ? 1 : 0;
             house(u, v, along, depth * (0.9 + k.r(6) * 0.1), 0.032 * n_ + 0.012, face, { gable: k.r(7) < 0.6, lod, lit, tall: k.r(8) < 0.04 && along < 0.07 });
             n++;
@@ -452,13 +455,13 @@ export default defineLandmark({
       // the aim point sits on the lake bed: lift it to the water surface (≈ 2.4 above the bed here)
       lift: 2.6,
       aimKm: [1.4, 0.7],
-      tod: 17.3,
+      tod: 16.3,
       dayOfYear: 240,
       // (the probe's ground line of sight aims at the lake bed under the town's water anchor; the town's
       // upper body is in clear view)
       expect: { los: false },
       compare: ['reference/film/lake-town/lake-town-wide.webp', 'reference/concept-art/lake-town/lake-town-alan-lee.jpg'],
-      note: 'late afternoon (sun ≈ 12°, from the west) from the south-south-west, low over the lake and up the Grand Canal: the roofscape of the stilt town filling the frame, gable fronts and spired towers along the canal, the Master’s tower and the bell tower above the roofs, the lake and the far shore behind the skyline. Erebor stays out: at the ×12 relief it stands 18–25° above the horizon from here (that composition is erebor-wide / w4h-laketown-erebor)',
+      note: 'afternoon (sun ≈ 22°, from the west-south-west: lower, the lake lies in the western hills’ shadow) from the south-south-west, low over the lake and up the Grand Canal: the roofscape of the stilt town filling the frame, gable fronts and spired towers along the canal, the Master’s tower and the bell tower above the roofs, the lake and the far shore behind the skyline. Erebor stays out: at the ×12 relief it stands 18–25° above the horizon from here (that composition is erebor-wide / w4h-laketown-erebor)',
     },
   ],
 });
