@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "notes": "S4 W1-B terrain material acceptance shots (pnpm qa --set s4-b): rock strata on cliffs at 20–40 km (east and west faces), the Gorgoroth crust at mid range by day and its fissure glow at night, grass breakup over Rohan. Owned by the terrain module.",
+  "shots": [
+    { "id": "s4b-gorgoroth-40", "tod": 14.0, "camera": { "orbit": { "targetKm": [1226, 668], "distanceKm": 40, "elevationDeg": 22, "azimuthDeg": 230, "fov": 35 } }, "note": "Gorgoroth at mid range: cracked ash crust plates and basalt lobes, no ripples or dunes" },
+    { "id": "s4b-doom-night", "tod": 22.0, "camera": { "orbit": { "targetKm": [1236, 664], "distanceKm": 42, "elevationDeg": 9, "azimuthDeg": 250, "fov": 35 } }, "note": "faint fissure glow round Doom at night (dim orange, never a lava sea)" },
+    { "id": "s4b-cliffs-east", "tod": 10.0, "camera": { "orbit": { "targetKm": [872, 934], "distanceKm": 32, "elevationDeg": 14, "azimuthDeg": 90, "fov": 35 } }, "note": "Misty Mountains faces lit from the east: strata / ledges across the faces, no vertical smear" },
+    { "id": "s4b-cliffs-west", "tod": 16.0, "camera": { "orbit": { "targetKm": [872, 934], "distanceKm": 32, "elevationDeg": 14, "azimuthDeg": 270, "fov": 35 } }, "note": "the same massif from the west: faces read like the east ones (no mirrored or swapped relief)" },
+    { "id": "s4b-mindolluin", "tod": 9.0, "camera": { "orbit": { "targetKm": [1114, 626], "distanceKm": 24, "elevationDeg": 10, "azimuthDeg": 95, "fov": 35 } }, "note": "Mindolluin's east face behind Minas Tirith: banded rock, not smooth brown" },
+    { "id": "s4b-rohan-grass", "tod": 15.0, "camera": { "orbit": { "targetKm": [884, 762], "distanceKm": 26, "elevationDeg": 24, "azimuthDeg": 200, "fov": 35 } }, "note": "grassland breakup at hero distance: mottling, drier south slopes, lusher hollows — no felt" }
+  ]
+}

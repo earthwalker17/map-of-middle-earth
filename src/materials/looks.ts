@@ -864,15 +864,22 @@ export const TERRAIN_SHADE = {
    * the 12 / 3 km terms break a long even crest (the Grey Mountains) into snowy and bare reaches
    */
   snowLineNoise: [2.4, 1.7, 0.75] as const,
-  /** snow fades in over this many units above the line */
-  snowFade: 2.2,
+  /** snow fades in over this many units above the line (S4: crisper, patchier edges) */
+  snowFade: 1.6,
   /** north-facing faces hold snow lower: effective height + northness (−n.z) · this */
   snowNorth: 2.8,
   /** snow sheds from slopes steeper than [a, b]; concave gullies hold it `snowGully` steeper */
-  snowSlope: [0.3, 0.6] as const,
+  snowSlope: [0.27, 0.55] as const,
   snowGully: 0.16,
-  /** snow albedo (sRGB) */
-  snow: 0xe4e8ee,
+  /** snow albedo (sRGB): a little grey (wind-packed, shaded by its own micro relief), never paper white */
+  snow: 0xd6dbe2,
+  /**
+   * grass on slopes facing the sun (south, +Z) dries by up to this much, shade-facing slopes green up
+   * (0 switches the aspect term off in the terrain and in the water's coarse albedo alike)
+   */
+  aspectDry: 0.09,
+  /** slope bias of the rock rule in coarseGroundAlbedo (its coarse normal under-reads cliff slopes) */
+  coarseRockBias: 0.05,
   /** rock on steep slopes [a, b] (none on turf stamps) */
   rockSlope: [0.2, 0.44] as const,
   /** a rockiness of 1 moves the slope onset this much towards gentler ground */
@@ -940,16 +947,29 @@ export function snowAt(hEff: N, slope: N, line: N, volcanic: N, gully: N = float
 }
 
 /**
- * Coarse terrain albedo (linear) for secondary views of the terrain (the water's reflected
- * terrain): the ground look at its mean dryness + rock + snow from the same rules as the terrain
- * material, without its noise, curvature, masks or detail textures.
+ * Dryness offset of a slope by its aspect (`nz`: the normal's +Z = south component): sun-facing slopes
+ * drier, shade-facing ones lusher, nothing on the flat.
  */
-export function coarseGroundAlbedo(pal: GroundPalette, h: N, slope: N, southness: N, northness: N): N {
+export function aspectDryness(nz: N, slope: N): N {
+  return clamp(nz.mul(2.5), -1, 1).mul(TERRAIN_SHADE.aspectDry).mul(smoothstep(0.02, 0.15, slope));
+}
+
+/**
+ * Coarse terrain albedo (linear) for secondary views of the terrain (the water's reflected
+ * terrain): the ground look at its mean dryness (+ the aspect term) + rock + snow from the same rules as
+ * the terrain material, without its noise, curvature, masks or detail textures.
+ */
+export function coarseGroundAlbedo(pal: GroundPalette, h: N, slope: N, southness: N, northness: N, eastness: N = float(0)): N {
   const T = TERRAIN_SHADE;
   const line = snowLineAt(pal, southness);
   const hEff = h.add(northness.mul(T.snowNorth));
-  const ground = mix(pal.grass, pal.dry, clamp(pal.dryness.add(h.mul(T.drynessPerHeight)), 0, 1));
-  const rock = rockAt(slope, alpineAt(hEff, line), float(0), pal.rockiness);
-  const snow = snowAt(hEff, slope, line, pal.volcanic);
+  const ground = mix(pal.grass, pal.dry, clamp(pal.dryness.add(h.mul(T.drynessPerHeight)).add(aspectDryness(northness.negate(), slope)), 0, 1));
+  // the coarse normal (central differences over 4 texels) flattens cliffs: its slope reads low, so the
+  // rock rule gets a small bias (a rock face mirrors as rock, not as the grass at its foot)
+  const rock = rockAt(slope.add(T.coarseRockBias), alpineAt(hEff, line), float(0), pal.rockiness);
+  // the terrain's mean wind scouring (snow v3): steep west-facing (windward) faces shed their snow first —
+  // `eastness` is the normal's +X component (0 when the caller has none)
+  const windward = clamp(eastness.negate().mul(1.6), 0, 1).mul(smoothstep(0.18, 0.42, slope)).mul(0.8 * 0.5 * 0.24);
+  const snow = snowAt(hEff, slope.add(windward), line, pal.volcanic);
   return mix(mix(ground, pal.rock, rock), srgbNode(T.snow), snow);
 }
