@@ -34,12 +34,20 @@ const CONIFER = [0x2e4628, 0x283f24, 0x34502e, 0x3a4f2c];
 const onN = (u: number, v: number): V2 => [LEDGE_N.at[0] + u, LEDGE_N.at[1] + v];
 const onS = (u: number, v: number): V2 => [LEDGE_S.at[0] + u, LEDGE_S.at[1] + v];
 
-/** halls on the two up-valley shelves: position, yaw, width, lit window slots per side, roof */
+/**
+ * halls on the two up-valley shelves: position, yaw, width, lit window slots per side, roof (one each: the
+ * level part of each shelf holds one hall on its platform beside a tower and a pavilion)
+ */
 const SHELF_HALLS: { at: V2; yaw: number; w: number; lit: number; roof: number }[] = [
   { at: [LEDGE_NE.at[0] - 0.05, LEDGE_NE.at[1] - 0.08], yaw: -15, w: 0.3, lit: 2, roof: VERDIGRIS },
-  { at: [LEDGE_SE.at[0] + 0.05, LEDGE_SE.at[1] - 0.05], yaw: 162, w: 0.3, lit: 2, roof: BRONZE },
-  { at: [LEDGE_SE.at[0] - 0.22, LEDGE_SE.at[1] + 0.14], yaw: 170, w: 0.22, lit: 1, roof: VERDIGRIS },
+  { at: [LEDGE_SE.at[0] + 0.07, LEDGE_SE.at[1] + 0.1], yaw: 162, w: 0.3, lit: 2, roof: BRONZE },
 ];
+/** the shelves' towers and pavilions: position, radius (the shelf halls keep clear of them) */
+const SHELF_TOWERS: { at: V2; r: number; h: number; lit: number; roof?: number }[] = [
+  { at: [LEDGE_NE.at[0] + 0.2, LEDGE_NE.at[1] - 0.3], r: 0.034, h: 0.36, lit: 2, roof: VERDIGRIS },
+  { at: [LEDGE_SE.at[0] - 0.13, LEDGE_SE.at[1] + 0.28], r: 0.032, h: 0.3, lit: 2 },
+];
+const SHELF_PAVILIONS: { at: V2; roof?: number }[] = [{ at: [LEDGE_NE.at[0] - 0.3, LEDGE_NE.at[1] + 0.05] }, { at: [LEDGE_SE.at[0] + 0.27, LEDGE_SE.at[1] - 0.07], roof: BRONZE }];
 
 /**
  * The back terraces of the main ledge: (u, v) from its centre, size, yaw, roof. Each slides toward the
@@ -58,11 +66,10 @@ export function buildRivendell(k: ProxyKit): void {
   // the two up-valley shelves: their lips, halls, a tower and a pavilion each
   ledgeLip(k, LEDGE_NE, 120, 250);
   ledgeLip(k, LEDGE_SE, 290, 410);
-  for (const h of SHELF_HALLS) terraceHall(k, h.at, { yaw: h.yaw, w: h.w, d: 0.15, h: 0.12, windows: h.lit, roof: h.roof });
-  pavilion(k, [LEDGE_NE.at[0] - 0.3, LEDGE_NE.at[1] + 0.05], 0.035, false);
-  pavilion(k, [LEDGE_SE.at[0] + 0.2, LEDGE_SE.at[1] - 0.15], 0.035, false, undefined, BRONZE);
-  elvenTower(k, [LEDGE_NE.at[0] + 0.05, LEDGE_NE.at[1] - 0.25], 0.034, 0.36, { lit: 2, roof: VERDIGRIS });
-  elvenTower(k, [LEDGE_SE.at[0] + 0.25, LEDGE_SE.at[1] + 0.05], 0.032, 0.3, { lit: 2 });
+  const taken: { at: V2; r: number }[] = [...SHELF_TOWERS.map((t) => ({ at: t.at, r: t.r + 0.02 })), ...SHELF_PAVILIONS.map((p) => ({ at: p.at, r: 0.06 }))];
+  for (const h of SHELF_HALLS) terraceHall(k, h.at, { yaw: h.yaw, w: h.w, d: 0.15, h: 0.12, windows: h.lit, roof: h.roof }, taken);
+  for (const p of SHELF_PAVILIONS) pavilion(k, p.at, 0.035, false, undefined, p.roof);
+  for (const t of SHELF_TOWERS) elvenTower(k, t.at, t.r, t.h, { lit: t.lit, roof: t.roof });
   // the pavilion on its rock spur and the thin, level bridge to it across the waterfall's ravine
   const y = PAVILION.h;
   pavilion(k, PAVILION.at, 0.045, true, Math.max(y, k.ground(PAVILION.at[0], PAVILION.at[1])) - 0.005);
@@ -104,11 +111,13 @@ function relief(k: ProxyKit, c: V2, outline: V2[]): number {
 /**
  * A hall on a built terrace: a low cream platform (its foot following the ground, its downhill face a
  * retaining wall) with the hall standing on its level top — never a turf wedge hanging down the slope.
- * The spot is searched within 0.25 km of `at` for the flattest ground (relief ≤ 0.12 under the platform);
- * where there is none the hall is left out rather than raised on a pedestal.
+ * The spot is searched within 0.25 km of `at` for the flattest ground (relief ≤ 0.12 under the platform),
+ * clear of the `taken` circles (towers, pavilions, the halls placed before it — the hall's own circle is
+ * added); where there is none the hall is left out rather than raised on a pedestal.
  */
-function terraceHall(k: ProxyKit, at: V2, o: Omit<HallOpts, 'at' | 'floor'>): void {
+function terraceHall(k: ProxyKit, at: V2, o: Omit<HallOpts, 'at' | 'floor'>, taken: { at: V2; r: number }[]): void {
   const outline = corners(o.w + 0.06, o.d + 0.06, o.yaw);
+  const own = o.w / 2 + 0.03;
   let best: { c: V2; r: number } | null = null;
   for (const [ring, n] of [
     [0, 1],
@@ -119,6 +128,7 @@ function terraceHall(k: ProxyKit, at: V2, o: Omit<HallOpts, 'at' | 'floor'>): vo
     for (let j = 0; j < n; j++) {
       const a = (j / n) * Math.PI * 2;
       const c: V2 = [at[0] + Math.cos(a) * ring, at[1] + Math.sin(a) * ring];
+      if (taken.some((t) => Math.hypot(c[0] - t.at[0], c[1] - t.at[1]) < t.r + own)) continue;
       const r = relief(k, c, outline);
       if (!best || r < best.r - 1e-6) best = { c, r };
     }
@@ -129,6 +139,7 @@ function terraceHall(k: ProxyKit, at: V2, o: Omit<HallOpts, 'at' | 'floor'>): vo
   const top = Math.max(...outline.map(([x, z]) => k.ground(c[0] + x, c[1] + z)), k.ground(c[0], c[1])) + 0.03;
   k.extrude('stone', outline, 0.03, { at: [c[0], 0, c[1]], followGround: true, color: STONE2 });
   hall(k, { ...o, at: c, floor: top });
+  taken.push({ at: c, r: own });
 }
 
 /** points on an arc round a ledge centre, clockwise from compass bearing `from` to `to`, radius `rim` */
