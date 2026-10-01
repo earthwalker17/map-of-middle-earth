@@ -1,44 +1,128 @@
+import type { LocalStamp } from '../types.ts';
 import { defineLandmark } from '../types.ts';
+import { buildBeacon, buildCitadel, buildGate, buildProw } from './citadel.ts';
+import { buildHouses, buildRoofscape, buildTiers } from './city.ts';
+import { BENCH_REL, C, CITADEL_Y } from './layout.ts';
 
-/** The White City: seven tiers against Mindolluin, split by the great prow of rock pointing east. */
+/**
+ * Minas Tirith, the White City (research §9; the RotK prow-and-tiers stills, the 1:72 bigature, Lee's
+ * "The Last Debate"): seven walled tiers built INTO the eastern foot of Mindolluin — each a near-semicircle
+ * of battered off-white wall against the sheer grey cliff, stepping up to the citadel — split by the
+ * great prow of rock pointing east like the keel of a ship, its top level with the citadel; the slim
+ * Tower of Ecthelion the top accent; the Great Gate facing east over the Pelennor; ~1000 houses, ~400
+ * lit windows; the beacon crag on the cliff top above the city. Layout in layout.ts.
+ *
+ * Stamps (heights relative to the base ground at the display point, which sits at the cliff foot): the
+ * Pelennor bench and the city site cut down to one level from the cliff face east (lowerOnly: the plain
+ * beyond and the Anduin flats are never raised — the river stays 13+ km away), a shelf for the keep behind
+ * the citadel cut into the face at the citadel's level, and a scarp raising the mountain behind the city
+ * into a taller, sheer cliff (Mindolluin's front; the massif itself is the baked terrain).
+ */
+const SITE: LocalStamp[] = [-6, -3, 0, 3, 6].map(
+  (z): LocalStamp => ({ kind: 'flatten', at: [1.0, z], radius: 2.9, falloff: 0.8, height: BENCH_REL, lowerOnly: true, surface: 'rock' }),
+);
+
+const STAMPS: LocalStamp[] = [
+  // the Pelennor bench before the gate
+  { kind: 'flatten', at: [6, 0], radius: 6.5, falloff: 2.5, height: BENCH_REL, lowerOnly: true },
+  // the city site: the foot slope cut to the bench right up to the cliff face (x ≈ −1.9)
+  ...SITE,
+  // the keep shelf behind the citadel, at the citadel's level
+  { kind: 'flatten', at: [C[0] - 0.8, C[1]], radius: 1.5, falloff: 0.7, height: BENCH_REL + CITADEL_Y - 0.05, lowerOnly: true, surface: 'rock' },
+  // the cliff behind the city: the plateau over the face raised a little (a taller, sheer front)
+  {
+    kind: 'scarp',
+    path: [
+      [-3.9, -5],
+      [-4.2, 0],
+      [-3.9, 5],
+    ],
+    height: 2.0,
+    run: 1.2,
+    side: 'right',
+    plateauKm: 2.5,
+    falloff: 3,
+    rough: { amp: 0.5, scaleKm: 2.0, ridged: true },
+    surface: 'rock',
+  },
+  // the flanks: where the natural front eases into foot slopes north and south of the city, raise the
+  // ground west of the cliff line into the same sheer face (the city stands in a bay of the mountain)
+  ...[
+    [
+      [-2.9, -11],
+      [-2.6, -7.5],
+      [-2.35, -3.6],
+    ],
+    [
+      [-2.35, 3.6],
+      [-2.6, 7],
+      [-2.8, 9.5],
+    ],
+  ].map(
+    (path): LocalStamp => ({
+      kind: 'scarp',
+      path: path as [number, number][],
+      height: 4.2,
+      run: 0.9,
+      side: 'right',
+      plateauKm: 1.8,
+      falloff: 2.6,
+      rough: { amp: 0.6, scaleKm: 2.4, ridged: true },
+      surface: 'rock',
+    }),
+  ),
+];
+
 export default defineLandmark({
   id: 'minas-tirith',
   placeId: 'minas-tirith',
   tier: 'A',
-  // the display position (places.json, offset (-4, 9.5)) sits on Mindolluin's eastern foot with the
-  // snapped Anduin bend >= 14 km to the south and east: the plateau rim ends >= 2 km short of the river
-  // ribbon (the guard's bank envelope never clips it) and the floodplain bench stays between the two
-  stamps: [
-    { kind: 'flatten', at: [5, 1], radius: 5, falloff: 3, height: 0, strength: 0.5 },
-    { kind: 'plateau', at: [0, 0], radius: 7.4, rim: 2, height: 0.6 },
-  ],
+  stamps: STAMPS,
   proxy: (k) => {
-    const tiers = 7;
-    for (let i = 0; i < tiers; i++) {
-      const r = 7.6 - i * 0.98;
-      const top = 1.0 + i * 1.15;
-      k.cylinder('stone', r, r * 1.02, top, { seg: 64, tint: i % 2 ? 0xf2efe6 : 0xe4dfd2 });
-      k.ring('stone', r + 0.05, 0.28, top + 0.45, { seg: 64, tint: 0xfbf8f0 });
-    }
-    // the prow: a knife of rock from the citadel to the gate, pointing east (+x)
-    k.box('weathered', 7.4, 8.2, 0.9, { at: [3.5, 0, 0], tint: 0xe8e2d4 });
-    k.box('weathered', 3.2, 9.4, 0.8, { at: [1.6, 0, 0], tint: 0xefeae0 });
-    // citadel and the White Tower of Ecthelion
-    k.cylinder('stone', 1.5, 1.6, 8.9, { seg: 40, tint: 0xfdfbf6 });
-    k.cylinder('stone', 0.32, 0.36, 5.8, { at: [0.3, 8.9, 0], tint: 0xffffff });
-    k.cone('stone', 0.36, 1.4, { at: [0.3, 14.7, 0], tint: 0xffffff });
-    // the great gate (east)
-    k.box('darkStone', 0.3, 0.8, 0.9, { at: [7.7, 0.2, 0] });
-    // houses on the tiers
-    for (let i = 0; i < 90; i++) {
-      const tier = Math.floor(k.r(1) * 6);
-      const r = 7.3 - tier * 0.98 - k.r(2) * 0.5;
-      const a = k.r(3) * Math.PI * 2;
-      const h = 0.25 + k.r(4) * 0.35;
-      k.box('stone', 0.35, h, 0.3, { at: [Math.cos(a) * r, 1.0 + tier * 1.15, Math.sin(a) * r], rot: [0, (-a * 180) / Math.PI, 0], tint: 0xece6da });
-    }
+    const arcs = buildTiers(k);
+    buildProw(k);
+    buildCitadel(k);
+    buildGate(k);
+    buildHouses(k, arcs);
+    buildRoofscape(k, arcs);
+    buildBeacon(k);
   },
-  lights: [{ at: [0, 15, 0], color: 0xfff1d6, intensity: 2, radius: 3, kind: 'beacon' }],
+  // the beacon crag on the cliff top lifts the bounds (h ≈ 17 km, LOD radius ≈ 12.6 km): LOD0 (the ~900
+  // houses) only inside ~60 km, the LOD1 roofscape beyond
+  lodPx: [230, 50],
+  // no forest crowns on the Pelennor and the flanks before the city (1 km crowns beside 0.2 km houses
+  // break the scale)
+  vegetationExclusion: [
+    { at: [4, 0], r: 12 },
+    { at: [0, -12], r: 9 },
+    { at: [8, -16], r: 7 },
+    { at: [-5, -22], r: 6 },
+    { at: [0, 12], r: 9 },
+  ],
   annotation: { title: 'Minas Tirith', subtitle: 'The White City of Gondor', blurb: 'Seven-tiered city of the kings, carved into the flank of Mount Mindolluin, facing the shadow in the east.' },
-  bookmarks: [{ id: 'minas-tirith-close', distanceKm: 55, elevationDeg: 18, azimuthDeg: 110, fov: 35, tod: 7.5 }],
+  bookmarks: [
+    {
+      id: 'minas-tirith-close',
+      distanceKm: 40,
+      elevationDeg: 5,
+      azimuthDeg: 110,
+      fov: 24,
+      lift: 4.2,
+      // early dawn: the low sun (azimuth ≈ 80, 19° up) 30° off the lens rakes the tiers and splits the
+      // prow's faces lit / shade
+      tod: 6.3,
+      compare: ['reference/film/minas-tirith/minas-tirith-prow-tiers-rotk.jpg', 'reference/concept-art/minas-tirith/lee-the-last-debate.jpg'],
+      note: 'dawn from the east-south-east over the Pelennor: the seven tiers as pale bands against the dark cliff of Mindolluin, the keel of the prow pointing at us over the Great Gate (its northern face lit, the southern in shade), the White Tower the top accent',
+    },
+    {
+      id: 'minas-tirith-wide',
+      distanceKm: 110,
+      elevationDeg: 26,
+      azimuthDeg: 115,
+      fov: 35,
+      lift: 5,
+      tod: 6.9,
+      note: 'context: the White City at the foot of Mindolluin at the end of the White Mountains, the Pelennor and the Anduin before it, Osgiliath on the river',
+    },
+  ],
 });
