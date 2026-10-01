@@ -1,30 +1,31 @@
 {
-  "createdAt": "2026-10-01T10:18:34.568Z",
+  "createdAt": "2026-10-01T17:05:51.268Z",
+  "label": "s3b",
   "quality": "preview",
   "width": 1280,
   "height": 720,
   "gpu": "intel/gen-11",
   "timings": {
-    "engineCreated": 1764,
-    "worldLoaded": 2962,
-    "landmarksBuilt": 7003,
-    "init:environment": 7992,
-    "init:terrain": 9565,
-    "init:water": 9848,
-    "init:vegetation": 10599,
-    "init:diorama": 10621,
-    "init:landmarks": 10626,
-    "init:emission": 10634,
-    "compiled": 16664,
-    "warm": 17678
+    "engineCreated": 1419,
+    "worldLoaded": 2277,
+    "landmarksBuilt": 5400,
+    "init:environment": 6161,
+    "init:terrain": 7531,
+    "init:water": 7746,
+    "init:vegetation": 8276,
+    "init:diorama": 8288,
+    "init:landmarks": 8290,
+    "init:emission": 8295,
+    "compiled": 13332,
+    "warm": 14283
   },
-  "compileMs": 6030,
-  "bootMs": 17678,
-  "jsHeapMB": 349,
+  "compileMs": 5037,
+  "bootMs": 14283,
+  "jsHeapMB": 355,
   "footprint": {
-    "chromeMB": 1643,
+    "chromeMB": 1720,
     "chromeProcs": 8,
-    "nodeMB": 202
+    "nodeMB": 201
   },
   "views": [
     {
@@ -32,42 +33,60 @@
       "width": 1280,
       "height": 720,
       "frames": 60,
-      "medianMs": 56.900000005960464,
-      "p95Ms": 80,
-      "meanMs": 59.75999999940395,
-      "maxMs": 87.59999999403954
+      "medianMs": 56.8000000002794,
+      "p95Ms": 62,
+      "meanMs": 57.019999999979824,
+      "maxMs": 64.1999999997206
     },
     {
       "name": "shire",
       "width": 1280,
       "height": 720,
       "frames": 60,
-      "medianMs": 54.400000005960464,
-      "p95Ms": 91.59999999403954,
-      "meanMs": 64.03999999985099,
-      "maxMs": 97.20000000298023
+      "medianMs": 50.39999999990687,
+      "p95Ms": 54.39999999990687,
+      "meanMs": 50.623333333339545,
+      "maxMs": 55.89999999990687
     },
     {
       "name": "anduin-gondor",
       "width": 1280,
       "height": 720,
       "frames": 60,
-      "medianMs": 61.400000005960464,
-      "p95Ms": 99.19999998807907,
-      "meanMs": 67.79666666612029,
-      "maxMs": 116.1000000089407
+      "medianMs": 42.8000000002794,
+      "p95Ms": 47.1999999997206,
+      "meanMs": 43.39500000001863,
+      "maxMs": 48.700000000186265
     },
     {
       "name": "minas-tirith-close",
       "width": 1280,
       "height": 720,
       "frames": 60,
-      "medianMs": 135.5,
-      "p95Ms": 161.29999999701977,
-      "meanMs": 126.51666666716338,
-      "maxMs": 163.40000000596046
+      "medianMs": 61.299999999813735,
+      "p95Ms": 65.8000000002794,
+      "meanMs": 61.611666666646485,
+      "maxMs": 67.8000000002794
+    },
+    {
+      "name": "mordor",
+      "width": 1280,
+      "height": 720,
+      "frames": 60,
+      "medianMs": 33.09999999962747,
+      "p95Ms": 35.3000000002794,
+      "meanMs": 32.99166666668995,
+      "maxMs": 35.799999999813735
+    },
+    {
+      "name": "rivendell-close",
+      "width": 1280,
+      "height": 720,
+      "frames": 60,
+      "medianMs": 52.799999999813735,
+      "p95Ms": 56.299999999813735,
+      "meanMs": 52.80999999999379,
+      "maxMs": 58.39999999990687
     }
-  ],
-  "label": "s3",
-  "note": "S3 final code, quiet machine (2026-10-01 18:17). Same-session interleaved A/B vs the S2 code: frame times within ~10-15 % of S2 on noisy runs, compile ~20 % faster; boot +3 s (landmark build + AO). Thermal noise on this host is ±30 %: interleave A/B runs before concluding."
+  ]
 }
