@@ -1,9 +1,13 @@
 import type { ProxyKit } from '../kit/ProxyKit.ts';
 import type { V2 } from '../records.ts';
+import { brokenTop, elevation } from './elev.ts';
 
-/** the film's lit stone #646e6c, painted lighter (the dawn haze and the grade take it down) */
-export const STONE = [0x8e9894, 0x959f9b, 0x87918d, 0x9aa39e];
-export const STONE_DARK = 0x6f7875;
+/**
+ * Osgiliath's stone: a warm pale limestone (the film's ruins read pale and dusty in the haze), a few
+ * tones, and a darker weathered tone for the bridge, rubble and the dirt-stained lower courses.
+ */
+export const STONE = [0xb7ac97, 0xc1b7a2, 0xaca28d, 0xc6bca8, 0xb2a690];
+export const STONE_DARK = 0x8f8574;
 
 const DEG = Math.PI / 180;
 
@@ -14,56 +18,105 @@ export function frame(at: V2, yaw: number): (u: number, v: number) => V2 {
   return (u, v) => [at[0] + u * c + v * s, at[1] - u * s + v * c];
 }
 
+/** the lowest ground (local y) along a → b, sampled every ~0.1 km, sunk 0.03 */
+function lowGround(k: ProxyKit, a: V2, b: V2): number {
+  const n = Math.max(2, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 0.1));
+  let g = Infinity;
+  for (let i = 0; i <= n; i++) g = Math.min(g, k.ground(a[0] + ((b[0] - a[0]) * i) / n, a[1] + ((b[1] - a[1]) * i) / n));
+  return g - 0.03;
+}
+
 /**
- * A roofless hall: four walls of broken masonry — each side a run of wall panels of uneven, jagged height
- * with gaps where it has fallen — `w` × `d`, up to `h` tall; the long side facing the river (+v) an
- * arcade of round-arched bays with some arches missing. `seed` picks the damage.
+ * A broken wall a → b: one slab of masonry `t` thick, its top a fractured, irregular line between `lo`·h
+ * and h above the lowest ground under it (seeded per wall — never a regular comb), the foot following
+ * the ground; `arches` round-headed openings (window or door arcades), some broken open into the top.
+ */
+export function brokenWall(k: ProxyKit, a: V2, b: V2, h: number, t: number, lo: number, seed: number, color: number, arches = 0, lod?: 0 | 1 | 2): void {
+  const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  if (L < 0.03) return;
+  const base = lowGround(k, a, b);
+  const r = (i: number) => k.r(seed * 1000 + i);
+  // the foot follows the ground: a few samples along the wall (sunk 0.03)
+  const foot: [number, number][] = [];
+  const nf = Math.max(2, Math.ceil(L / 0.15));
+  for (let i = 0; i <= nf; i++) {
+    const u = (L * i) / nf;
+    foot.push([u, k.ground(a[0] + ((b[0] - a[0]) * u) / L, a[1] + ((b[1] - a[1]) * u) / L) - 0.03]);
+  }
+  // the foot's height at u (piecewise linear between the samples)
+  const footAt = (u: number): number => {
+    const i = Math.min(nf - 1, Math.max(0, Math.floor((u / L) * nf)));
+    const f = (u - foot[i][0]) / Math.max(1e-9, foot[i + 1][0] - foot[i][0]);
+    return foot[i][1] + (foot[i + 1][1] - foot[i][1]) * Math.min(1, Math.max(0, f));
+  };
+  // the broken top never drops below the foot on rising ground (a simple outline)
+  const top = brokenTop(L, h, base, lo, r).map(([u, y]): V2 => [u, Math.max(y, footAt(u) + 0.05)]);
+  const outline: V2[] = [...foot, ...top];
+  const holes: V2[][] = [];
+  if (arches > 0) {
+    const bay = L / arches;
+    const w = bay * 0.56;
+    for (let j = 0; j < arches; j++) {
+      const uc = (j + 0.5) * bay;
+      const y0 = Math.max(base + 0.03 + h * 0.08, footAt(uc - w / 2) + 0.025, footAt(uc + w / 2) + 0.025);
+      const spring = base + h * (0.5 + 0.08 * r(200 + j));
+      // the opening must stay under the broken top (else it is part of the break): check the top there
+      const topAt = Math.min(...top.filter(([u]) => Math.abs(u - uc) < w).map(([, y]) => y), Infinity);
+      if (spring + w / 2 + 0.03 > topAt) continue;
+      const hole: V2[] = [
+        [uc - w / 2, y0],
+        [uc + w / 2, y0],
+      ];
+      for (let q = 0; q <= 4; q++) {
+        const ang = (q / 4) * Math.PI;
+        hole.push([uc + (Math.cos(ang) * w) / 2, spring + (Math.sin(ang) * w) / 2]);
+      }
+      holes.push(hole);
+    }
+  }
+  elevation(k, 'weathered', a, b, outline, t, { color, shade: 0.88 + 0.22 * r(300), holes, lod });
+}
+
+/**
+ * A roofless hall `w` × `d`, up to `h` tall: broken walls on three sides (one may be gone), the long
+ * front (+v) an arcade of round-headed bays; seeded damage.
  */
 export function ruinHall(k: ProxyKit, at: V2, yaw: number, w: number, d: number, h: number, seed: number, color: number): void {
   const P = frame(at, yaw);
-  const t = Math.max(0.025, Math.min(w, d) * 0.08);
-  const side = (a: V2, b: V2, n: number, s0: number) => {
-    for (let i = 0; i < n; i++) {
-      const r = k.r(s0 + i);
-      if (r < 0.2) continue; // fallen
-      const f0 = i / n;
-      const f1 = (i + 1) / n;
-      const pa: V2 = [a[0] + (b[0] - a[0]) * f0, a[1] + (b[1] - a[1]) * f0];
-      const pb: V2 = [a[0] + (b[0] - a[0]) * f1, a[1] + (b[1] - a[1]) * f1];
-      const hh = h * (0.3 + 0.7 * r);
-      const len = Math.hypot(pb[0] - pa[0], pb[1] - pa[1]);
-      const wy = (-Math.atan2(pb[1] - pa[1], pb[0] - pa[0]) * 180) / Math.PI;
-      k.box('weathered', len * 1.02, hh, t, { at: [(pa[0] + pb[0]) / 2, 0, (pa[1] + pb[1]) / 2], rot: [0, wy, 0], seat: true, color, shade: 0.9 + 0.2 * k.r(s0 + 50 + i), lod: 0 });
-    }
-  };
+  const t = Math.max(0.03, Math.min(w, d) * 0.09);
   const c0 = P(-w / 2, -d / 2);
   const c1 = P(w / 2, -d / 2);
   const c2 = P(w / 2, d / 2);
   const c3 = P(-w / 2, d / 2);
-  const nw = Math.max(2, Math.round(w / 0.14));
-  const nd = Math.max(2, Math.round(d / 0.14));
-  side(c0, c1, nw, seed);
-  side(c1, c2, nd, seed + 20);
-  side(c3, c0, nd, seed + 40);
-  // the front: an arcade with fallen arches
-  const missing = [Math.floor(k.r(seed + 60) * 5), 3 + Math.floor(k.r(seed + 61) * 3)];
-  k.arcade('weathered', c3, c2, { count: Math.max(3, Math.round(w / 0.12)), h: h * 0.85, archH: h * 0.6, pier: 0.035, depth: t * 1.2, missing, color, lod: 0 });
+  const gone = Math.floor(k.r(seed + 1) * 5); // 0..2: that side has fallen; 3, 4: all stand
+  brokenWall(k, c0, c1, h, t, 0.3, seed + 2, color, w > 0.42 ? 2 : 0, 0);
+  if (gone !== 1) brokenWall(k, c1, c2, h * 0.9, t, 0.25, seed + 3, color, 0, 0);
+  if (gone !== 2) brokenWall(k, c3, c0, h * 0.9, t, 0.25, seed + 4, color, 0, 0);
+  brokenWall(k, c3, c2, h, t * 1.15, 0.35, seed + 5, color, Math.max(2, Math.round(w / 0.15)), 0);
+}
+
+/** A ruined corner: two broken walls meeting at `at` (an L), one with a window arcade. */
+export function ruinCorner(k: ProxyKit, at: V2, yaw: number, a: number, b: number, h: number, seed: number, color: number): void {
+  const P = frame(at, yaw);
+  const t = 0.032;
+  brokenWall(k, P(0, 0), P(a, 0), h, t, 0.2, seed + 1, color, a > 0.3 ? 2 : 0, 0);
+  brokenWall(k, P(0, 0), P(0, b), h * 0.85, t, 0.2, seed + 2, color, 0, 0);
 }
 
 /**
- * A broken tower: a round or faceted shaft, its top snapped off — a few jagged stumps of wall rising from
- * the break at uneven heights on one side.
+ * A broken tower: a faceted shaft, its top snapped off — jagged stumps of wall rising from the break at
+ * uneven heights on one side.
  */
 export function brokenTower(k: ProxyKit, at: V2, r: number, h: number, sides: number, color: number, lod?: 0 | 1 | 2): void {
   k.tower('weathered', r, h, { at: [at[0], 0, at[1]], seat: true, sides, taper: 0.06, roof: 'none', color, lod });
   const a0 = k.r(700) * 360;
   // stumps on the break (the kit seats the shaft on the lowest ground under its rim and centre, sunk 0.02)
   const base = Math.min(...Array.from({ length: 8 }, (_, j) => k.ground(at[0] + Math.cos((j / 8) * Math.PI * 2) * r, at[1] + Math.sin((j / 8) * Math.PI * 2) * r)), k.ground(at[0], at[1])) - 0.02;
-  for (let j = 0; j < 3; j++) {
-    const a = (a0 + j * 38) * DEG;
+  for (let j = 0; j < 2; j++) {
+    const a = (a0 + j * 50) * DEG;
     const rr = r * 0.94;
-    const sh = h * (0.12 + 0.14 * k.r(710 + j));
-    k.box('weathered', r * 0.55, sh, r * 0.18, { at: [at[0] + Math.cos(a) * rr, base + h * 0.94 - 0.005, at[1] + Math.sin(a) * rr], rot: [0, -a / DEG + 90, 0], color, lod: 0 });
+    const sh = h * (0.12 + 0.16 * k.r(710 + j));
+    k.box('weathered', r * 0.6, sh, r * 0.2, { at: [at[0] + Math.cos(a) * rr, base + h * 0.94 - 0.005, at[1] + Math.sin(a) * rr], rot: [0, -a / DEG + 90, 0], color, lod: 0 });
   }
 }
 
@@ -71,7 +124,7 @@ export function brokenTower(k: ProxyKit, at: V2, r: number, h: number, sides: nu
  * A broken dome: a drum of `r` and `drumH` with a cornice, and the dome over it half fallen in (a partial
  * arc of the shell, open on one side).
  */
-export function brokenDome(k: ProxyKit, at: V2, r: number, drumH: number, arcDeg: number, color: number): void {
+export function brokenDome(k: ProxyKit, at: V2, r: number, drumH: number, arcDeg: number, color: number, seg = 12): void {
   const base = Math.min(...Array.from({ length: 8 }, (_, j) => k.ground(at[0] + Math.cos((j / 8) * Math.PI * 2) * r, at[1] + Math.sin((j / 8) * Math.PI * 2) * r)), k.ground(at[0], at[1])) - 0.02;
   k.lathe(
     'weathered',
@@ -82,11 +135,11 @@ export function brokenDome(k: ProxyKit, at: V2, r: number, drumH: number, arcDeg
       [r * 1.06, drumH + r * 0.08],
       [r * 0.97, drumH + r * 0.08],
     ],
-    { at: [at[0], base, at[1]], seg: 16, color, seat: false },
+    { at: [at[0], base, at[1]], seg, color, seat: false },
   );
   // the shell: up the outside, back down the inside (a thick broken shell), over a partial arc — the
   // fallen side shows the dark interior
-  const n = 5;
+  const n = 4;
   const y0 = drumH + r * 0.08;
   const outer: V2[] = [];
   const inner: V2[] = [];
@@ -95,7 +148,7 @@ export function brokenDome(k: ProxyKit, at: V2, r: number, drumH: number, arcDeg
     outer.push([Math.cos(a) * r * 0.97, y0 + Math.sin(a) * r * 0.9]);
     inner.push([Math.cos(a) * r * 0.87, y0 + Math.sin(a) * r * 0.8]);
   }
-  k.lathe('weathered', [...outer, ...inner.reverse(), outer[0]], { at: [at[0], base, at[1]], seg: 12, arcDeg, rot: [0, k.r(720) * 360, 0], color, shade: 1.08 });
+  k.lathe('weathered', [...outer, ...inner.reverse(), outer[0]], { at: [at[0], base, at[1]], seg: Math.max(8, seg - 2), arcDeg, rot: [0, k.r(720) * 360, 0], color, shade: 1.06 });
 }
 
 /**

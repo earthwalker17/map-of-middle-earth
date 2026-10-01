@@ -15,8 +15,10 @@ export const C: V2 = [0.3, 1.35];
 /** pad height relative to the base ground at the origin */
 export const PAD_REL = -0.4;
 /** pad radius / falloff, km */
-export const PAD_R = 2.0;
-export const PAD_FALL = 0.5;
+export const PAD_R = 1.75;
+export const PAD_FALL = 0.4;
+/** the pad's centre (a little south of the city's, so the shelf runs on in front of the gate) */
+export const PAD_C: V2 = [C[0], C[1] + 0.2];
 
 /** the Tower of the Moon (centre of its base), a little behind the city's middle, away from the gate */
 export const TOWER: V2 = [C[0] + 0.18, C[1] - 0.32];

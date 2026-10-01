@@ -1,7 +1,7 @@
 import type { LocalStamp } from '../types.ts';
 import { defineLandmark } from '../types.ts';
 import { buildBridge, buildCity } from './city.ts';
-import { C, PAD_FALL, PAD_R, PAD_REL, TOWER } from './layout.ts';
+import { C, PAD_C, PAD_FALL, PAD_R, PAD_REL, TOWER } from './layout.ts';
 import { buildTower } from './tower.ts';
 
 /**
@@ -10,9 +10,10 @@ import { buildTower } from './tower.ts';
  * long bridge lined with dark posts; battered walls with spiked parapets, spired towers and steep fin-like
  * buttresses (two great blades flanking the fanged gate); dark steep-roofed houses packed up towards the
  * keep; ONE tall tower of fins twisting as it rises to a flared crown of jagged spikes round a spire. Lit
- * from within by a corpse-light: green cores glowing between the tower's fins, a lantern under the crown,
- * green windows and a gate glow (magic lights, always on). Local frame: heading 0 (x east, z south); see
- * layout.ts. The Great Signal beam is an S4 effect.
+ * from within by a corpse-light (city.ts): near-black stone, green glow welling up the walls from their
+ * feet at night, green window slits, the gate mouth burning, green cores between the tower's fins (dim by
+ * day) and the lantern under the crown (always). Local frame: heading 0 (x east, z south); see layout.ts.
+ * The Great Signal beam is an S4 effect.
  *
  * Terrain: the display point is at the western mouth of the vale, a trench ≈ 4 units deep cut east–west
  * into the mountain front of the Ephel Dúath (which rises 3–7 units east of x ≈ 2.5 and falls to Ithilien
@@ -37,7 +38,7 @@ const STAMPS: LocalStamp[] = [
     surface: 'rock',
   },
   // the city's shelf
-  { kind: 'flatten', at: [C[0], C[1] + 0.2], radius: PAD_R, falloff: PAD_FALL, height: PAD_REL },
+  { kind: 'flatten', at: PAD_C, radius: PAD_R, falloff: PAD_FALL, height: PAD_REL },
 ];
 
 export default defineLandmark({
@@ -47,7 +48,7 @@ export default defineLandmark({
   stamps: STAMPS,
   proxy: (k) => {
     const padY = k.ground(C[0], C[1]);
-    buildCity(k, 30);
+    buildCity(k);
     buildBridge(k, padY);
     buildTower(k, { at: TOWER, y0: k.ground(TOWER[0], TOWER[1]), r: 0.44, keepH: 0.95, shaftH: 3.6 });
   },
@@ -56,17 +57,17 @@ export default defineLandmark({
   bookmarks: [
     {
       id: 'minas-morgul-close',
-      distanceKm: 19,
-      elevationDeg: 9,
-      azimuthDeg: 238,
-      fov: 30,
-      lift: 1.8,
-      aimKm: [0.3, -1.9],
+      distanceKm: 20,
+      elevationDeg: 7,
+      azimuthDeg: 214,
+      fov: 25,
+      lift: 1.7,
+      aimKm: [0.3, -2.7],
       tod: 21.0,
       dayOfYear: 78,
       compare: ['reference/film/minas-morgul/minas-morgul-gate-bridge-film.jpg', 'reference/concept-art/minas-morgul/nasmith-tower-of-the-moon.jpg'],
-      note: 'night up the Morgul vale from Ithilien (west-south-west): the green-lit walled city on its shelf, the twisted tower, the bridge over the Morgulduin; a March moon 55° up in the south-south-west lights the vale (Frodo passed here on 10 March); Mount Doom and Barad-dûr beyond the Ephel Dúath on the right',
+      note: 'night from the south-south-west, down the line of the bridge: the arched bridge over the Morgulduin gorge leading in from the lower right to the fanged gate between its two great blades, the walls lit green from below, the twisted tower; a March moon 55° up behind the camera (Frodo passed here on 10 March); Mount Doom and Cirith Ungol stay out of frame (right)',
     },
-    { id: 'minas-morgul-wide', distanceKm: 70, elevationDeg: 22, azimuthDeg: 255, fov: 35, lift: 9, tod: 21.0, dayOfYear: 78, note: 'the Morgul vale in the Ephel Dúath at night from over Ithilien, the city a green spark on the vale side, Mordor beyond' },
+    { id: 'minas-morgul-wide', distanceKm: 70, elevationDeg: 24, azimuthDeg: 205, fov: 35, lift: 6, tod: 21.0, dayOfYear: 78, note: 'the Morgul vale in the Ephel Dúath at night from the south-south-west over southern Ithilien, the city a green spark on the vale side; turned off the old axis (Mount Doom lies straight behind the city from the west-south-west) so Doom stays at the right edge' },
   ],
 });
