@@ -3,257 +3,167 @@
 _Rolling document: roadmap, current state, decisions, next steps. Keep it compact; replace stale detail
 instead of appending logs._
 
-**Last updated:** 2026-09-30 · Session 3 (Landmarks) in progress — see "S3 progress" below
+**Last updated:** 2026-10-01 · end of Session 3 (Landmarks) — push pending user approval
 
 ## Where we are
-**S1 and S2 are complete.** The world renders deterministically on the Intel UHD iGPU with the S2 look.
+**S1, S2 and S3 are complete.** The world renders deterministically on the Intel UHD iGPU with the S2 look
+and all 24 landmarks rebuilt for the film (S3).
 
-**Geography and water (bake v2):**
-- River DAG with monotone baked levels (declared falls only: Rauros), snapped to the DEM valley floors.
-- Carve with a capped levee, lakes graded with deltas/lips (Long Lake is a real lake with Lake-town on it).
-- Three-band relief "de-spike" (no knife-edge cone fields); the river guard makes rivers win over landmark stamps.
-- Terrain mask (AO, valley, wetness, flow); organic region polygons.
+**World (S1–S2):** bake v2 geography and water (river DAG with monotone levels snapped to the DEM valleys,
+lakes with deltas/lips, three-band relief de-spike, river guard); distance-ramped aerial perspective,
+RegionLook grade, regional haze, cloud shadows, studio backdrop, moonlit night; baked ground look with
+organic ecotones, curvature/AO rock, snow v2, Shire fields, wetlands, CC0 detail layers; 7-sub-crown
+vegetation clusters with per-instance LOD and a barren rule.
 
-**Atmosphere:**
-- Distance-ramped aerial perspective with sun in-scatter; whole-table views stay crisp.
-- RegionLook grade per camera focus; regional haze (Mordor gloom); deterministic cloud shadows.
-- Studio backdrop; moonlit night.
+**Landmarks (S3):**
+- **Platform:** one pure build run (`buildLandmarks` → geometry LODs, world-space lights / trees / forests /
+  pools, contacts, bounds); kit v2 (house, wallPath, tower, lathe, extrude, loft, cliff, rock, scatter,
+  arcade, bridge, stairs + light / windows / tree records, automatic LODs, seating); families v2 (two uber
+  materials, packed per-vertex presets, vertex AO, specular ambient); projected-px LOD; stamps v2 (ridge,
+  scarp, massif, basin, rough, surface, snow caps); EmissionSystem (one instanced sprite draw, gates,
+  halos, settlement aggregation, focal embers, glowKeep); authored hero trees + landmark `forests`; pools;
+  Blender GLB pipeline (`pnpm models`, used for the Argonath kings).
+- **All 24 landmarks at shot-list status s3** (budgets, seating, framing gates strict): 504k LOD0 tris,
+  40.8 MB, 917 lights, 246 authored trees, ≈11k forest tree records, 34 bookmarks (24 `-close` heroes +
+  10 `-wide` contexts) all meeting their probe framing gates.
+- **Shot list v0** (`data/tour/shotlist.json`): film draft 204 s in 16 segments, per landmark role, hero /
+  context framing, tod and detail budget — the seed of the S4 timeline.
 
-**Terrain look:**
-- Baked ground look with organic ecotones and distinct regional palettes: emerald Shire farmland, Rohan
-  gold, ash-black Gorgoroth, pale-ash Dagorlad.
-- Curvature/AO rock, snow v2 (aspect, per-region snowlines), stamp turf, Shire field patchwork.
-- Wetlands, Gorgoroth fissures, valley mist, 6 CC0-derived detail layers per tier.
+**S3 validation** (final QA `renders/qa/20261001-174844`, critic-s3-final.json; 1600×900 spp 4; vision
+critics on anonymised images, keys decoded in code):
+- **Blind paired S2 vs S3** (S2 code rendering the exact S3 cameras, 45 pairs × 3 judges): S3 wins
+  **86.7 %** (gate 70 %), **7/7 hero pauses**. S2 kept anduin-gondor (Minas Tirith hidden — reframed after),
+  moria-wide, shire (warm grade spot — neutralised after) and two overviews (S2's size-boosted Doom disc /
+  white Minas Tirith disc were stronger focal points; S3 now adds focal lava / Eye embers).
+- **Blind recognizability:** **24/24** landmarks top-1 by ≥ 2 of 3 critics (tier A 14/14, tier B 10/10).
+- **Night emission** 5/6 read as lights; **wide locatability** 10/14 (Moria, Argonath, Minas Morgul,
+  Barad-dûr not locatable in overviews — specks by policy).
+- **Film-look** hero mean **1.8 / 4** (gate 3.0) with 15 toy votes — FAIL, driven by shared systems; the
+  user decided S3 stays landmarks-only and these open S4 (ranked below).
+- **Hero checkpoint** (after W3, `renders/qa/20261001-091745`): 21/21 blind top-1; no Blender follow-up
+  triggered.
+- **Perf** (preview 1280×720; same-session interleaved A/B with the S2 code; ±30 % thermal noise): frame
+  time within ~10–15 % of S2, compile ~20 % faster (6.0 s quiet), boot +3 s (landmark build + AO). New
+  baseline `data/qa/perf-baseline.json` label s3: overview 56.9 / shire 54.4 / anduin-gondor 61.4 (new
+  camera) / minas-tirith-close 135.5 ms.
+- **Checks:** typecheck; `pnpm check` (incl. landmark + bookmark gates) OK; determinism IDENTICAL on
+  Lórien at night (emission + trees), Argonath (GLB) and Minas Tirith; `pnpm models --verify` identical;
+  `pnpm build` OK.
 
-**Vegetation:**
-- 7-sub-crown clusters with foam micro-structure (no toy balls) and per-instance LOD.
-- Barren Mordor/Dagorlad, fieldWeight hedgerows, emergent mallorns. Preview strata variant.
-
-**Validation (critics are vision agents; images anonymised; `renders/qa/20260930-092759/critic-s2.json`):**
-- **Blind paired S1 vs S2** (left/right shuffled): S2 won **20/25 (80 %)**, above the 70 % gate. All 5 losses
-  were whole-map overviews and misty-moria. After the whole-table haze fix, a re-check won **8/8**: the
-  5 lost pairs plus Mordor, Black Gate and Barad-dûr as guards.
-- **Blind recognizability:** 9/9 top-1 (S1: 9/9) and **117/124** verified map features (S1: 86/96).
-- **Perf** (preview 1280×720, same session, S1 code on the frozen S1 bake):
-  - S2 overview 51 ms, shire 46, anduin 45, compile 7.7 s.
-  - S1 overview 52 ms, shire 47, anduin 42, compile 8.3 s.
-  - So S2 is at parity despite the new look. Baseline `data/qa/perf-baseline.json` (label s2).
-- **Checks:** typecheck, `pnpm check` (river/stamp/hydro gates as defect budgets), determinism IDENTICAL,
-  build OK. The bake reproduces bit-identically from the agents' hashes.
-
-**Baselines (KEEP):**
-- `renders/qa/20260929-215504` — S1 final.
-- `renders/qa/20260930-092759` — S2 final.
-- `data/baked-s1` — frozen S1 bake for A/B.
+**Baselines (KEEP):** `renders/qa/20260929-215504` (S1 final) · `renders/qa/20260930-092759` (S2 final) ·
+`renders/qa/20261001-091745` (S3 hero checkpoint) · `renders/qa/20261001-174844` (S3 final) ·
+`data/baked-s1` (frozen S1 bake).
 
 ## Roadmap (6 sessions)
 | # | Session | Scope | Status |
 |---|---|---|---|
 | 1 | Foundation & Geography | world, data, systems v1, proxies, capture/QA | ✅ |
 | 2 | World look | host hygiene + bounded QA, bake v2, atmosphere + RegionLook, terrain look v2, vegetation look | ✅ |
-| 3 | **Landmarks** (all 24) | Shot list v0 first (route + hero distance per landmark → detail budget). Upgraded TS procedural kit by default; Blender GLBs only for 3–5 close-up heroes after a one-landmark spike. Landmark trees through VegetationSystem clusters. Lights → emission buffer. Readability policy: silhouette/emission/contrast instead of size | **next** |
-| 4 | Previz, living world, polish | Tour timeline v0 + low-res animatic first; EffectsSystem (waterfalls, plumes, lava glow, Eye, beacons, Morgul light, mist), visible/animated clouds, water motion, luminous route line, labels, DOF/miniature lens, second shadow cascade; parallel CPU music-toolchain spike | — |
+| 3 | Landmarks (all 24) | shot list v0, kit v2 + families v2, stamps v2, emission, landmark trees / forests, Blender spike (GO: Argonath), all 24 rebuilt and gated | ✅ |
+| 4 | Previz, living world, polish | **First the S4 priorities below** (Mordor sky / ash deck, emission lighting surfaces, vegetation archetypes, terrain material, atmosphere / mist / night, water + effects). Then tour timeline v0 + low-res animatic from the shot list; EffectsSystem (waterfalls, plumes, lava glow, Eye, beacons via `EmissionSystem.setDynamic`, Morgul beam, mist), visible clouds, water motion, luminous route line, labels, DOF/miniature lens, second shadow cascade; parallel CPU music-toolchain spike | **next** |
 | 5 | Cinematic journey + music | Final camera work, title cards, transitions; lock timeline → original score | — |
-| 6 | Performance, final polish, render & release | Vegetation placement worker, CPU mask drop, compile time; final 1080p24 render (resumable, overnight, user-started); encode; README/CREDITS; ME-GIS/Arda permission | — |
+| 6 | Performance, final polish, render & release | Landmark build / AO in a worker, vegetation placement worker, CPU mask drop, compile time; final 1080p24 render (resumable, overnight, user-started); encode; README/CREDITS; ME-GIS/Arda permission | — |
+
+## S4 priorities (from the S3 critics; shared systems, ranked)
+1. **Mordor / Dagorlad sky and ash deck:** `env.skyTint` only multiplies the clear sky and fades out below
+   ~14°; add a region-driven overcast ash deck (cloud coverage / colour per looks.json), red underglow toward
+   Doom, heavier Mordor haze so the outer world disappears from the Doom / Gate frames.
+2. **Emission lights its surroundings:** a deterministic surface-irradiance term from the brightest light
+   records in the shared families + terrain (lava, Morgul wall-wash, windows, ithildin), volumetric halos in
+   the in-scatter for strong kinds (no crater "sun disc"), emission reflected in water.
+3. **Vegetation archetypes and scale:** asymmetric multi-lobed broadleaf, pointed conifer and holly crowns,
+   hedgerows and copses, scale spread, a merged canopy shell beyond ~30 km (crowns read as lollipops at
+   10–20× real size), per-landmark tree-height caps.
+4. **Terrain material:** triplanar rock with strata on steep slopes (no vertical smear), grass breakup (no
+   felt / clay), cracked ash crust + basalt instead of Mordor dune ripples; audit ground albedo (the mordor /
+   dagorlad spots render as sand / beige).
+5. **Atmosphere and night:** stronger aerial perspective beyond ~40 km, valley mist (Sirannon, Rivendell,
+   Anduin, Morgul vale), cloud caps; a moon key light and fewer stars at night.
+6. **Water and effects:** waterfalls (ribbons, plunge pools, spray), reflection-miss fallback (black holes by
+   the Argonath plinths), banks without levee lips, readable plumes (Doom), the Morgul beam; Lake-town's
+   Long Lake reads as a river in places.
 
 ## Decisions (stable)
-- **Presentation and film:**
-  - floating diorama slab; film 3–4 min, 16:9, 1080p24 with a 180° shutter;
-  - hero pauses: Hobbiton, Rivendell, Moria, Argonath, Black Gate, Minas Morgul, Mount Doom;
-  - prologue Erebor/Lake-town.
-- **Rendering:** WebGPU + TSL (three 0.186.1), reversed-Z, deterministic `SceneState`, which includes `weather`.
-- **Geography:**
-  - ME-GIS canon vectors + Arda DEM.
-  - River centrelines are snapped to the DEM thalweg, at most ~4 km for great/major rivers.
-  - Display offsets are validator-checked: Minas Tirith (−4, 9.5), Osgiliath (−4.44, 3.73), Edoras (2, 6.7),
-    Erebor, Minas Morgul, Hobbiton, Henneth Annûn.
-- **Look:**
-  - wide shots read as a crisp physical model (haze relaxes with eye height);
-  - regional/mid shots carry aerial depth;
-  - Mordor is charcoal with red only near Doom (effects in S4).
-- **Landmarks:** declarative `defineLandmark`; cone stamps relative to base ground; interim wide boost A 1.8 /
-  B 1.5 (tallest 1.2) until S3's readability policy.
-- **Repo:**
-  - public, code only; push only after user approval;
-  - raw CC0 texture sources in `data/textures-src` (gitignored); derived layers in `public/textures/terrain`
-    (gitignored, generated by `pnpm data:fetch` → `tools/textures/prep.mjs`, credited).
+- **Presentation and film:** floating diorama slab; film 3–4 min (shot-list draft 204 s), 16:9, 1080p24 with
+  a 180° shutter; hero pauses Hobbiton, Rivendell, Moria, Argonath, Black Gate, Minas Morgul, Mount Doom;
+  prologue Erebor / Lake-town / Dale; epilogue Grey Havens.
+- **Rendering:** WebGPU + TSL (three 0.186.1), reversed-Z, deterministic `SceneState` (incl. `weather`).
+- **Geography:** ME-GIS canon vectors + Arda DEM; river centrelines snapped to the DEM thalweg; display
+  offsets validator-checked. **The world frame stays** (no south extension; closed at S3 start).
+- **Look:** wide shots read as a crisp physical model; regional/mid shots carry aerial depth; Mordor is
+  charcoal with red only near Doom.
+- **Landmarks:** one fixed design scale each (no distance size boosts); readability from terrain silhouette,
+  contrast and emission; TS kit v2 by default, Blender GLBs only where a blind A/B beats the kit (Argonath);
+  masses of trees as `forests`, individuals as `trees`; landmark lights through EmissionSystem; a landmark is
+  done at shot-list `status: s3` with its gates passing.
+- **S3 scope (user, 2026-10-01):** landmarks only; shared-system look issues found by the S3 critics open S4.
+- **Repo:** public, code only; push only after user approval; raw CC0 texture sources in `data/textures-src`
+  (gitignored), derived layers in `public/textures/terrain` (gitignored, credited); GLBs in `public/models`
+  are original, generated by `tools/blender` (credited).
 
 ## Host and workflow (Surface Laptop Go, 7.6 GB RAM shared with the iGPU)
-- **Session start:** `pnpm host --fix`.
-  - The user approved (2026-09-29) disabling autostart for Edge / WPS / OneDrive / Teams / Phone Link /
-    PC Manager, and stopping them automatically while they have no window open.
-  - Idle memory is about 3.6 GB available.
-- **One heavy job at a time:**
-  - capture, bake and build share the lock behind a free-RAM guard;
-  - a capture batch costs about 1.3 GB;
-  - iterate at 1280×720 spp 2; milestone QA at 1600×900 spp 4 (`pnpm qa --set s1 --batch 8`).
-- **Agents:**
-  - at most 2 concurrent implementation agents in worktrees, each followed by a read-only reviewer; the main
-    agent verifies renders and merges;
-  - worktrees reset to main first;
-  - point `MOME_WORLD_DIR` / `MOME_SOURCE_DIR` at main;
-  - copy `public/textures/terrain`;
-  - share `MOME_CHROME_PROFILE`.
-- **Cleanup:**
-  - `pnpm host --prune` lists (then `--yes` deletes) regenerable outputs, keeping `KEEP` runs;
-  - remove worktree folders with `cmd /c rmdir /s /q` (not `rm -rf`, which can follow pnpm junctions).
+- **Session start:** `pnpm host --fix` (the user approved stopping windowless Edge / WPS / OneDrive / Teams /
+  Phone Link / PC Manager and keeping their autostart disabled). Idle ≈ 3.3–3.6 GB available.
+- **One heavy job at a time:** capture, bake, build and Blender share the lock behind a free-RAM guard; a
+  capture batch ≈ 1.3–1.8 GB; Node world loads (check / probe) wait for 1 GB. Iterate at 1280×720 spp 2;
+  milestone QA `pnpm qa --set s3 --batch 8` (45 shots, 1600×900 spp 4, ≈ 40 min).
+- **Agents (S3 pattern, worked well):** per wave one Workflow with ≤ 2 implementation agents in pre-created
+  worktrees (`git worktree add -b s3/<slot> .claude/worktrees/s3-<slot> main`, `pnpm install --prefer-offline`,
+  copy `public/textures/terrain`, `source .claude/worktrees/s3-env.sh` for MOME_WORLD_DIR / SOURCE_DIR /
+  CHROME_PROFILE / REFERENCE_DIR), each followed by a read-only code reviewer and a visual critic, then one
+  fix round; the main agent views every render, merges with `--no-ff`, keeps main's `pnpm check` green.
+  Briefs live in `.claude/worktrees/briefs/` (common.md, platform.md + per-slot).
+- **Cleanup:** `pnpm host --prune` lists (then `--yes` deletes) regenerable outputs, keeping KEEP runs; remove
+  worktrees with `git worktree remove --force`, then from PowerShell `cmd /c rmdir /s /q <path>` (Git Bash
+  mangles `/s /q`; never `rm -rf`, which can follow pnpm junctions).
 
-## Camera-distance census (seed of shot list v0)
-| Class | Share of film screen time |
-|---|---|
-| wide (>300 km) | ~15 % |
-| regional (60–300 km) | ~50 % |
-| mid (15–60 km) | ~30 % |
-| close (<15 km) | ~5 % |
+## Camera-distance census (seed of the shot list)
+wide (> 300 km) ~15 % · regional (60–300 km) ~50 % · mid (15–60 km) ~30 % · close (< 15 km) ~5 % of screen
+time. Landmark detail budgets target 15–60 km.
 
-Landmark detail budgets target 15–60 km. Ground detail matters for about 80 % of the film.
+## Known residuals (fix opportunistically)
+**Landmarks (S3):**
+- Edoras is small against the White Mountains in its hero frame; Cirith Ungol's night hero is very dark;
+  Henneth Annûn reads weakly; Minas Morgul's green is too saturated by day (its hero is at night).
+- Minas Tirith is still a fairly regular stepped cone (prow subtle); Erebor a steep "witch-hat" massif;
+  Lake-town's hero is dark at dusk; Grey Havens' framing crags are heavy; Rauros' Tol Brandir columnar.
+- Daytime torches: the fire / dusk gate keeps a 0.25 floor by day (Helm's Deep torches at 8:00).
+- Boot +3 s: the landmark build + vertex AO (≈ 1.2–1.8 s) exceed the 0.4 s AO budget → worker in S6.
+- The probe's subject box includes raising stamps (ridges) — visibility can read low for walled sites.
+- Rivendell's shallow stream reads as a dry bed (shallow-water absorption); the hard-stepped water at the
+  Bywater pool junction predates S3.
 
-## S3 backlog (from the S2 critic synthesis and wave reviews)
-**Shot list v0 first:**
-- route waypoints plus a hero distance and framing per landmark;
-- bookmark re-framing (misty-moria clips Orthanc; argonath line of sight blocked by hills; board edge or void
-  at the top of some hero shots).
+**Bake:** 98 torrent step cells (warning); stream-17 not joined to the Celos, stream-36 22 km source trim;
+Entwash / Forest River confluence pools (≤ 4.2 deep); marsh fills ≈ 271 km² > 0.5; geometry treeline (23) vs
+vegetation (22).
 
-**Landmarks, rebuilt at hero distance:**
-| Landmark | Needs |
-|---|---|
-| Erebor | a massif with spurs, not a clay cone |
-| Mount Doom | isolated, with a volcanic silhouette, separated from Barad-dûr; Gorgoroth not one dome |
-| Minas Tirith | Mindolluin part of the range, the prow, the Pelennor bench (stamp) |
-| Osgiliath | ruins on both banks; the west bank is steep today |
-| Edoras | a green hill before the mountains; still a truncated cone |
-| Isengard | the ring in a flattened basin |
-| Helm's Deep | the Deeping Wall |
-| Black Gate | spanning the pass |
-| Moria | the West-gate cliff + Sirannon pool; the gate is a proxy card |
-| Rivendell | a gorge with falls |
-| Argonath | the gorge set |
-| Caras Galadhon, Hobbiton | route landmark trees through vegetation clusters (faceted proxies today); Hobbiton doors |
-| Lake-town / Long Lake | read as a lake |
-
-**Readability policy:** replace size boosts with silhouette/emission/contrast; small landmarks are specks in
-wide shots.
-
-**Frame decision (closed, S3 start):** the world frame stays as it is — no 80 km south extension (the
-south edge is a clean diorama cut through the Bay of Belfalas; a squarer board would fit 16:9 worse).
-
-## S3 progress (rolling; replaced by the S3 summary at session end)
-- **W0 (main):** host hygiene + cleanup; contracts commit (build records, types v2, bookmarks v2, stubs);
-  shot list v0 (`data/tour/shotlist.json`, film draft 204 s); probe v2 (`tools/check/probe.ts`: void /
-  cut-face / top-void classes, subject px) + bookmark / shot-list gates (strict per landmark once its
-  shot-list `status` is `s3`); S3 QA sets; region shots reframed (mordor, erebor-long-lake, misty-moria);
-  `tools/capture/exportCameras.ts` for the final S2-vs-S3 A/B.
-- **W1 (merged):** A = kit v2 / families v2 (2 uber materials) / vertex AO / projected-px LOD / landmark
-  gates + Edoras (s3); B = emission sprites (halos, settlement aggregation, glowKeep) / authored hero trees
-  (tiered mallorns, hero trunks) / stamps v2 (ridge, scarp, massif, basin, rough, surface, snow caps) /
-  pools + Lothlórien (s3) + Erebor massif. Perf gate after W1 (preview 1280×720): overview 46.8–56.5 ms,
-  shire 49.8–50.1, anduin-gondor 50.4 (one noisy run 75.6, p95 spikes ~96), **compile 5.2–5.9 s (was
-  7.3 s)**. Recheck after W3.
-- **W2 (merged):** Hobbiton, Rivendell, Moria (C); Argonath gorge + refined GLB kings (Gondorian helm-crown,
-  halt palms, variant nodes) and Rauros / Amon Hen (D). Critic scores after fixes: Moria and Argonath
-  strongest (≈3), Hobbiton and Rivendell improved (Rivendell's wide shot still weak).
-- **Landmark forests (main):** `ForestDecl` (areas, density, species mix, clumping, clearings, slope / shore
-  limits) placed by the vegetation system; Rauros' 1348 and Rivendell's ~500 hand-authored trees converted
-  (authored trees 2035 → 203). Bog pools fade from regional distances (no hard blotches); QA compare sheets
-  use bookmark compare lists.
-- **W3 (merged):** Mount Doom, Barad-dûr, Black Gate (E); Minas Morgul, Cirith Ungol, Osgiliath, Henneth
-  Annûn (F). 14/24 landmarks at status s3; check: LOD0 191k tris, 14.9 MB, 320 lights, build ≈1 s (AO 0.56 s).
-- **W4 (merged):** Minas Tirith, Helm's Deep, Isengard (G); Erebor gate, Dale, Lake-town, Dol Guldur (H).
-  21/24 at s3; all 31 bookmarks meet their framing gates; LOD0 427k tris, 33 MB, 870 lights; boot-time
-  landmark build ≈3.1 s (AO 1.75 s — over its 0.4 s budget: S6 worker / AO budget).
-- **Hero checkpoint** (`renders/qa/20261001-091745`, critic-s3-checkpoint.json): blind recognizability
-  **21/21 top-1** (7 hero pauses × 3 critics); film-look means 1.2–2.5 / 4 (atmosphere 1–2, 18/28 toy
-  flags), driven mostly by shared systems. No Blender follow-up triggered (Barad-dûr, Moria read).
-  **User decision (2026-10-01): S3 stays landmarks-only;** the shared-system findings open S4 (below).
-- **Specular ambient** for landmark structures (no environment map: metals / glossy dark stone went black in
-  shade).
-- **W5 (running):** Bree, Weathertop, Grey Havens + Hobbiton P1 (I); Rivendell, Black Gate, Minas Morgul P1
-  reworks (J).
-- **Blender spike (W2-D phase 1, merged): GO.** `pnpm models` (headless Blender 4.5 under the lock, 10 min
-  timeout, `--verify` byte-identical), runtime GLB loader (families by `fam:<id>`, shared AO). Argonath king
-  GLB (39k tris/king, 1.06 MB) vs the TS-v2 figure: 3/3 blind critics preferred the GLB in every readable
-  pair (low pass, rear, 6 km king; conf 0.7–0.85) and recognised it as the Argonath; compile unchanged,
-  boot +0.2–0.4 s. Follow-ups (Barad-dûr → Moria gate → Orthanc) only if their TS-v2 builds fail the hero
-  checkpoint.
-
-## S4 priorities from the S3 hero checkpoint (shared systems; ranked)
-1. **Mordor / Dagorlad sky and ash deck:** `env.skyTint` only multiplies the clear sky and fades out below
-   ~14°; add a region-driven overcast ash deck (CloudField coverage / colour per looks.json), red underglow
-   toward Doom, heavier Mordor haze so the outer world disappears from Doom / Gate frames.
-2. **Emission lights its surroundings:** a deterministic surface-irradiance term from the brightest records
-   in the shared families + terrain (lava, Morgul wall-wash, windows, ithildin), volumetric halos in the
-   in-scatter for strong kinds (no crater "sun disc"), emission reflected in water.
-3. **Vegetation archetypes and scale:** asymmetric multi-lobed broadleaf / pointed conifer / holly crowns,
-   hedgerows and copses, scale spread, a merged canopy shell beyond ~30 km (crowns read as confetti
-   / lollipops at 10–20× real size), per-landmark tree-height caps.
-4. **Terrain material:** triplanar rock with strata on steep slopes (no vertical smear), grass breakup (no
-   felt / clay), cracked ash crust + basalt instead of Mordor dune ripples; audit ground albedo (mordor /
-   dagorlad spots render as sand / beige).
-5. **Atmosphere:** stronger aerial perspective beyond ~40 km, valley mist (Sirannon, Rivendell, Anduin,
-   Morgul vale), cloud caps, night moon key light + fewer stars.
-6. **Water and effects:** waterfalls (ribbons, plunge pools, spray), reflection-miss fallback (black holes by
-   the Argonath plinths), banks without levee lips, readable smoke / plumes (Doom), the Morgul beam.
-
-## S4+ backlog
-- **Mordor mood (S4):** ash ceiling, plume, red under-glow, bloomed lava/Eye.
-- **Waterfalls:** they are flat strips today.
-- **Clouds and weather:** visible clouds (shadows exist, weak); more regional-range depth where wanted.
-- **Water:** sea specular/glint, river sheen/reflection; rivers read as levee-rimmed tubes up close.
-- **Lens and light:** DOF/miniature lens cue; key/rim light and a contact shadow under the slab (S4 previz/S5).
-- **Night and marshes:** night settlement and beacon lights; Dead Marshes mist.
-- **Lowland drainage** reads as dark ink lines on the Rohan and Misty foothill plains (terrain polish slot).
-- **Final grade (S5):** less olive/mustard overall.
-
-## Known residuals in S2 systems (fix opportunistically)
-**Bake:**
-- 98 torrent step cells (warning only);
-- stream-17 is not joined to the Celos, and stream-36 keeps a 22 km source trim;
-- the Entwash / Forest River confluence pools (≤ 4.2 deep), and marsh fills of about 271 km² > 0.5;
-- the geometry treeline band (23) no longer matches vegetation (22, thinning from 16).
-
-**Look:**
-- a grey-blue smear over the Brown Lands in overviews (much reduced) and a soft rectangular east edge on
-  the Mordor gloom;
-- sea banding at overview-top;
-- marsh pools are stylised;
-- the Minas Morgul grade is drab;
-- backlit Mirkwood is very dark;
-- close-range crowns are solid blobs (leaf cards if close-ups need them);
-- the LOD0 cap is filled in chunk order, not by distance;
-- vegetation fertility and RegionLook use unwarped region weights.
-
-**Shaders and memory:**
-- triplanar normal sign swizzle;
-- a hard-layer seam possible at very close range;
-- the valley mist y < 28 cutoff;
-- about 100 MB transient init heap.
+**Look / shaders:** grey-blue smear over the Brown Lands in overviews; sea banding at overview-top; backlit
+Mirkwood very dark; triplanar normal sign swizzle; possible hard-layer seam very close; valley-mist y < 28
+cutoff; ~100 MB transient init heap.
 
 ## Learned gotchas (r186 / this machine)
-- **TSL:** `vec3(new Color())` silently yields black, so use `color(c)`. An `int(x)` index into a
-  uniformArray must be `.toVar()`. `meta` is a reserved WGSL word.
-- **WebGPU vertex buffers:** at most 8; vegetation uses all 8, so pack new attributes.
-- **Capture:**
-  - readback only; warm-up frame; the readback RT is NoColorSpace;
-  - Chrome honours only the last `--disable-features`, so ours includes Playwright's list.
-- **Host:**
-  - Claude Code's background watchdog kills process trees on low RAM, and on Windows Chrome children
-    survive as orphans. So: foreground batches, a guard before the lock, and a sweep while the lock is held.
-  - Perf numbers are thermally noisy: interleave A/B runs in one session.
-- **Worktrees:**
-  - workflow worktrees may start at an old commit; reset to main first;
-  - pnpm bake args go without `--`;
-  - gitignored data needs env overrides or copies.
-- **Bookmarks and stamps:**
-  - `OrbitSpec.lift` must be passed through;
-  - apply cone exponents to the height above the base;
-  - the river guard clamps stamps to natural banks.
-- **Critics:**
-  - pass the real A/B key to the scoring code (a placeholder silently inverts half the pairs);
-  - keep answer keys outside the folders critics read.
-- **Data:**
-  - the ME-DEM sea level is 16 grey levels;
-  - heights ship as raw u16;
-  - the Arda DEM has a straight submarine ridge west of the Gulf of Lune (`vertical.seaArtefacts`).
+- **TSL:** `vec3(new Color())` silently yields black — use `color(c)` (a Color *uniform* in `vec3()` is
+  fine); an `int(x)` uniformArray index must be `.toVar()`; `meta` / `time` are reserved WGSL words.
+- **WebGPU:** at most 8 vertex buffers per draw (vegetation uses 7, emission 5, landmarks 4).
+- **No environment map:** metals and glossy dark stone go black in shade without the families' specular
+  ambient; keep it if materials change.
+- **Capture:** readback only; warm-up frame; NoColorSpace readback; Chrome honours only the last
+  `--disable-features`.
+- **Host:** Claude Code's background watchdog kills process trees on low RAM (Chrome children orphan) —
+  foreground batches, guard before the lock. Perf is thermally noisy (±30 %+ after long GPU work, and
+  agents decoding images inflate it): interleave A/B and record baselines on a quiet machine.
+- **Tooling:** Bash heredocs can mangle backslashes — write code with the file tools; Python edits must use
+  `newline=''` (eol=lf); tsx scripts outside the project need `.mts` and `file:///` imports.
+- **Worktrees / merges:** one line per landmark in shotlist.json / looks.json still conflicts when two agents
+  edit adjacent lines — resolve by line key; workflow agents can die on API errors after committing — check
+  the branch, merge main in, resume with a short brief.
+- **Bookmarks and stamps:** pass `OrbitSpec.lift` / `aimKm` through; cone / massif profiles apply to the
+  height above the base; the river guard clamps stamps to natural banks; the forest slope limit must allow
+  steep flanks (relief ×12).
+- **Critics:** keep answer keys outside the folders critics read and decode verdicts in code, not in an LLM
+  synthesis; blind pairs via `tools/capture/pair.ts`, cameras via `tools/capture/exportCameras.ts`.
+- **Data:** ME-DEM sea level = 16 grey levels; heights ship as raw u16; the Arda DEM has a straight submarine
+  ridge west of the Gulf of Lune (`vertical.seaArtefacts`).
 
 ## Open issues / notes
 - Optional user action: update the Intel UHD driver (current 31.0.101.2125, 2023). Not required.
