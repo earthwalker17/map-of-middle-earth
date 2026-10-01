@@ -1,19 +1,21 @@
 import type { LocalStamp } from '../types.ts';
 import { defineLandmark } from '../types.ts';
 import { buildBridge, buildCity } from './city.ts';
-import { C, PAD_C, PAD_FALL, PAD_R, PAD_REL, TOWER } from './layout.ts';
+import { C, PAD_C, PAD_FALL, PAD_R, PAD_REL, T3_TOP, TOWER } from './layout.ts';
 import { buildTower } from './tower.ts';
 
 /**
  * Minas Morgul, the Tower of the Moon (research §11; the RotK gate-and-bridge still, Nasmith's "The Tower
  * of the Moon"): a walled city on a shelf of the Morgul vale's northern side above the Morgulduin, across a
- * long bridge lined with dark posts; battered walls with spiked parapets, spired towers and steep fin-like
- * buttresses (two great blades flanking the fanged gate); dark steep-roofed houses packed up towards the
- * keep; ONE tall tower of fins twisting as it rises to a flared crown of jagged spikes round a spire. Lit
- * from within by a corpse-light (city.ts): near-black stone, green glow welling up the walls from their
- * feet at night, green window slits, the gate mouth burning, green cores between the tower's fins (dim by
- * day) and the lantern under the crown (always). Local frame: heading 0 (x east, z south); see layout.ts.
- * The Great Signal beam is an S4 effect.
+ * broad bridge lined with hunched statues; PALE, ghostly stone (city.ts) tiered up against the mountain —
+ * a battered, ribbed curtain of uneven height between bastions on a retaining plinth over a sheer rock
+ * spur, a second terrace ring, the keep terrace with heavy blocks round the Tower, pale houses with dark
+ * roofs; sharp fins only at the gate (two great blades) and at the crown. A corpse-light washes up every
+ * outer face from its foot (glow bands over ~45 % of the height, pooling on the ground at the feet and
+ * spilling down the plinths); a few dim window slits; the gate mouth burns. ONE tall tower (tower.ts):
+ * a twisted fin shaft, a green-burning lamp room behind twisting piers — the city's one strong light —
+ * and a spiral crown of eight blades drawing in to a needle. Local frame: heading 0 (x east, z south);
+ * see layout.ts. The Great Signal beam is an S4 effect.
  *
  * Terrain: the display point is at the western mouth of the vale, a trench ≈ 4 units deep cut east–west
  * into the mountain front of the Ephel Dúath (which rises 3–7 units east of x ≈ 2.5 and falls to Ithilien
@@ -50,24 +52,36 @@ export default defineLandmark({
     const padY = k.ground(C[0], C[1]);
     buildCity(k);
     buildBridge(k, padY);
-    buildTower(k, { at: TOWER, y0: k.ground(TOWER[0], TOWER[1]), r: 0.44, keepH: 0.95, shaftH: 3.6 });
+    buildTower(k, { at: TOWER, y0: T3_TOP, r: 0.44, keepH: 1.1, shaftH: 2.6, spireH: 0.9 });
   },
   lookOverride: 'mordor',
   annotation: { title: 'Minas Morgul', subtitle: 'The Tower of Sorcery', blurb: 'Once Minas Ithil, Tower of the Rising Moon — now the stronghold of the Nazgûl.' },
   bookmarks: [
     {
       id: 'minas-morgul-close',
-      distanceKm: 20,
-      elevationDeg: 7,
-      azimuthDeg: 214,
-      fov: 25,
-      lift: 1.7,
-      aimKm: [0.3, -2.7],
+      distanceKm: 14,
+      elevationDeg: 6,
+      azimuthDeg: 203,
+      fov: 48,
+      lift: 2.4,
+      aimKm: [0.2, -1.8],
       tod: 21.0,
       dayOfYear: 78,
       compare: ['reference/film/minas-morgul/minas-morgul-gate-bridge-film.jpg', 'reference/concept-art/minas-morgul/nasmith-tower-of-the-moon.jpg'],
-      note: 'night from the south-south-west, down the line of the bridge: the arched bridge over the Morgulduin gorge leading in from the lower right to the fanged gate between its two great blades, the walls lit green from below, the twisted tower; a March moon 55° up behind the camera (Frodo passed here on 10 March); Mount Doom and Cirith Ungol stay out of frame (right)',
+      note: 'night from the south (14 km): the pale citadel tiered against the mountain (the city ≈ 40 % of the silhouette) and its twisted tower filling the frame height with a little headroom, every wall washed green from its visible foot, the lamp room the one strong light, the pale statue bridge leading in from the bottom third; a March moon 55° up behind the camera (Frodo passed here on 10 March); Mount Doom, Barad-dûr and Cirith Ungol out of frame (right)',
     },
-    { id: 'minas-morgul-wide', distanceKm: 70, elevationDeg: 24, azimuthDeg: 205, fov: 35, lift: 6, tod: 21.0, dayOfYear: 78, note: 'the Morgul vale in the Ephel Dúath at night from the south-south-west over southern Ithilien, the city a green spark on the vale side; turned off the old axis (Mount Doom lies straight behind the city from the west-south-west) so Doom stays at the right edge' },
+    {
+      id: 'minas-morgul-wide',
+      distanceKm: 38,
+      elevationDeg: 5,
+      azimuthDeg: 218,
+      fov: 24,
+      lift: -2.3,
+      aimKm: [2.5, -4],
+      tod: 21.0,
+      dayOfYear: 78,
+      compare: ['reference/concept-art/minas-morgul/nasmith-tower-of-the-moon.jpg'],
+      note: 'night, low from the south-west up the Morgul vale: the pale citadel on the left third on the vale\'s north wall, the vale and the Morgulduin receding into the Ephel Dúath on the right, its lamp the one green light; Mount Doom and Barad-dûr beyond the right edge (from the west-south-west both stand right behind the citadel)',
+    },
   ],
 });

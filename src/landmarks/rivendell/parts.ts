@@ -1,5 +1,6 @@
 import { Euler, Matrix4 } from 'three/webgpu';
-import { type FamilyId, type ProxyKit, SINK } from '../kit/ProxyKit.ts';
+import { type ProxyKit, SINK } from '../kit/ProxyKit.ts';
+import { elevation } from '../osgiliath/elev.ts';
 import type { V2, V3 } from '../types.ts';
 
 /**
@@ -7,13 +8,17 @@ import type { V2, V3 } from '../types.ts';
  * kit's ground — no module state.
  */
 
-/** warm off-white elven stone, grey-blue slate roofs, warm lamp light, dark window glass */
-export const STONE = 0xdcd2bf;
-export const STONE2 = 0xc9bea6;
-export const SLATE = 0x66717c;
-export const SLATE2 = 0x6d7782;
+/** warm honey / cream elven stone (the film's sunlit Rivendell), a paler trim, a warmer shadow stone */
+export const STONE = 0xdcc89c;
+export const STONE2 = 0xcdb68a;
+export const TRIM = 0xeee0bd;
+/** roofs: aged bronze and verdigris copper (no slate blue) */
+export const BRONZE = 0x8a6a3c;
+export const VERDIGRIS = 0x6f9a84;
+export const VERDIGRIS2 = 0x7fa892;
+export const GILT = 0xc8a050;
 export const LAMP = 0xffc27a;
-const GLASS = 0x34383c;
+const GLASS = 0x3b3228;
 const DEG = Math.PI / 180;
 
 /**
@@ -47,6 +52,58 @@ export function houseFloor(k: ProxyKit, at: V2, w: number, d: number, h: number,
   return Math.max(gMin, gMax - dig * h) - SINK;
 }
 
+/** height fraction of the swept elven roof at |s| = q of the half-width (1 at the ridge, 0 at the eave):
+ * a steep, slightly hollow sweep flaring out at the eaves, the eave tips turned up */
+function sweep(q: number): number {
+  const t = Math.min(1, Math.max(0, (q - 0.86) / 0.14));
+  return (1 - q) ** 1.7 + 0.07 * t * t * (3 - 2 * t);
+}
+
+/**
+ * A swept (bell-cast) gable roof and its cream gable fill, in the vertical plane across the ridge:
+ * ridge along hall-local x, `hw` = half width across the ridge incl. the overhang, `rise` above the wall
+ * top `y`, `len` along the ridge; the gable fill spans the walls' depth `d` and length `w`.
+ */
+function sweptRoof(k: ProxyKit, at: V2, yawDeg: number, y: number, hw: number, d: number, w: number, len: number, rise: number, color: number, lod?: 0 | 1 | 2): void {
+  const c = Math.cos(yawDeg * DEG);
+  const s = Math.sin(yawDeg * DEG);
+  // across the ridge = hall-local +z → (s, c)
+  const a: V2 = [at[0] - s * hw, at[1] - c * hw];
+  const b: V2 = [at[0] + s * hw, at[1] + c * hw];
+  const n = 6;
+  const T = Math.max(0.006, rise * 0.07);
+  const top: V2[] = [];
+  for (let i = -n; i <= n; i++) {
+    const q = Math.abs(i) / n;
+    top.push([hw * (1 + i / n), y + rise * sweep(q) - 0.004]);
+  }
+  const bottom = top.map(([u, v]): V2 => [u, v - T]).reverse();
+  elevation(k, 'slate', a, b, [...top, ...bottom], len, { color, lod });
+  // carved bargeboards along both gable verges (cream, a hair proud of the roof's ends), close range
+  const rd: V2 = [c, -s];
+  for (const e of [-1, 1]) {
+    const off = e * (len / 2 + 0.003);
+    const ea: V2 = [a[0] + rd[0] * off, a[1] + rd[1] * off];
+    const eb: V2 = [b[0] + rd[0] * off, b[1] + rd[1] * off];
+    const band = top.map(([u, v]): V2 => [u, v + 0.002]);
+    const under = top.map(([u, v]): V2 => [u, v - T * 1.9]).reverse();
+    elevation(k, 'stone', ea, eb, [...band, ...under], 0.005, { color: TRIM, lod: 0 });
+  }
+  // the gable fill under the roof over the walls (cream), a hair inside the roof's ends
+  const fill: V2[] = [];
+  const u0 = hw - d / 2;
+  const u1 = hw + d / 2;
+  fill.push([u0, y - 0.004]);
+  fill.push([u1, y - 0.004]);
+  const m = 4;
+  for (let i = m; i >= -m; i--) {
+    const u = hw + (i / m) * (d / 2);
+    const q = Math.abs(u - hw) / hw;
+    fill.push([u, Math.max(y + 0.004, y + rise * sweep(q) - T - 0.002)]);
+  }
+  elevation(k, 'stone', a, b, fill, w - 0.004, { color: STONE, lod });
+}
+
 export interface HallOpts {
   at: V2;
   /** yaw (deg): the long side faces local +z rotated by it */
@@ -54,148 +111,248 @@ export interface HallOpts {
   w: number;
   d: number;
   h: number;
-  pitch?: number;
+  /** roof rise above the wall top (default 0.9·d) */
+  rise?: number;
+  roof?: number;
   /** lit windows on the long sides */
   windows?: number;
-  /** a cross-gable on the front (a gabled wing across the ridge, its gable facing out) */
+  /** a cross wing on the front, its swept gable facing out */
   cross?: boolean;
-  /** dormers on the front roof slope */
-  dormers?: number;
+  /** an arcaded loggia along the front at the foot */
+  loggia?: boolean;
+  /** a slender balcony along the front (default on) */
+  balcony?: boolean;
+  /** an explicit floor (local y) on a built terrace instead of seating on the ground */
+  floor?: number;
 }
 
 /** how deep halls dig into the uphill side of their terrace (wall heights) */
 const DIG = 0.6;
 
 /**
- * An elven hall (the film's pale, steep-gabled, many-dormered houses): warm off-white walls under a steep
- * grey-blue slate gable roof with a dark ridge, seated on its terrace (a ground-following stone plinth on
- * the slope); rows of tall narrow dark window insets on both long sides, a tall dark arched opening in
- * each gable end, an optional cross-gable on the front and dormers on the front slope, a slender balcony
- * along the front; lit windows on both long sides.
+ * An elven hall (the film's Last Homely House): honey-cream walls under a steep, swept bell-cast roof of
+ * verdigris or bronze with a cream gable fill, seated on its terrace (a turf bank on the slope); tall
+ * narrow dark window insets along both long sides and a tall arched opening in each gable; optional
+ * cross wing (its own swept gable facing out), an arcaded loggia of slender columns along the front, a
+ * slender balcony; warm lit windows.
  */
-export function hall(k: ProxyKit, o: HallOpts): void {
-  const pitch = o.pitch ?? 50;
+export function hall(k: ProxyKit, o: HallOpts): number {
   const c = Math.cos(o.yaw * DEG);
   const s = Math.sin(o.yaw * DEG);
   /** house-local (x along the ridge, z toward the front) → local */
   const loc = (x: number, z: number): V2 => [o.at[0] + x * c + z * s, o.at[1] - x * s + z * c];
-  k.house('stone', 'slate', o.w, o.d, o.h, {
-    at: [o.at[0], 0, o.at[1]],
+  const rise = o.rise ?? o.d * 0.9;
+  const roofC = o.roof ?? VERDIGRIS;
+  k.house('stone', 'stone', o.w, o.d, o.h, {
+    at: [o.at[0], o.floor ?? 0, o.at[1]],
     rot: [0, o.yaw, 0],
-    roof: 'gable',
-    pitch,
-    overhang: Math.min(o.w, o.d) * 0.1,
-    dig: DIG,
+    roof: 'flat',
+    overhang: 0.004,
     color: STONE,
-    roofColor: SLATE,
-    roofGrain: 0.3,
-    // on the sloping edge of a terrace: a grassy bank, not a tall stone plinth (no crates on stilts)
-    bank: { fam: 'foliage', color: 0x5f6a34, slope: 42, ledge: 0.012 },
-    ridge: { fam: 'slate', color: 0x464e57, size: 0.008 },
+    roofColor: STONE2,
+    ...(o.floor === undefined ? { dig: DIG, bank: { fam: 'foliage' as const, color: 0x6a6a34, slope: 42, ledge: 0.012 } } : { seat: false }),
     ...(o.windows ? { windows: { count: o.windows, on: 0.85, sides: 2 as const, size: 0.014, color: LAMP, intensity: 1.2 } } : {}),
   });
-  // the wall bottom: the kit's seated floor + its sink
-  const y0 = houseFloor(k, o.at, o.w, o.d, o.h, o.yaw, DIG) + SINK;
-  const tan = Math.tan(pitch * DEG);
-  const rise = (o.d / 2) * tan;
+  const y0 = o.floor ?? houseFloor(k, o.at, o.w, o.d, o.h, o.yaw, DIG) + SINK;
+  const oh = Math.min(o.w, o.d) * 0.14;
+  sweptRoof(k, o.at, o.yaw, y0 + o.h, o.d / 2 + oh, o.d, o.w, o.w + 2 * oh * 0.6, rise, roofC);
   const yawRot: V3 = [0, o.yaw, 0];
   // tall narrow window insets along both long sides (dark glass, a hair proud of the wall)
-  const bays = Math.max(2, Math.round(o.w / 0.07));
+  const bays = Math.max(2, Math.round(o.w / 0.06));
   for (const side of [1, -1]) {
     for (let i = 0; i < bays; i++) {
       const u = (-0.5 + (i + 0.5) / bays) * o.w * 0.86;
       const [x, z] = loc(u, side * (o.d / 2 + 0.002));
-      k.box('stone', 0.016, o.h * 0.5, 0.004, { at: [x, y0 + o.h * 0.25, z], rot: yawRot, color: GLASS, lod: 0 });
+      k.box('stone', 0.014, o.h * 0.56, 0.004, { at: [x, y0 + o.h * 0.22, z], rot: yawRot, color: GLASS, lod: 0 });
     }
   }
-  // a tall dark arched opening in each gable end
+  // a tall arched opening in each gable end
   for (const side of [1, -1]) {
     const [x, z] = loc(side * (o.w / 2 + 0.002), 0);
-    k.box('stone', 0.004, o.h * 0.45 + rise * 0.45, o.d * 0.22, { at: [x, y0 + o.h * 0.4, z], rot: yawRot, color: GLASS, lod: 0 });
+    k.box('stone', 0.004, o.h * 0.5 + rise * 0.3, o.d * 0.2, { at: [x, y0 + o.h * 0.3, z], rot: yawRot, color: GLASS, lod: 0 });
   }
-  // the cross-gable: a gabled wing across the ridge on the front, its gable facing out
+  // the cross wing: a swept gable across the ridge on the front
   if (o.cross) {
-    const cw = o.w * 0.3;
-    const cz = o.d * 0.3;
-    const [x, z] = loc(o.w * 0.08, cz);
-    k.house('stone', 'slate', o.d * 0.95, cw, o.h, {
-      at: [x, y0, z],
-      rot: [0, o.yaw + 90, 0],
-      seat: false,
-      roof: 'gable',
-      pitch: pitch + 4,
-      overhang: cw * 0.12,
-      color: STONE,
-      roofColor: SLATE2,
-      roofGrain: 0.3,
-      ridge: { fam: 'slate', color: 0x464e57, size: 0.007 },
-    });
-    // its gable window
-    const [gx, gz] = loc(o.w * 0.08, cz + (o.d * 0.95) / 2 + 0.002);
-    k.box('stone', cw * 0.3, o.h * 0.5 + rise * 0.3, 0.004, { at: [gx, y0 + o.h * 0.35, gz], rot: yawRot, color: GLASS, lod: 0 });
+    const cw = o.w * 0.32;
+    const cd = o.d * 0.75;
+    const [x, z] = loc(o.w * 0.06, o.d / 2 + cd / 2 - o.d * 0.25);
+    k.box('stone', cw, o.h * 1.08, cd, { at: [x, y0 - 0.01, z], rot: yawRot, color: STONE });
+    sweptRoof(k, [x, z], o.yaw + 90, y0 + o.h * 1.08, cw / 2 + oh * 0.8, cw, cd, cd + oh, rise * 1.1, roofC === VERDIGRIS ? VERDIGRIS2 : roofC);
+    const [gx, gz] = loc(o.w * 0.06, o.d / 2 + cd - o.d * 0.25 + 0.002);
+    k.box('stone', cw * 0.42, o.h * 0.75 + rise * 0.25, 0.004, { at: [gx, y0 + o.h * 0.15, gz], rot: yawRot, color: GLASS, lod: 0 });
   }
-  // dormers on the front slope, halfway up the roof
-  const nd = o.dormers ?? 0;
-  for (let i = 0; i < nd; i++) {
-    const u = (-0.5 + (i + 0.5) / nd) * o.w * 0.6 - (o.cross ? o.w * 0.18 : 0);
-    const [x, z] = loc(u, o.d / 4);
-    const dw = Math.min(0.06, o.w * 0.14);
-    k.house('stone', 'slate', o.d * 0.32, dw, dw * 0.7, {
-      at: [x, y0 + o.h + (o.d / 4) * tan * 0.9 - dw * 0.35, z],
-      rot: [0, o.yaw + 90, 0],
-      seat: false,
-      roof: 'gable',
-      pitch: 55,
-      overhang: dw * 0.12,
-      color: STONE,
-      roofColor: SLATE2,
-      lod: 0,
-    });
+  // an arcaded loggia of slender columns along the front
+  if (o.loggia) {
+    const la = loc(-o.w * 0.42, o.d / 2 + 0.035);
+    const lb = loc(o.w * (o.cross ? -0.12 : 0.42), o.d / 2 + 0.035);
+    k.arcade('stone', la, lb, { count: Math.max(3, Math.round(Math.hypot(lb[0] - la[0], lb[1] - la[1]) / 0.045)), h: o.h * 0.55, archH: o.h * 0.42, pier: 0.008, depth: 0.05, deck: true, color: TRIM, lod: 0 });
   }
   // a slender balcony along the front at mid height (close-range detail, LOD0 only)
-  const [bx, bz] = loc(0, o.d / 2 + 0.014);
-  k.box('stone', o.w * 0.7, 0.008, 0.026, { at: [bx, y0 + o.h * 0.48, bz], rot: yawRot, color: 0xe8dfca, lod: 0 });
-}
-
-/** a slender elven tower: pale shaft, a slate spire or a pale dome, a ring of lit windows */
-export function spireTower(k: ProxyKit, at: V2, r: number, h: number, o: { roof?: 'spire' | 'dome' | 'cone'; lit?: number; spire?: number } = {}): void {
-  k.tower('stone', r, h, {
-    at: [at[0], 0, at[1]],
-    seat: true,
-    sides: 10,
-    taper: 0.12,
-    roof: o.roof ?? 'spire',
-    roofFam: o.roof === 'dome' ? 'stone' : 'slate',
-    roofColor: o.roof === 'dome' ? 0xe4dac4 : SLATE,
-    roofH: o.roof === 'dome' ? r * 1.1 : r * (o.roof === 'cone' ? 2 : (o.spire ?? 3.4)),
-    color: STONE,
-    ...(o.lit ? { windows: { count: o.lit, rows: 1, on: 1, size: 0.013, color: LAMP, intensity: 1.2 } } : {}),
-  });
+  if (o.balcony ?? true) {
+    const [bx, bz] = loc(o.w * 0.2, o.d / 2 + 0.014);
+    k.box('stone', o.w * 0.45, 0.008, 0.028, { at: [bx, y0 + o.h * 0.62, bz], rot: yawRot, color: TRIM, lod: 0 });
+  }
+  return y0;
 }
 
 /**
- * A pale streak of falling water draped down the terrain from `a` to `b` (local x, z; the S4 waterfalls'
- * static placeholder): a thin ground-following ribbon `width` km wide, foam white.
+ * A slender elven tower: a pale eight-sided shaft with a band, an open belvedere of slender columns near
+ * the top, and a swept ogee spire cap of bronze or verdigris with a gilt finial; a ring of lit windows.
  */
-export function fallStreak(k: ProxyKit, a: V2, b: V2, width: number): void {
-  // only where the ground falls steeply (the fall itself; below it the stream and the terrain carry on)
-  const n = Math.max(2, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 0.04));
-  const pts: V2[] = Array.from({ length: n + 1 }, (_, i) => [a[0] + ((b[0] - a[0]) * i) / n, a[1] + ((b[1] - a[1]) * i) / n] as V2);
-  let run: V2[] = [];
-  const flush = () => {
-    if (run.length >= 2) drape(k, 'plaster', run, width, { color: 0xdfe8ea, step: 0.04, lift: 0.01, jitter: 0.25 });
-    run = [];
-  };
-  for (let i = 0; i + 1 < pts.length; i++) {
-    const [x0, z0] = pts[i];
-    const [x1, z1] = pts[i + 1];
-    const steep = (k.ground(x0, z0) - k.ground(x1, z1)) / Math.hypot(x1 - x0, z1 - z0) > 1.2;
-    if (steep) {
-      if (!run.length) run.push(pts[i]);
-      run.push(pts[i + 1]);
-    } else flush();
+export function elvenTower(k: ProxyKit, at: V2, r: number, h: number, o: { roof?: number; lit?: number; cap?: number } = {}): void {
+  const g = Math.min(...[0, 1, 2, 3, 4, 5].map((j) => k.ground(at[0] + Math.cos(j) * r, at[1] + Math.sin(j) * r)), k.ground(at[0], at[1])) - SINK;
+  const H = h * 0.78;
+  k.tower('stone', r, H, {
+    at: [at[0], g, at[1]],
+    sides: 8,
+    taper: 0.14,
+    roof: 'none',
+    color: STONE,
+    ...(o.lit ? { windows: { count: o.lit, rows: 1, on: 1, size: 0.013, color: LAMP, intensity: 1.2 } } : {}),
+  });
+  const rt = r * 0.86;
+  // a band and the belvedere floor
+  k.lathe(
+    'stone',
+    [
+      [rt * 1.25, 0],
+      [rt * 1.25, 0.012],
+      [rt * 1.05, 0.02],
+    ],
+    { at: [at[0], g + H, at[1]], seg: 8, color: TRIM, lod: 0 },
+  );
+  // the open belvedere: eight slender columns round a dark core, a ring beam
+  const bh = h * 0.12;
+  k.cylinder('stone', rt * 0.55, rt * 0.55, bh, { at: [at[0], g + H, at[1]], seg: 8, color: GLASS, lod: 1 });
+  for (let j = 0; j < 8; j++) {
+    const a = (j / 8) * Math.PI * 2;
+    k.cylinder('stone', 0.004, 0.005, bh, { at: [at[0] + Math.cos(a) * rt * 0.95, g + H, at[1] + Math.sin(a) * rt * 0.95], seg: 5, color: TRIM, lod: 0 });
   }
-  flush();
+  k.lathe(
+    'stone',
+    [
+      [rt * 1.12, 0],
+      [rt * 1.12, 0.014],
+    ],
+    { at: [at[0], g + H + bh, at[1]], seg: 8, color: TRIM, lod: 1 },
+  );
+  // the swept ogee cap: a bulb, then a hollow sweep to a needle
+  const cap = o.cap ?? h * 0.32;
+  const r0 = rt * 1.1;
+  k.lathe(
+    'slate',
+    [
+      [r0, 0],
+      [r0 * 1.12, cap * 0.14],
+      [r0 * 0.98, cap * 0.3],
+      [r0 * 0.55, cap * 0.55],
+      [r0 * 0.22, cap * 0.8],
+      [0.003, cap],
+    ],
+    { at: [at[0], g + H + bh + 0.012, at[1]], seg: 8, color: o.roof ?? BRONZE },
+  );
+  k.cylinder('gold', 0.002, 0.004, cap * 0.25, { at: [at[0], g + H + bh + 0.012 + cap * 0.95, at[1]], seg: 4, color: GILT, lod: 0 });
+}
+
+/** an open pavilion: slender columns under a swept ogee dome of verdigris, a gilt finial; `y` = its floor */
+export function pavilion(k: ProxyKit, at: V2, r: number, lit: boolean, y = k.ground(at[0], at[1]) - 0.005, roof = VERDIGRIS2): void {
+  k.lathe(
+    'stone',
+    [
+      [r * 1.2, 0],
+      [r * 1.2, 0.01],
+    ],
+    { at: [at[0], y, at[1]], seg: 12, color: TRIM, lod: 0 },
+  );
+  const ch = r * 1.25;
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    k.cylinder('stone', 0.0045, 0.0055, ch, { at: [at[0] + Math.cos(a) * r, y + 0.01, at[1] + Math.sin(a) * r], seg: 5, color: TRIM, lod: 0 });
+  }
+  k.lathe(
+    'stone',
+    [
+      [r * 1.08, 0],
+      [r * 1.08, 0.012],
+    ],
+    { at: [at[0], y + 0.01 + ch, at[1]], seg: 12, color: TRIM, lod: 0 },
+  );
+  const dh = r * 1.5;
+  k.lathe(
+    'slate',
+    [
+      [r * 1.12, 0],
+      [r * 1.1, dh * 0.2],
+      [r * 0.85, dh * 0.45],
+      [r * 0.4, dh * 0.72],
+      [r * 0.12, dh * 0.92],
+      [0.002, dh],
+    ],
+    { at: [at[0], y + 0.022 + ch, at[1]], seg: 12, color: roof },
+  );
+  if (lit) k.light([at[0], y + ch * 0.7, at[1]], { color: LAMP, intensity: 1.1, radius: 0.014, kind: 'lamp' });
+}
+
+/**
+ * An arched gallery: a thin cream wall from `a` to `b` (local x, z) on its floor `y`, pierced by a row of
+ * tall round-headed openings — the film's open arcades along the terraces' edges.
+ */
+export function gallery(k: ProxyKit, a: V2, b: V2, y: number, h: number, n: number, o: { t?: number; color?: number; lod?: 0 | 1 | 2 } = {}): void {
+  const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const pier = Math.max(0.006, (L / n) * 0.18);
+  const ow = (L - pier * (n + 1)) / n;
+  const spring = y + h * 0.62;
+  const holes: V2[][] = [];
+  for (let i = 0; i < n; i++) {
+    const u0 = pier + i * (ow + pier);
+    const u1 = u0 + ow;
+    const r = ow / 2;
+    const hole: V2[] = [
+      [u0, y + 0.006],
+      [u1, y + 0.006],
+    ];
+    for (let j = 1; j < 8; j++) {
+      const t = (j / 8) * Math.PI;
+      hole.push([u0 + r + Math.cos(t) * r, Math.min(y + h - 0.008, spring + Math.sin(t) * r)]);
+    }
+    hole.push([u0, spring]);
+    holes.push(hole);
+  }
+  elevation(
+    k,
+    'stone',
+    a,
+    b,
+    [
+      [0, y],
+      [L, y],
+      [L, y + h],
+      [0, y + h],
+    ],
+    o.t ?? 0.02,
+    { color: o.color ?? TRIM, holes, lod: o.lod ?? 0 },
+  );
+}
+
+/**
+ * A terrace deck cantilevered over the gorge: a thin cream slab (polygon `pts`, local x, z) at height `y`
+ * with a balustrade on its outer edges (`edges`: indices of the polygon's segments) and slender columns
+ * standing on the slope below it.
+ */
+export function deck(k: ProxyKit, pts: V2[], y: number, edges: number[], columns: V2[]): void {
+  const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length;
+  const cz = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+  k.extrude('stone', pts.map(([x, z]): V2 => [x - cx, z - cz]), 0.014, { at: [cx, y - 0.014, cz], color: TRIM });
+  for (const e of edges) {
+    const a = pts[e];
+    const b = pts[(e + 1) % pts.length];
+    k.wallPath('stone', [a, b], 0.022, 0.006, { at: [0, y, 0], color: TRIM, crenel: { w: 0.005, h: 0.01, gap: 0.01, lod: 0 }, lod: 0 });
+  }
+  for (const [x, z] of columns) {
+    const g = k.ground(x, z) - SINK;
+    if (y - 0.014 - g < 0.01) continue;
+    k.cylinder('stone', 0.005, 0.0065, y - 0.014 - g, { at: [x, g, z], seg: 6, color: STONE });
+  }
 }
 
 /**
@@ -220,13 +377,12 @@ export function archedBridge(k: ProxyKit, a: V3, b: V3, o: { width: number; rise
   const dz = b[2] - a[2];
   const L = Math.hypot(dx, dz);
   const dir: V2 = [dx / L, dz / L];
-  // normal of the side plane (the extrusion direction): dir turned so the strip centres on the axis
   const nx = -dir[1];
   const nz = dir[0];
   const rot = sideRot(dir);
   const at = (y: number): V3 => [a[0] - nx * (o.width / 2), y, a[2] - nz * (o.width / 2)];
   const y0 = Math.min(a[1], b[1]) - o.rise - 0.05;
-  const deck = (t: number) => a[1] + (b[1] - a[1]) * t + o.camber * Math.sin(Math.PI * t);
+  const deckY = (t: number) => a[1] + (b[1] - a[1]) * t + o.camber * Math.sin(Math.PI * t);
   const n = 18;
   const strip = (top: (t: number) => number, bot: (t: number) => number, t0 = 0, t1 = 1): V2[] => {
     const out: V2[] = [];
@@ -240,59 +396,15 @@ export function archedBridge(k: ProxyKit, a: V3, b: V3, o: { width: number; rise
     }
     return out;
   };
-  const dT = 0.035;
-  // the deck
-  k.extrude('stone', strip(deck, (t) => deck(t) - dT), o.width, { at: at(y0), rot, color: o.color, grain: 0.2 });
-  // the rib: an elliptical arch from springing to springing, meeting the deck at the crown
-  const spring = (t: number) => deck(t) - o.rise;
+  const dT = 0.03;
+  k.extrude('stone', strip(deckY, (t) => deckY(t) - dT), o.width, { at: at(y0), rot, color: o.color, grain: 0.2 });
+  const spring = (t: number) => deckY(t) - o.rise;
   const rib = (t: number) => spring(t) + (o.rise - dT) * Math.sqrt(Math.max(0, 1 - (2 * t - 1) ** 2));
-  k.extrude('stone', strip(rib, (t) => rib(t) - 0.03), o.width * 0.8, { at: [a[0] - nx * (o.width * 0.4), y0, a[2] - nz * (o.width * 0.4)], rot, color: o.color, grain: 0.2 });
-  // slender posts between the rib and the deck
+  k.extrude('stone', strip(rib, (t) => rib(t) - 0.025), o.width * 0.8, { at: [a[0] - nx * (o.width * 0.4), y0, a[2] - nz * (o.width * 0.4)], rot, color: o.color, grain: 0.2 });
   for (const t of [0.12, 0.22, 0.32, 0.68, 0.78, 0.88]) {
-    const top = deck(t) - dT;
+    const top = deckY(t) - dT;
     const bot = rib(t) - 0.01;
     if (top - bot < 0.02) continue;
-    k.box('stone', 0.012, top - bot, o.width * 0.7, { at: [a[0] + dx * t, bot, a[2] + dz * t], rot: [0, (Math.atan2(-dz, dx) * 180) / Math.PI, 0], color: o.color, lod: 0 });
-  }
-}
-
-/**
- * A thin band draped on the ground along a local polyline (lanes, streaks): tilted planks `step` km long,
- * each lying along the ground between its ends (level across), `t` thick with its top `lift` above the
- * ground; `jitter` varies each plank's top (± jitter·lift) and paint (± jitter), for hedges. Plain placed
- * boxes — flush ground decals and strips, not seated parts (no seating contacts: the seating gate would
- * read their sink as burial).
- */
-export function drape(k: ProxyKit, fam: FamilyId, path: V2[], width: number, o: { color: number; t?: number; lift?: number; step?: number; shade?: number; jitter?: number; lod?: 0 | 1 | 2 }): void {
-  const t = o.t ?? 0.02;
-  const lift = o.lift ?? 0.007;
-  const step = o.step ?? 0.05;
-  for (let i = 0; i + 1 < path.length; i++) {
-    const [ax, az] = path[i];
-    const [bx, bz] = path[i + 1];
-    const len = Math.hypot(bx - ax, bz - az);
-    const n = Math.max(1, Math.ceil(len / step));
-    for (let j = 0; j < n; j++) {
-      const x0 = ax + ((bx - ax) * j) / n;
-      const z0 = az + ((bz - az) * j) / n;
-      const x1 = ax + ((bx - ax) * (j + 1)) / n;
-      const z1 = az + ((bz - az) * (j + 1)) / n;
-      const y0 = k.ground(x0, z0);
-      const y1 = k.ground(x1, z1);
-      const hl = Math.hypot(x1 - x0, z1 - z0);
-      const yaw = Math.atan2(x1 - x0, z1 - z0);
-      const pitch = Math.atan2(y1 - y0, hl);
-      const m = new Matrix4().makeRotationY(yaw).multiply(new Matrix4().makeRotationX(-pitch));
-      const e = new Euler().setFromRotationMatrix(m, 'XYZ');
-      const jt = o.jitter ? (k.r(11) - 0.5) * 2 * o.jitter : 0;
-      // the plank's base centre: under the segment's midpoint, `t − lift` below the ground there
-      k.box(fam, width, t + jt * lift, Math.hypot(hl, y1 - y0) + 0.004, {
-        at: [(x0 + x1) / 2, (y0 + y1) / 2 - (t - lift), (z0 + z1) / 2],
-        rot: [e.x / DEG, e.y / DEG, e.z / DEG],
-        color: o.color,
-        shade: (o.shade ?? 1) * (1 + jt * 0.5),
-        lod: o.lod ?? 0,
-      });
-    }
+    k.box('stone', 0.01, top - bot, o.width * 0.7, { at: [a[0] + dx * t, bot, a[2] + dz * t], rot: [0, (Math.atan2(-dz, dx) * 180) / Math.PI, 0], color: o.color, lod: 0 });
   }
 }
