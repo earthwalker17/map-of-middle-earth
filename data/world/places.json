@@ -18,7 +18,7 @@
     { "id": "dimrill-dale", "name": "Dimrill Dale", "kind": "poi", "canonical": [887.5, 929.5], "src": "E" },
     { "id": "lothlorien", "name": "Lothlórien", "kind": "landmark", "tier": "A", "canonical": [969.296, 921.786], "src": "P", "displayOffsetKm": [0, 0], "footprintKm": 12, "region": "lorien" },
     { "id": "dol-guldur", "name": "Dol Guldur", "kind": "landmark", "tier": "B", "canonical": [1071.014, 929.617], "src": "P", "displayOffsetKm": [0, 0], "footprintKm": 6, "region": "mirkwood" },
-    { "id": "isengard", "name": "Isengard", "kind": "landmark", "tier": "A", "canonical": [805.979, 812.497], "src": "P", "displayOffsetKm": [0, 0], "footprintKm": 13, "region": "rohan" },
+    { "id": "isengard", "name": "Isengard", "kind": "landmark", "tier": "A", "canonical": [805.979, 812.497], "src": "P", "displayOffsetKm": [0, 0], "footprintKm": 13, "region": "rohan", "onRiver": true },
     { "id": "fangorn", "name": "Fangorn Forest", "kind": "feature", "canonical": [878.331, 836.475], "src": "G" },
     { "id": "helms-deep", "name": "Helm's Deep", "kind": "landmark", "tier": "A", "canonical": [805.415, 748.074], "src": "P", "displayOffsetKm": [0, 0], "footprintKm": 8, "region": "rohan" },
     { "id": "edoras", "name": "Edoras", "kind": "landmark", "tier": "B", "canonical": [863.747, 723.402], "src": "P", "displayOffsetKm": [2.0, 6.7], "footprintKm": 6, "region": "rohan" },

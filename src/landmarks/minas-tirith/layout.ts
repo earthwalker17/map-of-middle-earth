@@ -9,8 +9,9 @@ import type { V2 } from '../records.ts';
  * The stamps cut the foot slope east of the face down to ONE bench level (the Pelennor at the city's
  * foot: local y = 0 — the origin lies on it) and a shelf for the keep behind the citadel; the city is
  * seven concentric terrace bodies centred on the cliff foot (`C`), each a near-semicircle against the
- * mountain (closed by a chord buried in the face), stepping up `STEP` km per tier. The prow — a knife of
- * rock — runs from the citadel east to the second tier, level with the citadel on top.
+ * mountain (closed by a chord buried in the face), stepping up `STEP` km per tier — a broad fan, wider
+ * than tall, the upper tiers wide (never a stepped cone). The prow — a keel of rock — runs from the
+ * citadel east-south-east over the Great Gate to the second tier, level with the citadel on top.
  */
 
 /** centre of the concentric tiers: on the cliff foot */
@@ -18,9 +19,9 @@ export const C: V2 = [-2.0, 0];
 /** number of walled tiers (the seventh is the citadel) */
 export const TIERS = 7;
 /** height step between tiers, km */
-export const STEP = 0.95;
+export const STEP = 0.82;
 /** outer radius of tier 1…7 (index 0 = the lowest, outermost wall) */
-export const RADII = [6.3, 5.5, 4.75, 4.0, 3.25, 2.5, 1.7];
+export const RADII = [6.3, 5.7, 5.1, 4.5, 3.9, 3.3, 2.6];
 /** terrace top of tier `i` (0 = the bench, 7 = the citadel), local y */
 export const tierY = (i: number): number => STEP * i;
 /** the citadel level */
@@ -30,29 +31,30 @@ export const CITADEL_Y = tierY(TIERS);
 export const BENCH_REL = -3.0;
 
 /** the White Tower: base centre (on the citadel), shaft height, base radius */
-export const TOWER = { at: [C[0] - 0.3, 0] as V2, h: 3.0, r: 0.2 };
+export const TOWER = { at: [C[0] - 0.45, 0] as V2, h: 3.4, r: 0.21 };
 
 /**
  * The prow (plan in its own frame: d along its axis from C, p across it), from inside the citadel to its
- * keel edge over the second tier, slightly convex sides narrowing to the edge. Top level with the
- * citadel. The axis points ENE (bearing PROW_BEARING), so its broad south-east face takes the morning
- * light seen from the Pelennor (a knife pointing straight at the dawn sun is lit on its edge only).
+ * keel edge over the second tier wall above the Great Gate, slightly convex sides narrowing to the edge.
+ * Top level with the citadel. The axis (bearing PROW_BEARING) points at the hero camera
+ * (minas-tirith-close, azimuth 110), so the keel edge points at the lens and both faces show equally —
+ * the northern one lit by the dawn sun (azimuth ≈ 80), the southern one in shade.
  */
 export const PROW: V2[] = [
-  [0.65, -0.7],
-  [1.5, -0.64],
-  [2.4, -0.52],
-  [3.25, -0.37],
-  [4.0, -0.19],
-  [4.6, 0],
-  [4.0, 0.19],
-  [3.25, 0.37],
-  [2.4, 0.52],
-  [1.5, 0.64],
-  [0.65, 0.7],
+  [0.65, -0.86],
+  [1.6, -0.79],
+  [2.6, -0.65],
+  [3.6, -0.47],
+  [4.6, -0.25],
+  [5.55, 0],
+  [4.6, 0.25],
+  [3.6, 0.47],
+  [2.6, 0.65],
+  [1.6, 0.79],
+  [0.65, 0.86],
 ];
 /** compass bearing of the prow's axis */
-export const PROW_BEARING = 76;
+export const PROW_BEARING = 110;
 const PA: V2 = [Math.sin((PROW_BEARING * Math.PI) / 180), -Math.cos((PROW_BEARING * Math.PI) / 180)];
 /** the prow frame's +p direction (local x, z): the axis turned 90° clockwise */
 const PP: V2 = [-PA[1], PA[0]];
@@ -80,8 +82,8 @@ export function prowHalf(d: number): number {
   return 0;
 }
 
-/** compass bearing (deg, clockwise from north) of the Great Gate from C: due east */
-export const GATE_BEARING = 90;
+/** compass bearing (deg, clockwise from north) of the Great Gate from C: east, under the prow's keel */
+export const GATE_BEARING = 108;
 
 /** local point at compass bearing `b` (deg) and radius `r` from C */
 export function polarC(b: number, r: number): V2 {

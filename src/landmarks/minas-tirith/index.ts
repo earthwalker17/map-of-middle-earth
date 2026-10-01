@@ -1,7 +1,7 @@
 import type { LocalStamp } from '../types.ts';
 import { defineLandmark } from '../types.ts';
 import { buildBeacon, buildCitadel, buildGate, buildProw } from './citadel.ts';
-import { buildHouses, buildTiers } from './city.ts';
+import { buildHouses, buildRoofscape, buildTiers } from './city.ts';
 import { BENCH_REL, C, CITADEL_Y } from './layout.ts';
 
 /**
@@ -28,7 +28,7 @@ const STAMPS: LocalStamp[] = [
   // the city site: the foot slope cut to the bench right up to the cliff face (x ≈ −1.9)
   ...SITE,
   // the keep shelf behind the citadel, at the citadel's level
-  { kind: 'flatten', at: [C[0] - 0.9, C[1]], radius: 1.0, falloff: 0.7, height: BENCH_REL + CITADEL_Y - 0.05, lowerOnly: true, surface: 'rock' },
+  { kind: 'flatten', at: [C[0] - 0.8, C[1]], radius: 1.5, falloff: 0.7, height: BENCH_REL + CITADEL_Y - 0.05, lowerOnly: true, surface: 'rock' },
   // the cliff behind the city: the plateau over the face raised a little (a taller, sheer front)
   {
     kind: 'scarp',
@@ -84,8 +84,21 @@ export default defineLandmark({
     buildCitadel(k);
     buildGate(k);
     buildHouses(k, arcs);
+    buildRoofscape(k, arcs);
     buildBeacon(k);
   },
+  // the beacon crag on the cliff top lifts the bounds (h ≈ 17 km, LOD radius ≈ 12.6 km): LOD0 (the ~900
+  // houses) only inside ~60 km, the LOD1 roofscape beyond
+  lodPx: [230, 50],
+  // no forest crowns on the Pelennor and the flanks before the city (1 km crowns beside 0.2 km houses
+  // break the scale)
+  vegetationExclusion: [
+    { at: [4, 0], r: 12 },
+    { at: [0, -12], r: 9 },
+    { at: [8, -16], r: 7 },
+    { at: [-5, -22], r: 6 },
+    { at: [0, 12], r: 9 },
+  ],
   annotation: { title: 'Minas Tirith', subtitle: 'The White City of Gondor', blurb: 'Seven-tiered city of the kings, carved into the flank of Mount Mindolluin, facing the shadow in the east.' },
   bookmarks: [
     {
@@ -95,9 +108,11 @@ export default defineLandmark({
       azimuthDeg: 110,
       fov: 24,
       lift: 4.2,
-      tod: 6.9,
+      // early dawn: the low sun (azimuth ≈ 80, 19° up) 30° off the lens rakes the tiers and splits the
+      // prow's faces lit / shade
+      tod: 6.3,
       compare: ['reference/film/minas-tirith/minas-tirith-prow-tiers-rotk.jpg', 'reference/concept-art/minas-tirith/lee-the-last-debate.jpg'],
-      note: 'dawn from the east-south-east over the Pelennor: the seven tiers against the cliff of Mindolluin, the prow splitting them, the White Tower the top accent',
+      note: 'dawn from the east-south-east over the Pelennor: the seven tiers as pale bands against the dark cliff of Mindolluin, the keel of the prow pointing at us over the Great Gate (its northern face lit, the southern in shade), the White Tower the top accent',
     },
     {
       id: 'minas-tirith-wide',

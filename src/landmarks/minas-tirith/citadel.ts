@@ -1,23 +1,28 @@
 import { valueNoise } from '../../core/rng.ts';
 import type { ProxyKit } from '../kit/ProxyKit.ts';
 import type { V2 } from '../records.ts';
-import { STONE, WALL, onProw } from './city.ts';
+import { WALL, onProw } from './city.ts';
 import { BEACON, C, CITADEL_Y, GATE_BEARING, PROW, PROW_YAW, RADII, TOWER, fromProw, polarC, tierY } from './layout.ts';
 
-/** the prow's rock: pale weathered grey, rougher and a little cooler than the dressed stone */
-const ROCK = 0x95928a;
-const SLATE = 0x5d6064;
+/** the prow's rock: pale weathered limestone, at least as pale as the city (it must split the tiers) */
+const ROCK = 0xc4c1b9;
+const SLATE = 0x63676c;
 /** the White Tower: the palest stone of the city (highlight #d2c6b7), still not white */
 const TOWER_STONE = 0xdcd9d0;
+/** the citadel's buildings: pale dressed stone */
+const CITADEL_STONE = [0xd2d0c9, 0xcbc9c2, 0xd6d3cb, 0xc8c6bf];
 
 /**
- * The prow: a knife of rock from inside the citadel to its keel edge over the second tier, level with
- * the citadel on top (a paved terrace with a parapet round its edge, the court's lawn at its root).
+ * The prow: a keel of rock from inside the citadel to its edge over the second tier wall above the
+ * Great Gate, level with the citadel on top (a paved terrace with a parapet round its edge). Its faces are
+ * blocky fractured limestone — irregular blocks pushed in and out by quantised noise, crossed by oblique
+ * bedding (strata dipping along the keel) — low in amplitude, battered at the foot; the keel edge and the
+ * crest stay clean.
  */
 export function buildProw(k: ProxyKit): void {
   const y0 = tierY(1) - 0.1;
   const span = CITADEL_Y - y0;
-  // the outline densified along both faces (root → tip → root), so the rock can bulge and crack
+  // the outline densified along both faces (root → tip → root), so the rock can break into blocks
   const ring: V2[] = [];
   for (let e = 0; e < PROW.length - 1; e++) {
     const [a, b] = [PROW[e], PROW[e + 1]];
@@ -26,30 +31,32 @@ export function buildProw(k: ProxyKit): void {
   }
   ring.push(PROW[PROW.length - 1]);
   const tip = ring.findIndex(([d, p]) => d === PROW[5][0] && p === 0);
-  // a faceted rock: eight sections, each face pushed in and out by smooth noise of (along, up) — broad
-  // buttresses and gullies, finer cracks — battered at the foot; the keel edge and the top outline stay
-  // clean (the top is the citadel's level: a crisp crest with the battlement)
-  const secs = [0, 0.14, 0.3, 0.47, 0.64, 0.8, 0.94, 1].map((f) => {
+  const fs = [0, 0.08, 0.17, 0.26, 0.35, 0.44, 0.53, 0.62, 0.71, 0.8, 0.88, 0.95, 1];
+  const secs = fs.map((f) => {
     const outline = ring.map(([d, p], vi): V2 => {
       if (f === 1) return [d, p];
       const side = Math.sign(p) || 1;
-      // vertical flutes (fissures running up the face, drifting slowly with height) over broad bulges
-      const flute = 0.1 * (valueNoise(d * 5.5 + side * 7.1, f * 0.9, 9103) - 0.5) + 0.05 * (valueNoise(d * 13 + side * 3.3, f * 1.6, 9104) - 0.5);
-      const broad = 0.09 * (valueNoise(d * 1.2 + side * 5.1, f * 2.5, 9101) - 0.5);
-      const bulge = (flute + broad) * Math.sin(Math.min(1, f / 0.95) * Math.PI * 0.5 + 0.35);
-      const batter = 0.1 * (1 - f);
-      const edge = vi === tip ? 0.3 : 1;
+      // blocks: noise quantised to four levels on a coarse (along, up) grid — irregular fractured blocks
+      const q = valueNoise(d * 2.6 + side * 7.1, f * 4.2, 9105);
+      const block = 0.085 * (Math.floor(q * 4) / 3 - 0.5);
+      // oblique bedding: a sawtooth of ledges dipping along the keel
+      const ph = f * 9 + d * 0.8 + side * 0.3;
+      const strata = 0.03 * (ph - Math.floor(ph) - 0.5);
+      const broad = 0.05 * (valueNoise(d * 1.1 + side * 5.1, f * 2.0, 9101) - 0.5);
+      const bulge = (block + strata + broad) * Math.sin(Math.min(1, f / 0.95) * Math.PI * 0.5 + 0.35);
+      const batter = 0.08 * (1 - f);
+      const edge = vi === tip ? 0.25 : 1;
       return [d - 0.05 * (1 - f) + (vi === tip ? 0.05 * (1 - f) : 0), p * (1 + batter) + side * bulge * edge];
     });
     return { outline, y: span * f };
   });
-  k.loft('weathered', secs, { at: [C[0], y0, C[1]], rot: [0, PROW_YAW, 0], color: ROCK, grain: 0.55, lod: 2 });
+  k.loft('weathered', secs, { at: [C[0], y0, C[1]], rot: [0, PROW_YAW, 0], color: ROCK, grain: 0.4, lod: 2 });
   // the battlement along the crest (open at the root, where the prow joins the citadel)
   k.wallPath(
     'stone',
     PROW.map(([d, p]) => fromProw(d, p * 0.97)),
-    0.05,
-    0.03,
+    0.06,
+    0.035,
     { at: [0, CITADEL_Y, 0], color: WALL, lod: 1, crenel: { w: 0.035, h: 0.03, gap: 0.03, lod: 0 } },
   );
 }
@@ -57,7 +64,7 @@ export function buildProw(k: ProxyKit): void {
 /**
  * The citadel on the seventh tier: the White Tower of Ecthelion (a slim shaft with banded storeys, a
  * gallery, a crown and a short spire — the top accent of the city), the Hall of the Kings before it, and
- * a ring of tall buildings round the citadel wall.
+ * a ring of tall buildings round the citadel wall (where the citadel stands clear of the mountain).
  */
 export function buildCitadel(k: ProxyKit): void {
   const y = CITADEL_Y - 0.01;
@@ -87,46 +94,50 @@ export function buildCitadel(k: ProxyKit): void {
     { at: [tx, y, tz], color: TOWER_STONE, seg: 20, grain: 0.12 },
   );
   // the Hall of the Kings, east of the tower along the axis
-  k.house('stone', 'slate', 0.62, 0.34, 0.3, { at: [C[0] + 0.12, y, C[1]], seat: false, roof: 'hip', pitch: 30, overhang: 0.012, color: 0xd0cdc4, roofColor: SLATE, lod: 1, windows: { count: 3, on: 0.67, sides: 2, size: 0.012 } });
-  // the citadel's buildings in a ring along its wall (tall, facing out), clear of the prow and the tower
-  const rr = RADII[6] - 0.24;
+  k.house('stone', 'slate', 0.7, 0.36, 0.32, { at: [C[0] + 0.25, y, C[1]], rot: [0, 90 - GATE_BEARING, 0], seat: false, roof: 'hip', pitch: 32, overhang: 0.012, color: 0xd4d1c9, roofColor: SLATE, lod: 1, windows: { count: 3, on: 0.67, sides: 2, size: 0.012 } });
+  // the citadel's buildings in a ring along its wall (tall, facing out), clear of the prow, the tower and
+  // the cliff
+  const rr = RADII[6] - 0.26;
   let lot = 0;
-  for (let b = -60; b < 240; b += 9 + k.r(1) * 5) {
+  for (let b = -60; b < 240; b += 8 + k.r(1) * 4) {
     const [x, z] = polarC(b, rr);
     if (onProw(x, z, 0.2)) continue;
     if (Math.hypot(x - tx, z - tz) < r * 1.35 + 0.18) continue;
+    if (k.ground(x, z) > y - 0.03) continue;
     const w = 0.16 + k.r(2) * 0.12;
     k.house('stone', 'slate', w, 0.2, 0.26 + k.r(3) * 0.3, {
       at: [x, y, z],
       rot: [0, 180 - b, 0],
       seat: false,
-      roof: k.r(4) < 0.6 ? 'flat' : 'hip',
-      pitch: 30,
-      overhang: 0.008,
-      color: STONE[lot % STONE.length],
-      shade: 1.0 + k.r(5) * 0.06,
+      roof: k.r(4) < 0.3 ? 'flat' : 'hip',
+      pitch: 38,
+      overhang: 0.01,
+      color: CITADEL_STONE[lot % CITADEL_STONE.length],
+      shade: 0.98 + k.r(5) * 0.06,
       roofColor: SLATE,
       lod: 0,
-      ...(lot % 2 === 0 ? { windows: { count: 2, on: 0.7, sides: 1 as const, size: 0.011 } } : {}),
+      ...(lot % 3 === 0 ? { windows: { count: 2, on: 0.7, sides: 1 as const, size: 0.012, intensity: 2 } } : {}),
     });
     lot++;
   }
 }
 
-/** The Great Gate in the outer wall, facing east between two square towers. */
+/** The Great Gate in the outer wall, facing east between two square towers, under the prow's keel. */
 export function buildGate(k: ProxyKit): void {
   const R = RADII[0];
   const top = tierY(1);
   const half = 4.3; // deg either side of the gate axis
+  const t = (GATE_BEARING * Math.PI) / 180;
+  const [ox, oz] = [Math.sin(t), -Math.cos(t)];
   for (const s of [-1, 1]) {
     const [x, z] = polarC(GATE_BEARING + s * half, R + 0.1);
-    k.tower('stone', 0.26, top + 0.62, { at: [x, 0, z], seat: true, sides: 4, rot: [0, 45, 0], roof: 'crenel', color: WALL, shade: 1.04 });
-    k.light([x + 0.2, 0.36, z - s * 0.05], { kind: 'lamp', color: 0xffb35c, intensity: 1.2, radius: 0.02 });
+    k.tower('stone', 0.26, top + 0.72, { at: [x, 0, z], seat: true, sides: 4, rot: [0, 45 + 90 - GATE_BEARING, 0], roof: 'crenel', color: WALL, shade: 1.04 });
+    k.light([x + ox * 0.2, 0.36, z + oz * 0.2], { kind: 'lamp', color: 0xffb35c, intensity: 1.2, radius: 0.02 });
   }
   // the gate: dark iron leaves in a deep recess, a heavier band of stone over it
   const [gx, gz] = polarC(GATE_BEARING, R + 0.02);
-  k.box('iron', 0.05, 0.46, 0.3, { at: [gx, 0, gz], seat: 'min', color: 0x2a2a28 });
-  k.box('stone', 0.12, 0.14, 0.5, { at: [gx - 0.02, 0.48, gz], color: WALL, shade: 0.94 });
+  k.box('iron', 0.05, 0.46, 0.3, { at: [gx, 0, gz], seat: 'min', rot: [0, 90 - GATE_BEARING, 0], color: 0x2a2a28 });
+  k.box('stone', 0.12, 0.14, 0.5, { at: [gx - ox * 0.02, 0.48, gz - oz * 0.02], rot: [0, 90 - GATE_BEARING, 0], color: WALL, shade: 0.94 });
 }
 
 /**
