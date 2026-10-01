@@ -1,6 +1,8 @@
 import { hash32, rand, valueNoise } from '../core/rng.ts';
 import { fieldWeightAt, shireFieldGrid } from '../world/fields.ts';
 import type { World } from '../world/World.ts';
+import { Arch } from './archetypes.ts';
+import { SHELL_ON } from './shellConfig.ts';
 
 export { valueNoise };
 
@@ -18,8 +20,9 @@ export { valueNoise };
  *  [4] trunk = crown-bottom height above ground (km, may be < 0 to sink the crown)
  *  [5] kind * 8 + yaw (yaw in [0, 2π))  [6] aspect = depth/width ratio (hedges ≪ 1)
  *  [7] packed sRGB albedo  r*65536 + g*256 + b
- *  [8] shape = spread + 2·round(gap·50)  (spread in [0.2, 1]: sub-crown spacing; gap: drop
- *      probability of each ring sub-crown)
+ *  [8] shape = spread + 2·round(gap·50) + 128·arch  (spread in [0.2, 1): sub-crown spacing; gap: drop
+ *      probability of each ring sub-crown, ≤ 0.9 so 2·gapQ ≤ 90 < 128; arch: the crown archetype 0…8,
+ *      archetypes.ts — the field stays < 1152, exact in the float32 attribute)
  *  [9] hVar = sub-crown height variation (unit cluster space, 0..1)
  */
 export const FLOATS_PER_INSTANCE = 10;
@@ -81,6 +84,8 @@ const PAL_RGB: Record<number, [number, number, number][]> = Object.fromEntries(
 const BRONZE_RGB = MIRK_BRONZE.map(hexToRgb);
 const SAGE_RGB = LORIEN_SAGE.map(hexToRgb);
 const CYPRESS_RGB = CYPRESS.map(hexToRgb);
+/** montane firs and pines: dark blue-greens */
+const CONIFER_RGB = ['#2a4226', '#233a22', '#2f4a2b', '#26402c', '#2c4428'].map(hexToRgb);
 
 function packColor(r: number, g: number, b: number): number {
   const c = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
@@ -276,7 +281,7 @@ export class InstanceList {
     const y = ((yaw % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
     const spread = Math.max(0.2, Math.min(0.999, shape.spread));
     const gapQ = Math.round(Math.max(0, Math.min(0.9, shape.gap)) * 50);
-    this.data.push(x, z, hr, vr, trunk, kind * 8 + Math.min(y, 6.28), aspect, packColor(rgb[0], rgb[1], rgb[2]), spread + 2 * gapQ, Math.max(0, Math.min(1, shape.hVar)));
+    this.data.push(x, z, hr, vr, trunk, kind * 8 + Math.min(y, 6.28), aspect, packColor(rgb[0], rgb[1], rgb[2]), spread + 2 * gapQ + 128 * shape.arch, Math.max(0, Math.min(1, shape.hVar)));
   }
 }
 
@@ -285,6 +290,8 @@ export interface Shape {
   spread: number;
   gap: number;
   hVar: number;
+  /** crown archetype (archetypes.ts) */
+  arch: Arch;
 }
 
 export interface PlacementOptions {
@@ -376,30 +383,70 @@ function canopyFor(kind: Kind, cell: number, seed: number, id: number): Crown {
       // tall, closed, even canopy of dense crowns
       const hr = cell * (0.86 + 0.12 * a);
       const vr = hr * (0.92 + 0.15 * b);
-      return { hr, vr, trunk: -0.12 * vr, shape: { spread: 1, gap: 0.04, hVar: 0.14 } };
+      return { hr, vr, trunk: -0.12 * vr, shape: { spread: 1, gap: 0.04, hVar: 0.14, arch: Arch.Canopy } };
     }
     case Kind.Fangorn: {
       // ancient, ragged: crowns of very different height, more holes
       const hr = cell * (0.74 + 0.2 * a);
       const vr = hr * (0.9 + 0.45 * b);
-      return { hr, vr, trunk: -0.1 * vr, shape: { spread: 0.95, gap: 0.12, hVar: 0.38 } };
+      return { hr, vr, trunk: -0.1 * vr, shape: { spread: 0.95, gap: 0.12, hVar: 0.38, arch: Arch.Canopy } };
     }
     case Kind.Lorien: {
       const hr = cell * (0.76 + 0.14 * a);
       const vr = hr * (1.0 + 0.25 * b);
-      return { hr, vr, trunk: -0.08 * vr, shape: { spread: 1, gap: 0.1, hVar: 0.3 } };
+      return { hr, vr, trunk: -0.08 * vr, shape: { spread: 1, gap: 0.1, hVar: 0.3, arch: Arch.Canopy } };
     }
     case Kind.Dark: {
       const hr = cell * (0.74 + 0.16 * a);
       const vr = hr * (0.9 + 0.25 * b);
-      return { hr, vr, trunk: -0.1 * vr, shape: { spread: 0.95, gap: 0.1, hVar: 0.26 } };
+      return { hr, vr, trunk: -0.1 * vr, shape: { spread: 0.95, gap: 0.1, hVar: 0.26, arch: Arch.Canopy } };
     }
     default: {
       const hr = cell * (0.72 + 0.16 * a);
       const vr = hr * (0.85 + 0.25 * b);
-      return { hr, vr, trunk: -0.1 * vr, shape: { spread: 0.95, gap: 0.12, hVar: 0.26 } };
+      return { hr, vr, trunk: -0.1 * vr, shape: { spread: 0.95, gap: 0.12, hVar: 0.26, arch: Arch.Canopy } };
     }
   }
+}
+
+/**
+ * A patch of montane forest: seven spires (ConiferStand), a little lower than a broadleaf patch (the
+ * spires' own height carries it), more open.
+ */
+function coniferStandFor(cell: number, seed: number, id: number): Crown {
+  const a = rand(seed, id, 23);
+  const b = rand(seed, id, 24);
+  const hr = cell * (0.74 + 0.16 * a);
+  const vr = hr * (0.62 + 0.18 * b);
+  return { hr, vr, trunk: -0.06 * vr, shape: { spread: 0.95, gap: 0.14, hVar: 0.3, arch: Arch.ConiferStand } };
+}
+
+/**
+ * Share of montane conifer stands in a forest patch at ground height `h` and slope `sl`: the mountain
+ * flanks (Misty Mountains, Grey Mountains, Ered Nimrais) and the Mountains of Mirkwood are conifer; the
+ * broadleaf lowland forests (Fangorn's heart, the Old Forest, Lórien) are not.
+ */
+function coniferShare(kind: Kind, h: number, sl: number): number {
+  const steepHigh = smooth(0.1, 0.32, sl) * smooth(6, 10, h);
+  switch (kind) {
+    case Kind.Lorien:
+      return 0;
+    case Kind.Mirkwood:
+      return 0.85 * smooth(11.5, 14.5, h);
+    case Kind.Fangorn:
+      return 0.6 * smooth(15, 19, h);
+    default:
+      return Math.max(smooth(12, 17, h), 0.8 * steepHigh, 0.08);
+  }
+}
+
+/** Shire / Eriador tree crowns (km): lognormal round FIELD_CROWN (σ 0.25) — 0.12 … 0.30 for 90 % of trees. */
+export const FIELD_CROWN = 0.19;
+export function fieldCrown(seed: number, id: number, k: number): number {
+  const u1 = Math.max(1e-6, rand(seed, id, k));
+  const u2 = rand(seed, id, k + 1);
+  const n = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+  return FIELD_CROWN * Math.exp(0.25 * Math.max(-2.4, Math.min(2.4, n)));
 }
 
 /** Canopy top above the ground (km) of a patch (for emergent trees rising above it). */
@@ -417,17 +464,35 @@ export function broadleaf(seed: number, id: number, size: number): Crown {
   const b = rand(seed, id, 33);
   if (t < 0.5) {
     const hr = size * (0.95 + 0.25 * a);
-    const vr = hr * (0.72 + 0.14 * b);
-    return { hr, vr, trunk: vr * (0.45 + 0.15 * a), shape: { spread: 0.62, gap: 0.14, hVar: 0.4 } };
+    const vr = hr * (0.85 + 0.15 * b);
+    return { hr, vr, trunk: vr * (0.36 + 0.12 * a), shape: { spread: 0.62, gap: 0.12, hVar: 0.4, arch: Arch.Broadleaf } };
   }
   if (t < 0.82) {
     const hr = size * (0.85 + 0.2 * a);
-    const vr = hr * (0.9 + 0.16 * b);
-    return { hr, vr, trunk: vr * (0.36 + 0.12 * a), shape: { spread: 0.5, gap: 0.06, hVar: 0.26 } };
+    const vr = hr * (1.0 + 0.15 * b);
+    return { hr, vr, trunk: vr * (0.3 + 0.1 * a), shape: { spread: 0.52, gap: 0.06, hVar: 0.26, arch: Arch.Broadleaf } };
   }
-  const hr = size * (0.62 + 0.14 * a);
-  const vr = hr * (1.4 + 0.35 * b);
-  return { hr, vr, trunk: vr * (0.34 + 0.1 * a), shape: { spread: 0.42, gap: 0.08, hVar: 0.34 } };
+  const hr = size * (0.66 + 0.14 * a);
+  const vr = hr * (1.45 + 0.35 * b);
+  return { hr, vr, trunk: vr * (0.3 + 0.1 * a), shape: { spread: 0.44, gap: 0.08, hVar: 0.34, arch: Arch.Broadleaf } };
+}
+
+/** A shrub / scrub thicket of crown radius ≈ `size` km: a low broken dome, no stem. */
+export function shrub(seed: number, id: number, size: number): Crown {
+  const a = rand(seed, id, 36);
+  const b = rand(seed, id, 37);
+  const hr = size * (0.9 + 0.3 * a);
+  const vr = hr * (0.7 + 0.25 * b);
+  return { hr, vr, trunk: 0.02 * vr, shape: { spread: 0.6, gap: 0.2, hVar: 0.3, arch: Arch.Shrub } };
+}
+
+/** A conifer (fir / pine) of crown radius ≈ `size` km: a pointed spire on a short bare stem. */
+export function conifer(seed: number, id: number, size: number): Crown {
+  const a = rand(seed, id, 34);
+  const b = rand(seed, id, 35);
+  const hr = size * (0.85 + 0.25 * a);
+  const vr = hr * (1.7 + 0.6 * b);
+  return { hr, vr, trunk: vr * (0.08 + 0.08 * a), shape: { spread: 0.3, gap: 0, hVar: 0.2, arch: Arch.Conifer } };
 }
 
 /** Trunk radius / horizontal crown radius of Lórien trees (the foliage shader's stout silver columns). */
@@ -439,11 +504,28 @@ export const LORIEN_TRUNK_K = 0.12;
  * of Caras Galadhon are authored: vegetation/authored.ts, tiered crowns.)
  */
 export function mallornShape(hr: number, trunk: number, r: number): Crown {
-  return { hr, vr: hr * (1.05 + 0.25 * r), trunk, shape: { spread: 0.75, gap: 0.04, hVar: 0.35 } };
+  return { hr, vr: hr * (1.05 + 0.25 * r), trunk, shape: { spread: 0.75, gap: 0.04, hVar: 0.35, arch: Arch.Cluster } };
 }
 
 /** base of the tree line (world units; the alpine zone of the terrain starts ≈ 20) */
 const TREELINE = 22;
+/**
+ * forest canopy grid (km): one canopy patch (seven crowns) per cell. S4: half the S3 final cell, so a
+ * forest crown (≈ 0.2–0.45 km) stands beside a field tree (0.12–0.30 km) instead of dwarfing it; the far
+ * canopy shell takes the patches over at the same on-screen crown size as before (SHELL_CROWN_KM), so
+ * the instances drawn per view stay about the same.
+ */
+export const CANOPY_CELL = 1.0;
+/** the S3 canopy cell (km): the S4 / S3 crown ratio of forest fill trees is CANOPY_CELL / S3_CANOPY_CELL */
+const S3_CANOPY_CELL = 2.0;
+/**
+ * Lórien keeps the S3 canopy (its golden crowns are the wood's character, and at half size they fell to the
+ * faceted low LODs): its patches stand on a 2 km super-grid of the canopy cells, as do the emergent mallorns
+ */
+const LORIEN_CELL = 2.0;
+const MALLORN_CELL = 2.0;
+/** near-camera detail grid (km): forest fill, edge trees, open-country singles */
+export const FINE_CELL = 1.15;
 
 /**
  * Place all vegetation. Pure function of (world data, options).
@@ -455,8 +537,16 @@ export function placeVegetation(world: World, opts: PlacementOptions): Placement
   const seed = opts.seed;
   const ex = opts.exclusions;
   const dens = Math.max(0.1, Math.min(1, opts.density));
-  const coarseCell = Math.min(3.6, 2.0 / Math.sqrt(dens));
-  const fineCell = Math.min(2.4, 1.15 / Math.sqrt(dens));
+  // S4: crown size never follows the quality density (preview trees match final): with the far canopy
+  // shell the forest canopy keeps the final cell in every tier (patches beyond the shell band are not
+  // drawn, and the preview retires them earlier), the fine grid too; the density thins the COUNT of the
+  // forest fill, the edge trees, the open-country singles, the Ithilien and river-bank trees (as the S3
+  // grids did) and, in preview, the Shire copses (keep = min(1, 0.4 + density): all of them in review / final)
+  const coarseCell = SHELL_ON ? CANOPY_CELL : Math.min(3.6, 2.0 / Math.sqrt(dens));
+  const copseKeep = Math.min(1, 0.4 + dens);
+  // the standing forest edge (CanopyEdge, never retired) in review / final; the preview retires it too
+  const edgeRing = SHELL_ON && dens >= 0.5;
+  const fineCell = FINE_CELL;
   const coarse = new InstanceList();
   const fine = new InstanceList();
   const TAU = Math.PI * 2;
@@ -475,8 +565,8 @@ export function placeVegetation(world: World, opts: PlacementOptions): Placement
       for (let i = 0; i < nx; i++) {
         if (!s.forestNear(spec.xMin + (i + 0.5) * c, spec.zMin + (j + 0.5) * c)) continue;
         const id = hash32(i, j, 101);
-        const x = spec.xMin + (i + 0.12 + 0.76 * rand(seed, id, 1)) * c;
-        const z = spec.zMin + (j + 0.12 + 0.76 * rand(seed, id, 2)) * c;
+        let x = spec.xMin + (i + 0.12 + 0.76 * rand(seed, id, 1)) * c;
+        let z = spec.zMin + (j + 0.12 + 0.76 * rand(seed, id, 2)) * c;
         // dithered edge: sample the mask at a jittered offset so edges break up organically
         const ox = (rand(seed, id, 3) - 0.5) * 2.6;
         const oz = (rand(seed, id, 4) - 0.5) * 2.6;
@@ -488,12 +578,23 @@ export function placeVegetation(world: World, opts: PlacementOptions): Placement
         if (h < 0.15) continue;
         const al = alpine(x, z, h);
         if (al >= 1 || rand(seed, id, 8) < 0.75 * al) continue;
-        if (s.slope(x, z) > 0.55) continue;
-        if (rand(seed, id, 9) < barren.at(x, z)) continue;
+        const sl = s.slope(x, z);
+        if (sl > 0.55) continue;
         const kind = forestKind(s, x, z);
+        // Lórien: one patch per 2×2 cells, at the S3 size (LORIEN_CELL), jittered over its super-cell
+        const lor = kind === Kind.Lorien && SHELL_ON && c < LORIEN_CELL;
+        if (lor && ((i & 1) === 1 || (j & 1) === 1)) continue;
+        if (lor) {
+          x += (rand(seed, id, 12) - 0.5) * c * 0.9;
+          z += (rand(seed, id, 13) - 0.5) * c * 0.9;
+        }
         const gT = kind === Kind.Mirkwood ? 0.24 : kind === Kind.Fangorn ? 0.2 : kind === Kind.Lorien ? 0.22 : 0.23;
         if (rand(seed, id, 10) > smooth(gT - 0.05, gT + 0.05, glade(x, z))) continue;
-        const cr = canopyFor(kind, c, seed, id);
+        if (rand(seed, id, 9) < barren.at(x, z)) continue;
+        // montane stands of conifers in coherent patches (a low-frequency noise picks which patches)
+        const conShare = coniferShare(kind, h, sl);
+        const isCon = conShare > 0 && 0.65 * rand(seed, id, 11) + 0.35 * valueNoise(x / 6, z / 6, seed + 67) < conShare;
+        const cr = isCon ? coniferStandFor(c, seed, id) : canopyFor(kind, lor ? LORIEN_CELL : c, seed, id);
         // ragged edges: smaller, lower, more open patches with crowns pulled in towards the forest edge
         const edge = Math.min(s.forest(x + 2.5, z), s.forest(x - 2.5, z), s.forest(x, z + 2.5), s.forest(x, z - 2.5));
         const es = (0.78 + 0.22 * edge) * (1 - 0.3 * al);
@@ -506,9 +607,14 @@ export function placeVegetation(world: World, opts: PlacementOptions): Placement
           spread: cr.shape.spread * (0.86 + 0.14 * edge),
           gap: cr.shape.gap + 0.2 * (1 - edge) + 0.3 * al,
           hVar: cr.shape.hVar,
+          arch: cr.shape.arch,
         };
         const trunk = cr.trunk * es;
-        coarse.push(x, z, hr, vr, trunk, kind, rand(seed, id, 6) * TAU, 0.85 + 0.3 * rand(seed, id, 7), pickColor(kind, seed, id, x, z), shape);
+        const rgb = isCon ? pickColor(kind, seed, id, x, z, CONIFER_RGB) : pickColor(kind, seed, id, x, z);
+        // the outer ring of the forest (a patch whose ±1.2 km neighbourhood leaves the forest) stands at every
+        // distance: a far forest keeps a wall of crowns at its edge, never a cut-out decal
+        if (edgeRing && Math.min(s.forest(x + 1.2, z), s.forest(x - 1.2, z), s.forest(x, z + 1.2), s.forest(x, z - 1.2)) < 0.45) shape.arch = Arch.CanopyEdge;
+        coarse.push(x, z, hr, vr, trunk, kind, rand(seed, id, 6) * TAU, 0.85 + 0.3 * rand(seed, id, 7), rgb, shape);
         if (kind === Kind.Lorien && edge > 0.6) lorienCanopy.push({ x, z, top: canopyTop({ ...cr, vr, trunk }) });
       }
   }
@@ -518,10 +624,11 @@ export function placeVegetation(world: World, opts: PlacementOptions): Placement
   for (let k = 0; k < lorienCanopy.length; k++) {
     const p = lorienCanopy[k];
     const id = hash32(Math.round(p.x * 100), Math.round(p.z * 100), 111);
-    if (rand(seed, id, 1) > 0.15) continue;
-    const x = p.x + (rand(seed, id, 2) - 0.5) * coarseCell * 0.6;
-    const z = p.z + (rand(seed, id, 3) - 0.5) * coarseCell * 0.6;
-    const hr = coarseCell * (0.42 + 0.14 * rand(seed, id, 4));
+    // (one per ≈ 27 km², whatever the canopy cell: Lórien's patches stand on LORIEN_CELL)
+    if (rand(seed, id, 1) > 0.15 * (Math.max(coarseCell, SHELL_ON ? LORIEN_CELL : 0) / MALLORN_CELL) ** 2) continue;
+    const x = p.x + (rand(seed, id, 2) - 0.5) * MALLORN_CELL * 0.6;
+    const z = p.z + (rand(seed, id, 3) - 0.5) * MALLORN_CELL * 0.6;
+    const hr = MALLORN_CELL * (0.42 + 0.14 * rand(seed, id, 4));
     if (excluded(ex, x, z, hr)) continue;
     const m = mallornShape(hr, p.top * (1.25 + 0.25 * rand(seed, id, 6)), rand(seed, id, 5));
     coarse.push(x, z, m.hr, m.vr, m.trunk, Kind.Lorien, rand(seed, id, 7) * TAU, 0.9 + 0.2 * rand(seed, id, 8), pickColor(Kind.Lorien, seed, id, x, z), m.shape);
@@ -535,9 +642,11 @@ export function placeVegetation(world: World, opts: PlacementOptions): Placement
     const { n, vert } = shireFieldGrid(spec, seed);
     const landOk = (x: number, z: number) =>
       s.water(x, z, 2) > 0.5 && s.water(x, z, 0) < 0.25 && s.water(x, z, 1) < 0.2 && s.forest(x, z) < 0.4 && s.slope(x, z) < 0.3 && s.height(x, z) > 0.3;
+    // S4: field, hedgerow and copse trees at a believable miniature scale (crowns 0.12–0.30 km, lognormal),
+    // never following the cell size
     const tree = (px: number, pz: number, size: number, tid: number, list: InstanceList) => {
       // now and then a veteran oak or beech, the landmark of its field
-      const t = broadleaf(seed, tid, size * (rand(seed, tid, 40) < 0.14 ? 1.55 : 1));
+      const t = broadleaf(seed, tid, size * (rand(seed, tid, 40) < 0.12 ? 1.35 : 1));
       if (excluded(ex, px, pz, t.hr)) return;
       list.push(px, pz, t.hr, t.vr, t.trunk, Kind.Oak, rand(seed, tid, 3) * TAU, 0.85 + 0.25 * rand(seed, tid, 4), pickColor(Kind.Oak, seed, tid, px, pz), t.shape);
     };
@@ -577,6 +686,7 @@ export function placeVegetation(world: World, opts: PlacementOptions): Placement
               spread: 1,
               gap: 0.12 + 0.28 * (1 - upkeep),
               hVar: 0.4,
+              arch: Arch.Cluster,
             });
           }
           // hedgerow trees
@@ -586,7 +696,7 @@ export function placeVegetation(world: World, opts: PlacementOptions): Placement
             const px = A[0] + dx * t;
             const pz = A[1] + dz * t;
             if (!landOk(px, pz)) continue;
-            tree(px, pz, 0.27 + 0.18 * rand(seed, eid, 120 + q), hash32(eid, q, 7), coarse);
+            tree(px, pz, fieldCrown(seed, eid, 120 + 2 * q), hash32(eid, q, 7), coarse);
           }
         }
         // copses and single field trees
@@ -597,20 +707,22 @@ export function placeVegetation(world: World, opts: PlacementOptions): Placement
         const fw = hedgeWeight(fx, fz);
         const fid = hash32(i, j, 204);
         if (fw > 0.05 && rand(seed, fid, 1) < 0.26 * fw) {
-          const count = 4 + Math.floor(rand(seed, fid, 2) * 8);
-          const rad = 0.5 + 0.6 * rand(seed, fid, 3);
+          // a copse: 3–9 trees whose crowns touch (the group, not one tree, carries the mass)
+          const count = 3 + Math.floor(rand(seed, fid, 2) * 7);
+          const rad = FIELD_CROWN * (1.1 + 0.55 * Math.sqrt(count)) * (0.85 + 0.3 * rand(seed, fid, 3));
           for (let q = 0; q < count; q++) {
+            if (rand(seed, fid, 50 + q) > copseKeep) continue;
             const a = rand(seed, fid, 10 + q) * TAU;
             const rr = Math.sqrt(rand(seed, fid, 20 + q)) * rad;
             const px = fx + Math.cos(a) * rr;
             const pz = fz + Math.sin(a) * rr;
             if (!landOk(px, pz)) continue;
-            tree(px, pz, 0.2 + 0.18 * rand(seed, fid, 30 + q), hash32(fid, q, 9), coarse);
+            tree(px, pz, fieldCrown(seed, fid, 30 + 2 * q), hash32(fid, q, 9), coarse);
           }
         } else if (fw > 0.05 && rand(seed, fid, 4) < 0.35 * fw) {
           const px = fx + (rand(seed, fid, 5) - 0.5) * 2.4;
           const pz = fz + (rand(seed, fid, 6) - 0.5) * 2.4;
-          if (landOk(px, pz)) tree(px, pz, 0.26 + 0.16 * rand(seed, fid, 7), hash32(fid, 11), coarse);
+          if (landOk(px, pz)) tree(px, pz, fieldCrown(seed, fid, 7), hash32(fid, 11), coarse);
         }
       }
   }
@@ -618,7 +730,7 @@ export function placeVegetation(world: World, opts: PlacementOptions): Placement
   // ------------------------------------------------------------------ Ithilien woodland (groves, glades, cypresses)
   const ithilienGrove = (x: number, z: number) => smooth(0.28, 0.58, valueNoise(x / 13, z / 13, seed + 17));
   {
-    const c = 1.4 / Math.sqrt(Math.max(0.35, dens));
+    const c = 1.4;
     const [x0, z0] = spec.kmToWorld(1100, 760);
     const [x1, z1] = spec.kmToWorld(1215, 560);
     for (let j = 0; j < Math.ceil((z1 - z0) / c); j++)
@@ -631,29 +743,45 @@ export function placeVegetation(world: World, opts: PlacementOptions): Placement
         const grove = ithilienGrove(x, z);
         const p = w * (0.18 + 0.82 * grove);
         if (rand(seed, id, 3) > p) continue;
+        // (the quality density thins the cells: the count, never the size)
+        if (rand(seed, id, 11) > dens) continue;
         if (s.forest(x, z) > 0.4 || s.water(x, z, 2) < 0.5 || s.water(x, z, 0) > 0.25) continue;
         const h = s.height(x, z);
         if (h < 0.2 || h > 17 || s.slope(x, z) > 0.34) continue;
         if (rand(seed, id, 9) < barren.at(x, z)) continue;
         const t = rand(seed, id, 4);
-        const yaw = rand(seed, id, 7) * TAU;
+        /** one Ithilien tree: a broadleaf (holm-oak, terebinth, ash), or now and then a dark cypress */
+        const ithTree = (px: number, pz: number, tid: number, cypressP: number) => {
+          if (rand(seed, tid, 41) < cypressP) {
+            // cypress / cedar: dark, slender, pointed
+            const hr = 0.07 + 0.035 * rand(seed, tid, 42);
+            if (excluded(ex, px, pz, hr)) return;
+            const vr = hr * (2.0 + 0.6 * rand(seed, tid, 43));
+            coarse.push(px, pz, hr, vr, 0.06 * vr, Kind.Ithilien, rand(seed, tid, 44) * TAU, 0.9 + 0.2 * rand(seed, tid, 45), pickColor(Kind.Ithilien, seed, tid, px, pz, CYPRESS_RGB), {
+              spread: 0.3,
+              gap: 0,
+              hVar: 0.3,
+              arch: Arch.Columnar,
+            });
+            return;
+          }
+          const tr = broadleaf(seed, tid, fieldCrown(seed, tid, 46) * 1.15);
+          if (excluded(ex, px, pz, tr.hr)) return;
+          coarse.push(px, pz, tr.hr, tr.vr, tr.trunk, Kind.Ithilien, rand(seed, tid, 44) * TAU, 0.85 + 0.3 * rand(seed, tid, 45), pickColor(Kind.Ithilien, seed, tid, px, pz), tr.shape);
+        };
         if (t < 0.7 * grove) {
-          // a grove: a cluster of crowns
-          const hr = 0.7 + 0.5 * rand(seed, id, 5);
-          if (excluded(ex, x, z, hr)) continue;
-          const vr = hr * (0.8 + 0.3 * rand(seed, id, 6));
-          coarse.push(x, z, hr, vr, -0.06 * vr, Kind.Ithilien, yaw, 0.85 + 0.3 * rand(seed, id, 8), pickColor(Kind.Ithilien, seed, id, x, z), { spread: 0.9, gap: 0.2, hVar: 0.32 });
-        } else if (t < 0.6) {
-          // cypress / cedar: dark and slender
-          const hr = 0.13 + 0.08 * rand(seed, id, 5);
-          if (excluded(ex, x, z, hr)) continue;
-          const vr = hr * (2.1 + 0.8 * rand(seed, id, 6));
-          coarse.push(x, z, hr, vr, 0.12 * vr, Kind.Ithilien, yaw, 0.9 + 0.2 * rand(seed, id, 8), pickColor(Kind.Ithilien, seed, id, x, z, CYPRESS_RGB), { spread: 0.24, gap: 0.05, hVar: 0.5 });
-        } else {
-          const tr = broadleaf(seed, id, 0.3 + 0.22 * rand(seed, id, 5));
-          if (excluded(ex, x, z, tr.hr)) continue;
-          coarse.push(x, z, tr.hr, tr.vr, tr.trunk, Kind.Ithilien, yaw, 0.85 + 0.3 * rand(seed, id, 8), pickColor(Kind.Ithilien, seed, id, x, z), tr.shape);
-        }
+          // a grove: 6–14 trees whose crowns touch, a cypress among them now and then
+          const count = 6 + Math.floor(rand(seed, id, 5) * 9);
+          const rad = FIELD_CROWN * 1.15 * (0.9 + 0.5 * Math.sqrt(count));
+          for (let q = 0; q < count; q++) {
+            const a = rand(seed, id, 50 + q) * TAU;
+            const rr = Math.sqrt(rand(seed, id, 70 + q)) * rad;
+            const px = x + Math.cos(a) * rr;
+            const pz = z + Math.sin(a) * rr;
+            if (s.water(px, pz, 0) > 0.25 || s.slope(px, pz) > 0.4) continue;
+            ithTree(px, pz, hash32(id, q, 13), 0.12);
+          }
+        } else ithTree(x, z, hash32(id, 14), t < 0.6 ? 0.85 : 0.1);
       }
   }
 
@@ -667,7 +795,7 @@ export function placeVegetation(world: World, opts: PlacementOptions): Placement
     return m;
   };
   {
-    const c = 2.6 / Math.sqrt(Math.max(0.35, dens));
+    const c = 2.6;
     const nx = Math.ceil(spec.width / c);
     const nz = Math.ceil(spec.depth / c);
     for (let j = 0; j < nz; j++)
@@ -686,23 +814,27 @@ export function placeVegetation(world: World, opts: PlacementOptions): Placement
         const h = s.height(x, z);
         if (h < 0.2 || h > 18 || s.slope(x, z) > 0.3) continue;
         if (rand(seed, id, 9) < barren.at(x, z)) continue;
-        const yaw = rand(seed, id, 7) * TAU;
+        // (the quality density thins the cells: the count, never the size)
+        if (rand(seed, id, 11) > dens) continue;
+        /** one bank tree (alder, willow, ash): a broadleaf of the field scale, lower on its stem */
+        const bankTree = (px: number, pz: number, tid: number) => {
+          const tr = broadleaf(seed, tid, fieldCrown(seed, tid, 46) * 1.05);
+          if (excluded(ex, px, pz, tr.hr)) return;
+          coarse.push(px, pz, tr.hr, tr.vr, tr.trunk * 0.7, Kind.River, rand(seed, tid, 44) * TAU, 0.85 + 0.3 * rand(seed, tid, 45), pickColor(Kind.River, seed, tid, px, pz), tr.shape);
+        };
         if (rand(seed, id, 10) < 0.3) {
-          // a small gallery wood on the bank
-          const hr = 0.55 + 0.35 * rand(seed, id, 4);
-          if (excluded(ex, x, z, hr)) continue;
-          const vr = hr * (0.7 + 0.2 * rand(seed, id, 5));
-          coarse.push(x, z, hr, vr, 0, Kind.River, yaw, 0.7 + 0.3 * rand(seed, id, 8), pickColor(Kind.River, seed, id, x, z), { spread: 0.8, gap: 0.25, hVar: 0.3 });
-        } else {
-          const hr = 0.24 + 0.2 * rand(seed, id, 4);
-          if (excluded(ex, x, z, hr)) continue;
-          const vr = hr * (0.85 + 0.25 * rand(seed, id, 5));
-          coarse.push(x, z, hr, vr, vr * (0.2 + 0.15 * rand(seed, id, 6)), Kind.River, yaw, 0.85 + 0.3 * rand(seed, id, 8), pickColor(Kind.River, seed, id, x, z), {
-            spread: 0.42,
-            gap: 0.1,
-            hVar: 0.3,
-          });
-        }
+          // a small gallery wood on the bank: 3–7 trees
+          const count = 3 + Math.floor(rand(seed, id, 4) * 5);
+          const rad = FIELD_CROWN * (1.1 + 0.6 * Math.sqrt(count));
+          for (let q = 0; q < count; q++) {
+            const a = rand(seed, id, 50 + q) * TAU;
+            const rr = Math.sqrt(rand(seed, id, 70 + q)) * rad;
+            const px = x + Math.cos(a) * rr;
+            const pz = z + Math.sin(a) * rr;
+            if (s.water(px, pz, 0) > 0.2 || s.water(px, pz, 1) > 0.2) continue;
+            bankTree(px, pz, hash32(id, q, 15));
+          }
+        } else bankTree(x, z, hash32(id, 16));
       }
   }
 
@@ -738,12 +870,25 @@ export function placeVegetation(world: World, opts: PlacementOptions): Placement
           if (al >= 1 || rand(seed, id, 12) < 0.75 * al) continue;
           kind = forestKind(s, x + ox, z + oz);
           const inside = s.forest(x, z) > 0.5;
+          // the same montane rule as the canopy patches (fill and edge trees match their stand)
+          const conShare = coniferShare(kind, h, s.slope(x, z));
+          const isCon = conShare > 0 && 0.65 * rand(seed, id, 15) + 0.35 * valueNoise(x / 6, z / 6, seed + 67) < conShare;
           if (inside) {
-            const hr = c * (0.42 + 0.28 * rand(seed, id, 6)) * (1 - 0.3 * al);
-            const vr = hr * (kind === Kind.Lorien ? 1.15 : kind === Kind.Mirkwood ? 1.0 : 0.9) * (0.8 + 0.3 * rand(seed, id, 7));
-            cr = { hr, vr, trunk: -0.08 * vr, shape: { spread: 0.65 + 0.25 * rand(seed, id, 8), gap: 0.18, hVar: 0.3 } };
+            // forest fill (part of the canopy: retired into the far shell with it); the quality density
+            // thins it, never resizes it
+            if (rand(seed, id, 14) > dens) continue;
+            // (sized like the canopy patches' crowns: the S3 fill size × the S4 / S3 canopy crown ratio)
+            const hr = c * (CANOPY_CELL / S3_CANOPY_CELL) * (0.42 + 0.28 * rand(seed, id, 6)) * (1 - 0.3 * al);
+            if (isCon) cr = { hr, vr: hr * (0.6 + 0.2 * rand(seed, id, 7)), trunk: -0.05 * hr, shape: { spread: 0.65 + 0.25 * rand(seed, id, 8), gap: 0.18, hVar: 0.3, arch: Arch.ConiferStand } };
+            else {
+              const vr = hr * (kind === Kind.Lorien ? 1.15 : kind === Kind.Mirkwood ? 1.0 : 0.9) * (0.8 + 0.3 * rand(seed, id, 7));
+              cr = { hr, vr, trunk: -0.08 * vr, shape: { spread: 0.65 + 0.25 * rand(seed, id, 8), gap: 0.18, hVar: 0.3, arch: Arch.Canopy } };
+            }
           } else {
-            cr = broadleaf(seed, id, 0.22 + 0.2 * rand(seed, id, 6));
+            // single trees stepping out of the forest edge (larger than field trees: forest-grown; the quality
+            // density thins them)
+            if (rand(seed, id, 14) > dens) continue;
+            cr = isCon ? conifer(seed, id, fieldCrown(seed, id, 6) * 1.2) : broadleaf(seed, id, fieldCrown(seed, id, 6) * 1.25);
           }
         } else {
           // sparse singles in fertile open country, plus river-bank and Ithilien fill
@@ -760,8 +905,11 @@ export function placeVegetation(world: World, opts: PlacementOptions): Placement
           if (rand(seed, id, 9) > fert) continue;
           const h = s.height(x, z);
           if (h < 0.2 || h > 18 || s.slope(x, z) > 0.32) continue;
+          // (the quality density thins the singles: the count, never the size)
+          if (rand(seed, id, 14) > dens) continue;
           kind = ith > 0.3 ? Kind.Ithilien : valley > 0.3 ? Kind.River : Kind.Scrub;
-          cr = broadleaf(seed, id, kind === Kind.Scrub ? 0.16 + 0.14 * rand(seed, id, 6) : 0.22 + 0.18 * rand(seed, id, 6));
+          if (kind === Kind.Scrub && rand(seed, id, 16) < 0.5) cr = shrub(seed, id, fieldCrown(seed, id, 6) * 0.8);
+          else cr = broadleaf(seed, id, fieldCrown(seed, id, 6) * (kind === Kind.Scrub ? 0.85 : 1.05));
         }
         if (rand(seed, id, 13) < barren.at(x, z)) continue;
         if (excluded(ex, x, z, cr.hr)) continue;

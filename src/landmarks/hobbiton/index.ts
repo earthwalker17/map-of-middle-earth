@@ -223,6 +223,13 @@ export default defineLandmark({
     { at: PARTY_TREE, kind: 'party', crownKm: 0.55, heightKm: 0.95, yawDeg: 30 },
     ...FOOT_TREES,
   ],
+  // S4 tree-height caps: the great oak over Bag End (≈ twice the garden trees, never dwarfing the Hill) and
+  // the Party Tree stay at a believable size beside the 0.25 km hobbit-hole fronts (caps hold the tallest
+  // lobe a broadleaf can reach: typical tops ≈ 0.4 / 0.58 km)
+  treeCaps: [
+    { at: TOP, r: 0.8, maxHeightKm: 0.5 },
+    { at: PARTY_TREE, r: 0.4, maxHeightKm: 0.7 },
+  ],
   waterFeatures: [{ kind: 'pool', ring: POND_RING, level: POND_LEVEL }],
   proxy: (k) => {
     // the survey constant behind the pond's level must still hold (the pond terrace's level ring = TERRACE_REL)

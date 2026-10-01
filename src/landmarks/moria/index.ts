@@ -57,16 +57,14 @@ const HOLLY: V2[] = [
 ];
 
 /**
- * A holly (the Elves' token at the doors): not one tall ellipsoid but three overlapping broad oak-type
- * crowns in dark holly green — a lobed, irregular mass reaching low, taller than the doors. `side` = +1
- * north, −1 south (the upper lobe leans toward the door).
+ * A holly (the Elves' token at the doors): the vegetation system's holly archetype (S4) — a dense, dark,
+ * glossy, pointed ovoid reaching low, taller than the doors — with a smaller companion holly at its side
+ * (`side` = +1 north, −1 south: the companion stands away from the door).
  */
 function holly(at: V2, side: number, yaw: number): TreeDecl[] {
-  const lean = -side * 0.05;
   return [
-    { at, kind: 'oak', crownKm: 0.3, heightKm: 0.98, color: 0x1d3322, yawDeg: yaw },
-    { at: [at[0] + lean, at[1] - 0.03], kind: 'oak', crownKm: 0.24, heightKm: 1.22, color: 0x213a26, yawDeg: yaw + 70 },
-    { at: [at[0] - lean * 1.6, at[1] + 0.04], kind: 'oak', crownKm: 0.26, heightKm: 0.72, color: 0x1a2e1f, yawDeg: yaw + 140 },
+    { at, kind: 'holly', crownKm: 0.36, heightKm: 1.15, color: 0x1d3322, yawDeg: yaw },
+    { at: [at[0] + side * 0.2, at[1] + 0.06], kind: 'holly', crownKm: 0.24, heightKm: 0.7, color: 0x213a26, yawDeg: yaw + 70 },
   ];
 }
 
