@@ -21,8 +21,8 @@ const BASE = {
    * warm-highlight split, a soft black point (clean blacks instead of the straight tonemap's grey toe)
    * and a little halation on the bloom.
    */
-  splitShadow: splitTint('#5b7896', 0.05),
-  splitHighlight: splitTint('#f2d2a4', 0.05),
+  splitShadow: splitTint('#5b7896', 0.06),
+  splitHighlight: splitTint('#f2d2a4', 0.06),
   toe: 0.0012,
   halation: 0.4,
 };
