@@ -123,9 +123,11 @@ export function spillInScatter(from: N, to: N, density: N): N {
 
 /**
  * Specular glints of the sources on a glossy surface (water): view vector V (surface → eye), normal n,
- * GGX `roughness` (perceptual). Normalised GGX lobe per source × the source's irradiance at the surface
- * (spill falloff) × its glint gain; the highlight widens with roughness and with the source's angular
- * size (r0 / d), so a near fire is a soft streak and a far one a small sparkle.
+ * GGX `roughness` (perceptual). Per source: the irradiance it delivers at the surface (the spill's
+ * near-field falloff, windowed at twice the reach — reflections carry farther than diffuse light) × a
+ * normalised GGX lobe × Schlick Fresnel (water, F0 = 0.02) / (4 n·v) × its glint gain. The lobe widens
+ * with roughness and with the source's angular size (r0 / d), so a near fire is a soft streak on the
+ * water and a far one a small sparkle.
  */
 export function spillGlint(p: N, V: N, n: N, roughness: N): N {
   return Fn(() => {
@@ -133,30 +135,33 @@ export function spillGlint(p: N, V: N, n: N, roughness: N): N {
     const Vv = vec3(V).toVar();
     const Nn = vec3(n).toVar();
     const a0 = max(roughness, 0.04).mul(roughness).toVar();
+    const nv = max(dot(Nn, Vv), 0.08).toVar();
     const sum = vec3(0).toVar();
     Loop({ start: int(0), end: spillU.count, type: 'int', condition: '<' }, ({ i }: { i: N }) => {
       const a = spillU.pos.element(i);
       const gg = spillU.aux.element(i).y;
       const L = a.xyz.sub(P);
       const d2 = dot(L, L);
-      const R2 = a.w.mul(a.w);
-      If(gg.greaterThan(0).and(d2.lessThan(R2.mul(4))), () => {
+      const R2 = a.w.mul(a.w).mul(4);
+      If(gg.greaterThan(0).and(d2.lessThan(R2)), () => {
         const c = spillU.col.element(i);
         const d = sqrt(max(d2, 1e-8));
         const l = L.div(d);
         const Hh = normalize(l.add(Vv));
         const nh = clamp(dot(Nn, Hh), 0, 1);
-        const nl = clamp(dot(Nn, l), 0, 1);
-        // the source's angular radius widens the lobe (energy-conserving: a bigger source, a broader glint)
+        const vh = clamp(dot(Vv, Hh), 0, 1);
+        // the source's angular radius widens the lobe (a bigger source, a broader glint)
         const alpha = min(a0.add(c.w.div(d).mul(0.5)), 1);
         const a2 = alpha.mul(alpha);
         const den = nh.mul(nh).mul(a2.sub(1)).add(1);
         const D = a2.div(den.mul(den).mul(Math.PI));
-        // the irradiance the source delivers at the surface (no window: reflections reach farther than spill)
+        const f = float(1).sub(vh);
+        const f2 = f.mul(f);
+        const F = float(0.02).add(f2.mul(f2).mul(f).mul(0.98));
         const E = float(1).div(float(1).add(d2.div(c.w.mul(c.w))));
-        const x2 = d2.div(R2.mul(4));
+        const x2 = d2.div(R2);
         const win = clamp(float(1).sub(x2.mul(x2)), 0, 1);
-        sum.addAssign(c.xyz.mul(D.mul(E).mul(nl).mul(gg).mul(win).mul(0.25)));
+        sum.addAssign(c.xyz.mul(D.mul(F).mul(E).mul(win).mul(gg).div(nv.mul(4))));
       });
     });
     return sum;

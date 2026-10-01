@@ -58,7 +58,7 @@ const SPILL_R_MIN: Partial<Record<LightKind, number>> = { fire: 0.04, beacon: 0.
 export const HALO_GAIN: Record<LightKind, number> = { lava: 0.3, eye: 0.15, magic: 1, beacon: 1, fire: 0, ithildin: 0, window: 0, lamp: 0 };
 
 /** glint gain by kind (spill.ts spillGlint on water) */
-export const GLINT_GAIN: Record<LightKind, number> = { lava: 1, eye: 1, magic: 1, beacon: 1, fire: 1, ithildin: 1, window: 1, lamp: 1 };
+export const GLINT_GAIN: Record<LightKind, number> = { lava: 1, eye: 1, magic: 1.5, beacon: 1.5, fire: 3, ithildin: 1, window: 4, lamp: 4 };
 
 /** preview uploads fewer sources (the explorer's per-fragment cost) */
 export const SPILL_PREVIEW = 4;
