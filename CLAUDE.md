@@ -17,9 +17,11 @@ re-disables their autostart, sweeps orphans), **then read `docs/PROJECT_STATE.md
 - **Determinism:** every frame is a pure function of `SceneState` (from `Timeline.evaluate(t)`).
   Systems implement `evaluate(frame)`; no `Math.random`, `Date.now`, `performance.now`, TSL `time`, or hidden
   accumulated state in anything that renders. Randomness = `rand(seed, id, k)` (src/core/rng.ts).
-- **Landmarks declare, systems realize:** `defineLandmark` bundles stamps, model, lights (→ emission
-  buffer), emitters, water features, annotations, bookmarks. Landmarks never own materials, particle
-  systems or render loops. All materials come from the shared **material families**.
+- **Landmarks declare, systems realize:** `defineLandmark` bundles stamps, kit proxy / model, lights
+  (→ EmissionSystem sprites), trees and `forests` (→ VegetationSystem), pools, emitters, annotations,
+  bookmarks. Landmarks never own materials, particle systems or render loops. All materials come from the
+  shared **material families** (two uber materials: structure + glow). One fixed design scale per landmark —
+  readability comes from silhouette, contrast and emission, never distance-dependent size.
 - **Nothing DOM-based appears in captured frames.** Map labels = cartography layer; titles = canvas-2D
   textures on quads. DOM labels are debug-only.
 - **Quality ceiling = offline pipeline.** Preview tier stays usable on the Intel UHD iGPU; stills/film use
@@ -32,6 +34,7 @@ re-disables their autostart, sweeps orphans), **then read `docs/PROJECT_STATE.md
   machine-wide lock (`%LOCALAPPDATA%\map-of-middle-earth\gpu.lock`) behind a free-RAM guard. Captures run in
   bounded batches (`pnpm qa --batch 8`, fresh Chrome per batch), in the foreground; iterate at
   1280×720 spp 2, milestone QA at 1600×900 spp 4. Agents never run `pnpm build` or long-lived dev servers.
+  Blender (`pnpm models`) runs headless under the same lock and guard.
 - Max **2** parallel implementation agents on this host, each in its own worktree and module files; the
   main agent reviews and integrates — never accept subagent output unseen. `pnpm perf --gate` guards the
   preview tier against `data/qa/perf-baseline.json`.
@@ -45,9 +48,12 @@ re-disables their autostart, sweeps orphans), **then read `docs/PROJECT_STATE.md
   offset from canonical ones (validator-checked).
 - TypeScript strict, ES modules, pnpm. `three` pinned to 0.186.1 — upgrade deliberately.
 - Ids are kebab-case and shared across data, folders, references and bookmarks (`minas-tirith`).
-- Python bake lives in `tools/bake` (uv env). Landmarks: upgraded TS procedural kit by default; Blender 4.5
-  headless GLBs only for close-up hero landmarks (S3). Worktrees point `MOME_WORLD_DIR` / `MOME_SOURCE_DIR`
-  at the main checkout's gitignored data instead of re-fetching or junctioning it.
+- Python bake lives in `tools/bake` (uv env). Landmarks: TS procedural kit v2 by default; Blender 4.5
+  headless GLBs (`tools/blender`, `pnpm models`) only for close-up heroes where a blind A/B beats the kit
+  (S3: the Argonath). A landmark is done when its shot-list entry is `status: s3` and `pnpm check` passes
+  its budget, seating and bookmark-framing gates (`data/tour/shotlist.json`, camera probe v2).
+  Worktrees point `MOME_WORLD_DIR` / `MOME_SOURCE_DIR` / `MOME_REFERENCE_DIR` at the main checkout's
+  gitignored data instead of re-fetching or junctioning it.
 
 ## Licensing & IP (hard rules)
 - Never commit `data/source/`, `data/baked/`, reference images or fetched textures (public repo).
@@ -57,4 +63,5 @@ re-disables their autostart, sweeps orphans), **then read `docs/PROJECT_STATE.md
 
 ## Commands
 `pnpm dev` · `pnpm typecheck` · `pnpm build` · `pnpm data:fetch` · `pnpm bake` · `pnpm shots --smoke|--shot <id>` ·
-`pnpm qa [--set s1|overview|regions|landmarks] [--batch 8]` · `pnpm perf [--gate]` · `pnpm check`
+`pnpm qa [--set s3|s3-heroes|landmarks-s3|wides-s3|overview|regions] [--batch 8] [--blind <set>]` · `pnpm perf [--gate]` ·
+`pnpm check` · `pnpm models [--only id] [--verify]` · `node --import tsx tools/check/cameras.ts` (camera probe)

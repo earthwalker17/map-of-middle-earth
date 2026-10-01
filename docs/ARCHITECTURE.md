@@ -118,7 +118,10 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
   fwidth-faded noise (≈9, 37, 140 /km) + stone coursing on walls. Glow = paint × strength × gate × flicker
   (gates from env: always · night = clamp(smoothstep(0.2, 0.7, night) + 0.4·twilight) · dusk =
   0.25 + 0.75·max(night, golden) · event = 0 until S4). `materialFor(key)` resolves geometry keys;
-  `familyVertex(fam, paint?, shade?, tint?, glow?)` packs a vertex (also used for GLBs).
+  `familyVertex(fam, paint?, shade?, tint?, glow?)` packs a vertex (also used for GLBs). Specular ambient:
+  the scene has no environment map, so `structure` adds a Fresnel-weighted (F0 0.04 → albedo for metals)
+  hemisphere sky / ground radiance along the reflection vector (`env.skyColor / groundColor ×
+  hemiIntensity`), dimmed by roughness and the baked AO — metals and glossy dark stone keep form in shade.
 
 ## Systems (registration order in src/app/boot.ts)
 1. `EnvironmentSystem(world)` (environment/) — time of day → keyframed daylight (by sun elevation), own TSL
