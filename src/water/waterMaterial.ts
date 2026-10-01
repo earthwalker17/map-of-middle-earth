@@ -397,7 +397,10 @@ export function createWaterMaterial(opts: WaterMaterialOptions): MeshStandardNod
   }
   if (isRiver) {
     const edge = float(1).sub(smoothstep(0.72, 1.0, abs(flow!.y)));
-    alpha = alpha.mul(edge).mul(flow!.w);
+    // S4 W2-D (P4): a ribbon reaching into a baked lake (Lake-town's outflow on the Long Lake) gives way
+    // to the lake inside its mask — no lighter river strip with a hard edge across the lake's body
+    const inLake = smoothstep(0.35, 0.65, texture(world.water, uv0).g);
+    alpha = alpha.mul(edge).mul(flow!.w).mul(float(1).sub(inLake));
   }
 
   const material = new MeshStandardNodeMaterial({ transparent: true, side: FrontSide });
