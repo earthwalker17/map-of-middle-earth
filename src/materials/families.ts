@@ -4,6 +4,7 @@ import { tsl, type TslNode } from './tsl.ts';
 import { env } from './environment.ts';
 import { strata, strataFootprint, strataSteep } from './strata.ts';
 import { gateCode, gateNode } from './gates.ts';
+import { spillIrradiance } from '../emission/spill.ts';
 
 // NB: TSL vec3(new Color()) silently yields black in r186 — always use color(Color) for colour constants
 const { Fn, If, float, vec3, attribute, mx_noise_float, positionWorld, positionLocal, normalGeometry, normalView, normalWorld, cameraPosition, reflect, normalize, positionViewDirection, fwidth, length, smoothstep, mix, clamp, max, abs, sin, step, floor, select, hash, dot, sRGBTransferEOTF } = tsl;
@@ -287,7 +288,8 @@ function structureMaterial(): MeshStandardNodeMaterial {
   const leafTone = mix(float(1), mix(float(0.78), float(1.12), smoothstep(-0.6, 0.9, nG.y)), isFoliage);
   // the baked ground-contact term is the only baked darkening on the albedo; the hemisphere AO (col.a)
   // goes to the AO slot alone (indirect light) — never both (S3 fix: small parts went near-black)
-  m.colorNode = albedo.mul(float(1).add(pattern.mul(surf.b))).mul(leafTone).mul(mix(float(1), contact, CONTACT_WEIGHT));
+  const baseColor = albedo.mul(float(1).add(pattern.mul(surf.b))).mul(leafTone).mul(mix(float(1), contact, CONTACT_WEIGHT));
+  m.colorNode = baseColor;
   m.aoNode = col.a;
   m.roughnessNode = clamp(surf.r.add(pattern.mul(0.08)), 0.04, 1);
   m.metalnessNode = surf.g;
@@ -300,7 +302,11 @@ function structureMaterial(): MeshStandardNodeMaterial {
     const r = reflect(v.negate(), normalWorld);
     const sky = mix(vec3(env.groundColor), vec3(env.skyColor), smoothstep(-0.25, 0.55, r.y)).mul(env.hemiIntensity);
     const f0 = mix(vec3(0.04), albedo, surf.g);
-    return sky.mul(f0).mul(float(1).sub(surf.r.mul(0.45))).mul(col.a);
+    const specAmb = sky.mul(f0).mul(float(1).sub(surf.r.mul(0.45))).mul(col.a);
+    // S4 W2-D: the light the emission spill throws onto the structure (Lambertian: diffuse albedo · E / π;
+    // half the baked AO — the spill is local direct light, the AO only hints at the occluded corners)
+    const diffuse = baseColor.mul(float(1).sub(surf.g)).mul(mix(float(0.5), float(1), col.a));
+    return specAmb.add(diffuse.mul(spillIrradiance(positionWorld, normalWorld)).mul(1 / Math.PI));
   })();
   return m;
 }

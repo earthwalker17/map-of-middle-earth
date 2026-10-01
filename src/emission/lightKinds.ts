@@ -46,7 +46,7 @@ export const MAX_RADIUS_KM: Record<LightKind, number> = {
 };
 
 /** default flicker depth when a record leaves it at 0 (fires breathe, lamps and windows are steady) */
-const DEFAULT_FLICKER: Partial<Record<LightKind, number>> = { fire: 0.28, lava: 0.12, beacon: 0.25, magic: 0.08, eye: 0.06 };
+export const DEFAULT_FLICKER: Partial<Record<LightKind, number>> = { fire: 0.28, lava: 0.12, beacon: 0.25, magic: 0.08, eye: 0.06 };
 
 /**
  * Wide-shot gain cap by kind (0 = no gain): the sprites of these kinds gain brightness with distance,
