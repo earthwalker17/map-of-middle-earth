@@ -1,6 +1,6 @@
 import { Euler, Matrix4, Quaternion, Vector3, type BufferGeometry } from 'three/webgpu';
 import { hash32, rand } from '../../core/rng.ts';
-import { aoFloor, familyKey, familyVertex, paintLinear, type FamilyId, type GlowOverride, type MaterialKey } from '../../materials/families.ts';
+import { NOISE, aoFloor, familyKey, familyVertex, paintLinear, type FamilyId, type GlowOverride, type MaterialKey } from '../../materials/families.ts';
 import { lightExtras, type LightExtras, type LightGate, type LightKind, type LodGeometry, type TreeKind, type V2, type V3 } from '../records.ts';
 import { Geo, area2, boxGeo, cross3, face, icoGeo, latheGeo, noise3, packGeometry, prismGeo, sub3, type PackItem } from './geom.ts';
 
@@ -1613,7 +1613,10 @@ export class ProxyKit {
       return g;
     };
     const body: PartOpts = { lod: o.lod, color: o.color, shade: o.shade, tint: o.tint };
-    this.addPart(fam, gen, null, body, { detailed: true, h: hmax });
+    const part = this.addPart(fam, gen, null, body, { detailed: true, h: hmax });
+    // rock faces: the families' rock noise class (stone noise without masonry courses + the shared strata,
+    // so kit cliffs band with the terrain's bedding); the contact bits stay
+    if (part.key === 'structure') part.surf = [part.surf[0], part.surf[1], part.surf[2], NOISE.rock * 32 + (part.surf[3] % 32)];
     return this;
   }
 

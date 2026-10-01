@@ -8,15 +8,11 @@ import { strata, strataFootprint, strataSteep } from './strata.ts';
 const { Fn, If, float, vec3, attribute, mx_noise_float, positionWorld, positionLocal, normalGeometry, normalView, normalWorld, cameraPosition, reflect, normalize, positionViewDirection, fwidth, length, smoothstep, mix, clamp, max, abs, sin, step, round, floor, select, hash, dot, sRGBTransferEOTF } = tsl;
 
 /**
- * Noise class of rock faces (kit cliffs): stone noise WITHOUT the masonry coursing (kit cliffs carry 'brick'
- * courses today) + optionally the shared strata (strata.ts). S4 W1-B contract: NOISE gains `rock: 5` and
- * ProxyKit.cliff emits it; until then no vertex carries it.
+ * Noise class of rock faces (kit cliffs, `ProxyKit.cliff`): stone noise WITHOUT the masonry coursing +
+ * optionally the shared strata (strata.ts).
  */
-const ROCK_CLASS = 5;
-/**
- * The shared strata on the rock class (verified with a temporary class-0 mapping: the kit faces band). Inert
- * until ProxyKit.cliff emits class 5 (contract above): no vertex carries it, the branch is never taken.
- */
+const ROCK_CLASS = 5; // = NOISE.rock (declared below)
+/** The shared strata on the rock class (kit cliffs band with the terrain's world-space bedding). */
 const KIT_STRATA = true;
 /**
  * strata on kit faces: a kit cliff is only 0.5–1.5 units tall — at the terrain's bed spacing it sits inside
@@ -65,7 +61,7 @@ export type FamilyId =
   | 'ithildin';
 
 /** Surface pattern of the structure shader (fwidth-faded landmark-space noise). */
-export const NOISE = { stone: 0, wood: 1, fibre: 2, smooth: 3, foliage: 4 } as const;
+export const NOISE = { stone: 0, wood: 1, fibre: 2, smooth: 3, foliage: 4, rock: 5 } as const;
 export type NoiseClass = (typeof NOISE)[keyof typeof NOISE];
 
 export interface GlowPreset {

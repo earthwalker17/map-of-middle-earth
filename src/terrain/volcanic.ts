@@ -46,11 +46,11 @@ export const VOLCANIC = {
   glowRing: [17, 23, 42] as const,
   /** fissure glow (linear rgb × strength): round Doom's foot, and across the rest of Gorgoroth */
   glow: [1.0, 0.26, 0.05] as const,
-  glowDoom: 1.3,
+  glowDoom: 1.0,
   glowPlain: 0.08,
   /** fraction of the 1.5 km cracks (plate pairs) that glow (and of each lit crack's length, by a 0.9 / 3 km noise) */
-  glowLit: 0.22,
-  glowRun: 0.5,
+  glowLit: 0.1,
+  glowRun: 0.38,
   /** glow only on ground flatter than this slope range (1 − n.y) */
   glowSlope: [0.05, 0.12] as const,
   /** horizontal part of the base normal kept on gentle volcanic ground (the baked sub-km ripples read as dunes) */
