@@ -6,6 +6,7 @@ import { coarseGroundAlbedo, groundLookTexture, groundPalette } from '../materia
 import type { QualityTier } from '../core/quality.ts';
 import type { World } from '../world/World.ts';
 import { spillGlint, spillIrradiance } from '../emission/spill.ts';
+import type { ReflectorRecord } from '../landmarks/records.ts';
 
 type N = TslNode;
 type RGB = [number, number, number];
@@ -122,7 +123,12 @@ export interface WaterMaterialOptions {
   noiseTex: DataTexture;
   quality: QualityTier;
   params: WaterParams;
+  /** upright reflection proxies (landmarkReflectors); tested in the reflection march of lakes and rivers */
+  reflectors?: ReflectorRecord[];
 }
+
+/** linear albedo of a reflection proxy (weathered grey stone) */
+const REFLECTOR_ALBEDO = 0.32;
 
 const lin = (c: RGB): N => vec3(c[0], c[1], c[2]);
 
@@ -158,6 +164,8 @@ export const waterDebug: N = uniform(0, 'int');
  */
 export function createWaterMaterial(opts: WaterMaterialOptions): MeshStandardNodeMaterial {
   const { world, waveTex, noiseTex, quality, params: P } = opts;
+  // the proxies: lakes and rivers, review / final (the sea has none standing in it)
+  const reflectors = P.kind !== 'sea' && quality.id !== 'preview' ? (opts.reflectors ?? []) : [];
   const spec = world.spec;
   const hTex = world.heights.texture;
   const W = spec.width;
@@ -396,6 +404,40 @@ export function createWaterMaterial(opts: WaterMaterialOptions): MeshStandardNod
         const groundRad = alb.mul(lit).mul(1 / Math.PI);
         const hazed = atmosphere.apply(groundRad, origin, vec3(hitP.x, max(hitP.y, hh), hitP.z), quality.atmosphere.inScatter, true);
         out.assign(mix(out, P.mirrorTint ? hazed.mul(lin(P.mirrorTint)) : hazed, occ));
+        // S4 C2: upright reflection proxies (the Argonath kings, Tol Brandir): exact ray / vertical-cylinder
+        // tests; a proxy in front of the terrain hit (or with no terrain hit) mirrors as lit grey stone,
+        // where the HeightField-only march showed the sky above the landmark's stamp (black lozenges)
+        if (reflectors.length) {
+          let tP: N = float(1e9);
+          let cP: N = vec2(0, 0);
+          const dxz = dir.xz;
+          const a = max(dot(dxz, dxz), 1e-6);
+          for (const r of reflectors) {
+            const c = vec2(r.x, r.z);
+            const oc = origin.xz.sub(c);
+            const b = dot(oc, dxz);
+            const disc = b.mul(b).sub(a.mul(dot(oc, oc).sub(r.r * r.r)));
+            const t0 = b.negate().sub(sqrt(max(disc, 0))).div(a);
+            const y = origin.y.add(dir.y.mul(t0));
+            const ok = disc.greaterThan(0).and(t0.greaterThan(0)).and(y.greaterThan(r.y0)).and(y.lessThan(r.y1)).and(t0.lessThan(tP));
+            tP = select(ok, t0, tP);
+            cP = select(ok, c, cP);
+          }
+          const tT = select(occ.greaterThan(0.5), hitT, float(1e9));
+          const front = select(tP.lessThan(tT), float(1), float(0));
+          const hp = origin.add(dir.mul(min(tP, 1e3)));
+          const nP = normalize(vec3(hp.x.sub(cP.x), 0, hp.z.sub(cP.y)).add(vec3(0, 1e-4, 0)));
+          const deckP = float(1).sub(atmosphere.deckCover(hp.xz, true).mul(env.deckShadow));
+          const litP = env.sunColor
+            .mul(env.sunIntensity)
+            .mul(max(dot(nP, env.sunDir), 0))
+            .add(env.moonColor.mul(env.moonIntensity).mul(max(dot(nP, env.moonDir), 0)))
+            .mul(deckP)
+            .add(mix(env.groundColor, env.skyColor, 0.5).mul(env.hemiIntensity));
+          const stone = atmosphere.apply(vec3(REFLECTOR_ALBEDO).mul(litP).mul(1 / Math.PI), origin, hp, quality.atmosphere.inScatter, true);
+          // (stone keeps most of its value: the mirror tint is for the banks' turf, which read as dry grass)
+          out.assign(mix(out, P.mirrorTint ? stone.mul(lin(P.mirrorTint).add(1).mul(0.5)) : stone, front));
+        }
       });
       return out;
     })();

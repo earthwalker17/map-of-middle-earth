@@ -3,7 +3,7 @@ import { hash32, hashString } from '../core/rng.ts';
 import type { Rough, Stamp, Vec2 } from '../world/stamps.ts';
 import { landmarkOrigin, localToWorldXZ } from './frame.ts';
 import { hexToLinear } from '../materials/families.ts';
-import type { EmitterRecord, ExclusionCircle, FallRecord, PoolRecord, TreeCapRecord, V3 } from './records.ts';
+import type { EmitterRecord, ExclusionCircle, FallRecord, PoolRecord, ReflectorRecord, TreeCapRecord, V3 } from './records.ts';
 import type { LandmarkDefinition } from './types.ts';
 
 /**
@@ -101,6 +101,35 @@ export function landmarkPools(world: World, defs: LandmarkDefinition[]): PoolRec
     for (const f of d.waterFeatures ?? []) {
       if (f.kind !== 'pool') continue;
       out.push({ landmark: d.id, ring: f.ring.map((v) => localToWorldXZ(world, d, v, d.scale ?? 1)), level: o[1] + f.level * (d.scale ?? 1) });
+    }
+  }
+  return out;
+}
+
+/** Share of a GLB model's declared bounding radius that stands up as its reflection proxy (the body, not the plinth). */
+const MODEL_REFLECTOR_R = 0.5;
+/** depth below the landmark origin to which a declared reflector reaches (its foot is under the water) */
+const REFLECTOR_FOOT = 3;
+
+/**
+ * Upright reflection proxies (world space) for the water's reflection march (S4): one per GLB model instance
+ * (its declared bounds) and the landmark's own `reflectors`. Pure, at the design scale.
+ */
+export function landmarkReflectors(world: World, defs: LandmarkDefinition[]): ReflectorRecord[] {
+  const out: ReflectorRecord[] = [];
+  for (const d of defs) {
+    const o = landmarkOrigin(world, d);
+    const sc = d.scale ?? 1;
+    if (d.model) {
+      for (const inst of d.model.instances ?? [{ at: [0, 0, 0] as V3 }]) {
+        const [x, z] = localToWorldXZ(world, d, [inst.at[0], inst.at[2]], sc);
+        const y0 = o[1] + inst.at[1] * sc;
+        out.push({ landmark: d.id, x, z, r: d.model.boundsKm.r * MODEL_REFLECTOR_R * sc, y0, y1: y0 + d.model.boundsKm.h * sc });
+      }
+    }
+    for (const r of d.reflectors ?? []) {
+      const [x, z] = localToWorldXZ(world, d, r.at, sc);
+      out.push({ landmark: d.id, x, z, r: r.r * sc, y0: o[1] - REFLECTOR_FOOT, y1: o[1] + r.top * sc });
     }
   }
   return out;

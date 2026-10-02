@@ -152,6 +152,12 @@ export interface LandmarkDefinition {
   treeCaps?: { at: V2; r: number; maxHeightKm: number }[];
   emitters?: EmitterDecl[];
   waterFeatures?: WaterFeatureDecl[];
+  /**
+   * Upright reflection proxies (local km; `top`: local height of the top): what the water's reflection march
+   * cannot see in the HeightField — a rock spire standing in a lake or river mirrors as dark stone instead of
+   * the sky above its stamp. GLB model instances get one from their bounds (landmarkReflectors).
+   */
+  reflectors?: { at: V2; r: number; top: number }[];
   /** km radius cleared of forest around the origin (default: the place footprint), or explicit local circles */
   vegetationExclusion?: number | { at: V2; r: number }[];
   /** readability intent vs the local ground (checked as a warning) */

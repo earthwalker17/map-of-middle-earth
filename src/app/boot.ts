@@ -16,7 +16,7 @@ import { resolveShot, type ShotSpecInput } from '../camera/shots.ts';
 import { gradeUniforms } from '../render/PostPipeline.ts';
 import { LANDMARKS } from '../landmarks/registry.ts';
 import { LandmarkSystem } from '../landmarks/LandmarkSystem.ts';
-import { landmarkEmitters, landmarkExclusions, landmarkFalls, landmarkPools, landmarkStamps, landmarkTreeCaps } from '../landmarks/world.ts';
+import { landmarkEmitters, landmarkExclusions, landmarkFalls, landmarkPools, landmarkReflectors, landmarkStamps, landmarkTreeCaps } from '../landmarks/world.ts';
 import { buildLandmarks } from '../landmarks/build.ts';
 import { EmissionSystem } from '../emission/EmissionSystem.ts';
 import { EffectsSystem } from '../effects/EffectsSystem.ts';
@@ -43,6 +43,7 @@ async function buildWorld(engine: Engine, quality: QualityTierId, shots: ShotSpe
   const terrain = new TerrainSystem(world);
   const water = new WaterSystem(world);
   water.setPools(landmarkPools(world, LANDMARKS));
+  water.setReflectors(landmarkReflectors(world, LANDMARKS));
   const vegetation = new VegetationSystem(world);
   vegetation.setExclusions(landmarkExclusions(world, LANDMARKS)); // before init → placed once
   vegetation.setAuthored(built.flatMap((b) => b.trees));

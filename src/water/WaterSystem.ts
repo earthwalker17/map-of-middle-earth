@@ -1,7 +1,7 @@
 import { Mesh, PlaneGeometry, type DataTexture } from 'three/webgpu';
 import type { FrameContext, InitContext, System } from '../core/types.ts';
 import type { World } from '../world/World.ts';
-import type { PoolRecord } from '../landmarks/records.ts';
+import type { PoolRecord, ReflectorRecord } from '../landmarks/records.ts';
 import { createNoiseTexture, createWaveSlopeTexture } from './waveTexture.ts';
 import { createWaterMaterial, waterDebug } from './waterMaterial.ts';
 import { buildLakeGeometry, lakeInfos, poolInfos, type LakeInfo } from './lakes.ts';
@@ -32,6 +32,7 @@ export class WaterSystem implements System {
   private heightsVersion = -1;
 
   private pools: PoolRecord[] = [];
+  private reflectors: ReflectorRecord[] = [];
 
   constructor(private readonly world: World) {}
 
@@ -45,6 +46,15 @@ export class WaterSystem implements System {
     this.pools = pools.map((p) => ({ ...p, ring: p.ring.map((q) => [q[0], q[1]] as [number, number]) }));
   }
 
+  /**
+   * Upright reflection proxies (world space, from landmarkReflectors): statues and rock spires standing in
+   * the water, which the reflection march's HeightField cannot see. Call before init (baked into the lake and
+   * river shaders as constants).
+   */
+  setReflectors(reflectors: ReflectorRecord[]): void {
+    this.reflectors = reflectors.map((r) => ({ ...r }));
+  }
+
   getPools(): readonly PoolRecord[] {
     return this.pools;
   }
@@ -55,7 +65,7 @@ export class WaterSystem implements System {
     const quality = ctx.quality;
     this.waveTex = createWaveSlopeTexture();
     this.noiseTex = createNoiseTexture();
-    const mat = (params: typeof SEA) => createWaterMaterial({ world, waveTex: this.waveTex, noiseTex: this.noiseTex, quality, params });
+    const mat = (params: typeof SEA) => createWaterMaterial({ world, waveTex: this.waveTex, noiseTex: this.noiseTex, quality, params, reflectors: this.reflectors });
 
     const seaGeo = new PlaneGeometry(spec.width, spec.depth, 32, 20);
     seaGeo.rotateX(-Math.PI / 2);

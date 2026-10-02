@@ -197,6 +197,17 @@ export interface PoolRecord {
   level: number;
 }
 
+/** An upright reflection proxy for the water's reflection march, WORLD space: a vertical cylinder. */
+export interface ReflectorRecord {
+  landmark: string;
+  x: number;
+  z: number;
+  r: number;
+  /** world heights of its foot and top */
+  y0: number;
+  y1: number;
+}
+
 /** Where a seated part meets the ground (seating gate: nothing floats, nothing sinks too deep). */
 export interface ContactRecord {
   x: number;
