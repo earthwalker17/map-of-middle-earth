@@ -95,8 +95,10 @@ export function createEmissionMaterial(): NodeMaterial {
   const isAgg = role.greaterThan(1.5);
   const roleW = select(role.lessThan(0.5), float(1), select(isAgg, wAgg, float(1).sub(wAgg)));
 
-  // ---- aerial perspective: extinction only (the additive sprite must not add in-scatter squares)
-  const tau = atmosphere.opticalDepth(env.cameraPos, P.xyz, atmosphere.regional(P.xz, true).a);
+  // ---- aerial perspective: extinction only (the additive sprite must not add in-scatter squares); the
+  //      ash pall along the ray (eye + mid taps, as the geometry's camera-ray haze) dims a light with its tower
+  const ash = atmosphere.rayDeck(env.cameraPos, P.xyz, true, true, true);
+  const tau = atmosphere.opticalDepth(env.cameraPos, P.xyz, atmosphere.regional(P.xz, true).a, float(0), ash);
   const T = exp(env.extinction.mul(tau).negate());
 
   // ---- projected size, energy-normalised amplitude (+ the aggregate's visibility floor)

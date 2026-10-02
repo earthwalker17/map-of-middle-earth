@@ -1,5 +1,5 @@
 import { BufferAttribute, BufferGeometry, Matrix3, Matrix4, Vector3, type Mesh, type Object3D } from 'three/webgpu';
-import { aoFloor, FAMILY_IDS, familyKey, familyVertex, linearToSrgbBytes, type FamilyId } from '../materials/families.ts';
+import { aoFloor, carvedVertex, FAMILY_IDS, familyKey, familyVertex, linearToSrgbBytes, type FamilyId } from '../materials/families.ts';
 import type { LodGeometry, V3 } from './records.ts';
 import type { ModelDecl } from './types.ts';
 
@@ -112,7 +112,8 @@ export async function loadModel(decl: ModelDecl): Promise<LodGeometry[]> {
       if (mats.length !== 1) throw new Error(`models/${decl.file}: mesh '${mesh.name}' has ${mats.length} materials (one per primitive expected)`);
       const fam = familyOf(mats[0].name, decl.file);
       const key = familyKey(fam);
-      const fv = familyVertex(fam);
+      // sculpted stone (hero statues): weathering without masonry courses or joints (NOISE.carved)
+      const fv = carvedVertex(fam, familyVertex(fam));
       const aoMin = aoFloor(fam);
       const g = mesh.geometry;
       const P = g.getAttribute('position');
