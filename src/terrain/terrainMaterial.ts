@@ -113,7 +113,10 @@ const SNOW4 = { gully: 1.9, rib: 1.5, mGully: 0.45, mRib: 0.35, capGully: 1.1, c
  * scale km, the vertical stretch of the noise (its creases run down the fall line), the forward-difference
  * step km, the bump amplitude (world units) and the slope over which it fades in (none on gentle ground: a
  * swell there printed a corduroy ripple), the footprint fade (km / px), the tone it adds (gullies darker,
- * ribs paler) and the share kept on the stamp snow caps' cones (Erebor's flanks went scaly)
+ * ribs paler) and the share kept on the stamp snow caps' cones (Erebor's flanks went scaly). `near`: the
+ * fade at close range (km / px from, to, kept share) — a 0.42 km crease spanning hundreds of px read as wax
+ * flow ridges over the fine rock grit (C2: the argonath-close foreground cliffs), so close up the fine
+ * relief carries the face and the creases keep under half their weight
  */
 const MACRO_ON = true;
 const MACRO = {
@@ -123,6 +126,7 @@ const MACRO = {
   amp: 0.14,
   slope: [0.14, 0.38] as const,
   fade: [0.04, 0.12] as const,
+  near: [0.005, 0.025, 0.45] as const,
   tone: [0.2, 0.1] as const,
   capKeep: 0.3,
 } as const;
@@ -287,7 +291,10 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     });
     if (MACRO_ON && !preview) {
       const capAny = capW.reduce((a: N, w) => max(a, w), float(0));
-      const mFade = float(1).sub(smoothstep(MACRO.fade[0], MACRO.fade[1], fp)).mul(mix(float(1), float(MACRO.capKeep), capAny));
+      const mFade = float(1)
+        .sub(smoothstep(MACRO.fade[0], MACRO.fade[1], fp))
+        .mul(mix(float(MACRO.near[2]), float(1), smoothstep(MACRO.near[0], MACRO.near[1], fp)))
+        .mul(mix(float(1), float(MACRO.capKeep), capAny));
       // the noise frame: stretched along y, so on steep faces the creases run down the fall line
       const fm = (dp: [number, number, number]): N =>
         mx_noise_float(vec3(p.x.add(dp[0]), p.y.add(dp[1]).mul(1 / MACRO.stretch), p.z.add(dp[2])).mul(1 / MACRO.km).add(vec3(5.3, 1.7, 9.1)));
