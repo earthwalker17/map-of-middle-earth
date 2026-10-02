@@ -6,9 +6,9 @@ import { BRIDGE_END, BRIDGE_KINK, C, GATE, GATE_OUT, PAD_C, T2, T2_C, T2_TOP, T3
 import { type Band, E0, GLOW, GLOW_HOT, wash } from './wash.ts';
 
 /**
- * The stone and the corpse-light (the RotK gate still, Nasmith's Tower of the Moon): PALE, ghostly stone
- * (albedo ≈ 0.35–0.45: moonlit it reads bone-grey, by day a pale grey-green) washed from below by a green
- * light. Every outer face — curtain, tier walls, bastions, gate blades and towers, keep blocks, houses,
+ * The stone and the corpse-light (the RotK gate still, Nasmith's Tower of the Moon): DARK, dead grey stone
+ * (S4 W5, the C2 art director: ≈ 40 % darker than S3's pale stone, which read as lit green glass) washed
+ * from below by a green light that pools at the feet and the gate and dies out by mid-height. Every outer face — curtain, tier walls, bastions, gate blades and towers, keep blocks, houses,
  * the bridge's parapets and statues (and the Tower's keep and the lower third of its shaft, tower.ts) —
  * carries night-gated `emissiveGreen` skins in fine bands from its visible foot up (≈ 45 % of the height on
  * towers and blocks, 70 % on the curtain, the whole height on the tier walls — whose feet the curtain
