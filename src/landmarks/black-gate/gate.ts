@@ -677,7 +677,7 @@ function crags(k: ProxyKit, ridge: V2[], side: number): void {
     const b = path[path.length - 1];
     const rx = -(b[1] - a[1]);
     if (rx * -side < 0) path = [...path].reverse();
-    k.cliff('weathered', path, path.map(() => f.h * (0.85 + 0.3 * k.r())), { color: ROCK, rough: 0.7, strata: 0.8, depth: 1.0, soft: 0.55, overhang: 0.12, taper: 0.3 });
+    k.cliff('weathered', path, path.map(() => f.h * (0.85 + 0.3 * k.r())), { color: ROCK, rough: 0.55, strata: 0.35, depth: 1.0, soft: 0.6, overhang: 0.12, taper: 0.3 });
     // scree fans at the foot on the pass side
     for (let i = 0; i < path.length; i += 2) scree(k, path[i][0] + side * -0.3, path[i][1], side < 0 ? 0 : Math.PI, 0.7, 3, keep);
   }
@@ -707,6 +707,13 @@ function crags(k: ProxyKit, ridge: V2[], side: number): void {
     }
   }
 }
+
+/**
+ * S4 W5: the kit bands round the Towers' knobs are off — with the S4 flanks the Towers stand on shelves cut
+ * into massive rock slopes whose terrain rock reads far better than the bands' flat-shaded facets (in
+ * black-gate-close the east knob's bands read as a low-poly crystal cluster beside the Tower)
+ */
+const KNOB_CRAGS = false;
 
 /**
  * Fractured rock round the front of a Tower's knob (the steep fall from its shelf to the pass floor):
@@ -774,7 +781,9 @@ function outcrop(k: ProxyKit): void {
     return pts;
   };
   const upper = arcPts(-40, 120, 1.55, 14, 0.2);
-  k.cliff('weathered', upper, upper.map((_, i) => 1.3 + 0.5 * Math.sin((i / 14) * Math.PI)), { color: ROCK2, rough: 0.7, strata: 0.9, depth: 1.6, soft: 0.5, overhang: 0.1, taper: 0.7, lod: 0 });
+  // (soft normals and little per-facet strata shade: at soft 0.25 / strata 0.9 the band read as a low-poly
+  // crystal cluster in front of the east Tower)
+  k.cliff('weathered', upper, upper.map((_, i) => 1.0 + 0.35 * Math.sin((i / 14) * Math.PI)), { color: ROCK2, rough: 0.45, strata: 0.25, depth: 1.6, soft: 0.85, overhang: 0.08, taper: 0.7, lod: 0 });
   // tumbled scree toward the camera (bearing 35°: x + sin, z − cos), off the butte's foot
   const sb = (35 * Math.PI) / 180;
   scree(k, c[0] + Math.sin(sb) * 2.6, c[1] - Math.cos(sb) * 2.6, Math.atan2(-Math.cos(sb), Math.sin(sb)), 1.6, 16, () => true);
@@ -794,9 +803,12 @@ export function buildGate(k: ProxyKit): void {
   // ---- the Towers of the Teeth, high on the flanks
   toothTower(k, TOWERS[0][0], TOWERS[0][1], 1);
   toothTower(k, TOWERS[1][0], TOWERS[1][1], -1);
-  // ---- crags under the Towers, on the ridge noses and crests; the outcrop on the plain
-  knobCrag(k, TOWERS[0], -1);
-  knobCrag(k, TOWERS[1], 1);
+  // ---- crags under the Towers (off since S4 W5, see KNOB_CRAGS), on the ridge noses and crests; the
+  // outcrop on the plain
+  if (KNOB_CRAGS) {
+    knobCrag(k, TOWERS[0], -1);
+    knobCrag(k, TOWERS[1], 1);
+  }
   crags(k, WEST_RIDGE, -1);
   crags(k, EAST_RIDGE, 1);
   outcrop(k);
