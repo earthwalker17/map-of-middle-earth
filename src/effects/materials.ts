@@ -309,10 +309,11 @@ export function createMistMaterial(noise: Texture, heights: Texture, spec: World
   // (more on the top layers, forward-scattered toward the sun) + sky, desaturated, tinted by the card and
   // the region's chroma (Morgul's green); the spill (Morgul's wall-wash, a beacon) lights it strongly
   const lum = vec3(0.2126, 0.7152, 0.0722);
-  const keyK = mix(float(0.3), float(0.55), MA.z.mul(MC.w));
+  // (S4 C2: lit mostly by the sky — with the full key, a card in golden light read as pink cotton wool)
+  const keyK = mix(float(0.15), float(0.3), MA.z.mul(MC.w));
   const lit = Fn(() => {
     const view = normalize(P.sub(env.cameraPos));
-    const fwd = pow(clamp(dot(view, env.keyDir), 0, 1), 6).mul(1.2);
+    const fwd = pow(clamp(dot(view, env.keyDir), 0, 1), 6).mul(0.7);
     // the key's visibility over the terrain along the card (a layer in a gorge's shade takes no sun)
     const slot = int(clamp(MI, 0, FX_VIS_SLOTS - 1)).toVar();
     const kv = vis3(fxVisU.mist.element(slot), MA.x.mul(0.5).add(0.5));
