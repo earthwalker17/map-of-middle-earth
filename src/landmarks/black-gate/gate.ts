@@ -15,11 +15,11 @@ import type { V2, V3 } from '../records.ts';
  *    per plate, rivet bosses along their edges, a whole-bay plated slab behind them for mid distance; the
  *    crest flares out in a continuous plated hood of dark metal (the film's hooked top), a few raked
  *    spikes on its lip.
- *  - the gate: two leaves 4.8 high (well above the wall) of dark metal (roughness 0.4: a sheen in the
- *    afternoon sun), each a heavy slab with a raised frame, three banded tiers of panels in relief, rows
- *    of great rivet bosses and forward spikes, under a spiked lintel and a crest of five iron fangs (the
- *    central one 4.8 high) between two gate towers 6.3 high in the Towers' language: battered stepped
- *    bases, vertical ribs, banded collars, spiked merlons and fire bowls.
+ *  - the gate (S4 W5): a giant door IN the wall — two leaves 3.3 high of dark metal (roughness 0.4: a
+ *    sheen in the afternoon sun), each a heavy slab with a raised frame, three banded tiers of panels in
+ *    relief, rows of great rivet bosses and forward spikes, under a spiked lintel and a row of five iron
+ *    fangs (the central one 1.4 high), between two flat battered iron piers flush with the wall plane,
+ *    0.6 over the wall's top, with fire bowls.
  *  - the Towers of the Teeth on their shelves high on the flanks: a stepped, battered octagonal plinth
  *    (its foot following the rock), eight buttress fins flaring onto it, a broad banded fin-bundle shaft
  *    (r 0.82, 5.4 high), a flared collar, a lantern and a crown of spikes round a central spire — ≈ 9.4
@@ -27,8 +27,9 @@ import type { V2, V3 } from '../records.ts';
  *  - crags: fractured basalt round the front of each Tower's knob (two stepped bands of kit cliff, low
  *    enough that their skylines read as broken ledges, not spires) and along the ridge flanks facing the
  *    pass, flat-topped broken blocks on the crests, scree fans at their feet — none on the Towers or the
- *    wall; a great stepped outcrop on the plain in front (the hero's repoussoir).
- *  - braziers (fire, night gate): the gate towers, the wall walk, the Towers' lanterns.
+ *    wall; a great butte on the plain in front (the hero's repoussoir: a massif stamp with a kit cliff
+ *    band round its crown and tumbled scree).
+ *  - braziers (fire, night gate): the gate piers, the wall walk, the Towers' lanterns.
  *
  * Iron parts use the 'iron' family (metallic, roughness 0.5: the specular ambient keeps them from going
  * black in shade) in the research palette #292b25…#3a3b35; masonry on 'weathered' / 'darkStone'.
@@ -61,7 +62,7 @@ const TALUS_RUN = 0.55;
 /** buttress spacing along the wall */
 const BAY = 2.0;
 /** gate: leaf height, half width of the opening, gate-tower centre */
-const LEAF_H = 4.8;
+const LEAF_H = 3.3;
 const GATE_HW = 1.5;
 const GT_X = 2.05;
 
@@ -380,7 +381,7 @@ function leaf(k: ProxyKit, x0: number, x1: number, zf: number, gy: number): void
   k.box('metal', w, LEAF_H, D, { at: [cx, gy, zf + D / 2], color: IRON_DARK });
   // the raised frame: stiles at both edges, four heavy bands (rails) across
   for (const e of [x0 + 0.08, x1 - 0.08]) k.box('metal', 0.16, LEAF_H - 0.02, 0.12, { at: [e, gy + 0.01, zf - 0.05], color: IRON, lod: 1 });
-  const rails = [0.12, 1.65, 3.15, LEAF_H - 0.25];
+  const rails = [0.12, LEAF_H * 0.34, LEAF_H * 0.66, LEAF_H - 0.25];
   for (const y of rails) k.box('metal', w - 0.04, 0.22, 0.16, { at: [cx, gy + y, zf - 0.07], color: IRON_HI, shade: 0.9, lod: 1 });
   // panels in relief between the rails (two per tier, the seam between them a dark recess)
   for (let r = 0; r + 1 < rails.length; r++) {
@@ -404,99 +405,47 @@ function leaf(k: ProxyKit, x0: number, x1: number, zf: number, gy: number): void
 }
 
 /**
- * A gate tower at x in the Towers of the Teeth's language: a prow-fronted shaft on a battered, stepped
- * base, vertical ribs up its faces and the prow, two banded collars, and a crown of spiked merlons round
- * its top; its foot at the ground. Returns its top (local y).
+ * A gate pier at x (S4 W5, C2 #5 — the S3 round gate towers made the gate a toy keep): a flat, battered
+ * rectangular buttress of iron flush with the wall plane, closing the gap between a gate leaf and the
+ * wall's end, its top 0.6 over the wall's (WALL_TOP + 0.6); two raised vertical straps up its front, a
+ * banded cap and a short row of fangs. Returns its top (local y).
  */
-function gateTower(k: ProxyKit, x: number): number {
-  const P: V2[] = [
-    [-0.55, 0.75],
-    [0.55, 0.75],
-    [0.55, -0.85],
-    [0, -1.25],
-    [-0.55, -0.85],
-  ];
-  const sec = (s: number): V2[] => P.map(([u, v]): V2 => [u * s, v * s]);
+function gatePier(k: ProxyKit, x: number): number {
+  const hw = 0.66;
   const g0 =
     minG(k, [
-      [x - 0.7, -1.5],
-      [x + 0.7, -1.5],
-      [x, 0.9],
+      [x - hw, -0.7],
+      [x + hw, -0.7],
+      [x, 0.6],
       [x, 0],
     ]) - SINK;
-  const H = 6.3 - g0;
-  // the shaft over a battered, stepped base
+  const top = WALL_TOP + 0.6;
+  const H = top - g0;
+  // (loft x = along the wall, z: front −0.62 … back 0.6 at the foot, the front battered back like the wall's)
   k.loft(
     'iron',
     [
-      { outline: sec(1.34), y: 0 },
-      { outline: sec(1.16), y: 0.75 },
-      { outline: sec(1.2), y: 0.82 },
-      { outline: sec(1.04), y: 1.35 },
-      { outline: sec(0.94), y: H * 0.72 },
-      { outline: sec(1.0), y: H * 0.78 },
-      { outline: sec(0.9), y: H },
+      { outline: rect(-hw, hw, -0.62, 0.6), y: 0 },
+      { outline: rect(-hw * 0.97, hw * 0.97, -0.46, 0.55), y: H * 0.7 },
+      { outline: rect(-hw * 0.95, hw * 0.95, -0.38, 0.5), y: H - 0.22 },
     ],
-    { at: [x, g0, 0], color: IRON },
+    { at: [x, g0, 0], color: IRON, shade: 0.95 },
   );
-  // vertical ribs: two up each side face and one up each front face of the prow, from the base's top
-  // to the upper collar (proud of the face, following its taper)
-  const rib = (a: V2, b: V2, f: number) => {
-    // a point f of the way a → b on the section, pushed out along the face normal
-    const nx = -(b[1] - a[1]);
-    const nz = b[0] - a[0];
-    const nl = Math.hypot(nx, nz) || 1;
-    const px = a[0] + (b[0] - a[0]) * f;
-    const pz = a[1] + (b[1] - a[1]) * f;
-    const tx = (b[0] - a[0]) / (Math.hypot(b[0] - a[0], b[1] - a[1]) || 1);
-    const tz = (b[1] - a[1]) / (Math.hypot(b[0] - a[0], b[1] - a[1]) || 1);
-    const ring = (s: number, out: number): V2[] => {
-      const cx = px * s + (nx / nl) * out;
-      const cz = pz * s + (nz / nl) * out;
-      return [
-        [cx - tx * 0.05 - (nx / nl) * 0.06, cz - tz * 0.05 - (nz / nl) * 0.06],
-        [cx + tx * 0.05 - (nx / nl) * 0.06, cz + tz * 0.05 - (nz / nl) * 0.06],
-        [cx + tx * 0.04, cz + tz * 0.04],
-        [cx - tx * 0.04, cz - tz * 0.04],
-      ];
-    };
+  // the cap: a banded slab a little proud all round
+  k.loft('iron', [{ outline: rect(-hw * 1.02, hw * 1.02, -0.44, 0.54), y: 0 }, { outline: rect(-hw * 1.02, hw * 1.02, -0.44, 0.54), y: 0.22 }], { at: [x, top - 0.22, 0], color: IRON_HI, shade: 0.9, lod: 0 });
+  // two raised straps up the front, following the batter
+  for (const u of [-0.32, 0.32])
     k.loft(
       'iron',
       [
-        { outline: ring(1.04, 0.09), y: 1.35 },
-        { outline: ring(0.94, 0.08), y: H * 0.72 },
+        { outline: rect(u - 0.07, u + 0.07, -0.69, -0.6), y: 0.3 },
+        { outline: rect(u - 0.07, u + 0.07, -0.53, -0.44), y: H * 0.7 },
+        { outline: rect(u - 0.07, u + 0.07, -0.45, -0.36), y: H - 0.24 },
       ],
       { at: [x, g0, 0], color: IRON_HI, shade: 0.92, lod: 0 },
     );
-  };
-  // (edges 1 and 4: the side faces; 2 and 3: the prow's front faces; outward normal (−dz, dx))
-  for (const [i, f] of [
-    [1, 0.3],
-    [1, 0.7],
-    [4, 0.3],
-    [4, 0.7],
-    [2, 0.5],
-    [3, 0.5],
-  ] as const)
-    rib(P[i], P[(i + 1) % P.length], f);
-  // two banded collars
-  for (const yb of [H * 0.36, H * 0.56]) k.loft('iron', [{ outline: sec(1.02), y: 0 }, { outline: sec(1.02), y: 0.14 }], { at: [x, g0 + yb, 0], color: IRON_HI, shade: 0.9, lod: 0 });
-  // the crown: spiked merlons round the top's outline
-  const top = g0 + H;
-  const ring = sec(0.9);
-  for (let i = 0; i < ring.length; i++) {
-    const a = ring[i];
-    const b = ring[(i + 1) % ring.length];
-    const n = Math.max(1, Math.round(Math.hypot(b[0] - a[0], b[1] - a[1]) / 0.4));
-    for (let j = 0; j < n; j++) {
-      const f = (j + 0.5) / n;
-      const mx = x + a[0] + (b[0] - a[0]) * f;
-      const mz = a[1] + (b[1] - a[1]) * f;
-      const yaw = (-Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI;
-      k.box('iron', 0.2, 0.26, 0.16, { at: [mx, top - 0.02, mz], rot: [0, yaw, 0], color: IRON, lod: 0 });
-      k.cone('iron', 0.06, 0.34 + 0.14 * k.r(), { at: [mx, top + 0.22, mz], seg: 4, rot: [0, 45, 0], color: SPIKE, lod: 0 });
-    }
-  }
+  // a short row of fangs along the cap's front edge
+  for (const u of [-0.42, 0, 0.42]) k.cone('iron', 0.08, 0.32 + 0.12 * k.r(), { at: [x + u, top - 0.02, -0.3], seg: 4, rot: [0, 45, 0], color: SPIKE, lod: 0 });
   return top;
 }
 
@@ -516,8 +465,7 @@ function buildGateway(k: ProxyKit): void {
     if (Math.abs(x) < 1.0) continue;
     k.cone('iron', 0.1, j % 2 ? 0.45 : 0.75, { at: [x, gy + LEAF_H + 0.66, zf - 0.02], seg: 4, rot: [0, 45, 0], color: SPIKE, lod: 0 });
   }
-  // the gate's crown: five great iron blades over the lintel (the tallest, central one 4.8 high),
-  // leaning a little apart — the Morannon's fang crest
+  // the gate's crown: five iron fangs over the lintel (the central one 1.4 high), leaning a little apart
   const blade = (x: number, h: number, w: number, lean: number) => {
     const sec = (hw: number, y: number, dx: number): { outline: V2[]; y: number } => ({
       outline: [
@@ -533,12 +481,13 @@ function buildGateway(k: ProxyKit): void {
       color: IRON,
     });
   };
-  blade(0, 4.8, 0.44, 0);
-  for (const s of [-1, 1]) blade(s * 0.85, 2.7, 0.3, s * 0.45);
-  for (const s of [-1, 1]) blade(s * 1.5, 1.6, 0.22, s * 0.4);
+  // (S4 W5, C2 #5: a row of fangs, not five horns over a keep)
+  blade(0, 1.4, 0.34, 0);
+  for (const s of [-1, 1]) blade(s * 0.85, 1.0, 0.26, s * 0.12);
+  for (const s of [-1, 1]) blade(s * 1.5, 0.7, 0.2, s * 0.1);
   for (const s of [-1, 1]) {
-    const top = gateTower(k, s * GT_X);
-    brazier(k, s * GT_X, top - 0.04, -0.1, 1.4);
+    const top = gatePier(k, s * GT_X);
+    brazier(k, s * GT_X, top - 0.04, -0.2, 1.2);
   }
 }
 
@@ -665,7 +614,7 @@ function basaltBlock(k: ProxyKit, x: number, z: number, h: number, r: number, le
         { outline: base.map(([u, v]): V2 => [u * 0.93 + lx * 0.6, v * 0.93 + lz * 0.6]), y: hh * 0.6 },
         { outline: base.map(([u, v]): V2 => [u * 0.86 + lx, v * 0.86 + lz]), y: hh },
       ],
-      { at: [cx, g - 0.1 * hh - SINK, cz], color: k.r() < 0.5 ? ROCK : ROCK2, shade: 0.85 + 0.3 * k.r(), lod: 0 },
+      { at: [cx, g - 0.3 * hh - SINK, cz], color: k.r() < 0.5 ? ROCK : ROCK2, shade: 0.85 + 0.3 * k.r(), lod: 0 },
     );
   };
   piece(x, z, h, r);
@@ -681,7 +630,9 @@ function scree(k: ProxyKit, x: number, z: number, dir: number, spread: number, n
     const bx = x + Math.cos(a) * d;
     const bz = z + Math.sin(a) * d;
     if (!keep(bx, bz)) continue;
-    k.rock('weathered', 0.08 + 0.12 * k.r(), { at: [bx, 0, bz], seat: true, color: ROCK2, lump: 0.6, squash: 0.5, detail: 0, lod: 0 });
+    // (S4 W5: lumpy, rounder tumbled blocks of mixed sizes 0.05–0.3 km — never egg pebbles)
+    const u = k.r();
+    k.rock('weathered', 0.05 + 0.25 * u * u, { at: [bx, 0, bz], seat: true, color: ROCK2, lump: 0.9, squash: 0.8, detail: 1, lod: 0 });
   }
 }
 
@@ -726,7 +677,7 @@ function crags(k: ProxyKit, ridge: V2[], side: number): void {
     const b = path[path.length - 1];
     const rx = -(b[1] - a[1]);
     if (rx * -side < 0) path = [...path].reverse();
-    k.cliff('weathered', path, path.map(() => f.h * (0.85 + 0.3 * k.r())), { color: ROCK, rough: 0.7, strata: 0.8, depth: 1.0, soft: 0.25, overhang: 0.12, taper: 0.3 });
+    k.cliff('weathered', path, path.map(() => f.h * (0.85 + 0.3 * k.r())), { color: ROCK, rough: 0.7, strata: 0.8, depth: 1.0, soft: 0.55, overhang: 0.12, taper: 0.3 });
     // scree fans at the foot on the pass side
     for (let i = 0; i < path.length; i += 2) scree(k, path[i][0] + side * -0.3, path[i][1], side < 0 ? 0 : Math.PI, 0.7, 3, keep);
   }
@@ -751,6 +702,7 @@ function crags(k: ProxyKit, ridge: V2[], side: number): void {
       const z = best[1] + Math.sin(a) * rr;
       if (!keep(x, z)) continue;
       const h = 0.35 + 0.35 * k.r();
+      // (S4 W5: sunk a third of their height — upright prisms standing on the ground read as dark cubes)
       basaltBlock(k, x, z, h, 0.22 + 0.12 * k.r(), 0.06 + 0.06 * k.r(), Math.atan2(-side * d[0], side * d[1]) + (k.r() - 0.5));
     }
   }
@@ -784,7 +736,8 @@ function knobCrag(k: ProxyKit, c: V2, side: number): void {
     // half (or 0.6) of the fall from the shelf to the band's foot, capped: the kit's skyline reaches at most
     // ≈ 1.3 × this, never above the shelf
     const hs = pts.map(([x, z]) => Math.min(cap, Math.max(0.5, f * (shelf - k.ground(x, z)))));
-    k.cliff('weathered', pts, hs, { color: ROCK, rough: 0.7, strata: 0.8, depth: 1.2, soft: 0.2, overhang: 0.1, taper: 0.4 });
+    // (S4 W5: softer facet normals — at 0.2 the knob read as a low-poly crystal cluster beside the east Tower)
+    k.cliff('weathered', pts, hs, { color: ROCK, rough: 0.6, strata: 0.8, depth: 1.2, soft: 0.6, overhang: 0.1, taper: 0.4 });
   }
   // scree fans at its foot on the pass and plain sides
   for (let i = 0; i < 16; i++) {
@@ -793,19 +746,23 @@ function knobCrag(k: ProxyKit, c: V2, side: number): void {
     const x = c[0] + Math.sin(b) * r;
     const z = c[1] - Math.cos(b) * r;
     if (z > -0.6 && Math.abs(x) < 8.5) continue;
-    k.rock('weathered', 0.1 + 0.16 * k.r(), { at: [x, 0, z], seat: true, color: ROCK2, lump: 0.6, squash: 0.55, detail: 1, lod: 0 });
+    k.rock('weathered', 0.1 + 0.16 * k.r(), { at: [x, 0, z], seat: true, color: ROCK2, lump: 0.9, squash: 0.8, detail: 1, lod: 0 });
   }
 }
 
+/** the butte on the Dagorlad in the hero's right foreground (local; its body is a massif stamp in index.ts) */
+export const OUTCROP: V2 = [-0.5, -18];
+
 /**
- * A great outcrop of fractured basalt on the Dagorlad in the right foreground of the hero (14 km out in
- * front of the gate, a little west of its axis): a stepped butte — a lower broken face 1.5 high round its
- * front, an upper one set back on it, a lower band round its back — strata and overhanging brows, flat-
- * topped blocks round it and a scree fan at its foot toward the road: the dark repoussoir under the west
- * Tower. Faces look toward local bearing ≈ 35° (the hero camera); bearings: 0 = −z (the plain), 90 = +x.
+ * A great butte of fractured basalt on the Dagorlad in the right foreground of the hero (S4 W5, C2 #9: the
+ * S3 kit pile ringed by prism blocks read as toy rubble): its body is a flat-topped massif stamp (index.ts,
+ * r 2.4, 2.4 above the plain, rough rock), so the terrain gives it real faces; the kit keeps only the upper
+ * cliff band round its crown (twice the S3 size, strata and overhanging brows) and a fan of tumbled scree
+ * of mixed sizes toward the road. Faces look toward local bearing ≈ 35° (the hero camera); bearings: 0 =
+ * −z (the plain), 90 = +x.
  */
 function outcrop(k: ProxyKit): void {
-  const c: V2 = [-1.4, -14.0];
+  const c = OUTCROP;
   /** an arc round c from bearing b0 to b1 at radius r, walked with bearings decreasing (face outward) */
   const arcPts = (b0: number, b1: number, r: number, n: number, wob: number): V2[] => {
     const pts: V2[] = [];
@@ -816,21 +773,11 @@ function outcrop(k: ProxyKit): void {
     }
     return pts;
   };
-  const g = k.ground(c[0], c[1]);
-  const front = arcPts(-60, 130, 1.3, 16, 0.15);
-  k.cliff('weathered', front, front.map((_, i) => 1.15 + 0.35 * Math.sin((i / 16) * Math.PI)), { color: ROCK, rough: 0.65, strata: 0.9, depth: 1.8, soft: 0.25, overhang: 0.14, taper: 0.45 });
-  const upper = arcPts(-30, 100, 0.75, 10, 0.1);
-  k.cliff('weathered', upper, upper.map((_, i) => 1.0 + 0.3 * Math.sin((i / 10) * Math.PI)), { at: [0, g + 1.05, 0], followGround: false, color: ROCK2, rough: 0.6, strata: 0.9, depth: 1.2, soft: 0.25, overhang: 0.1, taper: 0.35, lod: 0 });
-  const back = arcPts(140, 300, 1.1, 10, 0.12);
-  k.cliff('weathered', back, 0.9, { color: ROCK2, rough: 0.6, strata: 0.6, depth: 1.4, soft: 0.25, taper: 0.3, lod: 0 });
-  for (let i = 0; i < 7; i++) {
-    const a = (i / 7) * TAU + k.r();
-    const r = 1.6 + 0.4 * k.r();
-    basaltBlock(k, c[0] + Math.cos(a) * r, c[1] + Math.sin(a) * r, 0.25 + 0.3 * k.r(), 0.2 + 0.1 * k.r(), 0.05, a);
-  }
-  // scree toward the camera (bearing 35°: x + sin, z − cos)
+  const upper = arcPts(-40, 120, 1.55, 14, 0.2);
+  k.cliff('weathered', upper, upper.map((_, i) => 1.3 + 0.5 * Math.sin((i / 14) * Math.PI)), { color: ROCK2, rough: 0.7, strata: 0.9, depth: 1.6, soft: 0.5, overhang: 0.1, taper: 0.7, lod: 0 });
+  // tumbled scree toward the camera (bearing 35°: x + sin, z − cos), off the butte's foot
   const sb = (35 * Math.PI) / 180;
-  scree(k, c[0] + Math.sin(sb) * 1.5, c[1] - Math.cos(sb) * 1.5, Math.atan2(-Math.cos(sb), Math.sin(sb)), 1.0, 12, () => true);
+  scree(k, c[0] + Math.sin(sb) * 2.6, c[1] - Math.cos(sb) * 2.6, Math.atan2(-Math.cos(sb), Math.sin(sb)), 1.6, 16, () => true);
 }
 
 export function buildGate(k: ProxyKit): void {

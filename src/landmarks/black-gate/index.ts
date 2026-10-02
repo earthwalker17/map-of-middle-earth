@@ -1,6 +1,6 @@
 import type { LocalStamp } from '../types.ts';
 import { defineLandmark } from '../types.ts';
-import { buildGate, EAST_RIDGE, TOWERS, WEST_RIDGE } from './gate.ts';
+import { buildGate, EAST_RIDGE, OUTCROP, TOWERS, WEST_RIDGE } from './gate.ts';
 
 /**
  * The Morannon, the Black Gate (research §6): a single iron rampart closing the pass of Cirith Gorgor
@@ -44,24 +44,50 @@ const STAMPS: LocalStamp[] = [
     [-2.5, 30, 5.5, 6.5, -3.4],
     [-3.5, 40, 6, 7, -2.4],
   ] as const).map(([x, z, radius, falloff, height]): LocalStamp => ({ kind: 'flatten', at: [x, z], radius, falloff, height, lowerOnly: true })),
+  // (S4 W5, C2 #5: massive round-shouldered flanks looming ≈ 1.5× the Towers' tops, as in the RotK plate —
+  // at 10 above the floor the S3 crests stood lower than the Towers, which read as lighthouses on soft
+  // cones; a 'sharp' profile at these heights made witch-hat spires)
   {
     kind: 'ridge',
     path: WEST_RIDGE,
-    height: [5.5, 10.5, 11.5, 11, 10, 8],
+    height: [9, 20, 24, 24, 20, 14],
     halfWidth: 5,
-    profile: 'sharp',
-    rough: { amp: 1.4, scaleKm: 2.6, ridged: true },
+    profile: 'round',
+    rough: { amp: 2.2, scaleKm: 1.6, ridged: true },
     surface: 'rock',
   },
   {
     kind: 'ridge',
     path: EAST_RIDGE,
-    height: [4.5, 8.5, 9, 8.5, 7, 5],
+    height: [8, 18, 21, 20, 16, 11],
     halfWidth: 5,
-    profile: 'sharp',
-    rough: { amp: 1.4, scaleKm: 2.6, ridged: true },
+    profile: 'round',
+    rough: { amp: 2.2, scaleKm: 1.6, ridged: true },
     surface: 'rock',
   },
+  // the Ephel Dúath's northern arm, a broken rock spur running out north-west from the west ridge's nose
+  // over the green foothill dome beside the pass: in black-gate-wide it closes the right of the frame (the
+  // S3 frame showed the dome and a pale flat strip of the far horizon through the gap)
+  {
+    kind: 'ridge',
+    path: [
+      [-12.5, -4],
+      [-19, -7.5],
+      [-27, -11],
+      [-35, -15],
+      [-44, -19],
+      [-53, -22],
+    ],
+    height: [7, 8, 9, 9, 7, 0],
+    halfWidth: 6,
+    profile: 'round',
+    rough: { amp: 2.0, scaleKm: 1.6, ridged: true },
+    surface: 'rock',
+  },
+  // the butte on the Dagorlad in the hero's right foreground (gate.ts OUTCROP: the kit keeps only its upper
+  // cliff band): a flat-topped body 2.4 above the plain (≈ −8.6 here, relative to the base ground at the
+  // origin), steep broken sides
+  { kind: 'massif', at: OUTCROP, radius: 2.4, summit: -6.2, base: -8.8, exponent: 0.6, dome: 2, spurs: [], rough: { amp: 0.7, scaleKm: 1.6, ridged: true }, surface: 'rock' },
   // 3. shelves for the Towers of the Teeth on the flanks, 6.2 above the floor (wide enough for the
   //    Towers' stepped plinths; their foot follows the rest)
   ...TOWERS.map((at) => ({ kind: 'flatten' as const, at, radius: 1.4, falloff: 1.0, height: 0, surface: 'rock' as const })),
@@ -75,11 +101,11 @@ export default defineLandmark({
   headingDeg: HEADING,
   stamps: STAMPS,
   proxy: (k) => buildGate(k),
-  // smoke of Udûn's forges rising behind the wall (local +z = behind, into Mordor), drifting downwind
+  // smoke of Udûn's forges rising behind the wall (local +z = behind, into Mordor), drifting downwind (S4 W5:
+  // the third, far emitter hung as a lone black cumulus over the west ridge in black-gate-wide — removed)
   emitters: [
     { preset: 'smoke', at: [-4, 0.8, 6], rate: 0.3, scale: 0.9 },
     { preset: 'smoke', at: [3, 1.2, 9], rate: 0.28, scale: 1.1 },
-    { preset: 'smoke', at: [-2, 2.0, 18], rate: 0.3, scale: 1.4 },
   ],
   lookOverride: 'dagorlad',
   // no trees in the pass, on the ridges or on the Dagorlad approach in any hero framing
