@@ -1,27 +1,30 @@
 import { DynamicDrawUsage, Float32BufferAttribute, InstancedBufferAttribute, InstancedBufferGeometry, Mesh, Uint16BufferAttribute, Vector4, type BufferGeometry, type DataTexture, type NodeMaterial } from 'three/webgpu';
 import type { FrameContext, InitContext, SceneState, System } from '../core/types.ts';
 import { rand } from '../core/rng.ts';
-import type { EmitterRecord, FallRecord, LightGate, LightKind, LightRecord, V3 } from '../landmarks/records.ts';
+import type { EmitterRecord, FallRecord, LightGate, LightKind, LightRecord, PoolRecord, V3 } from '../landmarks/records.ts';
 import type { World } from '../world/World.ts';
 import { atmosphere, type DeckSample } from '../materials/atmosphere.ts';
 import { env } from '../materials/environment.ts';
 import { GATE, gateCode, writeEvents } from '../materials/gates.ts';
 import { spillArrays, spillU } from '../emission/spill.ts';
-import { BEAM, EMBERS, SPARKS } from './presets.ts';
+import { BEAM, EMBERS, MAX_PUFFS, MIST, SPARKS } from './presets.ts';
+
+export { MAX_PUFFS };
 import { derivedSeed, evalPuff, fxWind, makePuffEmitter, PO, PS, puffBounds, puffExtent, type FxWind, type PuffEmitter } from './particles.ts';
 import { buildBeams, buildFalls, buildMist, type BeamDecl, type MistCard } from './geometry.ts';
 import { createBeamMaterial, createFallsMaterial, createMistMaterial, createPuffMaterial } from './materials.ts';
 import { createFxNoise, createPuffAtlas } from './textures.ts';
 
-/** instance capacity of the puff draw */
-export const MAX_PUFFS = 4096;
-/** render order of the puffs seen from under the ash deck (after it: the deck is behind them) / from above it */
-const ORDER_UNDER = 40;
+/**
+ * render order of the puffs seen from under the ash deck (after it: the deck is behind them; and after the
+ * emission sprites at 50, so a plume veils the crater's glow and the lights behind it) / from above it
+ */
+const ORDER_UNDER = 51;
 const ORDER_ABOVE = 29;
 /** gain on the emission spill the puffs take (× albedo / π, like the terrain), and its floor in the shade */
-const SPILL_PUFF = 2.2;
+const SPILL_PUFF = 1.0;
 /** share of the spill a plume keeps above its lower third */
-const SPILL_TOP = 0.12;
+const SPILL_TOP = 0.2;
 /** sparks / embers: dynamic light records handed to the EmissionSystem (setDynamic) per frame */
 const MAX_SPARKS = 160;
 
@@ -30,6 +33,19 @@ export interface EffectsInput {
   emitters: EmitterRecord[];
   falls: FallRecord[];
   lights: LightRecord[];
+  /** landmark pools (the plunge foam of a fall into one floats on its surface) */
+  pools?: PoolRecord[];
+}
+
+/** point in a closed XZ ring (even-odd) */
+function inRing(r: readonly (readonly [number, number])[], x: number, z: number): boolean {
+  let inside = false;
+  for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+    const [xi, zi] = r[i];
+    const [xj, zj] = r[j];
+    if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside;
+  }
+  return inside;
 }
 
 /** a source of additive points (crater sparks, beacon flames) realized as EmissionSystem dynamic lights */
@@ -149,14 +165,23 @@ export class EffectsSystem implements System {
       const ev = l.event ?? 'beacons';
       const s = derivedSeed(l.seed, i);
       deckAt(l.p[0], l.p[2]);
-      this.puffEmitters.push(makePuffEmitter({ landmark: l.landmark, preset: 'smoke', p: [l.p[0], l.p[1] + 0.04, l.p[2]], rate: 0.8, scale: 0.32, color: [0.07, 0.065, 0.06], slot: slotOf(ev), seed: s, cover: deck.cover, deckY: deck.height }));
+      this.puffEmitters.push(makePuffEmitter({ landmark: l.landmark, preset: 'smoke', p: [l.p[0], l.p[1] + 0.04, l.p[2]], rate: 0.8, scale: 0.32, color: [0.13, 0.12, 0.11], slot: slotOf(ev), seed: s, cover: deck.cover, deckY: deck.height }));
       this.sparkSources.push({ landmark: l.landmark, mode: 'embers', p: l.p, scale: 1, count: EMBERS.flames + EMBERS.sparks, slot: slotOf(ev), seed: s ^ 0x2545f491, kind: 'beacon', gate: 'event', event: ev, color: [1, 0.55, 0.2] });
     }
     // ---- falls: ribbons + foam (static), spray (puffs)
-    const falls = buildFalls(this.input.falls, heightAt);
+    // the water over a fall's foot (landmark pools, lakes): the plunge foam floats on it
+    const pools = this.input.pools ?? [];
+    const waterAt = (x: number, z: number): number | null => {
+      let lv: number | null = this.world.waterLevelAt(x, z);
+      for (const p of pools) if (p.level > (lv ?? -1e9) && inRing(p.ring, x, z)) lv = p.level;
+      return lv;
+    };
+    const falls = buildFalls(this.input.falls, heightAt, waterAt);
     for (const sp of falls.sprays) {
       deckAt(sp.p[0], sp.p[2]);
       this.puffEmitters.push(makePuffEmitter({ landmark: sp.landmark, preset: 'spray', p: sp.p, out: sp.out, rate: 1, scale: sp.scale, slot: -1, seed: sp.seed, cover: deck.cover, deckY: deck.height }));
+      // a wide fall's mist column (Rauros' "smoke"): a tall, pale, dissolving steam plume over the foot
+      if (sp.column > 0) this.puffEmitters.push(makePuffEmitter({ landmark: sp.landmark, preset: 'steam', p: sp.p, rate: 0.55, scale: sp.column, color: [0.72, 0.74, 0.77], slot: -1, seed: derivedSeed(sp.seed, 7), cover: deck.cover, deckY: deck.height }));
     }
     this.fallRefs = this.input.falls.map((f) => ({ p: f.path[f.path.length - 1], w: f.width }));
     this.stats.emitters = this.input.emitters.length;
@@ -171,7 +196,7 @@ export class EffectsSystem implements System {
     const atlas = createPuffAtlas(seed);
     const noise = createFxNoise(seed + 1);
     this.textures.push(atlas, noise);
-    this.puffMesh = this.buildPuffMesh(atlas, detail);
+    this.puffMesh = this.buildPuffMesh(atlas, noise, detail);
     ctx.scene.add(this.puffMesh);
     if (falls.geometry) {
       const m = createFallsMaterial(noise, { detail });
@@ -205,7 +230,7 @@ export class EffectsSystem implements System {
     return mesh;
   }
 
-  private buildPuffMesh(atlas: DataTexture, detail: boolean): Mesh {
+  private buildPuffMesh(atlas: DataTexture, noise: DataTexture, detail: boolean): Mesh {
     const g = new InstancedBufferGeometry();
     g.setAttribute('position', new Float32BufferAttribute([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0], 3));
     g.setIndex(new Uint16BufferAttribute([0, 1, 2, 0, 2, 3], 1));
@@ -223,7 +248,7 @@ export class EffectsSystem implements System {
     this.puffGeo = g;
     this.puffAttrs = attrs;
     this.geometries.push(g);
-    const m = createPuffMaterial(atlas, { detail });
+    const m = createPuffMaterial(atlas, noise, { detail });
     this.materials.push(m);
     const mesh = new Mesh(g, m);
     mesh.name = 'fx-puffs';
@@ -283,7 +308,7 @@ export class EffectsSystem implements System {
     if (this.beamMesh) this.beamMesh.visible = this.beamSlots.some((s) => gateOf(s) > 0);
     // ---- falls / mist: hidden when every one is below a pixel or two (overviews)
     if (this.fallsMesh) this.fallsMesh.visible = this.fallRefs.some((f) => (f.w * pxPerKm) / camDist(f.p[0], f.p[1], f.p[2]) > 0.8);
-    if (this.mistMesh) this.mistMesh.visible = this.mistCards.some((c) => (2 * c.halfWidth * pxPerKm) / camDist(c.at[0], c.at[1], c.at[2]) > 30);
+    if (this.mistMesh) this.mistMesh.visible = this.mistCards.some((c) => (2 * c.halfWidth * pxPerKm) / camDist(c.at[0], c.at[1], c.at[2]) > MIST.lodPx[0]);
 
     this.evaluatePuffs(frame, gateOf, pxPerKm, quality.density);
   }
@@ -395,7 +420,7 @@ export class EffectsSystem implements System {
       const side = ll > 1e-3 ? (lx * kx + lz * kz) / Math.max(ll, 1) : 0;
       C[q + 3] = (1 - e.cover * deckShadow) * (0.62 + 0.38 * (0.5 + 0.5 * side));
       D[q] = S[o + PO.rot];
-      D[q + 1] = S[o + PO.frame];
+      D[q + 1] = S[o + PO.frame] + 16 * (e.P.soft ?? 0);
       D[q + 2] = S[o + PO.sky];
       D[q + 3] = sp[3];
     }

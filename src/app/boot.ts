@@ -52,7 +52,7 @@ async function buildWorld(engine: Engine, quality: QualityTierId, shots: ShotSpe
   const landmarks = new LandmarkSystem(world, built);
   const emission = new EmissionSystem(world, built.flatMap((b) => b.lights));
   // S4 W3-E: plumes, falls, mist, the beam; crater sparks and beacon flames ride on the emission sprites
-  const effects = new EffectsSystem(world, { emitters: landmarkEmitters(world, LANDMARKS), falls: landmarkFalls(world, LANDMARKS), lights: emission.records });
+  const effects = new EffectsSystem(world, { emitters: landmarkEmitters(world, LANDMARKS), falls: landmarkFalls(world, LANDMARKS), lights: emission.records, pools: landmarkPools(world, LANDMARKS) });
   emission.setDynamic((s) => effects.lights(s));
   for (const s of [environment, terrain, water, vegetation, diorama, landmarks, emission, effects]) {
     await engine.register(s);

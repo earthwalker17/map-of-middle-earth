@@ -124,6 +124,14 @@ export default defineLandmark({
   // the two hollies flanking the doors (the Elves' tokens)
   trees: [...holly(HOLLY[0], 1, 20), ...holly(HOLLY[1], -1, 200)],
   waterFeatures: [{ kind: 'pool', ring: POOL, level: POOL_LEVEL }],
+  // mist cards down the Sirannon's dale below the dam (local −z = west), each a sheet a few hundred metres
+  // over the falling floor: below the dam (≈ −1.3 → −3.6), the stair (−3.6 → −9) and the lower dale
+  // (≈ −8.3…−9.6); they fade where the ground rises to them
+  emitters: [
+    { preset: 'mist', at: [-2.2, -0.95, -4.6], to: [-5.0, -3.2, -8.6], rate: 0.8, scale: 0.9, color: 0xd9dfe7 },
+    { preset: 'mist', at: [-5.2, -3.3, -9.0], to: [-4.6, -8.4, -13.4], rate: 0.8, scale: 1.0, color: 0xd9dfe7 },
+    { preset: 'mist', at: [-1.0, -8.0, -12.5], to: [-4.0, -8.9, -16.5], rate: 0.9, scale: 2.0, color: 0xd9dfe7 },
+  ],
   lights: ITHILDIN_LIGHTS,
   proxy: (k) => {
     // ---- the Doors of Durin: a dressed patch in the plane of the terrain's rock face, the relief and the

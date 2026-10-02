@@ -60,6 +60,14 @@ export default defineLandmark({
   treeCaps: [{ at: [0.5, 0], r: 4.0, maxHeightKm: 0.28 }],
   // ribbon falls for S4 (EffectsSystem); the rock under them is darker (wet) today (halls.ts)
   waterFeatures: FALLS.map((f) => ({ kind: 'waterfall' as const, path: f.path, width: f.width })),
+  // mist cards (EffectsSystem): a layer along the gorge floor below the halls (the floor falls from ≈ +0.6
+  // at x 3.3 to −0.5 at x −3.3; the ledges stand at 1.0–1.7), a thinner one up the valley, and one in the
+  // Bruinen's gorge under the stream's falls; the cards fade where the ground rises to them
+  emitters: [
+    { preset: 'mist', at: [3.6, 0.85, -1.15], to: [-3.6, -0.15, 0.85], rate: 0.7, scale: 0.75, color: 0xe8ebee },
+    { preset: 'mist', at: [7.5, 1.55, -1.75], to: [3.9, 0.95, -1.2], rate: 0.5, scale: 0.6, color: 0xe8ebee },
+    { preset: 'mist', at: [-5.6, -2.55, 1.4], to: [-8.6, -2.9, 2.0], rate: 0.7, scale: 0.9, color: 0xe8ebee },
+  ],
   proxy: (k) => buildRivendell(k),
   annotation: { title: 'Rivendell', subtitle: 'Imladris, the Last Homely House', blurb: 'The hidden refuge of Elrond Half-elven, where the Fellowship of the Ring was formed.' },
   bookmarks: [

@@ -1,6 +1,6 @@
 import { hash32, rand, valueNoise } from '../core/rng.ts';
 import type { V3 } from '../landmarks/records.ts';
-import { COUNT_EXP, DECK_CEILING_COVER, DECK_MARGIN, LIFE_EXP, PUFF, type PuffPreset } from './presets.ts';
+import { CAP_REACH, COUNT_EXP, DECK_CEILING_COVER, DECK_MARGIN, LIFE_EXP, PUFF, WISP_SCALE, type PuffKind, type PuffPreset } from './presets.ts';
 
 /**
  * Stateless particles (S4 W3-E) — the CPU side of the billboard draw, pure and usable in Node.
@@ -15,7 +15,7 @@ import { COUNT_EXP, DECK_CEILING_COVER, DECK_MARGIN, LIFE_EXP, PUFF, type PuffPr
 /** a puff emitter of the billboard draw, in world space (built once by the EffectsSystem) */
 export interface PuffEmitter {
   landmark: string;
-  preset: 'smoke' | 'ash' | 'steam' | 'spray';
+  preset: PuffKind;
   P: PuffPreset;
   /** world source (smoke / steam: the vent; ash: the plume it leaves; spray: the plunge point) */
   p: V3;
@@ -98,13 +98,18 @@ export function makePuffEmitter(o: {
   cover: number;
   deckY: number;
 }): PuffEmitter {
-  const P = PUFF[o.preset];
   const s = Math.max(1e-3, o.scale);
+  // a small declared smoke (a chimney) is a thin wisp, not a scaled-down column
+  const kind: PuffKind = o.preset === 'smoke' && s < WISP_SCALE ? 'wisp' : o.preset;
+  const P = PUFF[kind];
+  const rs = s / (P.refScale ?? 1);
   const ceiling = o.deckY - DECK_MARGIN - o.p[1];
-  // under an ash deck a plume always reaches the pall (it rises to the inversion and spreads under it)
-  const capped = P.family === 'plume' && o.cover > DECK_CEILING_COVER && ceiling > 0.2;
-  const H = capped ? ceiling : P.rise * s;
-  const count = Math.max(P.minCount, Math.round(P.count * Math.max(0.05, o.rate) * Math.pow(s, COUNT_EXP)));
+  // under an ash deck a strong plume reaches the pall (it rises to the inversion and spreads under it); a
+  // small one (a forge, a beacon) rises its own height and dissolves below it
+  const free = P.rise * s;
+  const capped = P.family === 'plume' && o.cover > DECK_CEILING_COVER && ceiling > 0.2 && ceiling < free * CAP_REACH;
+  const H = capped ? ceiling : Math.min(free, o.cover > DECK_CEILING_COVER ? Math.max(0.2, ceiling) : free);
+  const count = Math.max(P.minCount, Math.round(P.count * Math.max(0.05, o.rate) * Math.pow(rs, COUNT_EXP)));
   const consts = new Float32Array(count * NC);
   for (let k = 0; k < count; k++) {
     const c = k * NC;
@@ -120,7 +125,7 @@ export function makePuffEmitter(o: {
   }
   return {
     landmark: o.landmark,
-    preset: o.preset,
+    preset: kind,
     P,
     p: o.p,
     ...(o.to ? { to: o.to } : {}),
@@ -135,10 +140,10 @@ export function makePuffEmitter(o: {
     capped,
     H,
     r0: P.r0 * s,
-    rTop: P.r1 * s * (capped ? 0.6 : 1),
+    rTop: P.r1 * s,
     rU: P.r1 * s * P.spread,
     count,
-    life: P.life * Math.pow(s, LIFE_EXP),
+    life: P.life * Math.pow(rs, LIFE_EXP),
     consts,
   };
 }
@@ -216,8 +221,8 @@ export function evalPuff(e: PuffEmitter, k: number, tFx: number, w: FxWind, out:
     let umb = 0;
     if (a < aTop) {
       const t = a / aTop;
-      hf = 1 - Math.pow(1 - t, 1.7);
-      R = e.r0 + (e.rTop - e.r0) * Math.pow(hf, 0.8);
+      hf = 1 - Math.pow(1 - t, 1.4);
+      R = e.r0 + (e.rTop - e.r0) * Math.pow(hf, 0.6);
       drift = dTop * Math.pow(hf, e.capped ? 1.6 : 1.3);
       y = e.p[1] + e.H * hf + vj * R * 0.6 + ty * R * 0.4;
     } else {
@@ -282,8 +287,10 @@ export function evalPuff(e: PuffEmitter, k: number, tFx: number, w: FxWind, out:
     size = s * (P.size0 + (P.size1 - P.size0) * Math.pow(a, 0.6)) * c[q + 9];
     alpha = smooth(0, 0.08, a) * Math.pow(1 - a, 1.4) * (1 - P.dissolve * hf * 0.5);
   }
-  // nothing reaches the deck: the puff's top stays under it (the pall carries on, no plane intersection)
-  if (e.cover > DECK_CEILING_COVER) alpha *= Math.min(1, Math.max(0, (e.deckY - 0.3 - (y + 0.55 * size)) / (0.45 * size)));
+  // puffs fade out as their centres near the deck (the deck writes no depth: a billboard reaching past its
+  // plane is simply drawn over it from below — no plane intersection; the umbrella stays a thin veil that
+  // carries on into the pall)
+  if (e.cover > DECK_CEILING_COVER) alpha *= Math.min(1, Math.max(0, (e.deckY - 0.2 - y) / (0.35 * size)));
   alpha *= P.opacity * c[q + 10];
   if (!(alpha > 1e-3)) return false;
   // tone variation between puffs (some darker, some catching more light): billows, not a smooth smudge

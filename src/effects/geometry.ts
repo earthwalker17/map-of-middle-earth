@@ -19,6 +19,8 @@ export interface FallSpray {
   /** spray size, km */
   scale: number;
   seed: number;
+  /** a wide fall (Rauros) also raises a tall mist column over its foot: its scale (0 = none) */
+  column: number;
 }
 
 /** run / drop of a two-point fall at and above which it is draped on the ground (a ribbon down a slope) */
@@ -52,7 +54,7 @@ function resample(path: V3[], n: number): V3[] {
  * each fall's path, kept clear of the ground (a fall that meets its slope slides down it as a cascade), and
  * a plunge-foam disc at the foot. Returns the geometry (null without falls) and the spray sources.
  */
-export function buildFalls(falls: FallRecord[], heightAt: HeightFn): { geometry: BufferGeometry | null; sprays: FallSpray[] } {
+export function buildFalls(falls: FallRecord[], heightAt: HeightFn, waterAt: (x: number, z: number) => number | null = () => null): { geometry: BufferGeometry | null; sprays: FallSpray[] } {
   const pos: number[] = [];
   const nrm: number[] = [];
   const fa: number[] = [];
@@ -159,7 +161,8 @@ export function buildFalls(falls: FallRecord[], heightAt: HeightFn): { geometry:
     // plunge foam: a disc of rings at the foot, on the water / ground there
     const foot = pts[S];
     // (the authored foot is the plunge pool's surface; a draped fall's foot is on the ground)
-    const fy = Math.max(drape ? foot[1] : footIn[1], heightAt(foot[0], foot[2])) + 0.006;
+    // (a landmark pool or a lake over the foot: the foam floats on its surface)
+    const fy = Math.max(drape ? foot[1] : footIn[1], heightAt(foot[0], foot[2]), waterAt(foot[0], foot[2]) ?? -1e9) + 0.006;
     const R = FALLS.foam * (0.6 * width + 0.045 * drop);
     const RING = FALLS.foamRings;
     const SEC = FALLS.foamSectors;
@@ -182,7 +185,7 @@ export function buildFalls(falls: FallRecord[], heightAt: HeightFn): { geometry:
         const v0 = fBase + r * (SEC + 1) + s;
         idx.push(v0, v0 + SEC + 1, v0 + 1, v0 + 1, v0 + SEC + 1, v0 + SEC + 2);
       }
-    sprays.push({ landmark: f.landmark, p: [foot[0], fy + 0.01, foot[2]], out: [dx, dz], scale: Math.max(0.8 * width, 0.1 * drop), seed: (f.seed ^ (0x9e3779b9 + fi)) >>> 0 });
+    sprays.push({ landmark: f.landmark, p: [foot[0], fy + 0.01, foot[2]], out: [dx, dz], scale: Math.max(0.8 * width, 0.1 * drop), seed: (f.seed ^ (0x9e3779b9 + fi)) >>> 0, column: width >= FALLS.columnWidth ? FALLS.column * width : 0 });
   }
   if (!idx.length) return { geometry: null, sprays };
   const g = new BufferGeometry();

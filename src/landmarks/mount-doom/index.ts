@@ -98,6 +98,10 @@ export default defineLandmark({
     { preset: 'smoke', at: [0, 1, 0], rate: 1, scale: 3 },
     { preset: 'ash', at: [0, 4, 0], rate: 0.6, scale: 6 },
     { preset: 'sparks', at: [0, 0.5, 0], rate: 0.4 },
+    // low ash sheets drifting over the Gorgoroth plain (≈ 2 km over the floor at rel −16) south of the cone,
+    // across the hero cameras' foreground
+    { preset: 'ash', at: [-12, -14, 27], to: [14, -13.6, 31], rate: 1.5, scale: 5, color: 0xa8a29a },
+    { preset: 'ash', at: [-8, -13.4, 17], to: [18, -13, 20], rate: 1.2, scale: 5, color: 0xa8a29a },
   ],
   lookOverride: 'mordor',
   vegetationExclusion: 20,

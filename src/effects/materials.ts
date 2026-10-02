@@ -6,7 +6,7 @@ import { gateNode } from '../materials/gates.ts';
 import { spillIrradiance } from '../emission/spill.ts';
 import type { WorldSpec } from '../world/WorldSpec.ts';
 import { ATLAS } from './textures.ts';
-import { FALLS } from './presets.ts';
+import { FALLS, MIST } from './presets.ts';
 
 type N = TslNode;
 const { Fn, abs, attribute, cameraProjectionMatrix, cameraViewMatrix, clamp, cos, cross, dot, exp, float, floor, length, max, min, mix, mod, normalize, pow, select, sign, sin, smoothstep, sqrt, texture, varying, vec2, vec3, vec4 } = tsl;
@@ -77,9 +77,10 @@ const eGnd = (): N => env.groundColor.mul(env.hemiIntensity);
 /**
  * Billboard puffs. Instance attributes (+ the quad corner = 5 vertex buffers):
  *  fxA = (x, y, z, radius km) · fxB = (albedo rgb, opacity) · fxC = (spill radiance rgb, key visibility)
- *  · fxD = (rotation rad, atlas frame, sky visibility, vertical direction to the spill sources −1..1)
+ *  · fxD = (rotation rad, atlas frame + 16 × softness, sky visibility, vertical direction to the spill
+ *  sources −1..1)
  */
-export function createPuffMaterial(atlas: DataTexture, o: FxMaterialOptions): NodeMaterial {
+export function createPuffMaterial(atlas: DataTexture, noise: Texture, o: FxMaterialOptions): NodeMaterial {
   const A = attribute('fxA', 'vec4');
   const B = attribute('fxB', 'vec4');
   const C = attribute('fxC', 'vec4');
@@ -107,21 +108,30 @@ export function createPuffMaterial(atlas: DataTexture, o: FxMaterialOptions): No
   const vUp = varying(toQuad(vec3(0, 1, 0)), 'vFxUp');
   const vAlb = varying(vec4(B.rgb, B.a.mul(nearFade)), 'vFxAlb');
   const vSpill = varying(C, 'vFxSpill');
-  const vAux = varying(vec2(D.z, D.w), 'vFxAux');
+  // atlas frame (0..15) + 16 × softness level (0..3: a billowing smoke edge … a diffuse spray / wisp)
+  const vAux = varying(vec3(D.z, D.w, floor(D.y.div(16)).div(3)), 'vFxAux');
   // atlas cell of the frame (half-texel inset: the frames never sample their neighbours)
-  const f = D.y;
+  const f = mod(D.y, 16);
   const cell = vec2(mod(f, 4), floor(f.div(4)));
   const inset = 0.5 / ATLAS.cell;
   const uv = cell.add(corner.mul(0.5).add(0.5).mul(1 - 2 * inset).add(inset)).div(ATLAS.frames);
   const vUv = varying(uv, 'vFxUv');
+  // review / final: a finer erosion octave (fx noise in the quad's frame, offset per puff) — close up a
+  // puff keeps crisp cauliflower edges instead of a magnified 64² frame
+  const vNq = varying(corner.mul(0.62).add(vec2(D.x.mul(0.37), f.mul(0.173))), 'vFxNq');
 
   const m = new NodeMaterial();
   m.name = 'fx-puffs';
   m.vertexNode = clip;
   m.fragmentNode = Fn(() => {
     const t = texture(atlas, vUv);
+    // erosion: the thin parts of the density are eaten by the wisp octave (same tap) and, in review / final,
+    // a finer noise octave; the cores survive
+    let ero: N = t.a.sub(0.5);
+    if (o.detail) ero = ero.mul(0.5).add(texture(noise, vNq).b.sub(0.5));
+    const d = t.r.add(ero.mul(float(1).sub(t.r)).mul(0.55));
     // a firmer silhouette than the raw density: billows with edges, not airbrushed blobs
-    const a = smoothstep(0.0, 0.62, t.r).mul(vAlb.a);
+    const a = smoothstep(0.04, mix(float(0.6), float(1.15), vAux.z), d).mul(vAlb.a);
     const nxy = t.gb.mul(2).sub(1);
     const n = vec3(nxy, sqrt(max(float(1).sub(dot(nxy, nxy)), 0.04)));
     const nl = dot(n, vKey);
@@ -208,7 +218,7 @@ export function createFallsMaterial(noise: Texture, o: FxMaterialOptions): NodeM
     // acceleration (time of travel ∝ √v), scrolling down with the effect clock
     const nAcross = clamp(w.div(0.012), 5, 48);
     const streakLen = w.div(nAcross).mul(7);
-    const tau = sqrt(v.mul(L)).mul(2).div(streakLen);
+    const tau = sqrt(v.mul(L)).mul(2).div(streakLen.mul(FALLS.streakStretch));
     const uvA = vec2(u.mul(nAcross).div(8).add(seed), tau.div(8).sub(env.tFx.mul(0.55)).add(layer.mul(0.37)));
     const n1 = texture(noise, uvA).r;
     let n = n1;
@@ -220,7 +230,7 @@ export function createFallsMaterial(noise: Texture, o: FxMaterialOptions): NodeM
     const vf = v.div(L);
     const aer = smoothstep(0.02, 0.3, vf);
     const foot = float(1).sub(smoothstep(0.88, 1, vf).mul(0.55));
-    const core = edge.mul(mix(float(0.55), float(1), aer)).mul(clamp(n.mul(0.8).add(0.55), 0, 1)).mul(foot);
+    const core = edge.mul(mix(float(0.55), float(1), aer)).mul(clamp(n.mul(1.3).add(0.22), 0, 1)).mul(foot);
     const veil = core.mul(0.38);
     const aCurtain = mix(core, veil, layer.min(1));
     // plunge foam: churning patches round the foot (world-space noise drifting with the effect clock),
@@ -255,24 +265,29 @@ export function createMistMaterial(noise: Texture, heights: Texture, spec: World
   const MC = attribute('mistC', 'vec4');
   const clip = cameraProjectionMatrix.mul(cameraViewMatrix.mul(vec4(P, 1)));
   const fog = fogSplit(P, o.detail);
-  // pale droplet light: key (more on the top layers) + sky, desaturated, tinted; the spill (Morgul's
-  // green wall-wash, a beacon) colours it from the side
+  // pale droplet light (the W1 valley mist's model, brighter: a card is the dense core of that layer): key
+  // (more on the top layers, forward-scattered toward the sun) + sky, desaturated, tinted by the card and
+  // the region's chroma (Morgul's green); the spill (Morgul's wall-wash, a beacon) lights it strongly
   const lum = vec3(0.2126, 0.7152, 0.0722);
-  const keyK = mix(float(0.16), float(0.34), MA.z.mul(MC.w));
+  const keyK = mix(float(0.3), float(0.55), MA.z.mul(MC.w));
   const lit = Fn(() => {
-    const e = eKey().mul(keyK).mul(max(env.keyDir.y, 0).mul(5).min(1)).add(eSky().mul(0.55));
+    const view = normalize(P.sub(env.cameraPos));
+    const fwd = pow(clamp(dot(view, env.keyDir), 0, 1), 6).mul(1.2);
+    const e = eKey().mul(keyK.add(fwd)).mul(max(env.keyDir.y, 0).mul(5).min(1)).add(eSky().mul(0.85));
     const grey = vec3(dot(e, lum));
-    return mix(grey, e, 0.45).mul(MB.rgb).add(spillIrradiance(P, vec3(0, 1, 0)).mul(MB.rgb).mul(0.35));
+    const reg = atmosphere.regional(P.xz, true).rgb;
+    const chroma = mix(vec3(1), reg.div(max(dot(reg, lum), 0.05)), 0.6);
+    return mix(grey, e, 0.45).mul(chroma).mul(MB.rgb).add(spillIrradiance(P, vec3(0, 1, 0)).mul(MB.rgb).mul(0.6));
   })();
   // dawn, dusk and night weighted; thin wisps by day
   const tod = float(0.3).add(clamp(max(max(env.golden, env.twilight.mul(0.9)), env.night.mul(0.75)), 0, 1).mul(0.7));
   // a flat layer seen edge-on reads as a line: grazing views see more of it but never a hard sheet
   const camDist = max(length(env.cameraPos.sub(P)), 1e-3);
   const sinEl = abs(env.cameraPos.y.sub(P.y)).div(camDist);
-  const graze = smoothstep(0.015, 0.12, sinEl).mul(min(float(1).div(max(sinEl.mul(3), 0.6)), 1.6));
+  const graze = smoothstep(0.015, 0.12, sinEl).mul(min(float(1).div(max(sinEl.mul(3), 0.6)), 1.25));
   // wide shots: the cards fade with their projected size (the atmosphere's valley mist takes over)
   const px = MC.y.mul(2).mul(env.pxPerKm).div(camDist);
-  const vis = smoothstep(30, 120, px);
+  const vis = smoothstep(MIST.lodPx[0], MIST.lodPx[1], px);
   // a camera inside the layer sees no card edge in the lens
   const inLayer = smoothstep(MC.x.mul(0.5), MC.x.mul(2), abs(env.cameraPos.y.sub(P.y)));
   const vT = varying(fog.T, 'vMistT');
@@ -302,7 +317,8 @@ export function createMistMaterial(noise: Texture, heights: Texture, spec: World
     const soft = smoothstep(0, vK.y.mul(2.5), vP.y.sub(ground));
     const a = clamp(dens.mul(soft).mul(vK.x), 0, 1);
     const col = vLit.mul(vT).add(vS);
-    return vec4(col.mul(a), a);
+    // a scattering layer: it veils the ground less than its in-scatter adds (it never darkens a dim scene)
+    return vec4(col.mul(a), a.mul(MIST.occlusion));
   })();
   premultiplied(m);
   return m;

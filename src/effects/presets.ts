@@ -51,38 +51,74 @@ export interface PuffPreset {
   dissolve: number;
   /** projected extent (px) below which the emitter is not drawn, and above which it gets all its puffs */
   lodPx: [number, number];
+  /** the scale the counts and lives are tuned at (count ∝ (scale / refScale)^COUNT_EXP); default 1 */
+  refScale?: number;
+  /** edge softness 0..3 (0: a billowing smoke edge, 3: a diffuse spray / steam cloud); default 0 */
+  soft?: number;
 }
+
+/** instance capacity of the puff draw (all drawn emitters together) */
+export const MAX_PUFFS = 4096;
 
 /** puff count ∝ scale^COUNT_EXP (a big plume gets more puffs, not only bigger ones) */
 export const COUNT_EXP = 0.6;
 /** puff life ∝ scale^LIFE_EXP */
 export const LIFE_EXP = 0.3;
 
+/** the billboard presets the EffectsSystem realizes ('wisp' = a declared smoke below WISP_SCALE) */
+export type PuffKind = 'smoke' | 'wisp' | 'ash' | 'steam' | 'spray';
+
+/** a declared `smoke` emitter with a scale below this is a thin wisp (a chimney), not a column */
+export const WISP_SCALE = 0.15;
+
 /**
- * The billboard presets. Doom's smoke (scale 3) is a ≈ 0.6 → 6 km wide column rising ≈ 15 km into the
- * deck with ≈ 96 puffs at density 1; Isengard's pits (1.5) are dark columns over the ring; a chimney
- * (≈ 0.04) is a thin wisp.
+ * The billboard presets. Doom's smoke (scale 3) is a ≈ 4.5 km wide column at the crater widening to
+ * ≈ 20 km, rising ≈ 19 km into the deck and spreading under it, with ≈ 420 puffs at density 1;
+ * Barad-dûr's / the Black Gate's / Isengard's smokes (0.9 … 1.6) are dark columns dissolving a few km up;
+ * a chimney (≈ 0.04) is a thin wisp bending downwind.
  */
-export const PUFF: Record<'smoke' | 'ash' | 'steam' | 'spray', PuffPreset> = {
+export const PUFF: Record<PuffKind, PuffPreset> = {
   smoke: {
     family: 'plume',
-    count: 105,
+    count: 220,
     minCount: 6,
     life: 30,
     rise: 6,
-    r0: 0.45,
-    r1: 2.0,
-    spread: 1.7,
-    umbrella: 0.35,
+    r0: 0.75,
+    r1: 3.8,
+    spread: 2.6,
+    umbrella: 0.32,
     bend: 0.35,
-    drift: 2.2,
-    size0: 0.45,
-    size1: 1.6,
-    opacity: 0.42,
-    albedo: [0.055, 0.052, 0.05],
+    drift: 2.6,
+    size0: 0.5,
+    size1: 1.9,
+    opacity: 0.5,
+    albedo: [0.2, 0.185, 0.17],
     spill: 1,
-    dissolve: 0.15,
+    dissolve: 0.35,
     lodPx: [14, 90],
+  },
+  wisp: {
+    family: 'plume',
+    count: 30,
+    minCount: 8,
+    life: 18,
+    rise: 12,
+    r0: 0.25,
+    r1: 1.8,
+    spread: 1,
+    umbrella: 0,
+    bend: 0.75,
+    drift: 0,
+    size0: 0.6,
+    size1: 2.2,
+    opacity: 0.42,
+    albedo: [0.5, 0.51, 0.53],
+    spill: 0.25,
+    dissolve: 0.6,
+    lodPx: [12, 60],
+    soft: 2,
+    refScale: 0.04,
   },
   ash: {
     family: 'ash',
@@ -99,10 +135,11 @@ export const PUFF: Record<'smoke' | 'ash' | 'steam' | 'spray', PuffPreset> = {
     size0: 0.22,
     size1: 0.55,
     opacity: 0.32,
-    albedo: [0.075, 0.071, 0.067],
+    albedo: [0.14, 0.132, 0.125],
     spill: 0.5,
     dissolve: 0,
     lodPx: [24, 120],
+    soft: 1,
   },
   steam: {
     family: 'plume',
@@ -123,6 +160,7 @@ export const PUFF: Record<'smoke' | 'ash' | 'steam' | 'spray', PuffPreset> = {
     spill: 0.6,
     dissolve: 0.75,
     lodPx: [14, 90],
+    soft: 2,
   },
   spray: {
     family: 'spray',
@@ -143,6 +181,7 @@ export const PUFF: Record<'smoke' | 'ash' | 'steam' | 'spray', PuffPreset> = {
     spill: 0.4,
     dissolve: 0.6,
     lodPx: [10, 80],
+    soft: 3,
   },
 };
 
@@ -161,13 +200,19 @@ export const KNOWN_PRESETS: readonly EmitterPreset[] = ['smoke', 'ash', 'embers'
 export const DECK_MARGIN = 1.6;
 /** deck cover (atmosphere.deckAt) above which an emitter has a ceiling */
 export const DECK_CEILING_COVER = 0.3;
+/** a plume whose free rise reaches this share of the ceiling height rises all the way and spreads under it */
+export const CAP_REACH = 1.6;
 
 /** Sparks / embers (EmissionSystem dynamic lights): counts at rate 1, life, reach (km per scale). */
 export const SPARKS = { count: 24, life: 2.6, rise: 0.9, spread: 0.6, radiusKm: 0.012, intensity: 3.2, lodPx: [40, 140] as [number, number] };
 export const EMBERS = { flames: 5, sparks: 8, life: 1.6, rise: 0.22, radiusKm: 0.03, intensity: 4, lodPx: [3, 24] as [number, number] };
 
-/** Mist cards: layers, the vertical spacing as a fraction of the half-width, grid resolution. */
-export const MIST = { layers: 3, spacing: 0.06, maxSpacing: 0.18, grid: [16, 8] as [number, number], opacity: 0.55 };
+/**
+ * Mist cards: layers, the vertical spacing as a fraction of the half-width, grid resolution, opacity, the
+ * projected card width (px) over which a card fades in (wide shots: the atmosphere's valley mist takes over)
+ * and the share of the background a card veils (alpha × occlusion; its in-scatter is added in full).
+ */
+export const MIST = { layers: 3, spacing: 0.06, maxSpacing: 0.18, grid: [16, 8] as [number, number], opacity: 0.9, lodPx: [12, 60] as [number, number], occlusion: 0.65 };
 
 /** The Morgul beam: core / glow half-widths (km per scale), HDR radiance, linear colour. */
 export const BEAM = { core: 0.05, glow: 0.22, radiance: 14, color: [0.32, 1, 0.5] as [number, number, number], segments: 24 };
@@ -175,7 +220,9 @@ export const BEAM = { core: 0.05, glow: 0.22, radiance: 14, color: [0.32, 1, 0.5
 /**
  * Waterfalls: ribbon segments, the veil layer's width ratio, plunge-foam radius (× the fall's size) and its
  * rings / sectors, how far the curtain turns toward the camera around its axis (0 = flat on its path,
- * 1 = an axis billboard: a fall seen along its wall never collapses to a thread) and the draped falls'
- * visual widening.
+ * 1 = an axis billboard: a fall seen along its wall never collapses to a thread), the draped falls'
+ * visual widening, the width from which a fall raises a tall mist column over its foot (Rauros: the "smoke"
+ * of the falls, seen behind the Argonath) and that column's scale per km of width, and how much longer
+ * than wide the curtain's streaks are.
  */
-export const FALLS = { segments: 24, veil: 1.35, foam: 0.75, foamRings: 4, foamSectors: 24, facing: 0.45, drapeWiden: 1.4 };
+export const FALLS = { segments: 24, veil: 1.35, foam: 0.75, foamRings: 4, foamSectors: 24, facing: 0.45, drapeWiden: 1.4, columnWidth: 2, column: 0.55, streakStretch: 3 };
