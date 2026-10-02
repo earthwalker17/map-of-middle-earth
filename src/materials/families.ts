@@ -402,13 +402,17 @@ function weathering(p: TslNode, n: TslNode, n1: TslNode, n2: TslNode, ao: TslNod
   const dust = clamp(
     streak
       .mul(0.9)
-      .add(smoothstep(0.6, 0.85, ny).mul(0.6))
+      .add(smoothstep(0.6, 0.85, ny).mul(0.35))
       .add(max(bT, 0).mul(1.2).mul(vis(W.course)).mul(c.isStone))
       .add(foot.mul(foot).mul(0.5))
       .add(smoothstep(0.1, 0.45, nD.add(n1.mul(0.5))).mul(0.25)),
     0,
     1,
-  ).mul(dark).mul(W.dust);
+  )
+    .mul(dark)
+    .mul(W.dust)
+    // fades out with the house-scale detail: wides and overviews keep the charcoal read of Mordor's towers
+    .mul(vis(0.06, 0.6, 1.2));
   const mul = mix(tint.mul(max(val, 0.2)), vec3(W.dustColor[0], W.dustColor[1], W.dustColor[2]).div(max(albedo, vec3(0.004))), dust);
   return mix(vec3(1), mul, c.built);
 }
