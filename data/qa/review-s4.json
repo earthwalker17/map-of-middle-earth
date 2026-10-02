@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "title": "Journey Through Middle-earth — S4 review stills",
+  "notes": "The curated S4 stills for the user's review (tools/capture/review.ts composes review/s4/ from a qa run of the s4-review set). Order follows the film: the map, the prologue (Erebor, Lake-town), then Frodo's road from the Shire to Mount Doom. `look` = what to look at; `s3Issue` = the S3 critic issue (renders/qa/20261001-174844/critic-s3-final.json) the still answers. Time of day and camera distance are read from the shot data by the tool. Render: pnpm qa --set s4-review --quality final --w 1920 --h 1080 --spp 12 --batch 6 --label s4-review.",
+  "set": "s4-review",
+  "render": { "quality": "final", "w": 1920, "h": 1080, "spp": 12 },
+  "before": { "run": "renders/qa/20261001-174844", "label": "S3 final (1600×900, spp 4, review tier)" },
+  "stills": [
+    { "id": "overview-day", "title": "The map — day", "look": "The floating slab reads as a crisp physical model: coastlines, ranges, rivers and forests legible at a glance; the film grade stays neutral at this distance.", "s3Issue": "Wide shots must stay clear and readable (S2/S3 decision) while the regional grades carry the mood." },
+    { "id": "overview-golden", "title": "The map — golden hour", "look": "Low warm light rakes the relief; the shadows of the Misty and White Mountains, warm highlights against cool shadows.", "s3Issue": "Flat, map-like light (the C1 critics' 'crisp but flat')." },
+    { "id": "overview-night", "title": "The map — night", "look": "Moonlit land with clean dark blacks (no milky lift), settlement lights as warm pins, Mordor's fires under the pall.", "s3Issue": "Night frames had lifted, milky blacks; Mordor read faint at night." },
+    { "id": "overview-top", "title": "The map — from above", "look": "Near-orthographic geography check: north up, every region in its place, sea without banding.", "s3Issue": "Geography and readability reference (no film-look issue)." },
+    { "id": "erebor-long-lake", "title": "Erebor and the Long Lake", "look": "Regional depth: aerial perspective over Wilderland, the Lonely Mountain alone on the plain, the Long Lake reading as a lake.", "s3Issue": "Lake-town's Long Lake read as a river in places; no aerial haze beyond ~40 km." },
+    { "id": "erebor-close", "title": "Erebor — the Lonely Mountain", "look": "Broken snowfields on rock instead of an icing cap, the banner cloud, the gate at the foot of the massif, the warm low sun.", "s3Issue": "Erebor read as a papier-mâché cone with an icing-sugar snowcap on a featureless plain." },
+    { "id": "lake-town-close", "title": "Lake-town — afternoon", "look": "Cold blue-grey lake haze, the town on its stilts, the film grade's cool shadows and warm highlights.", "s3Issue": "Untextured beige gable boxes on bright water in front of a blank olive hillside; no cold lake haze." },
+    { "id": "lake-town-night", "title": "Lake-town — night", "look": "Window lights on the water, deep blacks, the town's silhouette against the moonlit lake.", "s3Issue": "No window lights; Lake-town's hero was dark at dusk." },
+    { "id": "shire", "title": "The Shire", "look": "Hedgerow patchwork and copses at believable scale; greens lush rather than lime.", "s3Issue": "Lime / yellow-green greens at full saturation; lollipop trees at 10–20× real size." },
+    { "id": "hobbiton-close", "title": "Hobbiton — late afternoon", "look": "The Hill and the smials sharp, the fields beyond a touch soft (f/11); greens shifted from lime toward a lusher green; golden highlights, cool-green shadows.", "s3Issue": "Model-railway read: smooth one-colour mound, broccoli trees, mustard-olive clay grass." },
+    { "id": "hobbiton-night", "title": "Hobbiton — night", "look": "Moonlit Hill with the round windows lit, clean blacks, no milky haze.", "s3Issue": "Night frames had lifted, milky blacks." },
+    { "id": "rivendell-close", "title": "Rivendell — late October", "look": "Amber highlights and a soft Pro-Mist bloom in the gorge, valley mist, the falls, the Last Homely House on its spur.", "s3Issue": "No falls, spray or mist; dry faceted cliffs; cotton-wool autumn trees." },
+    { "id": "rivendell-night", "title": "Rivendell — night", "look": "The house's lamps against the dark gorge, halation round the lights, mist in the valley.", "s3Issue": "Emission never lit its surroundings; no veiled depth." },
+    { "id": "moria-close", "title": "The Doors of Durin", "look": "Ithildin light spilling onto the rock and reflected in the black pool, the hollies, the mist.", "s3Issue": "Neon line-icon door on a flat panel; a dead black lake with no reflection of the glow; puck hollies." },
+    { "id": "lothlorien-close", "title": "Lothlórien — dusk", "look": "The golden wood's lights and the soft luminous grade, mallorn canopy instead of blobs.", "s3Issue": "Lollipop / broccoli crowns; emission that never lights the canopy." },
+    { "id": "argonath-close", "title": "The Argonath", "look": "The Kings sharp at f/4, the far peaks and Tol Brandir softened a touch; haze behind the statues for scale.", "s3Issue": "Clear gradient sky and no haze — the Kings read as tabletop figurines." },
+    { "id": "rauros-close", "title": "Rauros", "look": "The falls and their spray, Tol Brandir, the haze over Nen Hithoel.", "s3Issue": "No waterfalls, spray or plumes anywhere in the world." },
+    { "id": "anduin-gondor", "title": "The Anduin and Gondor", "look": "Aerial perspective over Ithilien, Doom glowing under the pall in the distance, cool steel shadows and warm highlights.", "s3Issue": "Crisp but flat relief map with saturated greens and no depth haze." },
+    { "id": "minas-tirith-close", "title": "Minas Tirith — dawn", "look": "Early sun raking the tiers, cool grey stone against the mountain, steel-blue shadows (Gondor's split-tone).", "s3Issue": "Uniform white plaster city under flat noon light against a warm brown cliff." },
+    { "id": "minas-tirith-night", "title": "Minas Tirith — the beacons lit", "look": "The beacon fire and its glow on the rock, the city's lights, deep night blacks.", "s3Issue": "Emission never lit rock; no beacon fires." },
+    { "id": "minas-morgul-beam", "title": "Minas Morgul — the beam", "look": "The beam from the tower, green spill washing the cliffs and the vale's fog instead of mint paint, charcoal rock.", "s3Issue": "Flat pale-mint emissive paint like glow-in-the-dark plastic; no falloff, no green haze." },
+    { "id": "black-gate-close", "title": "The Black Gate", "look": "Ash overcast, charcoal rock and gate with a cold steel cast, red only in the glow beyond.", "s3Issue": "Saturated royal-blue sky over a sand floor; then (C1) a muddy mid-grey with no blacks." },
+    { "id": "mordor", "title": "Mordor", "look": "The pall over the plateau, charcoal ground, red only near Doom.", "s3Issue": "Clear saturated skies over Mordor; chocolate sand dunes." },
+    { "id": "mount-doom-close", "title": "Mount Doom", "look": "The plume and the pall lit red from below, broken basalt and cinder, lava light on the rock.", "s3Issue": "No smoke plume or ash pall; clean blue twilight sky; smooth chocolate dunes." }
+  ],
+  "pairs": [
+    { "id": "hobbiton", "day": "hobbiton-close", "night": "hobbiton-night" },
+    { "id": "rivendell", "day": "rivendell-close", "night": "rivendell-night" },
+    { "id": "minas-tirith", "day": "minas-tirith-close", "night": "minas-tirith-night" },
+    { "id": "lake-town", "day": "lake-town-close", "night": "lake-town-night" }
+  ],
+  "beforeAfter": [
+    { "id": "overview-day", "before": "overview-day" },
+    { "id": "hobbiton-close", "before": "hobbiton-close" },
+    { "id": "rivendell-close", "before": "rivendell-close" },
+    { "id": "lake-town-close", "before": "lake-town-close" },
+    { "id": "minas-morgul-beam", "before": "minas-morgul-close" },
+    { "id": "black-gate-close", "before": "black-gate-close" },
+    { "id": "mordor", "before": "mordor" },
+    { "id": "mount-doom-close", "before": "mount-doom-close" }
+  ],
+  "knownIssues": [
+    "The S3 stills (before) are 1600×900 review-tier renders at spp 4; these S4 stills are {size} {tier}-tier renders at spp {spp} — the before/after sheets rescale both to one height.",
+    { "text": "Depth of field is only on the hero stills whose shot carries an f-stop (deep focus f/22 otherwise); it is deliberately very subtle (blur at infinity <= 0.3 % of the frame height).", "minSpp": 8 },
+    { "text": "This run is below spp 8, so every still is a pinhole: no depth of field (the lens needs >= 8 aperture samples).", "maxSpp": 7 },
+    { "text": "Film grain is part of the final tier: the stills carry ≈ 1 % grain (≈ 1.5 px grains, a little chroma) in the mid-tones, deterministic per film frame.", "tiers": ["final"] },
+    { "text": "No film grain in this run: grain is drawn at the final tier only ({tier} tier here).", "tiers": ["preview", "review"] }
+  ]
+}

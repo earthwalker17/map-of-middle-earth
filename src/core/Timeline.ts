@@ -1,5 +1,6 @@
 import { defaultSceneState, type CameraState, type SceneState, type WeatherState } from './types.ts';
 import type { QualityTierId } from './quality.ts';
+import { DEEP_FOCUS_FSTOP } from '../render/lens.ts';
 
 /**
  * A timeline maps time t (seconds) to a complete SceneState. Bookmarks and QA shots are
@@ -44,7 +45,8 @@ export class StaticTimeline implements Timeline {
       tod: this.spec.tod,
       dayOfYear: this.spec.dayOfYear ?? 200,
       camera: this.spec.camera,
-      lens: { fStop: this.spec.fStop ?? 11 },
+      // deep focus (pinhole) unless the shot sets an f-stop: only the close heroes carry one (S4 lens)
+      lens: { fStop: this.spec.fStop ?? DEEP_FOCUS_FSTOP },
       lookOverride: this.spec.lookOverride ?? null,
       weather: { ...base.weather, ...this.spec.weather },
       events: { ...this.spec.events },
