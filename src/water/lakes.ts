@@ -103,11 +103,72 @@ export function pushUpTri(idx: number[], pos: ArrayLike<number>, a: number, b: n
 }
 
 /**
+ * S4 W4-S1 (the lake-town-close black shelf): a baked lake's surface reaches this far (km) beyond its
+ * ring. The ring is the coarse ME-GIS polygon (the Long Lake: 34 points, 3–5 km chords) and the bake's
+ * flattened lake bed does not follow it: between a chord and the true shore the bed lies below the lake
+ * level with no water over it, painted the dark channel colour by the terrain (a hard-edged black
+ * polygon in the lake-town-close foreground, and a straight seam where the Forest River's ribbon ran over
+ * it). The skirt covers that strip; the lake material's baked-mask fade and waterline anti-aliasing cut
+ * the true shore, and its alpha test keeps the invisible rest (over land, outflow valleys below the level)
+ * out of the depth buffer.
+ */
+export const LAKE_SKIRT_KM = 1.2;
+
+/** Push a skirt band `width` km outside an open ring at `level` (mitred offset, capped at concave folds). */
+function pushSkirt(ring: [number, number][], level: number, width: number, pos: number[], idx: number[], pool: number[]): void {
+  const n = ring.length;
+  if (n < 3 || width <= 0) return;
+  let a2 = 0;
+  for (let i = 0; i < n; i++) {
+    const [x0, z0] = ring[i];
+    const [x1, z1] = ring[(i + 1) % n];
+    a2 += x0 * z1 - x1 * z0;
+  }
+  // outward unit normal of the edge i → i+1 (shoelace orientation of the (x, z) polygon)
+  const sgn = a2 > 0 ? 1 : -1;
+  const edgeN = (i: number): [number, number] => {
+    const [x0, z0] = ring[i];
+    const [x1, z1] = ring[(i + 1) % n];
+    const dx = x1 - x0;
+    const dz = z1 - z0;
+    const L = Math.hypot(dx, dz) || 1;
+    return [(sgn * dz) / L, (-sgn * dx) / L];
+  };
+  const base = pos.length / 3;
+  for (let i = 0; i < n; i++) {
+    const na = edgeN((i - 1 + n) % n);
+    const nb = edgeN(i);
+    let mx = na[0] + nb[0];
+    let mz = na[1] + nb[1];
+    const ml = Math.hypot(mx, mz);
+    if (ml < 1e-6) {
+      mx = nb[0];
+      mz = nb[1];
+    } else {
+      mx /= ml;
+      mz /= ml;
+    }
+    // mitre length 1 / cos(half the turn), capped (sharp corners)
+    const k = width / Math.max(0.4, mx * nb[0] + mz * nb[1]);
+    const [x, z] = ring[i];
+    pos.push(x, level, z, x + mx * k, level, z + mz * k);
+    pool.push(0, 0);
+  }
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    const ri = base + 2 * i;
+    const rj = base + 2 * j;
+    pushUpTri(idx, pos, ri, rj, rj + 1);
+    pushUpTri(idx, pos, ri, rj + 1, ri + 1);
+  }
+}
+
+/**
  * All lakes as one flat, earcut-triangulated mesh (each polygon at its own level). `waterPool` is 1 on
  * landmark pools (keys `pool:…`), 0 on baked lakes: the lake material fades baked lakes by the baked
- * lake mask, pools only by their waterline.
+ * lake mask, pools only by their waterline. Baked lakes get a skirt of LAKE_SKIRT_KM beyond the ring.
  */
-export function buildLakeGeometry(lakes: LakeInfo[]): BufferGeometry {
+export function buildLakeGeometry(lakes: LakeInfo[], skirtKm = LAKE_SKIRT_KM): BufferGeometry {
   const pos: number[] = [];
   const idx: number[] = [];
   const pool: number[] = [];
@@ -121,6 +182,7 @@ export function buildLakeGeometry(lakes: LakeInfo[]): BufferGeometry {
     }
     const tris = ShapeUtils.triangulateShape(contour, []);
     for (const [a, b, c] of tris) pushUpTri(idx, pos, base + a, base + b, base + c);
+    if (!isPool) pushSkirt(l.ring, l.level, skirtKm, pos, idx, pool);
   }
   const g = new BufferGeometry();
   g.setAttribute('position', new Float32BufferAttribute(pos, 3));

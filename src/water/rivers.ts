@@ -385,6 +385,14 @@ const RAPID_GRADE: [number, number] = [1.5, 4.0];
 const FALL_SPRAY_KM = 1.0;
 /** a free end (a stream ending in its own valley) fades out over this length (km) */
 const FREE_END_FADE_KM = 0.8;
+/**
+ * S4 W4-S1 P4: a ribbon whose end lies in a lake at the lake's level (± LAKE_LEVEL_TOL) runs on this far
+ * (km) into the lake along its end tangent, fading out, so river and lake cross-fade instead of meeting
+ * at the bake's straight clip edge (the Forest River's seam on the Long Lake). 0 switches it off.
+ */
+const LAKE_OVERLAP_KM = 1.2;
+const LAKE_OVERLAP_STEP = 0.4;
+const LAKE_LEVEL_TOL = 0.06;
 /** on a bend tighter than the ribbon, the inner edge stays inside this share of the bend radius */
 const INNER_EDGE = 0.9;
 
@@ -443,18 +451,55 @@ function buildBakedRivers(world: World, lakes: LakeInfo[], opts: RiverBuildOptio
   let sections = 0;
   let count = 0;
   for (const r of lines) {
-    const pts = r.points;
-    const lv = r.level!;
-    const bed = r.bed ?? lv;
-    const n = pts.length;
-    if (n < 2) continue;
+    const pts0 = r.points;
+    const lv0 = r.level!;
+    const bed0 = r.bed ?? lv0;
+    const n0 = pts0.length;
+    if (n0 < 2) continue;
     count++;
-    const s = new Float64Array(n);
-    for (let i = 1; i < n; i++) s[i] = s[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
-    const L = s[n - 1];
+    const s0 = new Float64Array(n0);
+    for (let i = 1; i < n0; i++) s0[i] = s0[i - 1] + Math.hypot(pts0[i][0] - pts0[i - 1][0], pts0[i][1] - pts0[i - 1][1]);
+    const L = s0[n0 - 1];
     lengthKm += L;
-    const [sx, sz] = pts[0];
-    const [ex, ez] = pts[n - 1];
+    const [sx, sz] = pts0[0];
+    const [ex, ez] = pts0[n0 - 1];
+    // S4 W4-S1 P4: an end in a lake at the lake's level runs on into the lake, fading out (LAKE_OVERLAP_KM)
+    const lakeAt = (x: number, z: number, level: number) => {
+      const l = lakeNear(lakes, x, z, 1.0);
+      return l !== null && Math.abs(l.level - level) < LAKE_LEVEL_TOL;
+    };
+    const extA = LAKE_OVERLAP_KM > 0 && lakeAt(sx, sz, lv0[0]) ? LAKE_OVERLAP_KM : 0;
+    const extB = LAKE_OVERLAP_KM > 0 && lakeAt(ex, ez, lv0[n0 - 1]) ? LAKE_OVERLAP_KM : 0;
+    const pts: [number, number][] = [];
+    const lv: number[] = [];
+    const bed: number[] = [];
+    const sl: number[] = [];
+    const extend = (from: number, to: number, ext: number, sign: number) => {
+      const [fx, fz] = pts0[from];
+      const [tx0, tz0] = pts0[to];
+      const dl = Math.hypot(tx0 - fx, tz0 - fz) || 1;
+      const k = Math.max(1, Math.ceil(ext / LAKE_OVERLAP_STEP));
+      const out: number[] = [];
+      for (let j = 1; j <= k; j++) out.push((ext * j) / k);
+      if (sign < 0) out.reverse();
+      for (const d of out) {
+        pts.push([tx0 + ((tx0 - fx) / dl) * d, tz0 + ((tz0 - fz) / dl) * d]);
+        lv.push(lv0[to]);
+        bed.push(bed0[to]);
+        sl.push(sign < 0 ? -d : L + d);
+      }
+    };
+    if (extA) extend(Math.min(2, n0 - 1), 0, extA, -1);
+    const first = pts.length;
+    for (let i = 0; i < n0; i++) {
+      pts.push(pts0[i]);
+      lv.push(lv0[i]);
+      bed.push(bed0[i]);
+      sl.push(s0[i]);
+    }
+    if (extB) extend(Math.max(0, n0 - 3), n0 - 1, extB, 1);
+    const n = pts.length;
+    const s = Float64Array.from(sl);
     const up = lakeNear(lakes, sx, sz, 1.0) ? null : feeder(r, sx, sz);
     const source = !up && !lakeNear(lakes, sx, sz, 1.0);
     const parent = typeof r.into === 'string' ? byId.get(r.into) : undefined;
@@ -467,7 +512,7 @@ function buildBakedRivers(world: World, lakes: LakeInfo[], opts: RiverBuildOptio
     const startFade = up && distToPolyline(up.points, sx, sz) > 0.3 ? overlap(up) : 0;
     const hwFull = halfWidth(r);
     const taperLen = Math.min(L * 0.25, r.widthKm * 5 + 2);
-    const at = (i: number) => s[Math.min(n - 1, i)];
+    const at = (i: number) => s0[Math.min(n0 - 1, i)];
     const fallS = (r.falls ?? []).map((f) => 0.5 * (at(f.index) + at(f.index + 1)));
     const base = pos.length / 3;
     for (let i = 0; i < n; i++) {
@@ -512,6 +557,8 @@ function buildBakedRivers(world: World, lakes: LakeInfo[], opts: RiverBuildOptio
       if (startFade) fade *= smooth01(0, startFade, s[i]);
       if (joinFade) fade *= smooth01(L, L - joinFade, s[i]);
       if (freeEnd) fade *= smooth01(L, L - Math.min(FREE_END_FADE_KM, 0.5 * L), s[i]);
+      if (extA) fade *= smooth01(-extA, 0, s[i]);
+      if (extB) fade *= smooth01(L + extB, L, s[i]);
       const nx = -tz;
       const nz = tx;
       const y = lv[i];
@@ -522,8 +569,10 @@ function buildBakedRivers(world: World, lakes: LakeInfo[], opts: RiverBuildOptio
         flow.push(s[i], v, hw, fade);
         dir.push(tx, tz, rapid, 0);
       }
-      sections++;
-      if (y < hf.sample(pts[i][0], pts[i][1]) - 0.005) dry++;
+      if (i >= first && i < first + n0) {
+        sections++;
+        if (y < hf.sample(pts[i][0], pts[i][1]) - 0.005) dry++;
+      }
       if (i > 0) {
         const r0 = base + (i - 1) * K;
         const r1 = base + i * K;

@@ -111,6 +111,15 @@ export interface WaterMaterialOptions {
 
 const lin = (c: RGB): N => vec3(c[0], c[1], c[2]);
 
+/**
+ * S4 W4-S1 P4 (off): river ribbons give way inside a baked lake's mask. Replaced by the ribbon's fading
+ * run-on into the lake (rivers.ts LAKE_OVERLAP_KM): the mask's soft 0.4 km edge cut the ribbon short of
+ * the lake surface and left the seam.
+ */
+const RIVER_LAKE_YIELD = false;
+/** alpha at or below which a water fragment is discarded (no depth write) */
+const WATER_ALPHA_TEST = 0.004;
+
 /** deep-water scatter albedo of landmark pools (lake attribute waterPool = 1): dark peaty teal */
 const POOL_DEEP: RGB = [0.007, 0.014, 0.016];
 
@@ -392,9 +401,11 @@ export function createWaterMaterial(opts: WaterMaterialOptions): MeshStandardNod
   }
   if (isRiver) {
     const edge = float(1).sub(smoothstep(0.72, 1.0, abs(flow!.y)));
-    // (S4 W2-D P4: a ribbon running inside a baked lake at the lake's level fades out there through
-    // flow.w — rivers.ts lakeYield)
     alpha = alpha.mul(edge).mul(flow!.w);
+    // S4 W4-S1 P4: a ribbon's reach inside a baked lake gives way to the lake surface (the Forest River's
+    // end drew a lighter strip with a straight seam over the Long Lake). Safe since the lake surface covers
+    // its whole baked mask (lakes.ts LAKE_SKIRT_KM): W2-D's earlier cut opened the uncovered shelf.
+    if (RIVER_LAKE_YIELD) alpha = alpha.mul(float(1).sub(smoothstep(0.5, 0.9, texture(world.water, uv0).g)));
   }
 
   const material = new MeshStandardNodeMaterial({ transparent: true, side: FrontSide });
@@ -417,6 +428,9 @@ export function createWaterMaterial(opts: WaterMaterialOptions): MeshStandardNod
   material.metalnessNode = float(0);
   material.opacityNode = saturate(alpha);
   material.depthWrite = true;
+  // fragments faded to nothing (over land, outside a lake's mask, past a ribbon's edge) are discarded
+  // instead of writing depth (S4 W4-S1: the lake skirt must not hide what is drawn after the water)
+  material.alphaTest = WATER_ALPHA_TEST;
 
   // depth pull toward the camera (screen position unchanged): thin water wins against coarse LOD
   // terrain far away; negligible up close where the channel/lake bed is resolved
