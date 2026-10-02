@@ -19,7 +19,7 @@
     },
     "shire": {
       "ground": {"ecotone": 0.3, "grass": "#4f9a3a", "dry": "#95ad50", "soil": "#6b5536", "rock": "#736d62", "dryness": 0.2, "pattern": 0.5, "spots": [{"place": "hobbiton", "radiusKm": 6, "turf": 1, "grass": "#468a28", "dry": "#72a23c", "dryness": 0.1}]},
-      "grade": {"tint": "#fff4e4", "saturation": 1.03, "contrast": 0.98, "lift": [0.0008, 0.0006, 0.0002], "bloom": 0.12, "greens": 0.82, "greensHue": 0.25, "highlights": 1, "split": {"shadow": "#56786e", "highlight": "#f5d6a2", "amount": 0.14}, "spots": [{"place": "hobbiton", "radiusKm": 14, "tint": "#fff8ef", "saturation": 1.06, "contrast": 1.03, "greens": 0.8, "greensHue": 0.3}]},
+      "grade": {"tint": "#fff4e4", "saturation": 1.03, "contrast": 0.98, "lift": [0.0008, 0.0006, 0.0002], "bloom": 0.12, "greens": 0.97, "greensHue": 0.1, "highlights": 1, "split": {"shadow": "#5f7468", "highlight": "#f5d6a2", "amount": 0.07}, "spots": [{"place": "hobbiton", "radiusKm": 14, "tint": "#fff8ef", "saturation": 1.06, "contrast": 1.05, "greens": 0.95, "greensHue": 0.12}]},
       "atmo": {"tint": [1.07, 1.03, 0.92], "density": 0.85, "sky": [1.02, 1.0, 0.97]}
     },
     "enedwaith": {
