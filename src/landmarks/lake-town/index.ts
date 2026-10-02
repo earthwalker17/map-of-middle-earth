@@ -15,16 +15,24 @@ import { CROSS, DECK, DECK_T, deckRuns, GRAND, inCanal, insideTown, inRect, MARK
  * ≈ ×9 (houses 50–95 m wide).
  */
 
-/** weathered grey timber, paler than the film's #7d7b76 so it reads in the dusk light */
-const WALLS = [0x9a958b, 0x8f8a80, 0xa39e93, 0x948f85, 0x88837a, 0x9d978c, 0x857f75];
-/** cool blue-grey shingle (dark stone family: a lower roughness, the roofs catch the sky) */
-const ROOFS = [0x6b767c, 0x5f6a70, 0x737e84, 0x66706f, 0x7a8489, 0x5d676d, 0x707a7e];
-const DECK_C = 0x4a443c;
-const SKIRT = 0x1c1a17;
+/**
+ * dark, wet, weathered timber (S4 W5, the C2 art director: S3's pale grey read as warm tan balsa under the
+ * grade): cool grey-brown 0x67645d … 0x55524c, every third house tarred near 0x3e3a35
+ */
+const WALLS = [0x67645d, 0x5e5b55, 0x3e3a35, 0x625f58, 0x55524c, 0x433f3a, 0x5a5751, 0x605d57, 0x3b3833];
+/** dark slate / shingle (dark stone family: a lower roughness, the roofs catch the sky) */
+const ROOFS = [0x4a5358, 0x40494e, 0x454e53, 0x3a4247, 0x4d555a, 0x3e464b, 0x434c51];
+const DECK_C = 0x3a3631;
 const POST = 0x2a2622;
 const BRIDGE_C = 0x5a554e;
 const HULL = 0x3a3129;
 const LANTERN = 0xf0a54a;
+/** the deck's inset behind the outer houses' fronts (ellipse-normalised: ≈ 0.025–0.035 km) */
+const DECK_INSET = 0.018;
+/** pile spacing along the deck's edges, km, and the scan's half extents (town frame) */
+const PILE_STEP = 0.03;
+const A_PILES = 1.85;
+const B_PILES = 1.45;
 /** at most this many lights (shot-list budget 120; the review asked for ≈ 55) */
 const MAX_LIGHTS = 60;
 /** walkway left free along the canals, km */
@@ -60,36 +68,41 @@ function buildTown(k: ProxyKit): void {
     light(x, y + 0.03, z, 'lamp', intensity, 0.01);
   };
 
-  // ---------------------------------------------------------------- the deck, its dark underside, piles
+  // ---------------------------------------------------------------- the deck on its piles
+  // S4 W5 (the C2 art director: "a toy village on two rafts"): no dark skirt under the deck — open water
+  // under a thin deck on piles; the deck stops DECK_INSET (normalised) inside the outline the houses may
+  // reach, so the outer houses overhang the water on their piles
   const DV = 0.05;
-  for (const r of deckRuns(DV, wet)) {
+  const deckMask = (u: number, v: number): boolean => onDeck(u, v) && insideTown(u, v, 0.985 - DECK_INSET);
+  for (const r of deckRuns(DV, wet, deckMask)) {
     const [x, z] = T((r.u0 + r.u1) / 2, r.v + DV / 2);
     k.box('wood', r.u1 - r.u0 + 0.01, DECK_T, DV + 0.004, { at: [x, DECK - DECK_T, z], rot: [0, YAW, 0], color: DECK_C, shade: 0.88 + k.r(1) * 0.24, lod: 1 });
   }
-  // the dark space under the deck between the piles (reads as stilts from afar): the deck eroded a little
-  const inner = (u: number, v: number): boolean => deckAt(u - 0.02, v) && deckAt(u + 0.02, v) && deckAt(u, v - 0.025) && deckAt(u, v + 0.025);
-  for (const r of deckRuns(DV, () => true, inner)) {
-    const [x, z] = T((r.u0 + r.u1) / 2, r.v + DV / 2);
-    k.box('wood', r.u1 - r.u0, DECK - DECK_T + 0.06, DV + 0.004, { at: [x, -0.06, z], rot: [0, YAW, 0], color: SKIRT, lod: 0 });
-  }
-  // piles along the deck's edges on the open lake and the Grand Canal
-  const pile = (u: number, v: number) => {
-    const [x, z] = T(u, v);
-    k.box('wood', 0.014, DECK - DECK_T + 0.05, 0.014, { at: [x, -0.05, z], rot: [0, YAW, 0], color: POST, shade: 0.85 + k.r(1) * 0.3, lod: 0 });
+  // piles (three-sided posts, no caps): wherever the zone the houses may cover meets water — the outline,
+  // the harbour notches, the canals' banks — every PILE_STEP km (twice that along the side canals, which
+  // the hero hardly sees), jittered, from below the water to the deck's underside
+  const zone = (u: number, v: number): boolean => deckAt(u, v) && insideTown(u, v, 0.985);
+  const pile = (u: number, v: number, i: number) => {
+    const [x, z] = T(u + (k.r(i) - 0.5) * 0.008, v + (k.r(i + 1) - 0.5) * 0.008);
+    k.cylinder('wood', 0.0055, 0.0065, DECK - DECK_T + 0.05, { at: [x, -0.05, z], seg: 3, rot: [0, YAW + 30, 0], color: POST, shade: 0.8 + k.r(i + 2) * 0.35, lod: 0 });
   };
-  const openWater = (u: number, v: number): boolean => !insideTown(u, v) || Math.abs(u - GRAND.u) < GRAND.w / 2 - 0.03;
   let pi = 0;
-  for (const r of deckRuns(DV, wet)) {
-    const vc = r.v + DV / 2;
-    if (pi++ % 2 === 0) {
-      if (openWater(r.u0 - 0.04, vc)) pile(r.u0 + 0.004, vc);
-      if (openWater(r.u1 + 0.04, vc)) pile(r.u1 - 0.004, vc);
+  for (let v = -B_PILES; v <= B_PILES; v += PILE_STEP)
+    for (let u = -A_PILES; u <= A_PILES; u += PILE_STEP) {
+      if (!zone(u, v)) continue;
+      const nb: V2[] = [
+        [u - PILE_STEP, v],
+        [u + PILE_STEP, v],
+        [u, v - PILE_STEP],
+        [u, v + PILE_STEP],
+      ];
+      const off = nb.filter(([a, b]) => !zone(a, b));
+      if (!off.length) continue;
+      // along the side and cross canals and on the far (north) half the hero hardly sees: every other spot
+      const side = off.every(([a, b]) => insideTown(a, b, 0.985) && Math.abs(a - GRAND.u) > GRAND.w / 2 + 0.01);
+      if ((side || v < -0.3) && (Math.round(u / PILE_STEP) + Math.round(v / PILE_STEP)) % 2) continue;
+      pile(u, v, 3000 + pi++ * 3);
     }
-    for (let u = r.u0 + 0.03; u < r.u1 - 0.02; u += 0.085) {
-      if (!insideTown(u, r.v - 0.03)) pile(u, r.v + 0.004);
-      if (!insideTown(u, r.v + DV + 0.03)) pile(u, r.v + DV - 0.004);
-    }
-  }
 
   // ---------------------------------------------------------------- houses
   let houseN = 0;
@@ -128,8 +141,9 @@ function buildTown(k: ProxyKit): void {
       roofColor: ROOFS[(i * 3 + 1) % ROOFS.length],
       roofGrain: 0.5,
       lod: o.lod,
-      // carved gable boards with short horns (the film's town), ridge caps on some
-      ...(roof === 'gable' && i % 5 !== 4 ? { gableBoards: { color: 0x4a443c, size: 0.0045, horn: 0.008 } } : {}),
+      // carved gable boards with short horns (the film's town) on every third house (S4 W5: they cost
+      // ≈ 0.2k tris a house; the piles took the budget), ridge caps on some
+      ...(roof === 'gable' && i % 3 === 0 ? { gableBoards: { color: 0x4a443c, size: 0.0045, horn: 0.008 } } : {}),
       ...(i % 3 === 0 && roof === 'gable' ? { ridge: { color: 0x3b4246, size: 0.006 } } : {}),
       ...(i % 11 === 2 ? { chimney: true } : {}),
     });
@@ -142,14 +156,17 @@ function buildTown(k: ProxyKit): void {
   };
 
   /** a spired timber turret standing on the deck at (u, v) */
+  let turretN = 0;
   const turret = (u: number, v: number, r: number, h: number, sides: number, lod: 0 | 1 | 2 = 1): void => {
     const [x, z] = T(u, v);
+    // S4 W5: every other turret under a low pyramid cap instead of a spire (no field of church spires)
+    const cap = turretN++ % 2 === 1;
     k.tower('wood', r, h, {
       at: [x, DECK - 0.002, z],
       sides,
       rot: [0, YAW + (sides === 4 ? 45 : 0), 0],
-      roof: 'spire',
-      roofH: r * (3.2 + k.r(1) * 1.5),
+      roof: cap ? 'cone' : 'spire',
+      roofH: cap ? r * (1.1 + k.r(1) * 0.4) : r * (2.6 + k.r(1) * 1.2),
       roofFam: 'darkStone',
       color: WALLS[(houseN + 2) % WALLS.length],
       roofColor: ROOFS[houseN % ROOFS.length],
@@ -268,14 +285,15 @@ function buildTown(k: ProxyKit): void {
     const hw = MASTER.u1 - MASTER.u0 - 0.12;
     const hd = Math.min(0.15, MASTER.v1 - MASTER.v0 - 0.08);
     const [x, z] = T(cu - 0.05, cv);
-    k.house('wood', 'darkStone', hw, hd, 0.14, { at: [x, DECK - 0.002, z], seat: false, rot: [0, YAW, 0], pitch: 58, overhang: 0.01, color: 0x8c877d, roofColor: 0x4f595e, roofGrain: 0.5, ridge: { color: 0x8c713f, size: 0.007 }, lod: 2 });
+    k.house('wood', 'darkStone', hw, hd, 0.14, { at: [x, DECK - 0.002, z], seat: false, rot: [0, YAW, 0], pitch: 58, overhang: 0.01, color: 0x5e5b55, roofColor: 0x3f474c, roofGrain: 0.5, ridge: { color: 0x8c713f, size: 0.007 }, lod: 2 });
     const [wx, wz] = T(MASTER.u1 - 0.065, cv);
-    k.house('wood', 'darkStone', 0.13, MASTER.v1 - MASTER.v0 - 0.02, 0.16, { at: [wx, DECK - 0.002, wz], seat: false, rot: [0, YAW + 90, 0], pitch: 60, overhang: 0.01, color: 0x948f85, roofColor: 0x4f595e, roofGrain: 0.5, lod: 2 });
+    k.house('wood', 'darkStone', 0.13, MASTER.v1 - MASTER.v0 - 0.02, 0.16, { at: [wx, DECK - 0.002, wz], seat: false, rot: [0, YAW + 90, 0], pitch: 60, overhang: 0.01, color: 0x3e3a35, roofColor: 0x3f474c, roofGrain: 0.5, lod: 2 });
     const [tx, tz] = T(MASTER.u0 + 0.07, MASTER.v0 + 0.07);
-    k.tower('wood', 0.055, 0.62, { at: [tx, DECK - 0.002, tz], sides: 6, roof: 'spire', roofH: 0.3, roofFam: 'darkStone', color: 0x86817a, roofColor: 0x454f54, lod: 2 });
+    // S4 W5: lower (0.62 → 0.45, spire 0.3 → 0.16), so it reads as a timber tower, not a church spire
+    k.tower('wood', 0.055, 0.45, { at: [tx, DECK - 0.002, tz], sides: 6, roof: 'spire', roofH: 0.16, roofFam: 'darkStone', color: 0x5a5751, roofColor: 0x3a4247, lod: 2 });
     for (const [y, a] of [
-      [0.36, 200],
-      [0.5, 160],
+      [0.26, 200],
+      [0.37, 160],
     ] as const)
       light(tx + Math.sin(a * DEG) * 0.057, DECK + y, tz - Math.cos(a * DEG) * 0.057, 'window', 0.95, 0.01);
     // windows down the hall's front (south-south-west) and the wing's canal gable
@@ -324,17 +342,18 @@ function buildTown(k: ProxyKit): void {
   // ---- 6. the bell tower (east bank, across from the market) and a watch tower at the north end
   {
     const [bx, bz] = T(GRAND.u + GRAND.w / 2 + WALK + 0.06, CROSS.v + 0.15);
-    k.tower('wood', 0.048, 0.5, { at: [bx, DECK - 0.002, bz], sides: 4, rot: [0, YAW + 45, 0], roof: 'spire', roofH: 0.22, roofFam: 'darkStone', color: 0x8f8a80, roofColor: 0x4a5459, lod: 2 });
-    light(bx + Math.sin(YAW * DEG) * 0.05, DECK + 0.42, bz + Math.cos(YAW * DEG) * 0.05, 'window', 0.9, 0.011);
+    // S4 W5: the bell and watch towers 30 % lower, the bell tower under a pyramid cap
+    k.tower('wood', 0.048, 0.35, { at: [bx, DECK - 0.002, bz], sides: 4, rot: [0, YAW + 45, 0], roof: 'cone', roofH: 0.07, roofFam: 'darkStone', color: 0x55524c, roofColor: 0x40494e, lod: 2 });
+    light(bx + Math.sin(YAW * DEG) * 0.05, DECK + 0.29, bz + Math.cos(YAW * DEG) * 0.05, 'window', 0.9, 0.011);
     const [wx, wz] = T(GRAND.u + GRAND.w / 2 + WALK + 0.05, -1.0);
-    if (deckAt(GRAND.u + GRAND.w / 2 + WALK + 0.05, -1.0)) k.tower('wood', 0.042, 0.42, { at: [wx, DECK - 0.002, wz], sides: 6, roof: 'spire', roofH: 0.2, roofFam: 'darkStone', color: 0x948f85, roofColor: 0x4f595e, lod: 2 });
+    if (deckAt(GRAND.u + GRAND.w / 2 + WALK + 0.05, -1.0)) k.tower('wood', 0.042, 0.29, { at: [wx, DECK - 0.002, wz], sides: 6, roof: 'spire', roofH: 0.14, roofFam: 'darkStone', color: 0x5e5b55, roofColor: 0x3e464b, lod: 2 });
     const [hx, hz] = T(-0.85, -0.3);
-    if (deckAt(-0.85, -0.3)) k.tower('wood', 0.04, 0.38, { at: [hx, DECK - 0.002, hz], sides: 4, rot: [0, YAW + 45, 0], roof: 'spire', roofH: 0.18, roofFam: 'darkStone', color: 0x8a857b, roofColor: 0x4f595e, lod: 1 });
+    if (deckAt(-0.85, -0.3)) k.tower('wood', 0.04, 0.27, { at: [hx, DECK - 0.002, hz], sides: 4, rot: [0, YAW + 45, 0], roof: 'cone', roofH: 0.06, roofFam: 'darkStone', color: 0x433f3a, roofColor: 0x3a4247, lod: 1 });
   }
 
   // ---- 7. bridges: humped ones over the Grand Canal (lamps at their heads), plank footbridges over the
   // side canals, and houses built across two side canals
-  for (const v of [-0.78, -0.08, 0.6]) {
+  for (const v of [-0.78, -0.42, -0.08, 0.6, 0.95]) {
     const a = T(GRAND.u - GRAND.w / 2 - 0.012, v);
     const m = T(GRAND.u, v);
     const b = T(GRAND.u + GRAND.w / 2 + 0.012, v);
@@ -414,13 +433,13 @@ function buildTown(k: ProxyKit): void {
   }
   // the shore gatehouse where the bridge lands
   const gyaw = (-Math.atan2(dir[1], dir[0]) * 180) / Math.PI;
-  k.house('wood', 'darkStone', 0.095, 0.08, 0.075, { at: [B0[0] + dir[0] * 0.07, 0, B0[1] + dir[1] * 0.07], rot: [0, gyaw, 0], pitch: 58, color: 0x8c877d, roofColor: 0x4f595e, roofGrain: 0.5, lod: 1 });
+  k.house('wood', 'darkStone', 0.095, 0.08, 0.075, { at: [B0[0] + dir[0] * 0.07, 0, B0[1] + dir[1] * 0.07], rot: [0, gyaw, 0], pitch: 58, color: 0x5e5b55, roofColor: 0x40494e, roofGrain: 0.5, lod: 1 });
   light(B0[0] + dir[0] * 0.012, k.ground(B0[0], B0[1]) + 0.04, B0[1], 'lamp', 0.9, 0.011);
 
   // ---------------------------------------------------------------- boats moored in the Grand Canal, in the harbours, out on the lake
   let boats = 0;
-  for (let v = -1.1; v <= 1.1 && boats < 26; v += 0.08) {
-    if (k.r(1) < 0.4) continue;
+  for (let v = -1.15; v <= 1.15 && boats < 34; v += 0.06) {
+    if (k.r(1) < 0.3) continue;
     const side = k.r(2) < 0.5 ? -1 : 1;
     const u = GRAND.u + side * (GRAND.w / 2 - 0.02);
     if (!insideTown(u, v, 0.98) || !wet(u, v)) continue;
@@ -428,7 +447,7 @@ function buildTown(k: ProxyKit): void {
     boat(x, z, YAW + 90 + (k.r(3) - 0.5) * 10);
     boats++;
   }
-  for (let a = 0; a < 360 && boats < 40; a += 19) {
+  for (let a = 0; a < 360 && boats < 46; a += 19) {
     const u = 1.88 * Math.cos(a * DEG);
     const v = 1.46 * Math.sin(a * DEG);
     if (k.r(1) < 0.55 || insideTown(u, v, 1.02) || !wet(u, v)) continue;
@@ -446,38 +465,53 @@ export default defineLandmark({
   proxy: buildTown,
   // a few thin chimney smokes over the roofs (town frame u, v; all on the deck, off the canals) at the
   // town's design scale (houses ×9): pale wisps bending downwind, dissolving ≈ 0.4–0.5 km up
-  emitters: (
-    [
-      [-0.9, -0.5],
-      [-0.5, 0.55],
-      [0.55, -0.35],
-      [0.85, 0.55],
-      [-1.25, 0.1],
-      [1.2, -0.1],
-    ] as V2[]
-  ).map(([u, v], i) => {
-    const [x, z] = T(u, v);
-    return { preset: 'smoke' as const, at: [x, 0.19 + 0.03 * (i % 3), z] as [number, number, number], rate: 0.8, scale: 0.075 + 0.015 * (i % 2), color: 0xb4b8bd };
-  }),
+  emitters: [
+    ...(
+      [
+        [-0.9, -0.5],
+        [-0.5, 0.55],
+        [0.55, -0.35],
+        [0.85, 0.55],
+        [-1.25, 0.1],
+        [1.2, -0.1],
+      ] as V2[]
+    ).map(([u, v], i) => {
+      const [x, z] = T(u, v);
+      return { preset: 'smoke' as const, at: [x, 0.19 + 0.03 * (i % 3), z] as [number, number, number], rate: 0.8, scale: 0.075 + 0.015 * (i % 2), color: 0xb4b8bd };
+    }),
+    // S4 W5 (C2 #16): a low, cold blue-grey mist lying on the water round the town — behind it (north) and
+    // along its flanks, never across the hero's view of the fronts
+    ...(
+      [
+        [[-2.3, -1.75], [2.3, -1.75], 0.45],
+        [[-2.2, -0.9], [-2.4, 1.2], 0.35],
+        [[2.25, -1.1], [2.35, 0.9], 0.35],
+      ] as [V2, V2, number][]
+    ).map(([a, b, w]) => {
+      const [ax, az] = T(a[0], a[1]);
+      const [bx, bz] = T(b[0], b[1]);
+      return { preset: 'mist' as const, at: [ax, 0.02, az] as [number, number, number], to: [bx, 0.03, bz] as [number, number, number], rate: 0.55, scale: w, color: 0xc2cbd3 };
+    }),
+  ],
   annotation: { title: 'Lake-town', subtitle: 'Esgaroth upon the Long Lake', blurb: 'A town of Men built out on the waters, in the shadow of the Lonely Mountain.' },
   bookmarks: [
     {
       id: 'lake-town-close',
       fStop: 5.6,
-      distanceKm: 6.8,
-      elevationDeg: 8,
-      azimuthDeg: 195,
-      fov: 28,
+      distanceKm: 6.0,
+      elevationDeg: 10,
+      azimuthDeg: 60,
+      fov: 34,
       // the aim point sits on the lake bed: lift it to the water surface (≈ 2.4 above the bed here)
       lift: 2.6,
-      aimKm: [1.4, 0.7],
+      aimKm: [1.4, 0.4],
       tod: 16.3,
       dayOfYear: 240,
       // (the probe's ground line of sight aims at the lake bed under the town's water anchor; the town's
       // upper body is in clear view)
       expect: { los: false },
       compare: ['reference/film/lake-town/lake-town-wide.webp', 'reference/concept-art/lake-town/lake-town-alan-lee.jpg'],
-      note: 'afternoon (sun ≈ 22°, from the west-south-west: lower, the lake lies in the western hills’ shadow) from the south-south-west, low over the lake and up the Grand Canal: the roofscape of the stilt town filling the frame, gable fronts and spired towers along the canal, the Master’s tower and the bell tower above the roofs, the lake and the far shore behind the skyline. Erebor stays out: at the ×12 relief it stands 18–25° above the horizon from here (that composition is erebor-wide / w4h-laketown-erebor)',
+      note: 'afternoon, BACKLIT (S4 W5, C2 #16: the film plate looks into a low sun; from the south-south-west the town stood against a sunny grass ramp across a lake that read as a river): from the east-north-east into the sun (≈ 22°, west-south-west), the dark timber roofscape on its piles against the glittering lake, the far shore’s hills in shadow behind, chimney smoke and a low cold mist on the water. The Long Lake is ≈ 5 km wide between hills 2–4 units high at the ×12 relief, so no framing from the town shows open water to a horizon; Erebor stands 18–25° above the horizon from here (that composition is erebor-wide / w4h-laketown-erebor)',
     },
   ],
 });

@@ -3,64 +3,64 @@
  "notes": "S4 W5-G2 hero polish: framing trials and checks for Minas Morgul, Lake-town, Mount Doom, Rivendell, Minas Tirith.",
  "shots": [
   {
-   "id": "g2-mm-wide-d",
-   "tod": 21,
-   "dayOfYear": 78,
-   "lookOverride": "mordor",
+   "id": "g2-lt-d",
+   "tod": 16.3,
+   "dayOfYear": 240,
+   "fStop": 5.6,
    "note": "trial",
    "camera": {
     "orbit": {
-     "place": "minas-morgul",
-     "fov": 24,
-     "distanceKm": 30,
-     "elevationDeg": 2,
-     "azimuthDeg": 272,
-     "lift": -2.3,
+     "place": "lake-town",
+     "distanceKm": 6.0,
+     "elevationDeg": 10,
+     "azimuthDeg": 60,
+     "fov": 34,
+     "lift": 2.6,
      "aimKm": [
-      2.0,
-      -4.8
+      1.4,
+      0.4
      ]
     }
    }
   },
   {
-   "id": "g2-mm-wide-e",
-   "tod": 21,
-   "dayOfYear": 78,
-   "lookOverride": "mordor",
+   "id": "g2-lt-e",
+   "tod": 16.3,
+   "dayOfYear": 240,
+   "fStop": 5.6,
    "note": "trial",
    "camera": {
     "orbit": {
-     "place": "minas-morgul",
-     "fov": 24,
-     "distanceKm": 26,
-     "elevationDeg": 5,
-     "azimuthDeg": 266,
-     "lift": -3,
+     "place": "lake-town",
+     "distanceKm": 5.5,
+     "elevationDeg": 14,
+     "azimuthDeg": 40,
+     "fov": 34,
+     "lift": 2.6,
      "aimKm": [
-      2.5,
-      -4.5
+      1.3,
+      0.5
      ]
     }
    }
   },
   {
-   "id": "g2-mm-wide-f",
-   "tod": 21,
-   "dayOfYear": 78,
-   "lookOverride": "mordor",
+   "id": "g2-lt-f",
+   "tod": 16.3,
+   "dayOfYear": 240,
+   "fStop": 5.6,
    "note": "trial",
    "camera": {
     "orbit": {
-     "place": "minas-morgul",
-     "fov": 24,
-     "distanceKm": 28,
-     "elevationDeg": 6,
-     "azimuthDeg": 245,
-     "lift": -3,
+     "place": "lake-town",
+     "distanceKm": 5.5,
+     "elevationDeg": 14,
+     "azimuthDeg": 200,
+     "fov": 34,
+     "lift": 2.6,
      "aimKm": [
-      3.0,
-      -4.5
+      1.4,
+      0.9
      ]
     }
    }

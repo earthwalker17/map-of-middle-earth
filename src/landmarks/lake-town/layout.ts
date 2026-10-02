@@ -23,9 +23,12 @@ export const YAW = -15;
 /** deck top above the water, km */
 export const DECK = 0.075;
 /** deck slab thickness, km */
-export const DECK_T = 0.028;
-/** the Grand Canal: centre line u and width (twice the widest side canal) */
-export const GRAND = { u: 0.05, w: 0.3 };
+export const DECK_T = 0.012;
+/**
+ * the Grand Canal: centre line u and width (S4 W5: 0.3 → 0.195, so the town reads as one town cut by a
+ * canal, not two islands)
+ */
+export const GRAND = { u: 0.05, w: 0.195 };
 /** the cross canal: centre line v and width; it runs west from the Grand Canal and ends inside the town at u0 */
 export const CROSS = { v: 0.2, w: 0.1, u0: -0.72 };
 
@@ -68,7 +71,8 @@ const angDiff = (a: number, b: number): number => {
 function rim(a: number): number {
   let r = 1 + 0.07 * Math.sin(3 * a + 0.7) + 0.05 * Math.sin(5 * a + 2.1) + 0.03 * Math.sin(8 * a + 0.3);
   // a ragged edge: steps of ≈ 0.08 km where the outer houses stand out or fall back
-  r += (rand(SEED, Math.floor((a / (Math.PI * 2)) * 70 + 70) % 70, 41) - 0.5) * 0.06;
+  // (S4 W5: 110 steps of ≈ 0.09 km, deeper: no straight edge longer than ≈ 0.12 km)
+  r += (rand(SEED, Math.floor((a / (Math.PI * 2)) * 110 + 110) % 110, 41) - 0.5) * 0.075;
   for (const [c, w, d] of NOTCHES) if (Math.abs(angDiff(a, c)) < w) r -= d;
   return r;
 }
