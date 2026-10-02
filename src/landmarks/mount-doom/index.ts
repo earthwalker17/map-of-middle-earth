@@ -1,4 +1,4 @@
-import type { LightDecl, LocalStamp } from '../types.ts';
+import type { LightDecl, LocalStamp, V3 } from '../types.ts';
 import { defineLandmark } from '../types.ts';
 import { buildDoom, CRATER_R } from './parts.ts';
 
@@ -84,6 +84,13 @@ const STAMPS: LocalStamp[] = [
   })),
 ];
 
+/**
+ * Low ash sheets over the Gorgoroth foreground (S4 W3-E, C1 note): OFF — in the dark dusk plates they hardly
+ * read yet (pale billboards against the black plain at 30–50 km) for ≈ 316 large puffs (the preview's
+ * Mordor fill rate); knownIssues.
+ */
+const ASH_SHEETS = false;
+
 /** declared lights beyond the kit records (the kit records the crater, door and flow lights) */
 const LIGHTS: LightDecl[] = [];
 
@@ -98,6 +105,14 @@ export default defineLandmark({
     { preset: 'smoke', at: [0, 1, 0], rate: 1, scale: 3 },
     { preset: 'ash', at: [0, 4, 0], rate: 0.6, scale: 6 },
     { preset: 'sparks', at: [0, 0.5, 0], rate: 0.4 },
+    // low ash sheets drifting over the Gorgoroth plain (≈ 2 km over the floor at rel −16) south of the cone,
+    // across the hero cameras' foreground (ASH_SHEETS)
+    ...(ASH_SHEETS
+      ? [
+          { preset: 'ash' as const, at: [-12, -14, 27] as V3, to: [14, -13.6, 31] as V3, rate: 2.2, scale: 5, color: 0xd0cac2 },
+          { preset: 'ash' as const, at: [-8, -13.4, 17] as V3, to: [18, -13, 20] as V3, rate: 1.8, scale: 5, color: 0xd0cac2 },
+        ]
+      : []),
   ],
   lookOverride: 'mordor',
   vegetationExclusion: 20,

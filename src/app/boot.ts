@@ -16,9 +16,10 @@ import { resolveShot, type ShotSpecInput } from '../camera/shots.ts';
 import { gradeUniforms } from '../render/PostPipeline.ts';
 import { LANDMARKS } from '../landmarks/registry.ts';
 import { LandmarkSystem } from '../landmarks/LandmarkSystem.ts';
-import { landmarkExclusions, landmarkPools, landmarkStamps, landmarkTreeCaps } from '../landmarks/world.ts';
+import { landmarkEmitters, landmarkExclusions, landmarkFalls, landmarkPools, landmarkStamps, landmarkTreeCaps } from '../landmarks/world.ts';
 import { buildLandmarks } from '../landmarks/build.ts';
 import { EmissionSystem } from '../emission/EmissionSystem.ts';
+import { EffectsSystem } from '../effects/EffectsSystem.ts';
 
 /**
  * Load the world and register every system. Order matters: environment first (writes the shared
@@ -50,7 +51,10 @@ async function buildWorld(engine: Engine, quality: QualityTierId, shots: ShotSpe
   const diorama = new DioramaSystem(world);
   const landmarks = new LandmarkSystem(world, built);
   const emission = new EmissionSystem(world, built.flatMap((b) => b.lights));
-  for (const s of [environment, terrain, water, vegetation, diorama, landmarks, emission]) {
+  // S4 W3-E: plumes, falls, mist, the beam; crater sparks and beacon flames ride on the emission sprites
+  const effects = new EffectsSystem(world, { emitters: landmarkEmitters(world, LANDMARKS), falls: landmarkFalls(world, LANDMARKS), lights: emission.records, pools: landmarkPools(world, LANDMARKS) });
+  emission.setDynamic((s) => effects.lights(s));
+  for (const s of [environment, terrain, water, vegetation, diorama, landmarks, emission, effects]) {
     await engine.register(s);
     mark(`init:${s.id}`);
   }
@@ -68,7 +72,7 @@ async function buildWorld(engine: Engine, quality: QualityTierId, shots: ShotSpe
   mark('warm');
 
   // dev handle for diagnostics scripts (tools/capture/probe.ts)
-  (window as unknown as { __app: unknown }).__app = { engine, world, terrain, environment, water, vegetation, diorama, landmarks, emission };
+  (window as unknown as { __app: unknown }).__app = { engine, world, terrain, environment, water, vegetation, diorama, landmarks, emission, effects };
   return world;
 }
 

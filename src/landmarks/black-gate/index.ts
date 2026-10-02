@@ -75,6 +75,12 @@ export default defineLandmark({
   headingDeg: HEADING,
   stamps: STAMPS,
   proxy: (k) => buildGate(k),
+  // smoke of Udûn's forges rising behind the wall (local +z = behind, into Mordor), drifting downwind
+  emitters: [
+    { preset: 'smoke', at: [-4, 0.8, 6], rate: 0.3, scale: 0.9 },
+    { preset: 'smoke', at: [3, 1.2, 9], rate: 0.28, scale: 1.1 },
+    { preset: 'smoke', at: [-2, 2.0, 18], rate: 0.3, scale: 1.4 },
+  ],
   lookOverride: 'dagorlad',
   // no trees in the pass, on the ridges or on the Dagorlad approach in any hero framing
   vegetationExclusion: 36,

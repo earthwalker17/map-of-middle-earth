@@ -123,6 +123,7 @@ if (hasBake(baked)) {
   bakedInfo.push(...r.info);
 } else warnings.push(`baked world: no bake at ${baked} — river / stamp checks skipped`);
 for (const [list, add] of Object.entries(await (await import('./gates.ts')).checkGates())) ({ errors, warnings, info: bakedInfo })[list as 'errors' | 'warnings' | 'info'].push(...add); // S4 W2-D light gates
+for (const [list, add] of Object.entries(await (await import('./effects.ts')).checkEffects())) ({ errors, warnings, info: bakedInfo })[list as 'errors' | 'warnings' | 'info'].push(...add); // S4 W3-E effects
 
 // ------------------------------------------------------------------ report
 console.log(`[check] places: ${places.length} (${landmarks.length} landmarks), overlaps: ${overlaps}`);

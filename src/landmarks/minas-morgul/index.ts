@@ -49,7 +49,19 @@ export default defineLandmark({
   placeId: 'minas-morgul',
   tier: 'A',
   stamps: STAMPS,
-  lights: WASH_LIGHTS,
+  // the Great Signal's spill (event morgul-beam, spill only: the beam ribbon is the EffectsSystem's) above
+  // the crown, so the city and the vale light up green while it burns
+  lights: [...WASH_LIGHTS, { at: [TOWER[0], 7.4, TOWER[1]], color: 0x3dff86, intensity: 2.4, radius: 0.15, kind: 'magic', gate: 'event', event: 'morgul-beam', spillKm: 4, sprite: false }],
+  emitters: [
+    // the Great Signal: a green beam from the crown up into the pall (deck ≈ 52 → +32 here), event-gated
+    { preset: 'beam', at: [TOWER[0], 6.7, TOWER[1]], to: [TOWER[0], 31, TOWER[1]], rate: 1, scale: 1, color: 0x52ff8a, event: 'morgul-beam' },
+    // the vale's corpse-light mist: a layer on the slope under the gate (in the wall-wash's reach), a sheet
+    // following the Morgulduin down past the bridge (the stream falls west: −1.1 at x 2.3, −3.8 at the
+    // bridge, −6.7 at x −2.3) and a layer pooled down the vale (−8.3 at x −3.5); green tint
+    { preset: 'mist', at: [2.0, -1.4, 3.8], to: [-2.2, -1.8, 4.6], rate: 0.9, scale: 1.1, color: 0xb6f2c6 },
+    { preset: 'mist', at: [2.3, -0.75, 6.8], to: [-2.3, -6.3, 4.95], rate: 1.1, scale: 0.8, color: 0xb6f2c6 },
+    { preset: 'mist', at: [-2.6, -7.2, 4.9], to: [-6.8, -9.6, 5.2], rate: 1.1, scale: 1.4, color: 0xb6f2c6 },
+  ],
   proxy: (k) => {
     const padY = k.ground(C[0], C[1]);
     buildCity(k);

@@ -235,8 +235,10 @@ export default defineLandmark({
       ring: Array.from({ length: 20 }, (_, j): V2 => [POOL_C[0] + Math.cos((j / 20) * Math.PI * 2) * (POOL_R + 0.14), POOL_C[1] + Math.sin((j / 20) * Math.PI * 2) * (POOL_R + 0.14)]),
       level: LEVEL_REL - FLOOR_REL,
     },
-    // the falls over the cave (S4 effect): from the rim down the alcove's back wall into the pool
-    { kind: 'waterfall', path: [[0.7, 2.05, 0.05], [0.42, 1.2, 0.05], [0.2, 0.05, 0.05]], width: 0.36 },
+    // the falls over the cave (S4 effect): from the rim down in front of the alcove's back wall into the
+    // pool — the curtain hangs clear of the face's rock shards and in front of the cave mouth (front plane
+    // x ≈ 0.22: the Window looks out through the water)
+    { kind: 'waterfall', path: [[0.7, 2.05, 0.05], [0.3, 1.2, 0.05], [0.08, 0.05, 0.05]], width: 0.36 },
   ],
   annotation: { title: 'Henneth Annûn', subtitle: 'The Window on the West', blurb: 'Hidden refuge of the Rangers of Ithilien behind a curtain of falling water.' },
   bookmarks: [

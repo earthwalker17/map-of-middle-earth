@@ -1,6 +1,6 @@
 import type { LocalStamp } from '../types.ts';
 import { defineLandmark } from '../types.ts';
-import { buildTower, CROWN_Y, EYE_DY } from './tower.ts';
+import { buildTower } from './tower.ts';
 
 /**
  * Barad-dûr, the Dark Tower (research §14): a black, jagged spire of bundled fins and spikes rising in
@@ -54,7 +54,14 @@ export default defineLandmark({
   headingDeg: HEADING,
   stamps: STAMPS,
   proxy: (k) => buildTower(k),
-  emitters: [{ preset: 'smoke', at: [0, CROWN_Y + EYE_DY + 1, 0], rate: 0.3 }],
+  // fumes of the forges round the foundation (behind and beside the tower from the Gorgoroth cameras),
+  // staggered in place, height, strength and size (no symmetric pair flanking the spire), rising and
+  // dissolving below the pall; the Eye stays clear
+  emitters: [
+    { preset: 'smoke', at: [5.4, 0.2, 3.6], rate: 0.26, scale: 1.65 },
+    { preset: 'smoke', at: [-3.1, 0.7, 6.2], rate: 0.13, scale: 0.85 },
+    { preset: 'smoke', at: [1.4, 0.1, 8.0], rate: 0.2, scale: 1.2 },
+  ],
   lookOverride: 'mordor',
   vegetationExclusion: 12,
   contrast: 'dark',
