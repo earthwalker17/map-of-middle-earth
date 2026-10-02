@@ -167,15 +167,15 @@ export const PUFF: Record<PuffKind, PuffPreset> = {
     count: 30,
     minCount: 4,
     life: 9,
-    rise: 0.8,
+    rise: 1.2,
     r0: 0.22,
-    r1: 0.6,
+    r1: 0.9,
     spread: 1,
     umbrella: 0,
     bend: 0.4,
     drift: 0,
     size0: 0.3,
-    size1: 0.75,
+    size1: 1.0,
     opacity: 0.6,
     albedo: [0.78, 0.8, 0.82],
     spill: 0.4,
@@ -222,7 +222,8 @@ export const BEAM = { core: 0.05, glow: 0.22, radiance: 14, color: [0.32, 1, 0.5
  * rings / sectors, how far the curtain turns toward the camera around its axis (0 = flat on its path,
  * 1 = an axis billboard: a fall seen along its wall never collapses to a thread), the draped falls'
  * visual widening, the width from which a fall raises a tall mist column over its foot (Rauros: the "smoke"
- * of the falls, seen behind the Argonath) and that column's scale per km of width, and how much longer
- * than wide the curtain's streaks are.
+ * of the falls, seen behind the Argonath) and that column's scale per km of width, how much longer than
+ * wide the curtain's streaks are, and the largest foot-spray scale (a wide fall's spray stays a cloud at
+ * its foot, the mist column carries the rest).
  */
-export const FALLS = { segments: 24, veil: 1.35, foam: 0.75, foamRings: 4, foamSectors: 24, facing: 0.45, drapeWiden: 1.4, columnWidth: 2, column: 0.55, streakStretch: 3 };
+export const FALLS = { segments: 24, veil: 1.35, foam: 0.75, foamRings: 4, foamSectors: 24, facing: 0.45, drapeWiden: 1.4, columnWidth: 2, column: 0.55, streakStretch: 3, sprayMax: 2.5 };

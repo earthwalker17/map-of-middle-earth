@@ -250,7 +250,7 @@ export function createFallsMaterial(noise: Texture, o: FxMaterialOptions): NodeM
     // colour: white aerated water; the glassy lip carries a dark-water / sky tint
     const foam = vec3(0.86, 0.88, 0.9).mul(vE);
     const glass = vec3(0.1, 0.13, 0.14).mul(vE).add(vSky.mul(0.12));
-    const white = select(isFoam, float(1), aer.mul(n.mul(0.6).add(0.4)));
+    const white = select(isFoam, float(1), aer.mul(n.mul(0.45).add(0.65)));
     const col = mix(glass, foam, clamp(white, 0, 1)).mul(vT).add(vS);
     return vec4(col.mul(alpha), alpha);
   })();

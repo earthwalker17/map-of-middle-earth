@@ -185,7 +185,7 @@ export function buildFalls(falls: FallRecord[], heightAt: HeightFn, waterAt: (x:
         const v0 = fBase + r * (SEC + 1) + s;
         idx.push(v0, v0 + SEC + 1, v0 + 1, v0 + 1, v0 + SEC + 1, v0 + SEC + 2);
       }
-    sprays.push({ landmark: f.landmark, p: [foot[0], fy + 0.01, foot[2]], out: [dx, dz], scale: Math.max(0.8 * width, 0.1 * drop), seed: (f.seed ^ (0x9e3779b9 + fi)) >>> 0, column: width >= FALLS.columnWidth ? FALLS.column * width : 0 });
+    sprays.push({ landmark: f.landmark, p: [foot[0], fy + 0.01, foot[2]], out: [dx, dz], scale: Math.max(Math.min(0.8 * width, FALLS.sprayMax), 0.14 * drop), seed: (f.seed ^ (0x9e3779b9 + fi)) >>> 0, column: width >= FALLS.columnWidth ? FALLS.column * width : 0 });
   }
   if (!idx.length) return { geometry: null, sprays };
   const g = new BufferGeometry();
