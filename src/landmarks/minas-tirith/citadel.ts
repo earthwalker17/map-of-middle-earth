@@ -1,11 +1,14 @@
 import { valueNoise } from '../../core/rng.ts';
 import type { ProxyKit } from '../kit/ProxyKit.ts';
 import type { V2 } from '../records.ts';
-import { WALL, onProw } from './city.ts';
+import { PROW_BATTER, type TierArc, WALL, onProw } from './city.ts';
 import { BEACON, C, CITADEL_Y, GATE_BEARING, PROW, PROW_YAW, RADII, TOWER, fromProw, polarC, tierY } from './layout.ts';
 
-/** the prow's rock: pale weathered limestone, at least as pale as the city (it must split the tiers) */
-const ROCK = 0xc4c1b9;
+/**
+ * the prow's rock: weathered grey limestone, darker than the walls (S4 W5, C2 #10: in the wall colour it
+ * read as a thin smooth slab — rock, not masonry)
+ */
+const ROCK = 0x9b9a92;
 const SLATE = 0x63676c;
 /** the White Tower: the palest stone of the city (highlight #d2c6b7), still not white */
 const TOWER_STONE = 0xdcd9d0;
@@ -38,13 +41,14 @@ export function buildProw(k: ProxyKit): void {
       const side = Math.sign(p) || 1;
       // blocks: noise quantised to four levels on a coarse (along, up) grid — irregular fractured blocks
       const q = valueNoise(d * 2.6 + side * 7.1, f * 4.2, 9105);
-      const block = 0.085 * (Math.floor(q * 4) / 3 - 0.5);
+      const block = 0.15 * (Math.floor(q * 4) / 3 - 0.5);
       // oblique bedding: a sawtooth of ledges dipping along the keel
       const ph = f * 9 + d * 0.8 + side * 0.3;
       const strata = 0.03 * (ph - Math.floor(ph) - 0.5);
       const broad = 0.05 * (valueNoise(d * 1.1 + side * 5.1, f * 2.0, 9101) - 0.5);
       const bulge = (block + strata + broad) * Math.sin(Math.min(1, f / 0.95) * Math.PI * 0.5 + 0.35);
-      const batter = 0.08 * (1 - f);
+      // (S4 W5: the keel flares to ≈ 1.4× its crest width at its foot)
+      const batter = PROW_BATTER * (1 - f);
       const edge = vi === tip ? 0.25 : 1;
       return [d - 0.05 * (1 - f) + (vi === tip ? 0.05 * (1 - f) : 0), p * (1 + batter) + side * bulge * edge];
     });
@@ -138,6 +142,40 @@ export function buildGate(k: ProxyKit): void {
   const [gx, gz] = polarC(GATE_BEARING, R + 0.02);
   k.box('iron', 0.05, 0.46, 0.3, { at: [gx, 0, gz], seat: 'min', rot: [0, 90 - GATE_BEARING, 0], color: 0x2a2a28 });
   k.box('stone', 0.12, 0.14, 0.5, { at: [gx - ox * 0.02, 0.48, gz - oz * 0.02], rot: [0, 90 - GATE_BEARING, 0], color: WALL, shade: 0.94 });
+}
+
+/**
+ * The apron at the outer wall's foot (S4 W5, C2 #10: the wall met a flat lawn in one hard line): a band of
+ * trodden earth and gravel ≈ 0.5 km wide round the wall on the bench, a hair over the ground, its outer
+ * edge ragged — so the city stands on worked ground, not on turf.
+ */
+export function buildApron(k: ProxyKit, t1: TierArc): void {
+  const n = 96;
+  // only on the level bench (the extrude's flat top stands on the highest ground under it): runs of the
+  // arc where both edges lie on the bench, each its own slab
+  const runs: { o: V2[]; i: V2[] }[] = [];
+  let run: { o: V2[]; i: V2[] } = { o: [], i: [] };
+  for (let j = 0; j <= n; j++) {
+    const b = t1.bLo + ((t1.bHi - t1.bLo) * j) / n;
+    const rag = 0.38 + 0.22 * valueNoise(b * 0.21, 3.7, 9133);
+    const o = polarC(b, t1.R + rag);
+    const i = polarC(b, t1.R - 0.05);
+    const flat = Math.max(k.ground(o[0], o[1]), k.ground(i[0], i[1]), k.ground(...polarC(b, t1.R + rag / 2))) < 0.04;
+    if (flat) {
+      run.o.push(o);
+      run.i.push(i);
+    } else if (run.o.length) {
+      runs.push(run);
+      run = { o: [], i: [] };
+    }
+  }
+  if (run.o.length) runs.push(run);
+  const [cx, cz] = C;
+  for (const r of runs) {
+    if (r.o.length < 2) continue;
+    const ring = [...r.o, ...r.i.reverse()];
+    k.extrude('weathered', ring.map(([x, z]): V2 => [x - cx, z - cz]), 0.006, { at: [cx, 0, cz], followGround: true, color: 0x857c6a, grain: 0.5, lod: 1 });
+  }
 }
 
 /**

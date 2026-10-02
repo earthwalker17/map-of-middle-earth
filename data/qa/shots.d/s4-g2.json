@@ -24,6 +24,59 @@
     "reference/film/mount-doom/mount-doom-plume-lava-fotr.jpg"
    ],
    "note": "S4 W5-G2: the new mount-doom-close at night (= w1a-doom-night on the S4 W5 camera; contract request: retarget w1a-doom-night)"
+  },
+  {
+   "id": "g2-mt-a",
+   "tod": 6.3,
+   "note": "trial",
+   "camera": {
+    "orbit": {
+     "place": "minas-tirith",
+     "distanceKm": 55,
+     "elevationDeg": 8,
+     "azimuthDeg": 125,
+     "fov": 24,
+     "lift": 6.5
+    }
+   }
+  },
+  {
+   "id": "g2-mt-b",
+   "tod": 6.3,
+   "note": "trial",
+   "camera": {
+    "orbit": {
+     "place": "minas-tirith",
+     "distanceKm": 55,
+     "elevationDeg": 10,
+     "azimuthDeg": 140,
+     "fov": 24,
+     "lift": 7.5,
+     "aimKm": [
+      -1.5,
+      1.0
+     ]
+    }
+   }
+  },
+  {
+   "id": "g2-mt-c",
+   "tod": 6.3,
+   "note": "trial",
+   "camera": {
+    "orbit": {
+     "place": "minas-tirith",
+     "distanceKm": 55,
+     "elevationDeg": 8,
+     "azimuthDeg": 132,
+     "fov": 26,
+     "lift": 6.5,
+     "aimKm": [
+      -1.0,
+      0.5
+     ]
+    }
+   }
   }
  ]
 }

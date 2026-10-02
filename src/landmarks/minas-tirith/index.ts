@@ -1,6 +1,6 @@
 import type { LocalStamp } from '../types.ts';
 import { defineLandmark } from '../types.ts';
-import { buildBeacon, buildCitadel, buildGate, buildProw } from './citadel.ts';
+import { buildApron, buildBeacon, buildCitadel, buildGate, buildProw } from './citadel.ts';
 import { buildHouses, buildRoofscape, buildTiers } from './city.ts';
 import { BENCH_REL, C, CITADEL_Y } from './layout.ts';
 
@@ -42,32 +42,41 @@ const STAMPS: LocalStamp[] = [
     side: 'right',
     plateauKm: 2.5,
     falloff: 3,
-    rough: { amp: 0.5, scaleKm: 2.0, ridged: true },
+    // (S4 W5, C2 #7: a ridged roughness at the heightfield's finest (≈ 1.6 km): buttresses and gullies,
+    // not one flat brown slab behind the city)
+    rough: { amp: 1.3, scaleKm: 0.8, ridged: true },
     surface: 'rock',
   },
   // the flanks: where the natural front eases into foot slopes north and south of the city, raise the
-  // ground west of the cliff line into the same sheer face (the city stands in a bay of the mountain)
+  // ground west of the cliff line into a sheer face (the city stands in a bay of the mountain). S4 W5 (C2
+  // #7: the flanks carved a deep dark bay, the city in shadow, a grey beehive in a hole): lower (4.2 →
+  // 2.8), their lines jogging ±0.6 km and ridged at ≈ 1–1.6 km, so the bay is shallower and its faces
+  // break into buttresses and gullies
   ...[
     [
       [-2.9, -11],
-      [-2.6, -7.5],
+      [-2.3, -9.3],
+      [-3.1, -7.5],
+      [-2.4, -5.6],
       [-2.35, -3.6],
     ],
     [
       [-2.35, 3.6],
-      [-2.6, 7],
+      [-2.9, 5.3],
+      [-2.2, 7],
+      [-2.9, 8.4],
       [-2.8, 9.5],
     ],
   ].map(
     (path): LocalStamp => ({
       kind: 'scarp',
       path: path as [number, number][],
-      height: 4.2,
+      height: 2.8,
       run: 0.9,
       side: 'right',
       plateauKm: 1.8,
       falloff: 2.6,
-      rough: { amp: 0.6, scaleKm: 2.4, ridged: true },
+      rough: { amp: 1.2, scaleKm: 1.0, ridged: true },
       surface: 'rock',
     }),
   ),
@@ -83,6 +92,7 @@ export default defineLandmark({
     buildProw(k);
     buildCitadel(k);
     buildGate(k);
+    buildApron(k, arcs[0]);
     buildHouses(k, arcs);
     buildRoofscape(k, arcs);
     buildBeacon(k);
@@ -103,16 +113,19 @@ export default defineLandmark({
   bookmarks: [
     {
       id: 'minas-tirith-close',
-      distanceKm: 40,
-      elevationDeg: 5,
-      azimuthDeg: 110,
+      // S4 W5 (C2 #7 / #10): further and higher (40 → 55 km, 5 → 10°, the frame lifted and aimed a little
+      // south-west; shot-list heroKm 40 → 50) so Mindolluin's crest and some sky show over the city in the
+      // lower-middle third; from the south-east (110 → 140°) the prow stands in three-quarter view, the dawn
+      // sun raking it from the left (≈ 60° off the lens) and its southern face in shade
+      distanceKm: 55,
+      elevationDeg: 10,
+      azimuthDeg: 140,
       fov: 24,
-      lift: 4.2,
-      // early dawn: the low sun (azimuth ≈ 80, 19° up) 30° off the lens rakes the tiers and splits the
-      // prow's faces lit / shade
+      lift: 7.5,
+      aimKm: [-1.5, 1.0],
       tod: 6.3,
       compare: ['reference/film/minas-tirith/minas-tirith-prow-tiers-rotk.jpg', 'reference/concept-art/minas-tirith/lee-the-last-debate.jpg'],
-      note: 'dawn from the east-south-east over the Pelennor: the seven tiers as pale bands against the dark cliff of Mindolluin, the keel of the prow pointing at us over the Great Gate (its northern face lit, the southern in shade), the White Tower the top accent',
+      note: 'dawn from the south-east over the Pelennor: the seven tiers (the two lower walls tall) as pale bands against the broken grey cliff of Mindolluin with its crest and snow over them, great halls, domes and towers among the houses, the rock keel of the prow in three-quarter view over the Great Gate (lit from the left, its southern face in shade), the White Tower the top accent',
     },
     {
       id: 'minas-tirith-wide',

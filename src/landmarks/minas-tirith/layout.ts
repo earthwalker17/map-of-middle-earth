@@ -18,12 +18,21 @@ import type { V2 } from '../records.ts';
 export const C: V2 = [-2.0, 0];
 /** number of walled tiers (the seventh is the citadel) */
 export const TIERS = 7;
-/** height step between tiers, km */
+/** mean height step between tiers, km */
 export const STEP = 0.82;
+/**
+ * the height step of tier 1…7 (S4 W5, C2 #10: seven equal rings read as a wedding cake): the two lower
+ * walls 40 % taller than the middle ones, rings 5–6 15 % lower, normalised so the citadel keeps its level
+ * (7 · STEP)
+ */
+const STEP_SHAPE = [1.4, 1.4, 1, 1, 0.85, 0.85, 1];
+export const STEPS: number[] = STEP_SHAPE.map((f) => (f * STEP * 7) / STEP_SHAPE.reduce((a, b) => a + b, 0));
+/** the height step (wall height) of tier `i` (1…7) */
+export const stepOf = (i: number): number => STEPS[Math.max(1, Math.min(7, i)) - 1];
 /** outer radius of tier 1…7 (index 0 = the lowest, outermost wall) */
 export const RADII = [6.3, 5.7, 5.1, 4.5, 3.9, 3.3, 2.6];
 /** terrace top of tier `i` (0 = the bench, 7 = the citadel), local y */
-export const tierY = (i: number): number => STEP * i;
+export const tierY = (i: number): number => STEPS.slice(0, Math.max(0, Math.min(7, i))).reduce((a, b) => a + b, 0);
 /** the citadel level */
 export const CITADEL_Y = tierY(TIERS);
 

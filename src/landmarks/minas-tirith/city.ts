@@ -1,10 +1,10 @@
 import type { ProxyKit } from '../kit/ProxyKit.ts';
 import type { V2 } from '../records.ts';
-import { C, GATE_BEARING, PROW, RADII, STEP, TIERS, polarC, prowHalf, tierY, toProw } from './layout.ts';
+import { C, CITADEL_Y, GATE_BEARING, PROW, RADII, TIERS, polarC, prowHalf, stepOf, tierY, toProw } from './layout.ts';
 
 /**
  * The seven tiers of the White City (research §9; the RotK prow-and-tiers stills, the 1:72 bigature):
- * concentric terrace bodies of off-white limestone, each a battered retaining wall one STEP tall rising
+ * concentric terrace bodies of off-white limestone, each a battered retaining wall one step tall rising
  * from the terrace below, closed at the back by a chord buried in the cliff face; along every terrace edge
  * a tall parapet (merlons on the outer wall and the citadel) under a projecting coping that throws a dark
  * line — so the seven walls read as seven pale horizontal bands over the roofs below them — round
@@ -79,12 +79,47 @@ function arc(r: number, b0: number, b1: number, per180: number): V2[] {
   return out;
 }
 
-/** inside the prow's footprint (+ margin), local point */
-export function onProw(x: number, z: number, margin: number): boolean {
+/** the prow keel's flare: its half width at the foot is (1 + PROW_BATTER)× the crest's (citadel.ts) */
+export const PROW_BATTER = 0.4;
+/** the prow's width factor at local height y (1 at the citadel, 1 + PROW_BATTER at its foot on tier 1) */
+export function prowFlare(y: number): number {
+  const y0 = tierY(1) - 0.1;
+  const f = Math.min(1, Math.max(0, (y - y0) / (CITADEL_Y - y0)));
+  return 1 + PROW_BATTER * (1 - f);
+}
+
+/** inside the prow's footprint (+ margin) at height `y` (default: the crest), local point */
+export function onProw(x: number, z: number, margin: number, y = CITADEL_Y): boolean {
   const [d, p] = toProw(x, z);
   if (d < PROW[0][0] - margin || d > PROW[5][0] + margin) return false;
-  return Math.abs(p) < prowHalf(Math.min(PROW[5][0], Math.max(PROW[0][0], d))) + margin;
+  return Math.abs(p) < prowHalf(Math.min(PROW[5][0], Math.max(PROW[0][0], d))) * prowFlare(y) + margin;
 }
+
+/**
+ * The great buildings breaking the uniform scatter of houses (S4 W5, C2 #10): domed halls, long halls and
+ * towers at 2–3× a house's height on the middle of tiers 2–6, spread over the faces seen from the Pelennor
+ * (tier, compass bearing from C, kind).
+ */
+const GREAT: [number, number, 'dome' | 'hall' | 'tower'][] = [
+  [2, 52, 'hall'],
+  [2, 80, 'tower'],
+  [2, 140, 'dome'],
+  [2, 166, 'hall'],
+  [3, 45, 'dome'],
+  [3, 128, 'tower'],
+  [3, 158, 'hall'],
+  [4, 62, 'tower'],
+  [4, 92, 'dome'],
+  [4, 150, 'hall'],
+  [5, 56, 'hall'],
+  [5, 140, 'dome'],
+  [6, 76, 'tower'],
+  [6, 134, 'hall'],
+];
+/** the half-width (km) a great building claims along its terrace */
+const GREAT_HALF: Record<'dome' | 'hall' | 'tower', number> = { dome: 0.22, hall: 0.3, tower: 0.13 };
+/** the radius of tier i's middle row */
+const midRow = (a: TierArc): number => (RADII[a.i] + a.rTop) / 2;
 
 /** the terrace bodies, parapets with their copings, bastions and turrets of tiers 1…7; returns the arcs */
 export function buildTiers(k: ProxyKit): TierArc[] {
@@ -110,7 +145,7 @@ export function buildTiers(k: ProxyKit): TierArc[] {
     const wallH = a.top - Math.max(0, tierY(i - 1)) - 0.02;
     for (let b = a.bLo + 2; b <= a.bHi - 2; b += (0.42 / a.R) / DEG) {
       const [x, z] = polarC(b, a.R - BATTER * 0.5);
-      if (k.ground(x, z) > a.top - 0.1 || onProw(x, z, 0.08)) continue;
+      if (k.ground(x, z) > a.top - 0.1 || onProw(x, z, 0.08, a.top)) continue;
       k.box('stone', 0.045, wallH, 0.055, { at: [x, Math.max(0, tierY(i - 1)) - 0.01, z], rot: [0, 180 - b, 0], color: WALL, shade: 0.96, lod: 0 });
     }
     // the parapet along the terrace edge (merlons on the outer wall and the citadel) under a projecting
@@ -148,9 +183,9 @@ export function buildTiers(k: ProxyKit): TierArc[] {
     const stepDeg = (1.55 / a.R) / DEG;
     for (let b = a.bLo + stepDeg * (0.35 + 0.3 * (i % 2)); b <= a.bHi - 4; b += stepDeg) {
       const [x, z] = polarC(b, a.R + 0.03);
-      if (k.ground(x, z) > a.top - 0.1 || onProw(x, z, 0.2)) continue;
+      if (k.ground(x, z) > a.top - 0.1 || onProw(x, z, 0.2, a.top)) continue;
       const cone = (i + Math.round(b)) % 3 === 0;
-      k.tower('stone', 0.11, STEP + PARAPET.inner + 0.08, {
+      k.tower('stone', 0.11, stepOf(i) + PARAPET.inner + 0.08, {
         at: [x, below - 0.02, z],
         sides: 12,
         roof: cone ? 'cone' : 'crenel',
@@ -226,8 +261,9 @@ export function buildHouses(k: ProxyKit, arcs: TierArc[]): number {
         const [x, z] = polarC(b, r);
         const skip =
           k.ground(x, z) > a.top - 0.03 ||
-          onProw(x, z, 0.1 + w / 2) ||
+          onProw(x, z, 0.1 + w / 2, a.top) ||
           (i === 1 && Math.abs(b - GATE_BEARING) < 3.2) ||
+          GREAT.some(([gi, gb, kind]) => gi === i && Math.abs(b - gb) * DEG * r < GREAT_HALF[kind] + w / 2 + 0.02) ||
           k.r(5) < 0.06;
         if (!skip) lots.push({ tier: i, row, b, r, x, z, w, depth, top: a.top, u: k.r(6) });
         b += ((w + 0.012 + k.r(12) * 0.035) / r) / DEG;
@@ -269,7 +305,7 @@ export function buildHouses(k: ProxyKit, arcs: TierArc[]): number {
     // the film's skyline of buildings over the walls), the middle row lower, the front row below the
     // parapet — so each tier reads as a band of roofs under a band of pale wall
     const tall = back && k.r(13) < 0.1;
-    const h = tall ? STEP * (1.05 + k.r(6) * 0.25) : back ? 0.36 + k.r(6) * 0.2 : front ? 0.07 + k.r(6) * 0.04 : 0.26 + k.r(6) * 0.14;
+    const h = tall ? stepOf(l.tier + 1) * (1.05 + k.r(6) * 0.25) : back ? 0.36 + k.r(6) * 0.2 : front ? 0.07 + k.r(6) * 0.04 : 0.26 + k.r(6) * 0.14;
     const u = k.r(7);
     const roof = u < 0.15 ? 'flat' : u < 0.62 ? 'hip' : u < 0.9 ? 'gable' : 'dome';
     const yawUsed = yaw + (k.r(8) - 0.5) * 6;
@@ -312,6 +348,35 @@ export function buildHouses(k: ProxyKit, arcs: TierArc[]): number {
       }
     }
   });
+
+  // ---- the great buildings (S4 W5): domed halls, long hipped halls and towers on the middle rows
+  GREAT.forEach(([i, b, kind], n) => {
+    const a = arcs[i - 1];
+    const r = midRow(a);
+    const [x, z] = polarC(b, r);
+    if (k.ground(x, z) > a.top - 0.03 || onProw(x, z, 0.15, a.top)) return;
+    const yaw = 180 - b;
+    const tint = stoneTint(k);
+    if (kind === 'tower') {
+      const tr = 0.085 + k.r(40 + n) * 0.03;
+      k.tower('weathered', tr, 0.95 + k.r(41 + n) * 0.35, { at: [x, a.top - 0.01, z], sides: 8, roof: n % 2 ? 'dome' : 'cone', roofFam: 'slate', roofColor: SLATE[n % SLATE.length], roofH: tr * 2.6, color: tint, grain: 0.26, lod: 1 });
+    } else {
+      const w = kind === 'hall' ? 0.5 + k.r(42 + n) * 0.1 : 0.34;
+      const d = kind === 'hall' ? 0.24 : 0.3;
+      k.house('weathered', 'slate', w, d, kind === 'hall' ? 0.62 + k.r(43 + n) * 0.2 : 0.5, {
+        at: [x, a.top - 0.01, z],
+        rot: [0, yaw, 0],
+        seat: false,
+        roof: kind === 'hall' ? 'hip' : 'dome',
+        pitch: 34,
+        overhang: 0.015,
+        color: tint,
+        grain: 0.26,
+        roofColor: kind === 'dome' ? DOME[n % DOME.length] : SLATE[n % SLATE.length],
+        lod: 1,
+      });
+    }
+  });
   return lots.length;
 }
 
@@ -331,7 +396,7 @@ export function buildRoofscape(k: ProxyKit, arcs: TierArc[]): void {
     for (let b = a.bLo + 3; b < a.bHi - 3; b += seg) {
       const b1 = Math.min(a.bHi - 3, b + seg * 0.92);
       const [mx, mz] = polarC((b + b1) / 2, (rIn + rOut) / 2);
-      if (k.ground(mx, mz) > a.top - 0.03 || onProw(mx, mz, 0.12)) continue;
+      if (k.ground(mx, mz) > a.top - 0.03 || onProw(mx, mz, 0.12, a.top)) continue;
       const cut = (rOut - rIn) * (0.12 + k.r(21) * 0.2);
       const r0 = rIn + (k.r(22) < 0.5 ? cut : 0);
       const r1 = rOut - (k.r(23) < 0.5 ? cut : 0);
