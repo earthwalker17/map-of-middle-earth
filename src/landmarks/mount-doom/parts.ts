@@ -215,8 +215,8 @@ function lane(k: ProxyKit, pts: V2[], w: number, hotShare: number, t0 = 0): void
 
 /** a glowing pool on the plain: a crusted rim disc and a hot core, draped on the ground */
 function pool(k: ProxyKit, p: V2, r: number): void {
-  k.mound('lava', r, 0.03, { at: [p[0], 0, p[1]], seg: 14, color: POOL_RIM, lod: 0 });
-  k.mound('lava', r * 0.62, 0.05, { at: [p[0] + r * 0.08, 0, p[1] - r * 0.05], seg: 12, color: POOL_HOT, lod: 0 });
+  k.mound('lava', r, 0.03, { at: [p[0], 0, p[1]], seg: 14, color: POOL_RIM, lod: 1 });
+  k.mound('lava', r * 0.62, 0.05, { at: [p[0] + r * 0.08, 0, p[1] - r * 0.05], seg: 12, color: POOL_HOT, lod: 1 });
 }
 
 function flow(k: ProxyKit, f: DoomFlow): void {
