@@ -1,4 +1,4 @@
-import { FrontSide, MeshStandardNodeMaterial, type DataTexture } from 'three/webgpu';
+import { FrontSide, LessDepth, MeshStandardNodeMaterial, type DataTexture } from 'three/webgpu';
 import { tsl, type TslNode } from '../materials/tsl.ts';
 import { env } from '../materials/environment.ts';
 import { atmosphere } from '../materials/atmosphere.ts';
@@ -108,6 +108,12 @@ export interface WaterParams {
   farSheen?: number;
   /** S4 W4-S1 rivers: width of the ribbon's edge fade in pixels (default: the S3 fixed 28 % of the half width) */
   edgePx?: number;
+  /**
+   * S4 W4-S1 rivers: tint of the mirrored terrain (linear rgb, default none). A calm reach seen at a grazing
+   * angle mirrored the lit hillside at nearly its own albedo and read as a grass trough; silt, the surface
+   * film and the unresolved ripples' scatter make a river's mirror image a darker, cooler copy of its banks.
+   */
+  mirrorTint?: RGB;
 }
 
 export interface WaterMaterialOptions {
@@ -121,12 +127,9 @@ export interface WaterMaterialOptions {
 const lin = (c: RGB): N => vec3(c[0], c[1], c[2]);
 
 /**
- * S4 W4-S1 P4 (off): river ribbons give way inside a baked lake's mask. Replaced by the ribbon's fading
- * run-on into the lake (rivers.ts LAKE_OVERLAP_KM): the mask's soft 0.4 km edge cut the ribbon short of
- * the lake surface and left the seam.
+ * alpha at or below which a lake / river fragment is discarded (no depth write): the lake skirt and the
+ * ribbons' run-ons and edges (the open sea is never faded and skips the test)
  */
-const RIVER_LAKE_YIELD = false;
-/** alpha at or below which a water fragment is discarded (no depth write) */
 const WATER_ALPHA_TEST = 0.004;
 
 /** deep-water scatter albedo of landmark pools (lake attribute waterPool = 1): dark peaty teal */
@@ -166,7 +169,7 @@ export function createWaterMaterial(opts: WaterMaterialOptions): MeshStandardNod
 
   const isRiver = P.kind === 'river';
   const flow = isRiver ? attribute('flow', 'vec4') : null; // along km, across −1..1, half width km, fade
-  const flowDir = isRiver ? attribute('flowDir', 'vec4') : null; // dir.xz, rapid, 0
+  const flowDir = isRiver ? attribute('flowDir', 'vec4') : null; // dir.xz, rapid, lake share (rivers.ts)
 
   // ------------------------------------------------------------------ geometry / depth
   const pos = positionGeometry; // meshes live at identity → object space = world space
@@ -311,7 +314,12 @@ export function createWaterMaterial(opts: WaterMaterialOptions): MeshStandardNod
   let fres: N = float(0.02).add(max(float(1).sub(rough), 0.02).sub(0.02).mul(pow(float(1).sub(NdV), 5)));
   // far water: the unresolved ripples' facets tilted toward the horizon lift the mean reflectance (S4
   // W4-S1: rivers as silver-blue threads at regional range instead of flat grey 'asphalt' bands)
-  if (P.farSheen) fres = max(fres, smoothstep(0.03, 0.15, footprint).mul(P.farSheen).mul(float(1).sub(NdV).mul(0.6).add(0.4)));
+  // (rivers: not where a ribbon runs into or out of a lake — flowDir.w, rivers.ts — so river and lake
+  // match across the overlap instead of a lighter river band ending at a step)
+  if (P.farSheen) {
+    const sheen = smoothstep(0.03, 0.15, footprint).mul(P.farSheen).mul(float(1).sub(NdV).mul(0.6).add(0.4));
+    fres = max(fres, isRiver ? sheen.mul(float(1).sub(flowDir!.w)) : sheen);
+  }
   const Rv = reflect(V.negate(), nW);
   // unresolved ripples tilt part of the lobe up: reflected sky is sampled a little higher
   const Ry = abs(Rv.y).add(sigma.mul(0.6));
@@ -387,7 +395,7 @@ export function createWaterMaterial(opts: WaterMaterialOptions): MeshStandardNod
         if (!preview) lit = lit.add(spillIrradiance(hitP, nH));
         const groundRad = alb.mul(lit).mul(1 / Math.PI);
         const hazed = atmosphere.apply(groundRad, origin, vec3(hitP.x, max(hitP.y, hh), hitP.z), quality.atmosphere.inScatter, true);
-        out.assign(mix(out, hazed, occ));
+        out.assign(mix(out, P.mirrorTint ? hazed.mul(lin(P.mirrorTint)) : hazed, occ));
       });
       return out;
     })();
@@ -417,10 +425,6 @@ export function createWaterMaterial(opts: WaterMaterialOptions): MeshStandardNod
     const ew = P.edgePx ? clamp(footprint.mul(P.edgePx).div(max(flow!.z, 1e-3)), 0.02, 0.28) : float(0.28);
     const edge = float(1).sub(smoothstep(float(1).sub(ew), 1.0, abs(flow!.y)));
     alpha = alpha.mul(edge).mul(flow!.w);
-    // S4 W4-S1 P4: a ribbon's reach inside a baked lake gives way to the lake surface (the Forest River's
-    // end drew a lighter strip with a straight seam over the Long Lake). Safe since the lake surface covers
-    // its whole baked mask (lakes.ts LAKE_SKIRT_KM): W2-D's earlier cut opened the uncovered shelf.
-    if (RIVER_LAKE_YIELD) alpha = alpha.mul(float(1).sub(smoothstep(0.5, 0.9, texture(world.water, uv0).g)));
   }
 
   const material = new MeshStandardNodeMaterial({ transparent: true, side: FrontSide });
@@ -444,8 +448,12 @@ export function createWaterMaterial(opts: WaterMaterialOptions): MeshStandardNod
   material.opacityNode = saturate(alpha);
   material.depthWrite = true;
   // fragments faded to nothing (over land, outside a lake's mask, past a ribbon's edge) are discarded
-  // instead of writing depth (S4 W4-S1: the lake skirt must not hide what is drawn after the water)
-  material.alphaTest = WATER_ALPHA_TEST;
+  // instead of writing depth (S4 W4-S1: the lake skirt must not hide what is drawn after the water); the
+  // open sea is never faded and skips the discard (early depth on the overview's sea)
+  if (P.kind !== 'sea') material.alphaTest = WATER_ALPHA_TEST;
+  // lakes: a second coplanar layer (the skirt folding over itself on a concave shore) fails the depth test
+  // instead of blending twice; the river run-ons still win through their larger depth pull
+  if (P.kind === 'lake') material.depthFunc = LessDepth;
 
   // depth pull toward the camera (screen position unchanged): thin water wins against coarse LOD
   // terrain far away; negligible up close where the channel/lake bed is resolved

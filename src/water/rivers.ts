@@ -127,7 +127,8 @@ function smoothLine(p: [number, number][], passes: number): void {
  *  - v1 bakes: see buildEstimatedRivers (runtime level estimate + drape clamps).
  * Widths taper at sources, ribbons fade into the sea at mouths and into the main river at
  * confluences. Attributes: flow = (along km, across −1..1, half width km, fade),
- * flowDir = (dir.x, dir.z, rapid 0..1, 0).
+ * flowDir = (dir.x, dir.z, rapid 0..1, lake share 0..1: 1 where a ribbon runs on into a lake, fading out
+ * over LAKE_BLEND_KM of the river — the material matches the lake there).
  */
 export function buildRiverGeometry(world: World, lakes: LakeInfo[], opts: RiverBuildOptions): { geometry: BufferGeometry; stats: RiverStats } {
   const baked = world.rivers.length > 0 && world.rivers.every((r) => r.level && r.level.length === r.points.length);
@@ -393,6 +394,41 @@ const FREE_END_FADE_KM = 0.8;
 const LAKE_OVERLAP_KM = 1.2;
 const LAKE_OVERLAP_STEP = 0.4;
 const LAKE_LEVEL_TOL = 0.06;
+/** the river's share of 'lake look' (flowDir.w) fades out over this length (km) beyond the lake */
+const LAKE_BLEND_KM = 1.0;
+/**
+ * S4 W4-S1: an outflow (a ribbon starting in a lake at its level) keeps the lake's level while the lake
+ * surface is still visible over it (baked lake mask above the lake material's cut, LAKE_MASK_VISIBLE)
+ * and one point beyond, so its first drop lies past the lake's edge. Dropping under the lake's fading
+ * edge, the ribbon was hidden by the lake surface there and the edge showed the channel paint as a dark
+ * straight line across the outflow (water-long-lake, the Celduin).
+ */
+const OUTFLOW_HOLD = true;
+const LAKE_MASK_VISIBLE = 0.12;
+
+/** CPU bilinear lake mask (water.g, the same texel convention as the GPU) at (x, z). */
+function lakeMaskSampler(world: World): (x: number, z: number) => number {
+  const img = world.water.image as { data?: Uint8Array; width: number; height: number };
+  const data = img.data;
+  if (!data) return () => 0;
+  const w = img.width;
+  const h = img.height;
+  const sp = world.spec;
+  return (x, z) => {
+    const fx = Math.min(w - 1, Math.max(0, ((x - sp.xMin) / sp.width) * w - 0.5));
+    const fz = Math.min(h - 1, Math.max(0, ((z - sp.zMin) / sp.depth) * h - 0.5));
+    const x0 = Math.floor(fx);
+    const z0 = Math.floor(fz);
+    const x1 = Math.min(w - 1, x0 + 1);
+    const z1 = Math.min(h - 1, z0 + 1);
+    const tx = fx - x0;
+    const tz = fz - z0;
+    const at = (xx: number, zz: number) => data[(zz * w + xx) * 4 + 1];
+    const a = at(x0, z0) + (at(x1, z0) - at(x0, z0)) * tx;
+    const b = at(x0, z1) + (at(x1, z1) - at(x0, z1)) * tx;
+    return (a + (b - a) * tz) / 255;
+  };
+}
 /** on a bend tighter than the ribbon, the inner edge stays inside this share of the bend radius */
 const INNER_EDGE = 0.9;
 
@@ -450,6 +486,7 @@ function buildBakedRivers(world: World, lakes: LakeInfo[], opts: RiverBuildOptio
   let dry = 0;
   let sections = 0;
   let count = 0;
+  const lakeMask = lakeMaskSampler(world);
   for (const r of lines) {
     const pts0 = r.points;
     const lv0 = r.level!;
@@ -498,6 +535,12 @@ function buildBakedRivers(world: World, lakes: LakeInfo[], opts: RiverBuildOptio
       sl.push(s0[i]);
     }
     if (extB) extend(Math.max(0, n0 - 3), n0 - 1, extB, 1);
+    if (extA && OUTFLOW_HOLD) {
+      for (let i = first + 1; i < first + n0; i++) {
+        if (lakeMask(pts[i - 1][0], pts[i - 1][1]) <= LAKE_MASK_VISIBLE) break;
+        lv[i] = Math.max(lv[i], lv0[0]);
+      }
+    }
     const n = pts.length;
     const s = Float64Array.from(sl);
     const up = lakeNear(lakes, sx, sz, 1.0) ? null : feeder(r, sx, sz);
@@ -562,12 +605,13 @@ function buildBakedRivers(world: World, lakes: LakeInfo[], opts: RiverBuildOptio
       const nx = -tz;
       const nz = tx;
       const y = lv[i];
+      const lakeShare = Math.max(extA ? 1 - smooth01(0, LAKE_BLEND_KM, s[i]) : 0, extB ? 1 - smooth01(L, L - LAKE_BLEND_KM, s[i]) : 0);
       for (let k = 0; k < K; k++) {
         const v = -1 + (2 * k) / (K - 1);
         const off = v === inner ? Math.min(hw, INNER_EDGE * rInner) : hw;
         pos.push(pts[i][0] + nx * v * off, y, pts[i][1] + nz * v * off);
         flow.push(s[i], v, hw, fade);
-        dir.push(tx, tz, rapid, 0);
+        dir.push(tx, tz, rapid, lakeShare);
       }
       if (i >= first && i < first + n0) {
         sections++;

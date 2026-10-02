@@ -76,7 +76,8 @@ export const LAKE: WaterParams = {
  * calmer surface of long flow-aligned slicks, so the sky and the banks mirror and the sun keeps a glint
  * path; the pale sand bed in the shallows (the pale lip inside the waterline) is a dark brown-green; far
  * water keeps a Fresnel floor (silver-blue threads at regional range); the ribbon edge fades over a few
- * pixels (no dark see-through outline).
+ * pixels (no dark see-through outline); mirrored banks are a darker, cooler copy (a calm reach no longer
+ * mirrors a lit hillside at its own albedo and reads as grass).
  */
 export const RIVER: WaterParams = {
   kind: 'river',
@@ -90,8 +91,8 @@ export const RIVER: WaterParams = {
   waves: [
     { scale: 2.4, angle: 0, slope: 0.016, speed: 0.03, stretch: 2.2 },
     { scale: 0.7, angle: 8, slope: 0.022, speed: 0.02, stretch: 1.8 },
-    { scale: 0.2, angle: -14, slope: 0.028, speed: 0.01, stretch: 1.3, heavy: true },
-    { scale: 0.06, angle: 30, slope: 0.026, speed: 0.005, heavy: true },
+    { scale: 0.2, angle: -14, slope: 0.033, speed: 0.01, stretch: 1.3, heavy: true },
+    { scale: 0.06, angle: 30, slope: 0.03, speed: 0.005, heavy: true },
   ],
   calmAlpha: 0.05,
   reflection: 1.0,
@@ -108,4 +109,5 @@ export const RIVER: WaterParams = {
   bedLightMax: 1.2,
   farSheen: 0.16,
   edgePx: 2.5,
+  mirrorTint: [0.48, 0.56, 0.68],
 };
