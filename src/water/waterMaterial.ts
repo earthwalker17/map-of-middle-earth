@@ -99,6 +99,15 @@ export interface WaterParams {
   traceSteps: number;
   traceStart: number;
   traceGrowth: number;
+  /** cap of the sun-relief gain on the bed seen through shallows (default 1.8) */
+  bedLightMax?: number;
+  /**
+   * S4 W4-S1 rivers: Fresnel floor of far water (footprint ≫ the ripples: sub-pixel facets tilted toward
+   * the horizon raise the mean reflectance) — rivers read as silver-blue threads at regional range
+   */
+  farSheen?: number;
+  /** S4 W4-S1 rivers: width of the ribbon's edge fade in pixels (default: the S3 fixed 28 % of the half width) */
+  edgePx?: number;
 }
 
 export interface WaterMaterialOptions {
@@ -286,7 +295,7 @@ export function createWaterMaterial(opts: WaterMaterialOptions): MeshStandardNod
   // bed relief lit by the sun, relative to the flat water surface that is actually lit
   const nBed = normalize(vec3(grad.x.negate(), 1, grad.y.negate()));
   const sunUp = max(env.sunDir.y, 0.2);
-  const bedLight = clamp(max(dot(nBed, env.sunDir), 0).div(sunUp), 0.35, 1.8);
+  const bedLight = clamp(max(dot(nBed, env.sunDir), 0).div(sunUp), 0.35, P.bedLightMax ?? 1.8);
   const bed = bedAlb.mul(mix(float(1), bedLight, float(0.75).mul(float(1).sub(env.night))));
   const body = bed.mul(T).add(scatterV.mul(vec3(1).sub(T)));
 
@@ -299,7 +308,10 @@ export function createWaterMaterial(opts: WaterMaterialOptions): MeshStandardNod
   // ------------------------------------------------------------------ reflection
   const NdV = saturate(dot(nW, V));
   // roughness-aware Schlick (Fdez-Agüera): a rippled surface never reaches mirror Fresnel at grazing
-  const fres = float(0.02).add(max(float(1).sub(rough), 0.02).sub(0.02).mul(pow(float(1).sub(NdV), 5)));
+  let fres: N = float(0.02).add(max(float(1).sub(rough), 0.02).sub(0.02).mul(pow(float(1).sub(NdV), 5)));
+  // far water: the unresolved ripples' facets tilted toward the horizon lift the mean reflectance (S4
+  // W4-S1: rivers as silver-blue threads at regional range instead of flat grey 'asphalt' bands)
+  if (P.farSheen) fres = max(fres, smoothstep(0.03, 0.15, footprint).mul(P.farSheen).mul(float(1).sub(NdV).mul(0.6).add(0.4)));
   const Rv = reflect(V.negate(), nW);
   // unresolved ripples tilt part of the lobe up: reflected sky is sampled a little higher
   const Ry = abs(Rv.y).add(sigma.mul(0.6));
@@ -400,7 +412,10 @@ export function createWaterMaterial(opts: WaterMaterialOptions): MeshStandardNod
     alpha = alpha.mul(max(smoothstep(0.12, 0.4, lakeMask), pool));
   }
   if (isRiver) {
-    const edge = float(1).sub(smoothstep(0.72, 1.0, abs(flow!.y)));
+    // the ribbon edge lies buried in the bank (bake v2): a wide see-through fade only showed the dark
+    // channel paint under it as an outline at regional range — fade over a few pixels instead (S4 W4-S1)
+    const ew = P.edgePx ? clamp(footprint.mul(P.edgePx).div(max(flow!.z, 1e-3)), 0.02, 0.28) : float(0.28);
+    const edge = float(1).sub(smoothstep(float(1).sub(ew), 1.0, abs(flow!.y)));
     alpha = alpha.mul(edge).mul(flow!.w);
     // S4 W4-S1 P4: a ribbon's reach inside a baked lake gives way to the lake surface (the Forest River's
     // end drew a lighter strip with a straight seam over the Long Lake). Safe since the lake surface covers
