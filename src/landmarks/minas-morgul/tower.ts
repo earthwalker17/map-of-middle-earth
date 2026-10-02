@@ -3,8 +3,8 @@ import type { V2 } from '../records.ts';
 import { E0, wash } from './wash.ts';
 
 /** the Tower's stone: pale, ghostly grey with a faint green cast (moonlit it reads bone-white) */
-export const TOWER_STONE = 0xb2b6af;
-const CROWN_STONE = 0x9ca19b;
+export const TOWER_STONE = 0x777b75;
+const CROWN_STONE = 0x686c67;
 const D2R = Math.PI / 180;
 
 /**
@@ -119,8 +119,10 @@ export function buildTower(k: ProxyKit, s: TowerSpec): { crownY: number; topY: n
     if (f <= 0.92) return 1.42 + (1.5 - 1.42) * ((f - 0.85) / 0.07);
     return 1.5 + (1.3 - 1.5) * ((f - 0.92) / 0.08);
   };
-  const zone = s.keepH + s.shaftH / 3;
-  const W = wash(16, 1, E0 * 0.55);
+  // S4 W5: the wash climbs the keep's lower half only (the green pools at the foot; the shaft stays dark
+  // stone up to its slits and the lamp room)
+  const zone = s.keepH * 0.5;
+  const W = wash(10, 1, E0 * 0.55);
   for (const g of W) {
     const ya = g.f0 * zone;
     const yb = g.f1 * zone;

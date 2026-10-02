@@ -59,8 +59,8 @@ export default defineLandmark({
     // following the Morgulduin down past the bridge (the stream falls west: −1.1 at x 2.3, −3.8 at the
     // bridge, −6.7 at x −2.3) and a layer pooled down the vale (−8.3 at x −3.5); green tint
     { preset: 'mist', at: [2.0, -1.4, 3.8], to: [-2.2, -1.8, 4.6], rate: 0.9, scale: 1.1, color: 0xb6f2c6 },
-    { preset: 'mist', at: [2.3, -0.75, 6.8], to: [-2.3, -6.3, 4.95], rate: 1.1, scale: 0.8, color: 0xb6f2c6 },
-    { preset: 'mist', at: [-2.6, -7.2, 4.9], to: [-6.8, -9.6, 5.2], rate: 1.1, scale: 1.4, color: 0xb6f2c6 },
+    { preset: 'mist', at: [2.3, -0.75, 6.8], to: [-2.3, -6.3, 4.95], rate: 1.6, scale: 0.8, color: 0xb6f2c6 },
+    { preset: 'mist', at: [-2.6, -7.2, 4.9], to: [-6.8, -9.6, 5.2], rate: 1.6, scale: 1.4, color: 0xb6f2c6 },
   ],
   proxy: (k) => {
     const padY = k.ground(C[0], C[1]);
@@ -87,8 +87,8 @@ export default defineLandmark({
     },
     {
       id: 'minas-morgul-wide',
-      distanceKm: 38,
-      elevationDeg: 5,
+      distanceKm: 30,
+      elevationDeg: 2.5,
       azimuthDeg: 218,
       fov: 24,
       lift: -2.3,

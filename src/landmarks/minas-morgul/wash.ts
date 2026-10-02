@@ -62,12 +62,12 @@ export function washFull(n: number, e0: number, floor: number): Band[] {
  */
 export const WASH_SPILL = true;
 /** the painted bands' share of their S3 strength once the spill lights the walls */
-export const WASH_PAINT = 0.35;
+export const WASH_PAINT = 0.15;
 /**
  * with the spill, the paint no longer falls to nothing up a washed zone: it keeps this share of its foot
  * strength at the zone's top (the hue stays on the stone; never a black cap over a lit foot)
  */
-const WASH_FLOOR = WASH_SPILL ? 0.3 : 0;
+const WASH_FLOOR = WASH_SPILL ? 0.1 : 0;
 
 /** foot emission of the wash (linear green) */
 export const E0 = 0.35 * (WASH_SPILL ? WASH_PAINT : 1);
@@ -84,12 +84,12 @@ const WASH_LIGHT = 0x14b85a;
  * r = 0.12 → the core r0 = 0.24 km, so each face is brightest at its foot and dims up it and along it.
  */
 const WASH_SRC: [V3, number, number][] = [
-  [[0.2, -0.2, 3.15], 1.0, 1.4],
-  [[-1.3, -0.25, 1.92], 0.95, 1.5],
-  [[1.42, -0.25, 2.72], 0.7, 1.3],
-  [[0.42, 0.5, 2.36], 0.6, 1.1],
-  [[0.52, 1.4, 2.0], 0.56, 1.0],
-  [[0.52, 2.25, 1.85], 0.45, 0.9],
+  [[0.2, -0.2, 3.15], 1.3, 1.4],
+  [[-1.3, -0.25, 1.92], 1.0, 1.5],
+  [[1.42, -0.25, 2.72], 0.95, 1.3],
+  [[0.42, 0.5, 2.36], 0.25, 0.6],
+  [[0.52, 1.4, 2.0], 0.18, 0.6],
+  [[0.52, 2.25, 1.85], 0.12, 0.6],
 ];
 
 export const WASH_LIGHTS: LightDecl[] = WASH_SRC.map(([at, intensity, spillKm]) => ({ at, color: WASH_LIGHT, intensity, radius: 0.12, kind: 'magic', gate: 'night', spillKm, sprite: false }));

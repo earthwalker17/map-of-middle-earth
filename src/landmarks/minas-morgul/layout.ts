@@ -66,5 +66,9 @@ export const T2_TOP = 1.3;
 export const T3: V2[] = polar(TOWER, 0.86, 9, 0.04, 0.1);
 export const T3_TOP = 2.1;
 
-/** the far end of the bridge on the south bank */
-export const BRIDGE_END: V2 = [GATE[0] - 0.6, GATE[1] + 4.6];
+/**
+ * The bridge: its kink (a heavy pier in the ravine, 1.2 km out from the gate along GATE_OUT) and its far end
+ * on the south bank, south-east of the kink, so the second leg's flank faces the hero camera
+ */
+export const BRIDGE_KINK: V2 = [GATE[0] + GATE_OUT[0] * 1.2, GATE[1] + GATE_OUT[1] * 1.2];
+export const BRIDGE_END: V2 = [BRIDGE_KINK[0] + 0.6 * 3.4, BRIDGE_KINK[1] + 0.8 * 3.4];
