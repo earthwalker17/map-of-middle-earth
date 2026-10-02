@@ -19,6 +19,7 @@
     "qa": "node --import tsx tools/capture/qa.ts",
     "check": "node --import tsx tools/check/run.ts",
     "perf": "node --import tsx tools/capture/perf.ts",
+    "review": "node --import tsx tools/capture/review.ts",
     "host": "node --import tsx tools/host.ts",
     "models": "node --import tsx tools/blender/run.ts"
   },

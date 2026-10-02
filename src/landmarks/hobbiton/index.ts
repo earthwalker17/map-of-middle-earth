@@ -256,6 +256,7 @@ export default defineLandmark({
   bookmarks: [
     {
       id: 'hobbiton-close',
+      fStop: 11,
       distanceKm: 7,
       elevationDeg: 9,
       azimuthDeg: 205,

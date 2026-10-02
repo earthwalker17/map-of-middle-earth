@@ -89,6 +89,7 @@ export default defineLandmark({
   bookmarks: [
     {
       id: 'black-gate-close',
+      fStop: 5.6,
       distanceKm: 26.2,
       elevationDeg: -11.5,
       azimuthDeg: 320.5,

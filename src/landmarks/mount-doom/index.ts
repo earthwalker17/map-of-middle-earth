@@ -121,6 +121,7 @@ export default defineLandmark({
   bookmarks: [
     {
       id: 'mount-doom-close',
+      fStop: 4,
       distanceKm: 56,
       elevationDeg: 1,
       azimuthDeg: 166,

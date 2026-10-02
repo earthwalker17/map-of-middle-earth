@@ -1,5 +1,6 @@
 import type { PerspectiveCamera, Scene } from 'three/webgpu';
 import type { QualityTier, QualityTierId } from './quality.ts';
+import { DEEP_FOCUS_FSTOP } from '../render/lens.ts';
 
 /** A camera pose in world units (1 unit = 1 km of the ME-GIS grid; X east, -Z north, Y up). */
 export interface CameraState {
@@ -95,7 +96,7 @@ export function defaultSceneState(partial: Partial<SceneState> = {}): SceneState
     tod: 10,
     dayOfYear: 200,
     camera: { position: [0, 900, 900], target: [0, 0, 0], fov: 35 },
-    lens: { fStop: 11 },
+    lens: { fStop: DEEP_FOCUS_FSTOP },
     routeProgress: 0,
     annotations: [],
     lookOverride: null,

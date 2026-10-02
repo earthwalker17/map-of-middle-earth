@@ -206,6 +206,7 @@ export default defineLandmark({
   bookmarks: [
     {
       id: 'moria-close',
+      fStop: 5.6,
       distanceKm: 8.6,
       elevationDeg: 6,
       azimuthDeg: 270,

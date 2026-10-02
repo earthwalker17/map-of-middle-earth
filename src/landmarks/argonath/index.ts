@@ -137,6 +137,7 @@ export default defineLandmark({
       // right edge, for a camera upstream looking downstream (bearing 204°): rim light and a warm sky. (On
       // the default summer day the sun is due west at 16:30–17:00, side light.)
       id: 'argonath-close',
+      fStop: 4,
       distanceKm: 12,
       elevationDeg: -6,
       azimuthDeg: 24,

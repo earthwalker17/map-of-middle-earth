@@ -73,6 +73,7 @@ export default defineLandmark({
   bookmarks: [
     {
       id: 'minas-morgul-close',
+      fStop: 4,
       distanceKm: 14,
       elevationDeg: 6,
       azimuthDeg: 203,

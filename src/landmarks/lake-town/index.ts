@@ -463,6 +463,7 @@ export default defineLandmark({
   bookmarks: [
     {
       id: 'lake-town-close',
+      fStop: 5.6,
       distanceKm: 6.8,
       elevationDeg: 8,
       azimuthDeg: 195,

@@ -73,6 +73,7 @@ export default defineLandmark({
   bookmarks: [
     {
       id: 'rivendell-close',
+      fStop: 8,
       distanceKm: 9.5,
       elevationDeg: 11,
       azimuthDeg: 256,
