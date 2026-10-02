@@ -40,12 +40,15 @@ const MASSIF: LocalStamp = {
   // the two arms of the gate valley keep lower roots so the valley stays open
   spurs: [
     { azimuthDeg: 18, lengthKm: 20, widthKm: 5, heightFrac: 0.42, rootFrac: 0.8 },
-    { azimuthDeg: 78, lengthKm: 23, widthKm: 5.5, heightFrac: 0.46, rootFrac: 0.8 },
-    // the eastern arm of the gate valley
-    { azimuthDeg: 132, lengthKm: 21, widthKm: 5, heightFrac: 0.46, rootFrac: 0.68 },
+    // (S4 W5: the east and west spurs made unequal — the east one a high, full shoulder, the west one dropping
+    // in a steep arête to the shoulder peak — so the south profile is no longer an isosceles pyramid)
+    { azimuthDeg: 78, lengthKm: 23, widthKm: 5.5, heightFrac: 0.52, rootFrac: 0.87 },
+    // the eastern arm of the gate valley (S4 W5, C2 #11: both arms higher and fuller — two dark buttresses
+    // framing the gate in the south profile instead of an even bell skirt)
+    { azimuthDeg: 132, lengthKm: 21, widthKm: 5, heightFrac: 0.54, rootFrac: 0.78 },
     // Ravenhill's spur: the western arm of the gate valley, the watch-post near its end
-    { azimuthDeg: 238, lengthKm: 23, widthKm: 5, heightFrac: 0.5, rootFrac: 0.68 },
-    { azimuthDeg: 290, lengthKm: 20, widthKm: 5, heightFrac: 0.44, rootFrac: 0.8 },
+    { azimuthDeg: 238, lengthKm: 23, widthKm: 5, heightFrac: 0.58, rootFrac: 0.78 },
+    { azimuthDeg: 290, lengthKm: 20, widthKm: 5, heightFrac: 0.36, rootFrac: 0.64 },
     { azimuthDeg: 338, lengthKm: 17, widthKm: 4.5, heightFrac: 0.4, rootFrac: 0.78 },
     // ribs between them: shorter ridge spurs whose crests stand at a third to a half of the height on the
     // faces (never within 40° of the gate line, 197°)
@@ -55,13 +58,31 @@ const MASSIF: LocalStamp = {
     { azimuthDeg: 314, lengthKm: 12, widthKm: 3, heightFrac: 0.34, rootFrac: 0.72 },
     { azimuthDeg: 356, lengthKm: 12, widthKm: 3, heightFrac: 0.34, rootFrac: 0.7 },
   ],
-  // steep flanks: ridged spurs with deep V valleys between them
-  flankSlope: 2.3,
-  rough: { amp: 1.2, scaleKm: 3.6, ridged: true },
+  // steep flanks: ridged spurs with deep V valleys between them (S4 W5: steeper, and craggier at half the
+  // feature size — the S3 flanks were smooth straight bell sides)
+  flankSlope: 2.8,
+  rough: { amp: 2.2, scaleKm: 1.8, ridged: true },
   // the snow-capped upper mountain of the film: snow above 0.45 of the height on all but the sheerest
   // faces — the ribs' sheer faces break its edge into streaks (the ground look's lowered snow line adds
   // gully snow below it)
   snowCap: 0.45,
+};
+
+/**
+ * S4 W5 (C2 #11): a broken cliff band round the south face at ≈ 0.3 of the height (≈ 6 km out from the
+ * summit, ≈ 1.6 km above the gate), the ground behind it lifted ≈ 2.4 — it breaks the even skirt the
+ * south profile read as (a bell / a Hershey's kiss) into a craggy step
+ */
+const SOUTH_BAND: LocalStamp = {
+  kind: 'scarp',
+  path: [150, 165, 180, 197, 212, 228, 245].map((b) => fromSummit(b, 6.1 + 0.25 * Math.sin(b * 0.21))),
+  side: 'right',
+  height: 2.4,
+  run: 0.4,
+  plateauKm: 1.2,
+  falloff: 1.6,
+  rough: { amp: 0.9, scaleKm: 1.6, ridged: true, seed: 9 },
+  surface: 'rock',
 };
 
 /** the top tenth blunted: a soft cut of the summit (the 12× relief made a needle of it) */
@@ -134,6 +155,7 @@ export default defineLandmark({
   stamps: [
     MASSIF,
     SHOULDER,
+    SOUTH_BAND,
     SUMMIT_BLUNT,
     { kind: 'flatten', at: [0, 2.2], radius: 2.4, falloff: 2.2, height: 0.2 },
     ...GATE_STAMPS,
@@ -161,7 +183,8 @@ export default defineLandmark({
       elevationDeg: 3.5,
       azimuthDeg: 185,
       fov: 35,
-      lift: 11,
+      // (S4 W5: 11 → 8.5 — the frame's bottom edge cut Dale in half)
+      lift: 8.5,
       tod: 18.0,
       dayOfYear: 240,
       compare: ['reference/film/erebor/erebor-lonely-mountain-dos.jpg', 'reference/film/erebor/erebor-front-gate-statues.webp', 'reference/bigatures/erebor/erebor-front-gate-weta-mini.jpg'],

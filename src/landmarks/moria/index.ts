@@ -63,8 +63,10 @@ const HOLLY: V2[] = [
  */
 function holly(at: V2, side: number, yaw: number): TreeDecl[] {
   return [
-    { at, kind: 'holly', crownKm: 0.36, heightKm: 1.15, color: 0x1d3322, yawDeg: yaw },
-    { at: [at[0] + side * 0.2, at[1] + 0.06], kind: 'holly', crownKm: 0.24, heightKm: 0.7, color: 0x213a26, yawDeg: yaw + 70 },
+    // (S4 W5, C2 #12: 1.15 / 0.7 → 1.7 / 1.0 — the S3 hollies stood no taller than the door arch; a lighter
+    // green — at 0x1d3322 the moonlit crowns crushed to zero-black blobs)
+    { at, kind: 'holly', crownKm: 0.4, heightKm: 1.7, color: 0x2a4a30, yawDeg: yaw },
+    { at: [at[0] + side * 0.22, at[1] + 0.06], kind: 'holly', crownKm: 0.28, heightKm: 1.0, color: 0x2e4e34, yawDeg: yaw + 70 },
   ];
 }
 
@@ -91,9 +93,12 @@ export default defineLandmark({
         [-1.5, -3.45],
         [-0.9, -3.75],
       ],
-      height: [0.8, 1.6, 1.8, 0.6],
-      halfWidth: 0.8,
-      profile: 'round',
+      height: [0.7, 1.3, 1.4, 0.5],
+      halfWidth: 1.0,
+      // (S4 W5: a sharp, rough crest — the S3 round dam read as two smooth clay mounds at the pool's rim; lower
+      // and broader than the first W5 crest, which stood as a triangular shard in the hero's right foreground)
+      profile: 'sharp',
+      rough: { amp: 0.3, scaleKm: 1.6, ridged: true },
       surface: 'rock',
     },
     // the mountain wall behind the cliff line (raises the east side, +z): the upper face over the kit cliff
@@ -128,9 +133,9 @@ export default defineLandmark({
   // over the falling floor: below the dam (≈ −1.3 → −3.6), the stair (−3.6 → −9) and the lower dale
   // (≈ −8.3…−9.6); they fade where the ground rises to them
   emitters: [
-    { preset: 'mist', at: [-2.2, -0.95, -4.6], to: [-5.0, -3.2, -8.6], rate: 0.8, scale: 0.9, color: 0xd9dfe7 },
-    { preset: 'mist', at: [-5.2, -3.3, -9.0], to: [-4.6, -8.4, -13.4], rate: 0.8, scale: 1.0, color: 0xd9dfe7 },
-    { preset: 'mist', at: [-1.0, -8.0, -12.5], to: [-4.0, -8.9, -16.5], rate: 0.9, scale: 2.0, color: 0xd9dfe7 },
+    { preset: 'mist', at: [-2.2, -0.95, -4.6], to: [-5.0, -3.2, -8.6], rate: 1.2, scale: 0.9, color: 0xd9dfe7 },
+    { preset: 'mist', at: [-5.2, -3.3, -9.0], to: [-4.6, -8.4, -13.4], rate: 1.2, scale: 1.0, color: 0xd9dfe7 },
+    { preset: 'mist', at: [-1.0, -8.0, -12.5], to: [-4.0, -8.9, -16.5], rate: 1.2, scale: 2.0, color: 0xd9dfe7 },
   ],
   lights: ITHILDIN_LIGHTS,
   proxy: (k) => {
@@ -207,11 +212,14 @@ export default defineLandmark({
     {
       id: 'moria-close',
       fStop: 5.6,
-      distanceKm: 8.6,
-      elevationDeg: 6,
+      // (S4 W5, C2 #12: lower and a little closer — 8.6 km / 6° / 0.9 → 8.3 / 5° / 0.6: a longer reflection
+      // and bigger doors; at the AD's 3° / 0.4 the flat western sill filled 40 % of the frame and the pool
+      // shrank to a strip)
+      distanceKm: 8.3,
+      elevationDeg: 5,
       azimuthDeg: 270,
       fov: 35,
-      lift: 0.9,
+      lift: 0.6,
       tod: 22.5,
       dayOfYear: 19,
       compare: ['reference/film/moria/moria-west-gate-night-fotr.webp', 'reference/concept-art/moria/moria-gate-john-howe.jpg', 'reference/bigatures/moria/moria-gates-weta-mini.png'],
@@ -219,9 +227,12 @@ export default defineLandmark({
     },
     {
       id: 'moria-wide',
-      distanceKm: 42,
-      elevationDeg: 10,
-      azimuthDeg: 245,
+      // (S4 W5, C2 #12: 42 km / 10° → 30 / 5° and round to 258° — the gate was a speck in uniformly
+      // crumpled ranges; the cliff wall and the pool now sit on the lower-middle third; 26 km fails the
+      // shot list's ±35 % context gate)
+      distanceKm: 30,
+      elevationDeg: 5,
+      azimuthDeg: 258,
       fov: 35,
       lift: 3,
       tod: 22.5,

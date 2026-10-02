@@ -1,0 +1,26 @@
+{
+ "version": 1,
+ "notes": "S4 W5-G1 hero-polish shots (Hobbiton, Black Gate, Moria, Argonath / Rauros, Erebor); the acceptance set is 's4-g1' (data/qa/sets.json). s4g1-hobbiton-night = hobbiton-night at the W5 hobbiton-close camera.",
+ "shots": [
+  {
+   "id": "s4g1-hobbiton-night",
+   "tod": 0.2,
+   "fStop": 11,
+   "camera": {
+    "orbit": {
+     "place": "hobbiton",
+     "distanceKm": 7,
+     "elevationDeg": 6.5,
+     "azimuthDeg": 212,
+     "fov": 20,
+     "lift": 0.15,
+     "aimKm": [
+      -0.5,
+      0.4
+     ]
+    }
+   },
+   "note": "S4 W5-G1: hobbiton-night at the new hobbiton-close camera (review-s4.json hobbiton-night keeps the S3 camera until the main agent moves it)"
+  }
+ ]
+}
