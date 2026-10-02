@@ -531,20 +531,24 @@ def course_joints(p):
 def chips(rnd):
     """planar breaks of the pedestal: bevel-like chips along the block's top edge and the moulding's rim
     (point, outward normal, depth, radius — a spherical region), and long broken corners down the chamfer
-    edges (point, horizontal normal, depth, half length — a vertical band)"""
+    edges (point, horizontal normal, depth, half length — a vertical band); every centre scaled with the
+    battered block's outline at its height (ped_scale), so the chips cut as deep as designed"""
     pw, pd, ch = PED_W / 2, PED_D / 2, 0.22
     top = []
     for i in range(16):
         a = 2 * math.pi * (i + rnd.random() * 0.8) / 16
         c, s = math.cos(a), math.sin(a)
         z = PED_TOP - 0.16 - rnd.random() * 0.06
-        p = Vector((c * pw * 0.9, s * pd * 0.9, z))
+        f = 0.9 * ped_scale(z)
+        p = Vector((c * pw * f, s * pd * f, z))
         nrm = (Vector((c / pw, s / pd, 0)).normalized() + Vector((0, 0, 0.8 + 0.4 * rnd.random()))).normalized()
         top.append((p, nrm, 0.03 + 0.05 * rnd.random(), 0.2 + 0.2 * rnd.random()))
     for i in range(8):
         a = 2 * math.pi * (i + 0.3 + rnd.random() * 0.6) / 8
         c, s = math.cos(a), math.sin(a)
-        p = Vector((c * pw * 0.86 * 0.97, s * pd * 0.86 * 0.97, PED_TOP - 0.01))
+        # (on the moulding, scaled with the battered block: pedestal_block's sc(0.86 * st / 0.9))
+        f = 0.86 * ped_scale(PED_TOP - 0.16) / 0.9 * 0.97
+        p = Vector((c * pw * f, s * pd * f, PED_TOP - 0.01))
         nrm = (Vector((c / pw, s / pd, 0)).normalized() + Vector((0, 0, 1.0))).normalized()
         top.append((p, nrm, 0.02 + 0.03 * rnd.random(), 0.12 + 0.1 * rnd.random()))
     corners = []
@@ -554,7 +558,8 @@ def chips(rnd):
             continue
         x, y = outline[k]
         zc = 0.2 + rnd.random() * 1.0
-        corners.append((Vector((x * 0.95, y * 0.95, zc)), Vector((x, y, 0)).normalized(), 0.04 + 0.05 * rnd.random(), 0.25 + 0.35 * rnd.random()))
+        f = 0.95 * ped_scale(zc)
+        corners.append((Vector((x * f, y * f, zc)), Vector((x, y, 0)).normalized(), 0.04 + 0.05 * rnd.random(), 0.25 + 0.35 * rnd.random()))
     del ch
     return top, corners
 

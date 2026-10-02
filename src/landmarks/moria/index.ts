@@ -63,9 +63,10 @@ const HOLLY: V2[] = [
  */
 function holly(at: V2, side: number, yaw: number): TreeDecl[] {
   return [
-    // (S4 W5, C2 #12: 1.15 / 0.7 → 1.7 / 1.0 — the S3 hollies stood no taller than the door arch)
-    { at, kind: 'holly', crownKm: 0.4, heightKm: 1.7, color: 0x1d3322, yawDeg: yaw },
-    { at: [at[0] + side * 0.22, at[1] + 0.06], kind: 'holly', crownKm: 0.28, heightKm: 1.0, color: 0x213a26, yawDeg: yaw + 70 },
+    // (S4 W5, C2 #12: 1.15 / 0.7 → 1.7 / 1.0 — the S3 hollies stood no taller than the door arch; a lighter
+    // green — at 0x1d3322 the moonlit crowns crushed to zero-black blobs)
+    { at, kind: 'holly', crownKm: 0.4, heightKm: 1.7, color: 0x2a4a30, yawDeg: yaw },
+    { at: [at[0] + side * 0.22, at[1] + 0.06], kind: 'holly', crownKm: 0.28, heightKm: 1.0, color: 0x2e4e34, yawDeg: yaw + 70 },
   ];
 }
 
@@ -92,9 +93,10 @@ export default defineLandmark({
         [-1.5, -3.45],
         [-0.9, -3.75],
       ],
-      height: [0.8, 1.6, 1.8, 0.6],
-      halfWidth: 0.8,
-      // (S4 W5: a sharp, rough crest — the S3 round dam read as two smooth clay mounds at the pool's rim)
+      height: [0.7, 1.3, 1.4, 0.5],
+      halfWidth: 1.0,
+      // (S4 W5: a sharp, rough crest — the S3 round dam read as two smooth clay mounds at the pool's rim; lower
+      // and broader than the first W5 crest, which stood as a triangular shard in the hero's right foreground)
       profile: 'sharp',
       rough: { amp: 0.3, scaleKm: 1.6, ridged: true },
       surface: 'rock',

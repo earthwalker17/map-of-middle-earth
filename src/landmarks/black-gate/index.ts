@@ -5,7 +5,7 @@ import { buildGate, EAST_RIDGE, OUTCROP, TOWERS, WEST_RIDGE } from './gate.ts';
 /**
  * The Morannon, the Black Gate (research §6): a single iron rampart closing the pass of Cirith Gorgor
  * between two steep rocky ridges, a giant riveted double gate under a fang crest in the middle, the two
- * Towers of the Teeth on broken crags high on the flanking slopes, and a flat pale ash plain in front
+ * Towers of the Teeth on ledges high on the flanking slopes, and a flat pale ash plain in front
  * (the Dagorlad look region carries the ash; a ground-look spot in looks.json darkens the ridges' rock).
  * gate.ts builds the iron (the wall's level top dies into the rising rock under the Towers).
  *
@@ -16,13 +16,15 @@ import { buildGate, EAST_RIDGE, OUTCROP, TOWERS, WEST_RIDGE } from './gate.ts';
  *     higher floor left a berm between the plain and the gate; raising the ground in front instead made
  *     a mesa with an edge); behind the wall, Udûn: a dale cut through the baked hump toward Mordor
  *     (lowerOnly, rising gently from −5.4 to −2.4 over 40 km);
- *  2. two steep, craggy ridges along the pass (crests at x ≈ ∓11.2, ~10 above the floor, sharp-crested
- *     with ridged noise — moderate, so the noses do not break into smooth pointed cones; their noses run
- *     4 km out into the plain: a bay before the gate), so the pass is closed by the ~16 km wall. Kit
- *     cliffs, flat-topped broken blocks and scree (gate.ts) break the Towers' knobs, the noses and the
- *     crests into fractured basalt;
- *  3. two shelves (r 1.4) high on the flanks, 6.2 above the floor, for the Towers of the Teeth — the wall
- *     (3.6) stands at ≈ 0.58 of their height.
+ *  2. two massive, round-shouldered rock ridges along the pass (S4 W5: crests at x ≈ ∓11.2 rising to ≈ 22
+ *     above the floor, ≈ 1.4× the Towers' tops — the RotK plate's ratio; ridged noise breaks them into
+ *     crags; their noses run 4 km out into the plain: a bay before the gate), so the pass is closed by the
+ *     ~17 km wall; a short rock spur off the west ridge's nose running west-south-west hides the green
+ *     foothill dome beside the pass in black-gate-wide. Kit scree and flat-topped broken blocks (gate.ts)
+ *     break the noses and the crests;
+ *  3. a butte on the plain in the hero's right foreground (a massif stamp with short spurs, rough rock);
+ *  4. two shelves (r 1.4) on the flanks, 6.2 above the floor, for the Towers of the Teeth — the wall
+ *     (3.6) stands at ≈ 0.58 of the shelves' height and dies into the rock under them.
  */
 /**
  * The gate faces north-west, as the Morannon does: Cirith Gorgor opens onto the Dagorlad and the Dead
@@ -44,13 +46,15 @@ const STAMPS: LocalStamp[] = [
     [-2.5, 30, 5.5, 6.5, -3.4],
     [-3.5, 40, 6, 7, -2.4],
   ] as const).map(([x, z, radius, falloff, height]): LocalStamp => ({ kind: 'flatten', at: [x, z], radius, falloff, height, lowerOnly: true })),
-  // (S4 W5, C2 #5: massive round-shouldered flanks looming ≈ 1.5× the Towers' tops, as in the RotK plate —
-  // at 10 above the floor the S3 crests stood lower than the Towers, which read as lighthouses on soft
-  // cones; a 'sharp' profile at these heights made witch-hat spires)
+  // (S4 W5, C2 #5: massive round-shouldered flanks whose crests stand ≈ 1.4× the Towers' tops, as in the RotK
+  // plate — at 10 above the floor the S3 crests stood lower than the Towers, which read as lighthouses on
+  // soft cones; at 24 / 21 the Towers stood swallowed in notches of sheer faces. The vertex beside the
+  // Towers stays low (11 / 10), so each Tower stands on a knob of the ridge's nose with the mountain rising
+  // behind it; a 'sharp' profile at these heights made witch-hat spires)
   {
     kind: 'ridge',
     path: WEST_RIDGE,
-    height: [9, 20, 24, 24, 20, 14],
+    height: [7, 11, 18, 18, 15, 11],
     halfWidth: 5,
     profile: 'round',
     rough: { amp: 2.2, scaleKm: 1.6, ridged: true },
@@ -59,37 +63,53 @@ const STAMPS: LocalStamp[] = [
   {
     kind: 'ridge',
     path: EAST_RIDGE,
-    height: [8, 18, 21, 20, 16, 11],
+    height: [6, 10, 16, 15, 12, 8],
     halfWidth: 5,
     profile: 'round',
     rough: { amp: 2.2, scaleKm: 1.6, ridged: true },
     surface: 'rock',
   },
-  // the Ephel Dúath's northern arm, a broken rock spur running out north-west from the west ridge's nose
-  // over the green foothill dome beside the pass: in black-gate-wide it closes the right of the frame (the
-  // S3 frame showed the dome and a pale flat strip of the far horizon through the gap)
+  // a short broken rock spur off the west ridge's nose, running west-south-west over the green foothill dome
+  // beside the pass and tapering out ≈ 20 km from the gate: in black-gate-wide it closes the right of the
+  // frame (the S3 frame showed the dome and a pale flat strip of the far horizon through the gap). It stays
+  // clear of the Black Gate → Ithilien route leg (S5 / S8: re-check if the route is redrawn)
   {
     kind: 'ridge',
     path: [
       [-12.5, -4],
-      [-19, -7.5],
+      [-17, -6.5],
+      [-22, -9],
       [-27, -11],
-      [-35, -15],
-      [-44, -19],
-      [-53, -22],
     ],
-    height: [7, 8, 9, 9, 7, 0],
-    halfWidth: 6,
+    height: [6, 7, 5, 0],
+    halfWidth: 5,
     profile: 'round',
     rough: { amp: 2.0, scaleKm: 1.6, ridged: true },
     surface: 'rock',
   },
-  // the butte on the Dagorlad in the hero's right foreground (gate.ts OUTCROP: the kit keeps only its upper
-  // cliff band): a flat-topped body 2.4 above the plain (≈ −8.6 here, relative to the base ground at the
-  // origin), steep broken sides
-  { kind: 'massif', at: OUTCROP, radius: 2.4, summit: -6.2, base: -8.8, exponent: 0.6, dome: 2, spurs: [], rough: { amp: 0.7, scaleKm: 1.6, ridged: true }, surface: 'rock' },
-  // 3. shelves for the Towers of the Teeth on the flanks, 6.2 above the floor (wide enough for the
-  //    Towers' stepped plinths; their foot follows the rest)
+  // the butte on the Dagorlad in the hero's right foreground (gate.ts OUTCROP: kit breaks and scree on it): a
+  // heavy body 2.4 above the plain (≈ −8.6 here, relative to the base ground at the origin), three short
+  // ridged spurs breaking its round dome into a fractured heap
+  {
+    kind: 'massif',
+    at: OUTCROP,
+    radius: 2.4,
+    summit: -6.2,
+    base: -8.8,
+    exponent: 0.75,
+    dome: 1.2,
+    spurs: [
+      { azimuthDeg: 20, lengthKm: 2.6, widthKm: 0.8, heightFrac: 0.55, rootFrac: 0.9 },
+      { azimuthDeg: 140, lengthKm: 2.4, widthKm: 0.8, heightFrac: 0.45, rootFrac: 0.85 },
+      { azimuthDeg: 265, lengthKm: 2.8, widthKm: 0.9, heightFrac: 0.5, rootFrac: 0.88 },
+    ],
+    flankSlope: 2.4,
+    rough: { amp: 1.4, scaleKm: 1.6, ridged: true },
+    surface: 'rock',
+  },
+  // 4. shelves for the Towers of the Teeth on the flanks, 6.2 above the floor (wide enough for the
+  //    Towers' stepped plinths; their foot follows the rest) — with the S4 W5 flanks the ground there stands
+  //    ≈ 0.5 above the shelf, so they are ledges, not notches
   ...TOWERS.map((at) => ({ kind: 'flatten' as const, at, radius: 1.4, falloff: 1.0, height: 0, surface: 'rock' as const })),
 ];
 
@@ -101,12 +121,10 @@ export default defineLandmark({
   headingDeg: HEADING,
   stamps: STAMPS,
   proxy: (k) => buildGate(k),
-  // smoke of Udûn's forges rising behind the wall (local +z = behind, into Mordor), drifting downwind (S4 W5:
-  // the third, far emitter hung as a lone black cumulus over the west ridge in black-gate-wide — removed)
-  emitters: [
-    { preset: 'smoke', at: [-4, 0.8, 6], rate: 0.3, scale: 0.9 },
-    { preset: 'smoke', at: [3, 1.2, 9], rate: 0.28, scale: 1.1 },
-  ],
+  // smoke of Udûn's forges rising behind the wall (local +z = behind, into Mordor), drifting downwind — one
+  // small source behind the west half (S4 W5: the far emitter hung as a lone black cumulus over a ridge in
+  // black-gate-wide, and the one behind the east half stood as a black billow over the gate in the hero)
+  emitters: [{ preset: 'smoke', at: [-5, 0.6, 10], rate: 0.25, scale: 0.6 }],
   lookOverride: 'dagorlad',
   // no trees in the pass, on the ridges or on the Dagorlad approach in any hero framing
   vegetationExclusion: 36,
@@ -123,7 +141,7 @@ export default defineLandmark({
       lift: 5.0,
       tod: 16.0,
       compare: ['reference/film/black-gate/black-gate-rotk-4k.webp', 'reference/film/black-gate/black-gate-towers-rotk.jpg', 'reference/concept-art/black-gate/howe-the-black-gates.jpg'],
-      note: 'from the Dagorlad ash plain, low (the Dead Marshes road, looking up): the iron rampart spanning the pass, the riveted gate under its fang crest the single subject between the Towers of the Teeth on their broken crags, a basalt outcrop in the right foreground; the camera stands where two lines cross — Barad-dûr hidden behind the east Tower, Mount Doom\'s summit hidden behind the east gate tower (only its flanks show low behind the wall: hazed to silhouette in S4); afternoon (the sun in the west, raking the wall). The outcrop 14 km out widens the landmark bounds past the near corners of the camera, where the probe measures 0 px: visibility is still checked',
+      note: 'from the Dagorlad ash plain, low (the Dead Marshes road, looking up): the iron rampart spanning the pass, the riveted gate between its flat iron piers under a fang crest the single subject between the Towers of the Teeth on their ledges high on the flanks, a basalt butte in the right foreground; the camera stands where two lines cross — Barad-dûr hidden behind the east Tower, Mount Doom\'s summit hidden behind the gate (only its flanks show low behind the wall: hazed to silhouette in S4); afternoon (the sun in the west, raking the wall). The butte 18 km out widens the landmark bounds past the near corners of the camera, where the probe measures 0 px: visibility is still checked',
       expect: { minSubjectPx: 0 },
     },
     {

@@ -36,16 +36,20 @@ export const DOOR = {
   ar: 0.26,
 } as const;
 
-/** the dressed patch: the moonlit scarp's own dark blue-grey stone (S4 W5: the S3 0x575e64 read as a lighter slab) */
-const FACE_ROCK = 0x464c51;
+/**
+ * the dressed patch: the moonlit scarp's own dark blue-grey stone (S4 W5: the S3 0x575e64 and then 0x464c51
+ * read as a lighter slab — the glow's spill lifts it above the terrain cliff)
+ */
+const FACE_ROCK = 0x31363b;
 /**
  * ithildin: a cool blue-silver (daytime albedo ≈ the dark face); S4 W5 (C2 #12): fine lines at half the S3
- * width, a cooler and fainter glow — the S3 lines read as thick white neon clip-art
+ * width, a cooler, bluer and fainter glow — the S3 lines read as thick white neon clip-art
  */
-const SILVER = 0x7c97b0;
-const GLOW = { gate: 'night' as const, strength: 5, flicker: 0.02 };
+// (S4 W5: a more saturated blue at a lower strength — 0x7c97b0 × 5 clipped to white in the grade)
+const SILVER = 0x5c80c0;
+const GLOW = { gate: 'night' as const, strength: 2.4, flicker: 0.02 };
 /** carved relief: the face's stone, a shade lighter, this proud of the face */
-const RELIEF = 0x4f565c;
+const RELIEF = 0x3a4046;
 const RELIEF_T = 0.008;
 /** glow lines: their back this far in front of the face (over the relief), this thick (≤ 0.02 in all) */
 const BACK = RELIEF_T + 0.003;

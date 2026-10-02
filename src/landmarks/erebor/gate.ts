@@ -433,11 +433,19 @@ export function buildGate(k: ProxyKit): void {
   }
 
   // ---- three braziers at different heights and places (S4 W5, C2 #11: the S3 six in an even row read as
-  // an LED strip): beside the door on the upper tier, at a corner of the second tier on the other side,
-  // and high on a ledge of the rock wall behind the east king
+  // an LED strip): beside the door on the upper tier, on a stone pillar at a corner of the second tier on the
+  // other side, and high on a rock corbel (a ledge block let into the wall) beside the east king
   brazier(k, -0.5, 0.2, ty, 3.6);
-  brazier(k, 0.9, 0.46, ty - 0.09, 2.6);
-  brazier(k, KING_U + 0.62, KING_W - 0.05, ty + 1.05, 3.0);
+  k.cylinder('stone', 0.07, 0.09, 0.22, { at: at(0.9, ty - 0.11, 0.46), seg: 8, color: STONE, lod: 0 });
+  brazier(k, 0.9, 0.46, ty + 0.11, 2.6);
+  {
+    const cu = KING_U + 0.62;
+    const cy = ty + 0.75;
+    // the corbel: its back buried in the kings' rock wall (face at w ≈ KING_W − 0.13), its top level under
+    // the brazier
+    k.box('weathered', 0.3, 0.22, 0.42, { at: at(cu, cy - 0.22, KING_W - 0.16), rot, color: KING_ROCK, shade: 0.9, lod: 0 });
+    brazier(k, cu, KING_W - 0.05, cy, 3.0);
+  }
   // the gate's inner glow: the halls behind the open door, one broad warm opening from dusk (S4 W5: 2 / 0.1
   // read as a pin-prick; it reads as the lit gate now)
   k.light(at(0, fy + 0.34, bz + 0.05), { kind: 'window', gate: 'dusk', color: 0xffb35a, intensity: 4.0, radius: 0.25 });

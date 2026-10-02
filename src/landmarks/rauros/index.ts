@@ -122,8 +122,11 @@ const STAMPS: LocalStamp[] = [
 /** the film's stone (#48463f lit in shade; painted lighter, the family shades it), the Seat's dark finial */
 const STONE = 0x86837a;
 const ROCK = 0x7b7e78;
-/** (S4 W5: darker — the S3 0x6a6c67 read as a pale turned column against the lake) */
-const TOL_ROCK = 0x56574f;
+/**
+ * (S4 W5: darker and grey — the S3 0x6a6c67 read as a pale turned column against the lake, a browner
+ * 0x56574f as a wooden post under the warm sun)
+ */
+const TOL_ROCK = 0x5a5c59;
 const FINIAL = 0x232932;
 /** conifer crowns: lifted from near-black so they get form shading (the grade darkens them) */
 const CONIFER = [0x26351f, 0x2b3a23, 0x223020, 0x2e3f27];
@@ -221,25 +224,37 @@ export default defineLandmark({
   stamps: STAMPS,
   proxy: (k) => {
     // ---- Tol Brandir (see the module doc)
-    const flutes = Array.from({ length: 20 }, (_, i) => 0.04 + 0.08 * k.r(500 + i));
+    // (S4 W5: 28 shallow flutes, not 20 deep ones — the loft's flat facets showed the deep flutes as
+    // full-height vertical bands, a fluted post)
+    const flutes = Array.from({ length: 28 }, (_, i) => 0.008 + 0.03 * k.r(500 + i));
     // S4 W5 (C2 #23): ONE continuous body (the S3 three stacked, tilted drums read as a banded lighthouse):
-    // sections every ≈ 1 km whose lobes twist ≈ 50° up the height and whose axis wanders ±0.3 km, the radius
-    // swelling and pinching irregularly — a sheer jointed pillar
-    const body: [number, number][] = [[0, 1.6], [0.14, 1.66], [1.0, 1.7], [2.0, 1.6], [3.0, 1.66], [4.0, 1.52], [5.0, 1.58], [6.0, 1.44], [7.0, 1.47], [LEDGE_Y + 1.6 - 0.12, 1.34]];
+    // sections every ≈ 0.6 km whose lobes twist ≈ 50° up the height (plus a wobble, so no facet runs straight
+    // up the whole pillar) and whose axis wanders ±0.3 km, the radius swelling and pinching irregularly, the
+    // foot flaring at the waterline (LAKE_Y ≈ 2.0 up the loft) — a sheer jointed pillar
+    // (radii easing down smoothly, the swell and pinch and the wander smooth noise in height — per-section
+    // jitter made horizontal rings at 0.6 km spacing)
+    const body: [number, number][] = [[0, 1.95], [0.14, 1.95], [1.0, 1.9], [2.0, 1.76], [2.6, 1.68], [3.2, 1.64], [3.8, 1.6], [4.4, 1.57], [5.0, 1.54], [5.6, 1.51], [6.2, 1.48], [6.8, 1.45], [7.4, 1.42], [8.0, 1.39], [LEDGE_Y + 1.6 - 0.12, 1.34]];
+    const bodySection = (i: number, scale = 1): V2[] => {
+      const [y, R] = body[i];
+      const f = Math.min(1, y / 2.6);
+      const wx = f * 0.3 * (2 * valueNoise(y * 0.28, 0.3, 35) - 1);
+      const wz = f * 0.3 * (2 * valueNoise(0.4, y * 0.28, 36) - 1);
+      const rr = R * scale * (1 + 0.1 * (valueNoise(y * 0.3, 2.1, 37) - 0.5));
+      const tw = (y / 9) * 0.87 + 0.22 * Math.sin(y * 1.3 + 0.5);
+      return tolOutline(rr, y - 1.6, flutes, 31).map(([x, z]): V2 => [x * Math.cos(tw) - z * Math.sin(tw) + wx, x * Math.sin(tw) + z * Math.cos(tw) + wz]);
+    };
     k.loft(
       'weathered',
-      body.map(([y, R], i) => {
-        const wx = Math.min(1, i / 2) * 0.3 * (2 * valueNoise(i * 0.7, 0.3, 35) - 1);
-        const wz = Math.min(1, i / 2) * 0.3 * (2 * valueNoise(0.4, i * 0.7, 36) - 1);
-        const rr = R * (1 + 0.12 * (valueNoise(i * 1.3, 2.1, 37) - 0.5));
-        const tw = (y / 9) * 0.87;
-        return {
-          outline: tolOutline(rr, y - 1.6, flutes, 31).map(([x, z]): V2 => [x * Math.cos(tw) - z * Math.sin(tw) + wx, x * Math.sin(tw) + z * Math.cos(tw) + wz]),
-          y,
-        };
-      }),
+      body.map(([y], i) => ({ outline: bodySection(i), y })),
       { at: [TOL[0], -1.6, TOL[1]], color: TOL_ROCK, shade: 0.97, lod: 0 },
     );
+    // tumbled blocks round the foot at the waterline
+    for (let i = 0; i < 12; i++) {
+      const a = ((i + 0.6 * k.r(560 + i)) / 12) * Math.PI * 2;
+      const r = 0.14 + 0.2 * k.r(580 + i);
+      const d = 1.72 + 0.25 * k.r(600 + i) + 0.3 * r;
+      k.rock('weathered', r, { at: [TOL[0] + Math.cos(a) * d, LAKE_Y - 0.25 * r, TOL[1] + Math.sin(a) * d], squash: 0.55, lump: 0.6, detail: 1, color: TOL_ROCK, shade: 0.85 + 0.15 * k.r(620 + i), lod: 0 });
+    }
     // above the moss ledge: an upper mass set off to the north-east and a broken, ragged crown — three
     // blunt splintered stumps of different heights leaning apart (no needle point), a lesser stump beside it
     const UP_AT: V3 = [TOL[0] + 0.35, LEDGE_Y - 0.15, TOL[1] - 0.3];
@@ -255,8 +270,19 @@ export default defineLandmark({
     // coarse cores for LOD1/2 (hidden inside the fluted shells at LOD0)
     k.loft('weathered', [{ outline: ngon(1.35, 12), y: -1.6 }, { outline: ngon(1.15, 12), y: LEDGE_Y - 0.1 }], { at: [TOL[0], 0, TOL[1]], color: TOL_ROCK, lod: 2 });
     k.loft('weathered', [{ outline: ngon(0.66, 10), y: 0 }, { outline: ngon(0.5, 10), y: 2.9 }, { outline: ngon(0.25, 10), y: 4.3 }], { at: UP_AT, color: TOL_ROCK, lod: 2 });
-    // the ledge: moss over the body's top, a few conifers on its south-west side (towards the falls)
-    k.lathe('foliage', [[1.3, LEDGE_Y - 0.16], [1.28, LEDGE_Y - 0.02], [1.12, LEDGE_Y + 0.06], [0.9, LEDGE_Y + 0.1], [0.001, LEDGE_Y + 0.12]], { at: [TOL[0], 0, TOL[1]], seg: 24, color: 0x2e3d29, lod: 1 });
+    // the ledge: a low mossy mound over the body's top following its lobed edge (S4 W5: the round lathe disc
+    // read as a flat green plate on a post), a few conifers on its south-west side (towards the falls)
+    const top = body.length - 1;
+    k.loft(
+      'foliage',
+      [
+        { outline: bodySection(top, 0.985), y: LEDGE_Y - 0.15 },
+        { outline: bodySection(top, 0.93), y: LEDGE_Y - 0.03 },
+        { outline: bodySection(top, 0.72), y: LEDGE_Y + 0.06 },
+        { outline: bodySection(top, 0.35), y: LEDGE_Y + 0.11 },
+      ],
+      { at: [TOL[0], 0, TOL[1]], color: 0x333d2a, shade: 0.95, lod: 1 },
+    );
     k.scatter({ annulus: { at: TOL, r0: 0.36, r1: 0.62, a0: 180, a1: 290 } }, 7, (_i, x, z, u) => conifer(k, x, z, 0.05 + 0.03 * u, CONIFER[Math.floor(u * 4) % 4]), { minSpacing: 0.1 });
 
     // ---- the lip of the falls (the cataract is S4): low rock ledges on both banks facing downstream

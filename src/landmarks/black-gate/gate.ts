@@ -23,12 +23,12 @@ import type { V2, V3 } from '../records.ts';
  *  - the Towers of the Teeth on their shelves high on the flanks: a stepped, battered octagonal plinth
  *    (its foot following the rock), eight buttress fins flaring onto it, a broad banded fin-bundle shaft
  *    (r 0.82, 5.4 high), a flared collar, a lantern and a crown of spikes round a central spire — ≈ 9.4
- *    high, standing clear above the crags.
- *  - crags: fractured basalt round the front of each Tower's knob (two stepped bands of kit cliff, low
- *    enough that their skylines read as broken ledges, not spires) and along the ridge flanks facing the
- *    pass, flat-topped broken blocks on the crests, scree fans at their feet — none on the Towers or the
- *    wall; a great butte on the plain in front (the hero's repoussoir: a massif stamp with a kit cliff
- *    band round its crown and tumbled scree).
+ *    high, standing clear on their ledges.
+ *  - crags (S4 W5): the flanks' faces are the terrain's (the stamped ridges' ridged rock); the kit adds only
+ *    flat-topped broken blocks on the crests and noses and scree fans on the pass side — no kit cliff bands
+ *    on the ridges or round the Towers (their flat-shaded facets read as pale slabs / a low-poly crystal
+ *    cluster against the S4 flanks); a great butte on the plain in front (the hero's repoussoir: a massif
+ *    stamp with ridged spurs and tumbled scree).
  *  - braziers (fire, night gate): the gate piers, the wall walk, the Towers' lanterns.
  *
  * Iron parts use the 'iron' family (metallic, roughness 0.5: the specular ambient keeps them from going
@@ -637,19 +637,19 @@ function scree(k: ProxyKit, x: number, z: number, dir: number, spread: number, n
 }
 
 /**
- * Fractured basalt along a ridge crest line: on its nose and the flanks facing the plain, broken rock
- * bands (kit cliffs facing the pass side, low enough that their jagged skylines stay broken steps, not
- * spires), flat-topped broken blocks along the crest and scree fans at the bands' feet — nothing within
- * reach of the Towers or the wall's end.
+ * Fractured basalt along a ridge crest line: scree fans along lines on the flanks facing the pass and
+ * flat-topped broken blocks along the crest and nose — nothing within reach of the Towers or the wall's
+ * end. (S4 W5: the kit cliff bands that stood on those lines are gone — against the S4 flanks their
+ * flat-shaded faces read as pale translucent slabs pasted on the rock.)
  */
 function crags(k: ProxyKit, ridge: V2[], side: number): void {
   const s = sampler(ridge);
   const keep = (x: number, z: number) => Math.hypot(x - side * 8.6, z + 1.8) > 2.6 && !(Math.abs(x) < 9.2 && z > -2.6 && z < 0.8);
-  const faces: { path: V2[]; h: number }[] = [];
-  for (const [t0, t1, off, h] of [
-    [0.0, 3.6, 1.6, 1.3],
-    [4.8, 9.5, 2.2, 1.1],
-    [10.5, 14, 2.6, 0.9],
+  const faces: { path: V2[] }[] = [];
+  for (const [t0, t1, off] of [
+    [0.0, 3.6, 1.6],
+    [4.8, 9.5, 2.2],
+    [10.5, 14, 2.6],
   ] as const) {
     const pts: V2[] = [];
     for (let t = t0; t <= t1 + 1e-6; t += 0.4) {
@@ -665,21 +665,14 @@ function crags(k: ProxyKit, ridge: V2[], side: number): void {
     for (const q of [...pts, null]) {
       if (q && keep(q[0], q[1])) run.push(q);
       else {
-        if (run.length >= 3) faces.push({ path: run, h });
+        if (run.length >= 3) faces.push({ path: run });
         run = [];
       }
     }
   }
   for (const f of faces) {
-    // walking so that the right-hand side faces the pass (x toward 0)
-    let path = f.path;
-    const a = path[0];
-    const b = path[path.length - 1];
-    const rx = -(b[1] - a[1]);
-    if (rx * -side < 0) path = [...path].reverse();
-    k.cliff('weathered', path, path.map(() => f.h * (0.85 + 0.3 * k.r())), { color: ROCK, rough: 0.55, strata: 0.35, depth: 1.0, soft: 0.6, overhang: 0.12, taper: 0.3 });
-    // scree fans at the foot on the pass side
-    for (let i = 0; i < path.length; i += 2) scree(k, path[i][0] + side * -0.3, path[i][1], side < 0 ? 0 : Math.PI, 0.7, 3, keep);
+    // scree fans on the pass side
+    for (let i = 0; i < f.path.length; i += 2) scree(k, f.path[i][0] + side * -0.3, f.path[i][1], side < 0 ? 0 : Math.PI, 0.7, 3, keep);
   }
   // flat-topped broken blocks along the crest and nose (where the ground is highest across the ridge)
   for (let t = 0.4; t < Math.min(s.len, 13); t += 1.4 + 1.2 * k.r()) {
@@ -708,82 +701,19 @@ function crags(k: ProxyKit, ridge: V2[], side: number): void {
   }
 }
 
-/**
- * S4 W5: the kit bands round the Towers' knobs are off — with the S4 flanks the Towers stand on shelves cut
- * into massive rock slopes whose terrain rock reads far better than the bands' flat-shaded facets (in
- * black-gate-close the east knob's bands read as a low-poly crystal cluster beside the Tower)
- */
-const KNOB_CRAGS = false;
-
-/**
- * Fractured rock round the front of a Tower's knob (the steep fall from its shelf to the pass floor):
- * two stepped bands of kit cliff on arcs round the shelf (the lower at 2.6 km, the upper at 1.85 km,
- * each about half the fall it spans, so their jagged skylines read as broken ledges — not as tall
- * spires), from behind the wall line round the pass side and the plain side, faces looking out; scree
- * fans on the pass floor below.
- */
-function knobCrag(k: ProxyKit, c: V2, side: number): void {
-  // compass bearings (0 = the plain, −z; 90 = +x): the west knob (side −1) faces the pass at 90
-  const from = side < 0 ? 160 : 200;
-  const to = side < 0 ? -50 : 410;
-  const n = 24;
-  const shelf = k.ground(c[0], c[1]);
-  for (const [r0, f, cap] of [
-    [2.6, 0.5, 2.0],
-    [1.85, 0.6, 2.2],
-  ] as const) {
-    const pts: V2[] = [];
-    for (let i = 0; i <= n; i++) {
-      // walk with the face to the right = outward: counter-clockwise (bearing decreasing) round the centre
-      const bDeg = side < 0 ? from + ((to - from) * i) / n : to + ((from - to) * i) / n;
-      const b = (bDeg * Math.PI) / 180;
-      const r = r0 + 0.18 * Math.sin(i * 1.7 + side + r0);
-      pts.push([c[0] + Math.sin(b) * r, c[1] - Math.cos(b) * r]);
-    }
-    // half (or 0.6) of the fall from the shelf to the band's foot, capped: the kit's skyline reaches at most
-    // ≈ 1.3 × this, never above the shelf
-    const hs = pts.map(([x, z]) => Math.min(cap, Math.max(0.5, f * (shelf - k.ground(x, z)))));
-    // (S4 W5: softer facet normals — at 0.2 the knob read as a low-poly crystal cluster beside the east Tower)
-    k.cliff('weathered', pts, hs, { color: ROCK, rough: 0.6, strata: 0.8, depth: 1.2, soft: 0.6, overhang: 0.1, taper: 0.4 });
-  }
-  // scree fans at its foot on the pass and plain sides
-  for (let i = 0; i < 16; i++) {
-    const b = ((side < 0 ? -40 + 170 * k.r() : 40 - 170 * k.r()) * Math.PI) / 180;
-    const r = 2.8 + 0.9 * k.r();
-    const x = c[0] + Math.sin(b) * r;
-    const z = c[1] - Math.cos(b) * r;
-    if (z > -0.6 && Math.abs(x) < 8.5) continue;
-    k.rock('weathered', 0.1 + 0.16 * k.r(), { at: [x, 0, z], seat: true, color: ROCK2, lump: 0.9, squash: 0.8, detail: 1, lod: 0 });
-  }
-}
-
 /** the butte on the Dagorlad in the hero's right foreground (local; its body is a massif stamp in index.ts) */
 export const OUTCROP: V2 = [-0.5, -18];
 
 /**
  * A great butte of fractured basalt on the Dagorlad in the right foreground of the hero (S4 W5, C2 #9: the
- * S3 kit pile ringed by prism blocks read as toy rubble): its body is a flat-topped massif stamp (index.ts,
- * r 2.4, 2.4 above the plain, rough rock), so the terrain gives it real faces; the kit keeps only the upper
- * cliff band round its crown (twice the S3 size, strata and overhanging brows) and a fan of tumbled scree
- * of mixed sizes toward the road. Faces look toward local bearing ≈ 35° (the hero camera); bearings: 0 =
- * −z (the plain), 90 = +x.
+ * S3 kit pile ringed by prism blocks read as toy rubble): its body is a massif stamp with three short
+ * ridged spurs (index.ts, r 2.4, 2.4 above the plain, rough rock), so the terrain gives it real faces; the
+ * kit adds only a fan of tumbled scree of mixed sizes toward the road. (Tried in the W5 fix round and
+ * dropped: a soft kit cliff band round the crown read as a smeared dark sheet, tilted half-sunk prism slabs
+ * as dark boxes.) Bearings: 0 = −z (the plain), 90 = +x; the hero camera looks from local bearing ≈ 35°.
  */
 function outcrop(k: ProxyKit): void {
   const c = OUTCROP;
-  /** an arc round c from bearing b0 to b1 at radius r, walked with bearings decreasing (face outward) */
-  const arcPts = (b0: number, b1: number, r: number, n: number, wob: number): V2[] => {
-    const pts: V2[] = [];
-    for (let i = n; i >= 0; i--) {
-      const b = ((b0 + ((b1 - b0) * i) / n) * Math.PI) / 180;
-      const rr = r + wob * Math.sin(i * 1.3 + r);
-      pts.push([c[0] + Math.sin(b) * rr, c[1] - Math.cos(b) * rr]);
-    }
-    return pts;
-  };
-  const upper = arcPts(-40, 120, 1.55, 14, 0.2);
-  // (soft normals and little per-facet strata shade: at soft 0.25 / strata 0.9 the band read as a low-poly
-  // crystal cluster in front of the east Tower)
-  k.cliff('weathered', upper, upper.map((_, i) => 1.0 + 0.35 * Math.sin((i / 14) * Math.PI)), { color: ROCK2, rough: 0.45, strata: 0.25, depth: 1.6, soft: 0.85, overhang: 0.08, taper: 0.7, lod: 0 });
   // tumbled scree toward the camera (bearing 35°: x + sin, z − cos), off the butte's foot
   const sb = (35 * Math.PI) / 180;
   scree(k, c[0] + Math.sin(sb) * 2.6, c[1] - Math.cos(sb) * 2.6, Math.atan2(-Math.cos(sb), Math.sin(sb)), 1.6, 16, () => true);
@@ -803,12 +733,7 @@ export function buildGate(k: ProxyKit): void {
   // ---- the Towers of the Teeth, high on the flanks
   toothTower(k, TOWERS[0][0], TOWERS[0][1], 1);
   toothTower(k, TOWERS[1][0], TOWERS[1][1], -1);
-  // ---- crags under the Towers (off since S4 W5, see KNOB_CRAGS), on the ridge noses and crests; the
-  // outcrop on the plain
-  if (KNOB_CRAGS) {
-    knobCrag(k, TOWERS[0], -1);
-    knobCrag(k, TOWERS[1], 1);
-  }
+  // ---- crags on the ridge noses and crests; the butte on the plain
   crags(k, WEST_RIDGE, -1);
   crags(k, EAST_RIDGE, 1);
   outcrop(k);

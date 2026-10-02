@@ -40,13 +40,15 @@ const MASSIF: LocalStamp = {
   // the two arms of the gate valley keep lower roots so the valley stays open
   spurs: [
     { azimuthDeg: 18, lengthKm: 20, widthKm: 5, heightFrac: 0.42, rootFrac: 0.8 },
-    { azimuthDeg: 78, lengthKm: 23, widthKm: 5.5, heightFrac: 0.46, rootFrac: 0.8 },
+    // (S4 W5: the east and west spurs made unequal — the east one a high, full shoulder, the west one dropping
+    // in a steep arête to the shoulder peak — so the south profile is no longer an isosceles pyramid)
+    { azimuthDeg: 78, lengthKm: 23, widthKm: 5.5, heightFrac: 0.52, rootFrac: 0.87 },
     // the eastern arm of the gate valley (S4 W5, C2 #11: both arms higher and fuller — two dark buttresses
     // framing the gate in the south profile instead of an even bell skirt)
     { azimuthDeg: 132, lengthKm: 21, widthKm: 5, heightFrac: 0.54, rootFrac: 0.78 },
     // Ravenhill's spur: the western arm of the gate valley, the watch-post near its end
     { azimuthDeg: 238, lengthKm: 23, widthKm: 5, heightFrac: 0.58, rootFrac: 0.78 },
-    { azimuthDeg: 290, lengthKm: 20, widthKm: 5, heightFrac: 0.44, rootFrac: 0.8 },
+    { azimuthDeg: 290, lengthKm: 20, widthKm: 5, heightFrac: 0.36, rootFrac: 0.64 },
     { azimuthDeg: 338, lengthKm: 17, widthKm: 4.5, heightFrac: 0.4, rootFrac: 0.78 },
     // ribs between them: shorter ridge spurs whose crests stand at a third to a half of the height on the
     // faces (never within 40° of the gate line, 197°)
@@ -68,18 +70,18 @@ const MASSIF: LocalStamp = {
 
 /**
  * S4 W5 (C2 #11): a broken cliff band round the south face at ≈ 0.3 of the height (≈ 6 km out from the
- * summit, ≈ 1.6 km above the gate), the ground behind it lifted ≈ 1.8 — it breaks the even skirt the
+ * summit, ≈ 1.6 km above the gate), the ground behind it lifted ≈ 2.4 — it breaks the even skirt the
  * south profile read as (a bell / a Hershey's kiss) into a craggy step
  */
 const SOUTH_BAND: LocalStamp = {
   kind: 'scarp',
   path: [150, 165, 180, 197, 212, 228, 245].map((b) => fromSummit(b, 6.1 + 0.25 * Math.sin(b * 0.21))),
   side: 'right',
-  height: 1.8,
+  height: 2.4,
   run: 0.4,
   plateauKm: 1.2,
   falloff: 1.6,
-  rough: { amp: 0.6, scaleKm: 1.6, ridged: true, seed: 9 },
+  rough: { amp: 0.9, scaleKm: 1.6, ridged: true, seed: 9 },
   surface: 'rock',
 };
 

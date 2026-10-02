@@ -5,10 +5,10 @@
   {
    "id": "argonath",
    "file": "argonath.glb",
-   "sha256": "1a6bc03fd4b67891da9206f26a1aef0cd65754337a9045cb83be06dde6c0605f",
-   "bytes": 1304224,
+   "sha256": "e3fc41a0b47f6182a4553b7dec793a00f7bf0954a9788e085062a8d19f01eb00",
+   "bytes": 1304288,
    "script": "tools/blender/argonath.py",
-   "scriptSha256": "c2b346c369ef337d1bd48bb50b309446b1a9a8831e3505161c849e35f1f61c86",
+   "scriptSha256": "8d797e56176c60bbccc59c2ccd6a4dc1a2b84de307e3675ef3d0c6a4e1adcd54",
    "blender": "4.5.3 LTS",
    "tris": [
     30580,

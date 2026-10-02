@@ -7,8 +7,8 @@ import { archBridge, cottage, DOORS, facing, fallLine, faceRot, hedge, hobbitHol
  * Hobbiton (research §1, the Matamata set): the Hill — a broad, gently rounded green dome — with Bag End
  * near the top under its great spreading oak, its big round green door on a terrace; below it, rows of
  * hobbit-holes along the contours of the south-west face (Bagshot Row and the rows below), each dug into
- * the slope behind its own LEVEL garden terrace (dry-stone retaining face, lawn, vegetable and flower
- * beds, a picket fence or a hedge, a chimney poking out of the turf, round windows in yellow frames), the
+ * the slope behind its own LEVEL garden terrace (a low grassy bank, lawn, vegetable and flower
+ * beds, a picket fence or a hedge, a chimney poking out of the turf, round windows in muted frames), the
  * rows strung on lanes of worn soil that lie in the grass; the mill pond at the Hill's west foot with the
  * stone-and-timber mill and its waterwheel; the double-arched rubble-stone bridge over the Water; the Green
  * Dragon and the cottages of Bywater across the stream; the Party Field with its own great tree at the
@@ -294,26 +294,14 @@ function buildHill(k: ProxyKit): void {
   const [bnx, bnz] = facing(beYaw);
 
   // ---- Bag End: the largest front, the big green door, a window either side, a lamp by the gate
-  const bag = hobbitHole(k, { at: be, w: 0.4, door: DOORS[0], doorR: 0.055, facade: 0xc0a97d, windows: 2, chimney: true, lit: true, spark: true, edge: 'picket', terrace: 0.07, terraceW: 1.05, clump: 1 });
+  const bag = hobbitHole(k, { at: be, w: 0.4, door: DOORS[0], doorR: 0.055, facade: 0x947c58, windows: 2, chimney: true, lit: true, spark: true, edge: 'picket', terrace: 0.07, terraceW: 1.05 });
   k.light([bag.gate[0] + bag.r[0] * 0.05, bag.ty + 0.05, bag.gate[1] + bag.r[1] * 0.05], { color: 0xffc070, intensity: 1.0, radius: 0.012, kind: 'lamp' });
   k.cylinder('wood', 0.003, 0.004, 0.05, { at: [bag.gate[0] + bag.r[0] * 0.05, bag.ty - 0.004, bag.gate[1] + bag.r[1] * 0.05], seg: 5, color: TIMBER, lod: 0 });
   placed.push(be);
   // the great oak on the Hill above Bag End: about twice any other tree, a broad spreading crown
   k.tree('oak', be[0] - bnx * 0.34 + bag.r[0] * 0.06, be[1] - bnz * 0.34 + bag.r[1] * 0.06, { crownKm: 0.52, heightKm: 0.66, color: 0x4a6a26, yawDeg: 200 });
-  // the gate stair down Bag End's bank to the lane below
-  {
-    const run = Math.max(0.05, (bag.ty - k.ground(bag.gate[0] + bag.n[0] * 0.08, bag.gate[1] + bag.n[1] * 0.08)) * 1.4);
-    const foot: V2 = [bag.gate[0] + bag.n[0] * run, bag.gate[1] + bag.n[1] * run];
-    k.stairs(
-      'weathered',
-      [
-        [bag.gate[0] - bag.n[0] * 0.004, bag.ty - 0.002, bag.gate[1] - bag.n[1] * 0.004],
-        [foot[0], k.ground(foot[0], foot[1]) + 0.002, foot[1]],
-      ],
-      0.03,
-      { stepKm: 0.012, color: 0x857d6c },
-    );
-  }
+  // (S4 W5: no gate stair down Bag End's bank — over the terrace fill it read as a pedestal with a stair; the
+  // lane from its gate to the top row is the way down)
 
   // ---- the rows (each row's lane runs, east → west)
   const rowLanes: V2[][][] = [];
@@ -368,7 +356,6 @@ function buildHill(k: ProxyKit): void {
           edge: i % 3 === 2 ? 'hedge' : 'picket',
           turn: (k.r(5) - 0.5) * 12,
           shade: 0.92 + k.r(6) * 0.14,
-          clump: i % 4 === 1 ? 1 : i % 4 === 3 ? -1 : 0,
         });
         fronts.push({ s, hole });
         placed.push(p);
