@@ -12,8 +12,10 @@ import { applyStamp, stampBounds } from '../world/stamps.ts';
  *    or levelled ground that was gentle before: its new faces are turf / soil, not slope rock),
  *    G = stamp presence (the baked terrain analysis — AO, valley index — is stale there),
  *    B = lake shore band, A = river bank band;
- *  - Shire field mask (sRGB RGBA8, 0.2 km over the field lattice, a zero-weight border so the
- *    clamped sampler reads 0 outside it): rgb = crop colour of the field, a = patchwork weight —
+ *  - Shire field mask (RGBA8 raw bytes, 0.2 km over the field lattice, a zero-weight border so the
+ *    clamped sampler reads 0 outside it): rgb = sRGB crop colour of the field (decoded by the terrain;
+ *    blue's lowest bit = the field's row axis, S4 W4-S2), a = patchwork weight eased in over the field
+ *    margin —
  *    the lattice and hedgerow rule of src/world/fields.ts, faded organically towards its edge
  *    (fieldEdgeWeight: never beyond the hedgerow rule).
  */
