@@ -63,4 +63,7 @@ export const FALLS: { path: V3[]; width: number }[] = [
   { path: [[-0.3, 2.7, 1.75], [-0.3, 0.1, 1.05]], width: 0.1 },
   { path: [[3.4, 3.1, -2.45], [3.4, 0.3, -1.75]], width: 0.1 },
   { path: [[3.05, 2.6, 0.15], [3.05, 0.3, -0.5]], width: 0.08 },
+  // S4 W5 (C2 #13, the Alan Lee plate): two more thin ribbons down the north wall up the valley
+  { path: [[4.6, 3.7, -2.6], [4.6, 0.9, -1.8]], width: 0.07 },
+  { path: [[5.6, 3.8, -2.6], [5.6, 1.1, -1.8]], width: 0.06 },
 ];

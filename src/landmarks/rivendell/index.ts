@@ -35,8 +35,12 @@ const STAMPS: LocalStamp[] = [
   // 4.5–5 km behind the rims (undulating) and falling gently away, so the valley reads as a deep cleft in
   // the high moorland. The fades are bounded: a longer north fade lifts the ground west of the main ledge
   // over the hero's line of sight, a longer south fade carries the stamp box over the hero camera (probe)
-  { kind: 'scarp', path: NORTH_FOOT, side: 'left', height: NORTH_H, run: 0.5, plateauKm: 4.5, falloff: 3.0, rough: { amp: 0.45, scaleKm: 3.0 }, surface: 'rock' },
-  { kind: 'scarp', path: SOUTH_FOOT, side: 'right', height: SOUTH_H, run: 0.5, plateauKm: 5.0, falloff: 2.5, rough: { amp: 0.35, scaleKm: 3.0 }, surface: 'rock' },
+  // (S4 W5, C2 #13: the stamped faces carry the walls — steeper, the north wall behind the halls broken
+  // into buttresses and gullies by a ridged 1 km roughness; the kit cliffs at their feet are only low ledges
+  // now. The south wall keeps its broad roughness: a ridged one moves the stamp box so that the
+  // rivendell-close probe's occlusion samples fall behind the near wall — 40 % < 60 %, the gate)
+  { kind: 'scarp', path: NORTH_FOOT, side: 'left', height: NORTH_H, run: 0.35, plateauKm: 4.5, falloff: 3.0, rough: { amp: 0.8, scaleKm: 1.0, ridged: true }, surface: 'rock' },
+  { kind: 'scarp', path: SOUTH_FOOT, side: 'right', height: SOUTH_H, run: 0.35, plateauKm: 5.0, falloff: 2.5, rough: { amp: 0.35, scaleKm: 3.0 }, surface: 'rock' },
   // the ledges for the halls, level shelves cut into the walls (≥ 1.2 km across, so the heightfield holds
   // them); the north-east shelf only cuts down into its wall
   ...[LEDGE_N, LEDGE_S, LEDGE_SE].map((l) => ({ kind: 'flatten' as const, at: l.at, radius: l.r, falloff: 0.3, height: l.h, surface: 'turf' as const })),
