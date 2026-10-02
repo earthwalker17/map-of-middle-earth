@@ -28,6 +28,8 @@ const DECK_BILLOW = 0.4;
  * bright daytime one.
  */
 const GLOW_RADIANCE = 0.3;
+/** the underglow's modulation by the masses (gaps → billow undersides) */
+const GLOW_MOD = [0.25, 1.3] as const;
 /** the glow's Gaussian is windowed to 0 between these multiples of its radius */
 const GLOW_CUT = [1.4, 2.2] as const;
 /** the glow sees the haze's transmittance to this power (it lights the ash around it; < 1 survives the veil) */
@@ -310,8 +312,10 @@ export class CloudLayer {
       const camDist = max(P.sub(cam).length(), 1e-3);
       const vSin = abs(P.y.sub(cam.y)).div(camDist);
       const under = mix(vec3(env.deckSky), underM, smoothstep(DECK_GRAZE[0], DECK_GRAZE[1], vSin));
-      // the fires below light the underside (thicker cloud scatters more of it back)
-      const glow = B.xyz.mul(env.deckGlow).mul(thick.mul(0.5).add(0.6));
+      // the fires below light the underside (thicker cloud scatters more of it back): modulated by the masses
+      // (S4 C2: a 0.6–1.1 range read as a spotlight on a flat ceiling — the billow undersides now carry the
+      // glow and the thin gaps between them stay dark)
+      const glow = B.xyz.mul(env.deckGlow).mul(mix(float(GLOW_MOD[0]), float(GLOW_MOD[1]), smoothstep(0.25, 0.85, thick.mul(0.6).add(n.mul(0.4)))));
       // top: sunlit charcoal-brown ash with a faint key rim where it thins
       const rim = float(1).sub(dens).mul(0.4).add(0.6);
       // (S4 W4-S2) a cloud-volume read from above: the masses shaded as a height field lit by the key —
