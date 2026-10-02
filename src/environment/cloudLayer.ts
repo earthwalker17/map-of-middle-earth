@@ -9,7 +9,7 @@ import { SLAB } from '../diorama/slabSpec.ts';
 import { CLOUD_CAPS, CloudField, DETAIL, PERIOD_X, PERIOD_Z } from './clouds.ts';
 
 type N = TslNode;
-const { Fn, abs, attribute, clamp, dot, float, max, mix, normalize, positionWorld, smoothstep, texture, uniform, varying, vec2, vec3, vec4 } = tsl;
+const { Fn, abs, attribute, clamp, dot, float, length, max, mix, normalize, positionWorld, smoothstep, step, texture, uniform, varying, vec2, vec3, vec4 } = tsl;
 
 const _glow: [number, number, number] = [0, 0, 0];
 /** grid cell of the ash-deck mesh (km) and the cover below which a cell is not drawn */
@@ -48,6 +48,14 @@ const DECK_TOP_GAIN = 0.5;
 const DECK_VOLUME = true;
 const DECK_PROBE_KM = 6;
 const DECK_VOLUME_GAIN = 2.4;
+/**
+ * fix round: the deck seen from above opens round the line of sight to Orodruin's summit (none within [a]
+ * km of the sight line, full top opacity by [b]) when that line looks down steeply enough (|sin| of its
+ * dip over [c, d]) — the pall parts over the cone, so Doom and its plume stay the focal point of the Mordor
+ * aerials instead of a 3 px ember under a murk. A gap fixed over Doom would not do: the deck stands ~50
+ * units above the plain, so from an oblique eye a hole over the cone opens tens of km beyond it.
+ */
+const DECK_DOOM_SIGHT = [6, 16, 0.25, 0.45] as const;
 /** view elevation (|sin|) below which the underside flattens into the overcast dome colour (no grazing streaks) */
 const DECK_GRAZE = [0.02, 0.14] as const;
 /** opacity of the deck seen from below at full cover (a little light leaks through the thinnest parts) */
@@ -256,6 +264,8 @@ export class CloudLayer {
     const vFog = billows ? null : atmosphere.applySplit(env.cameraPos, positionWorld, true, true, true, false);
     const vT = vFog ? varying(vFog.T, 'vDeckT') : null;
     const vS = vFog ? varying(vFog.S, 'vDeckS') : null;
+    const doom = this.world.places.get('mount-doom');
+    const doomTop = doom ? vec3(doom.x, this.world.heights.sample(doom.x, doom.z), doom.z) : null;
     return Fn(() => {
       const P = positionWorld;
       const A = attribute('deckA', 'vec4');
@@ -335,7 +345,17 @@ export class CloudLayer {
       const nearFade = smoothstep(near.x, near.y, camDist);
       // from above the pall breaks into masses with the plateau between them
       // (S4 W4-S2: denser masses — 0.12 → 0.6 read as a translucent smoke smear from above)
-      const aAbove = smoothstep(th.add(0.06), th.add(0.42), n).mul(dens).mul(B.w).mul(table).mul(nearFade);
+      let aAbove: N = smoothstep(th.add(0.06), th.add(0.42), n).mul(dens).mul(B.w).mul(table).mul(nearFade);
+      if (doomTop) {
+        // the pall parts round the line of sight to Doom's summit (DECK_DOOM_SIGHT)
+        const toD = doomTop.sub(cam);
+        const dD = toD.div(max(length(toD), 1e-3));
+        const rel = P.sub(cam);
+        const along = dot(rel, dD);
+        const perp = length(rel.sub(dD.mul(along)));
+        const open = float(1).sub(smoothstep(DECK_DOOM_SIGHT[0], DECK_DOOM_SIGHT[1], perp)).mul(smoothstep(DECK_DOOM_SIGHT[2], DECK_DOOM_SIGHT[3], dD.y.negate())).mul(step(0, along));
+        aAbove = aAbove.mul(float(1).sub(open));
+      }
       const aBelow = dens.mul(DECK_UNDER_OPACITY);
       return vec4(col, clamp(mix(aAbove, aBelow, below), 0, 1));
     })();

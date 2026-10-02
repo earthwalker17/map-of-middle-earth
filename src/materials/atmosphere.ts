@@ -92,8 +92,21 @@ const ASH_RAMP_DEFAULT = [30, 220] as const;
 export const DECK_HAZE_CHROMA = 0.6;
 /** ray deck cover over which the under-deck haze takes the overcast's colour (S3/W1: 0.1 → 0.45) */
 const DECK_HAZE_ONSET = [0.06, 0.3] as const;
-/** deck cover at the camera over which a camera under the pall sees all haze in the overcast's colour */
+/**
+ * deck cover at the camera over which a camera under the pall sees the haze in the overcast's colour, and
+ * the ray length (km) over which that takes over (fix round: the mid ground keeps its own haze, so its
+ * silhouettes stay separable — only the far world beyond the pall's edge fades into the overcast)
+ */
 const DECK_EYE_HAZE = [0.3, 0.65] as const;
+const DECK_EYE_DIST = [30, 90] as const;
+/**
+ * Under the deck the far haze is a little paler than the near (a brighter overcast horizon, as under a real
+ * overcast): the overcast haze colour lifts by this much over this ray length (km); the dome's horizon
+ * under the deck lifts by the same (sky.ts), so far land still meets it without a seam — depth layering
+ * (each farther ridge paler) instead of one uniform charcoal murk
+ */
+export const DECK_FAR_LIFT = 0.3;
+const DECK_FAR_DIST = [50, 200] as const;
 /** S4 W4-S2: the along-ray ash cover takes a mid-point tap on camera rays (review / final, with the haze's mid tap) */
 const ASH_MID_TAP = true;
 /** S4 W4-S2: the deck field ignores the default region in the gaps between region masks (see bindWorld) */
@@ -812,8 +825,11 @@ export class Atmosphere {
       // ray's far end: whatever lies beyond the pall's edge is seen through ~100 km of ash (its own
       // sunlit haze is extinguished on the way) — the far world beyond the Ered Lithui (Rhovanion,
       // Mirkwood: deck 0 at both the end and the mid point) faded into a daylit band behind Doom
-      const k = max(smoothstep(DECK_HAZE_ONSET[0], DECK_HAZE_ONSET[1], ash), smoothstep(DECK_EYE_HAZE[0], DECK_EYE_HAZE[1], this.eyeDeck)).mul(this.eyeUnder);
-      cInf = mix(cInf, env.deckSky.mul(mix(vec3(1), chroma, DECK_HAZE_CHROMA)), k);
+      const rayLen = length(ray);
+      const kEye = smoothstep(DECK_EYE_HAZE[0], DECK_EYE_HAZE[1], this.eyeDeck).mul(smoothstep(DECK_EYE_DIST[0], DECK_EYE_DIST[1], rayLen));
+      const k = max(smoothstep(DECK_HAZE_ONSET[0], DECK_HAZE_ONSET[1], ash), kEye).mul(this.eyeUnder);
+      const far = float(1).add(smoothstep(DECK_FAR_DIST[0], DECK_FAR_DIST[1], rayLen).mul(DECK_FAR_LIFT));
+      cInf = mix(cInf, env.deckSky.mul(mix(vec3(1), chroma, DECK_HAZE_CHROMA)).mul(far), k);
     }
     // the valley mist scatters the low sun / moon and the sky light (pale), tinted by its region
     // (under the ash deck the key reaching the mist is the pall's: grey, not sunlit white)

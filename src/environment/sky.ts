@@ -1,7 +1,7 @@
 import { BackSide, Color, Matrix3, Matrix4, Mesh, MeshBasicNodeMaterial, SphereGeometry, Vector3 } from 'three/webgpu';
 import { tsl, type TslNode } from '../materials/tsl.ts';
 import { env } from '../materials/environment.ts';
-import { atmosphere, DECK_HAZE_CHROMA } from '../materials/atmosphere.ts';
+import { atmosphere, DECK_FAR_LIFT, DECK_HAZE_CHROMA } from '../materials/atmosphere.ts';
 import { celestialPole, type Daylight } from './timeOfDay.ts';
 import { HALO_RAY_KM, spillInScatter } from '../emission/spill.ts';
 
@@ -397,7 +397,8 @@ export class SkyModel {
     // env.deckSky × the regional chroma), so far land meets the overcast sky without a seam
     const lumW = vec3(0.2126, 0.7152, 0.0722);
     const ht = vec3(env.horizonTint);
-    const deckHor = env.deckSky.mul(mix(vec3(1), ht.div(max(dot(ht, lumW), 0.05)), DECK_HAZE_CHROMA));
+    // (+ the far haze's lift: the overcast horizon a little paler than the ceiling — atmosphere DECK_FAR_LIFT)
+    const deckHor = env.deckSky.mul(mix(vec3(1), ht.div(max(dot(ht, lumW), 0.05)), DECK_HAZE_CHROMA)).mul(1 + DECK_FAR_LIFT);
     const sky = vec3(clear).toVar();
     const below = vec3(hazeDir).toVar();
     If(env.deck.greaterThan(0.001), () => {

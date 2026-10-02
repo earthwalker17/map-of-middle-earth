@@ -935,14 +935,24 @@ export const TERRAIN_SHADE = {
    * the favoured ground holds it (the terrain material: gullies, ledges, lee sides; ribs bare)
    */
   snowBand: [1.8, 2.2] as const,
-  snowShift: 1.5,
+  /** (fix round: 1.5 → 2.6 — the massifs read iced; less cover, the gullies still reach below the line) */
+  snowShift: 2.6,
+  /**
+   * snow v4: the lee (east-facing, the westerlies' lee) side holds snow lower and the steep windward (west)
+   * faces shed it — height bonus / penalty in world units (× the lee / windward ramps of snowLeeWind)
+   */
+  snowLee: 0.9,
+  snowWind: 0.9,
   /** north-facing faces hold snow lower: effective height + northness (−n.z) · this */
   snowNorth: 2.8,
   /** snow sheds from slopes steeper than [a, b]; concave gullies hold it `snowGully` steeper */
-  snowSlope: [0.3, 0.54] as const,
+  snowSlope: [0.27, 0.5] as const,
   snowGully: 0.12,
-  /** snow albedo (sRGB): blue-grey ≈ 0.73 (wind-packed, shaded by its own micro relief), never paper white */
-  snow: 0xd8dde5,
+  /**
+   * snow albedo (sRGB): blue-grey ≈ 0.65 linear luminance with a cool cast (wind-packed, shaded by its own
+   * micro relief), never paper white — the sunlit snow read neutral white after the grade at 0xd8dde5
+   */
+  snow: 0xcad4e8,
   /**
    * grass on slopes facing the sun (south, +Z) dries by up to this much, shade-facing slopes green up
    * (0 switches the aspect term off in the terrain and in the water's coarse albedo alike)
@@ -1018,6 +1028,18 @@ export function snowAt(hEff: N, slope: N, line: N, volcanic: N, gully: N = float
 }
 
 /**
+ * Snow v4's lee and windward ramps (0..1) from the normal's +X component (`eastness`) and the slope: the
+ * lee (east-facing) side of the westerlies holds snow, the steep windward (west-facing) faces shed it. Shared
+ * by the terrain material and the water's coarse albedo (× TERRAIN_SHADE.snowLee / snowWind on the height).
+ */
+export function snowLeeWind(eastness: N, slope: N): { lee: N; wind: N } {
+  return {
+    lee: clamp(eastness.mul(1.8), 0, 1).mul(smoothstep(0.06, 0.28, slope)),
+    wind: clamp(eastness.negate().mul(1.6), 0, 1).mul(smoothstep(0.18, 0.42, slope)),
+  };
+}
+
+/**
  * Dryness offset of a slope by its aspect (`nz`: the normal's +Z = south component): sun-facing slopes
  * drier, shade-facing ones lusher, nothing on the flat.
  */
@@ -1038,9 +1060,10 @@ export function coarseGroundAlbedo(pal: GroundPalette, h: N, slope: N, southness
   // the coarse normal (central differences over 4 texels) flattens cliffs: its slope reads low, so the
   // rock rule gets a small bias (a rock face mirrors as rock, not as the grass at its foot)
   const rock = rockAt(slope.add(T.coarseRockBias), alpineAt(hEff, line), float(0), pal.rockiness);
-  // the terrain's mean wind scouring (snow v3): steep west-facing (windward) faces shed their snow first —
-  // `eastness` is the normal's +X component (0 when the caller has none)
-  const windward = clamp(eastness.negate().mul(1.6), 0, 1).mul(smoothstep(0.18, 0.42, slope)).mul(0.8 * 0.5 * 0.24);
-  const snow = snowAt(hEff, slope.add(windward), line, pal.volcanic);
+  // snow v4's lee / windward terms, as the terrain material reads them (its relief terms — gullies, ribs —
+  // average out at this scale): east-facing lee sides hold snow lower, steep west-facing (windward) faces
+  // shed it — `eastness` is the normal's +X component (0 when the caller has none)
+  const lw = snowLeeWind(eastness, slope);
+  const snow = snowAt(hEff.add(lw.lee.mul(T.snowLee)).sub(lw.wind.mul(T.snowWind)), slope.add(lw.wind.mul(0.05)), line, pal.volcanic);
   return mix(mix(ground, pal.rock, rock), srgbNode(T.snow), snow);
 }

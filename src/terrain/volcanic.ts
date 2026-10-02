@@ -14,9 +14,13 @@ import { srgbNode } from '../materials/looks.ts';
  *  - rubble: sub-plate grit / gravel speckle and clinker normals (review / final), so a plate is not flat
  *  - basalt: dark, rougher flow lobes (more of them towards Doom) with pressure ridges
  *  - cinder: warm-dark around Doom
+ *  - lava flows (S4 W4-S2): a few meandering tongues of fresh basalt on the plain, the first four
+ *    continuing the cone's kit flows from their toes, each with a narrow molten channel broken into runs
+ *    (cooling and crusting over downstream) and a faint glow spilling round it
  *  - fissure glow: segments of the 1.5 km crack network (each crack between two plates is either lit or
- *    dark, from a hash of the plate pair) on the open plain round the cone's foot — never on the cone, never
- *    on slopes; the caller dims it by day
+ *    dark, from a hash of the plate pair) clustered in the flows' crust (most at their hot end), a rare
+ *    1.5 % elsewhere on the plain — never on the cone, never on slopes; the caller dims it by day
+ *    (FLOWS_ON = false: the S4 W1-B ring of lit cracks round the cone's foot)
  */
 
 type N = TslNode;
@@ -56,22 +60,32 @@ export const VOLCANIC = {
   /** horizontal part of the base normal kept on gentle volcanic ground (the baked sub-km ripples read as dunes) */
   flatten: 0.4,
   /**
-   * S4 W4-S2 lava flows radiating from Orodruin (the fissure glow clusters along them instead of being
-   * sprinkled over the plain): [compass azimuth deg (x = sin, z = −cos, as the landmark), start km from
-   * Doom, length km, half-width km, heat 0..1]. The first four continue the cone's kit flows from their
-   * toes (src/landmarks/mount-doom/parts.ts FLOWS: rim + length), the rest are older, mostly crusted ones.
+   * S4 W4-S2 lava flows on the plain round Orodruin (the fissure glow clusters along them instead of being
+   * sprinkled over the plain): [source x, z (km from Doom's summit, x east, z south — the landmark's local
+   * frame), compass heading deg (x = sin, z = −cos), length km, half-width km, heat 0..1, molten channel
+   * 0 / 1]. The first four start exactly at the toes of the cone's kit flows (src/landmarks/mount-doom/
+   * parts.ts FLOWS az 152 / 194 / 238 / 104 — measured from the built kit's last tongue runs: the kit traces
+   * its flows by steepest descent, so its toes are not at rim + length on the azimuth) and go on in the
+   * direction of their last run; the rest are older, crusted ones (no channel) from the cone's foot.
+   * Keep the toes in sync with the kit (contract request: the landmark should export them).
    */
   flows: [
-    [152, 17, 19, 1.7, 1.0],
-    [194, 15, 15, 1.5, 0.9],
-    [238, 10.5, 13, 1.2, 0.7],
-    [104, 9.5, 10, 1.0, 0.6],
-    [22, 16, 14, 1.3, 0.35],
-    [298, 15, 12, 1.2, 0.3],
-    [63, 17, 9, 1.0, 0.25],
+    [5.17, 14.78, 166, 18, 1.5, 1.0, 1],
+    [-5.33, 12.8, 206, 14, 1.3, 0.9, 1],
+    [-7.84, 5.23, 239, 12, 1.1, 0.75, 1],
+    [8.13, -0.02, 96, 10, 0.9, 0.65, 1],
+    [6.0, -14.8, 22, 14, 1.3, 0.35, 0],
+    [-13.4, -7.0, 298, 12, 1.2, 0.3, 0],
+    [15.2, -7.7, 63, 9, 1.0, 0.25, 0],
   ] as const,
-  /** meander of a flow's centreline: amplitude (km) of a per-flow wave and of the 12 / 3 km noise */
-  flowMeander: [1.6, 1.8, 0.6] as const,
+  /**
+   * meander of a flow's centreline: amplitude (km) of a per-flow wave and of the 12 / 3 km noise — pinned
+   * at the source (none there, full by flowPin of the length), so a flow leaves its kit toe on its axis
+   */
+  flowMeander: [1.4, 1.5, 0.5] as const,
+  flowPin: 0.3,
+  /** a flow's width at its source as a share of its half-width (it spreads out on the plain) */
+  flowNeck: 0.3,
   /** lit share of the 1.5 km cracks inside a flow (hot → cooled end) and on the open plain */
   flowLit: [0.55, 0.12] as const,
   plainLit: 0.015,
@@ -83,12 +97,19 @@ export const VOLCANIC = {
   glowHot: [1.0, 0.2, 0.022] as const,
   glowRed: [1.0, 0.08, 0.008] as const,
   glowHotGain: 1.5,
-  /** gain of the molten channel and of the flows' lit cracks (the channel is wide: keep it dim, never white) */
-  channelGain: 0.22,
+  /** gain of the molten channel and of the flows' lit cracks (keep it near the kit toe's glow, never white) */
+  channelGain: 0.3,
   flowCrackGain: 0.7,
-  /** the molten channel: width as a share of the flow's half-width; heat (along-flow share) where it ends */
-  channelWidth: 0.15,
-  channelEnd: 0.45,
+  /**
+   * the molten channel: half-width km at the source (the kit tongue's ≈ 0.06 at its toe) and further down,
+   * the along-flow share where it has crusted over, the period (km) of its hot runs / crust breaks, and the
+   * gain and width (× the channel's) of the faint glow spilling onto the crust round it
+   */
+  channelHalf: [0.06, 0.1] as const,
+  channelEnd: 0.5,
+  channelRun: 0.9,
+  spillGain: 0.035,
+  spillWidth: 6,
 } as const;
 /** S4 W4-S2: fissure glow along the flows (false: the S4 W1-B ring of lit cracks) */
 const FLOWS_ON = true;
@@ -177,36 +198,56 @@ export function volcanicCrust(i: CrustInputs): CrustOut {
   let flow: N = float(0);
   let heat: N = float(0);
   let channel: N = float(0);
+  let spill: N = float(0);
   if (FLOWS_ON) {
     const d = p.xz.sub(i.doom);
     let hw: N = float(0);
     let hs: N = float(0);
-    V.flows.forEach(([az, r0, len, half, h0], k) => {
+    V.flows.forEach(([sx, sz, az, len, half, h0, molten], k) => {
       const a = (az * Math.PI) / 180;
       const ux = Math.sin(a);
       const uz = -Math.cos(a);
-      const along = d.x.mul(ux).add(d.y.mul(uz)).sub(r0);
+      const r = d.sub(vec2(sx, sz));
+      const along = r.x.mul(ux).add(r.y.mul(uz));
       const t = along.div(len);
-      // lateral offset from the meandering centreline (a per-flow wave + the shared 12 / 3 km noise)
-      const lat = d.x.mul(uz).sub(d.y.mul(ux));
-      const wave = tsl.sin(along.mul(0.21).add(k * 1.73)).mul(V.flowMeander[0]);
-      const m = lat.add(wave).add(n2.mul(V.flowMeander[1])).add(n3.mul(V.flowMeander[2]));
-      // the tongue tapers to its toe, which frays (the 3 km noise)
-      const wk = float(half).mul(float(1.2).sub(clamp(t, 0, 1).mul(0.55)));
+      const tc = clamp(t, 0, 1);
+      // lateral offset from the meandering centreline (a per-flow wave + the shared 12 / 3 km noise),
+      // pinned at the source so the flow leaves the kit's toe on its axis
+      const lat = r.x.mul(uz).sub(r.y.mul(ux));
+      const pin = smoothstep(0, V.flowPin, t);
+      const wave = tsl.sin(along.mul(0.21).add(k * 1.73)).sub(Math.sin(k * 1.73)).mul(V.flowMeander[0]);
+      const m = lat.add(wave.add(n2.mul(V.flowMeander[1])).add(n3.mul(V.flowMeander[2])).mul(pin));
+      // the tongue spreads from a neck at its source onto the plain, then tapers to its toe, which frays
+      const wk = float(half).mul(mix(float(V.flowNeck), float(1.15), smoothstep(0, 0.3, t)).sub(tc.mul(0.45)));
       const q = m.div(wk);
-      const inside = smoothstep(-0.04, 0.06, t).mul(float(1).sub(smoothstep(0.7, 1.02, t.add(n3.mul(0.18)))));
+      // (it starts a little behind the source, under the kit's spill: no rounded head at the toe)
+      const inside = smoothstep(-0.05, 0, t).mul(float(1).sub(smoothstep(0.7, 1.02, t.add(n3.mul(0.18)))));
       const fk = tsl.exp(q.mul(q).negate()).mul(inside);
-      const qc = m.div(wk.mul(V.channelWidth));
-      const ck = tsl.exp(qc.mul(qc).negate()).mul(inside).mul(float(1).sub(smoothstep(V.channelEnd * 0.5, V.channelEnd, t))).mul(h0);
       flow = max(flow, fk);
-      channel = max(channel, ck);
       // heat: the source end of the hotter flows (weighted by their presence here)
-      hs = hs.add(fk.mul(float(1).sub(clamp(t, 0, 1)).mul(h0)));
+      hs = hs.add(fk.mul(float(1).sub(tc).mul(h0)));
       hw = hw.add(fk);
+      if (molten) {
+        // the molten channel: a crisp line (anti-aliased against the footprint, never a soft gaussian worm),
+        // broken into hot runs and crust breaks along its length (a noise of the along-flow distance, so the
+        // breaks cut across it), the crust lengthening downstream until it has crusted over
+        const ch = mix(float(V.channelHalf[0]), float(V.channelHalf[1]), smoothstep(0, 0.4, t));
+        const aa = fp.mul(0.75);
+        const hwc = max(ch, aa);
+        const line = float(1).sub(smoothstep(hwc.sub(aa), hwc.add(aa), abs(m))).mul(ch.div(hwc));
+        const cool = smoothstep(0, V.channelEnd, t);
+        const runN = mx_noise_float(vec2(along.div(V.channelRun), k * 5.31 + 0.7));
+        const runs = smoothstep(-0.08, 0.08, runN.add(0.45).sub(cool.mul(0.9)));
+        channel = max(channel, line.mul(runs).mul(float(1).sub(cool)).mul(inside).mul(h0));
+        // the faint glow spilling round the channel onto the crust (so it sits in the ground, not over it)
+        const qs = m.div(ch.mul(V.spillWidth));
+        spill = max(spill, tsl.exp(qs.mul(qs).negate()).mul(float(1).sub(cool)).mul(inside).mul(h0));
+      }
     });
     heat = hs.div(max(hw, 1e-3));
     flow = flow.mul(gorgoroth);
     channel = channel.mul(gorgoroth);
+    spill = spill.mul(gorgoroth);
   }
   // a gentle warp of the coarse network only (the plates stay angular — a warped edge wiggles like a worm)
   const warp = vec2(n3, n2).mul(0.3);
@@ -262,7 +303,7 @@ export function volcanicCrust(i: CrustInputs): CrustOut {
   // pressure ridges — a darker, rougher ground, never a black blot
   const lobes = n2.mul(0.7).add(n3.mul(0.45)).add(n4.mul(0.3)).add(doomP.mul(0.55)).sub(0.3);
   // (the flows are fresh basalt: darker, rougher tongues across the ash)
-  const basalt = max(smoothstep(-0.08, 0.3, lobes).mul(gorgoroth).mul(0.8), smoothstep(0.15, 0.6, flow).mul(0.95));
+  const basalt = max(smoothstep(-0.08, 0.3, lobes).mul(gorgoroth).mul(0.8), smoothstep(0.1, 0.85, flow).mul(0.75));
   const ridge = float(1).sub(abs(mx_noise_float(p.xz.div(0.7).add(vec2(n3, n4).mul(0.9)))));
   const ridgeVis = float(1).sub(smoothstep(0.03, 0.12, fp));
   const ridges = ridge.mul(ridge).mul(ridge).mul(ridgeVis);
@@ -291,19 +332,21 @@ export function volcanicCrust(i: CrustInputs): CrustOut {
   let glow: N;
   if (FLOWS_ON) {
     // S4 W4-S2: glowing cracks in the flows' crust (brightest at the hot end) and a molten channel down the
-    // hot tongues, coloured by the cooling gradient: yellow core → orange-red → dark crust; the open plain
-    // keeps a rare dim crack. Never on the cone's steep flank (the kit's flows are there).
+    // hot tongues, coloured by the cooling gradient: orange-red at the kit's toe → deep red → dark crust; the
+    // open plain keeps a rare dim crack. Never on the cone's steep flank (the kit's flows are there).
     const flat = float(1).sub(smoothstep(V.glowSlope[0] * 2, V.glowSlope[1] * 2, slope));
     const crackAmt = core.mul(run).mul(mix(gorgoroth.mul(V.glowPlain * 0.5), heat.mul(0.85).add(0.15).mul(V.flowCrackGain), smoothstep(0.08, 0.5, flow)));
-    // the channel is broken into glowing runs by the 0.9 / 3 km noise (crusted over between them)
-    const chRun = smoothstep(-0.25, 0.2, n4.mul(0.9).add(n3.mul(0.6)).add(0.15));
-    const chAmt = channel.mul(chRun);
     const hot = vec3(V.glowHot[0], V.glowHot[1], V.glowHot[2]).mul(V.glowHotGain);
     const red = vec3(V.glowRed[0], V.glowRed[1], V.glowRed[2]);
-    // the cooling gradient: the channel is hot, the cracks take the flow's heat
+    // the cooling gradient: the channel and the cracks take the flow's heat
     const crackCol = mix(red.mul(0.8), mix(red, hot, 0.35), smoothstep(0.4, 0.95, heat));
-    const chCol = mix(red.mul(1.4), hot, smoothstep(0.55, 0.95, heat.add(channel.mul(0.3))));
-    glow = crackCol.mul(crackAmt).add(chCol.mul(chAmt.mul(V.channelGain))).mul(flat).mul(w);
+    const chCol = mix(red, mix(red, hot, 0.6), smoothstep(0.6, 0.95, heat));
+    glow = crackCol
+      .mul(crackAmt)
+      .add(chCol.mul(channel.mul(V.channelGain)))
+      .add(red.mul(spill.mul(V.spillGain)))
+      .mul(flat)
+      .mul(w);
   } else {
     const glowAmt = core
       .mul(run)
