@@ -2,7 +2,7 @@ import type { ProxyKit } from '../kit/ProxyKit.ts';
 import type { V2 } from '../records.ts';
 import { E0, wash } from './wash.ts';
 
-/** the Tower's stone: pale, ghostly grey with a faint green cast (moonlit it reads bone-white) */
+/** the Tower's stone: dark, dead grey with a faint green cast (S4 W5: darkened with the city's stone) */
 export const TOWER_STONE = 0x777b75;
 const CROWN_STONE = 0x686c67;
 const D2R = Math.PI / 180;
@@ -77,12 +77,12 @@ const GLOW_LAMP = 0x1ee070;
 const LIGHT = 0x3cf08a;
 
 /**
- * The Tower of the Moon: a battered keep, then a pale shaft of deep fin sections twisting 120° as it
+ * The Tower of the Moon: a battered keep, then a dark shaft of deep fin sections twisting 120° as it
  * rises and tapering, broken by three band rings; then the lamp room — a green-burning core behind eight
  * piers that twist 40° round it — and over it the crown: eight blades sweeping 80° round the axis as they
  * rise, swelling out and then drawing in to a faceted needle, an open spiral of thorns round a second,
  * smaller lamp (nothing like Barad-dûr's fork or Orthanc's four horns). The corpse-light: the wash up the
- * keep and the lower third of the shaft (wash.ts bands following the fins, night), dim green slits between
+ * lower half of the keep (S4 W5; wash.ts bands following the fins, night), dim green slits between
  * the fins (night), the lamp room — the brightest light of the city — burning at a quarter by day (dusk
  * gate). Returns local heights for the caller.
  */
@@ -111,8 +111,8 @@ export function buildTower(k: ProxyKit, s: TowerSpec): { crownY: number; topY: n
     }),
     { at: [x, y1, z], color: TOWER_STONE },
   );
-  // the wash: from the keep's foot up over the keep and the lower third of the shaft, skins a hair proud
-  // of the fins (twisted and scaled with the shaft), the strength falling with height
+  // the wash: from the keep's foot up (skins a hair proud of the keep's faces; on the shaft they would
+  // follow the fins, twisted and scaled with it), the strength falling with height
   const keepR = (y: number): number => {
     const f = y / s.keepH;
     if (f <= 0.85) return 1.55 + (1.42 - 1.55) * (f / 0.85);

@@ -61,9 +61,11 @@ export const FALLS: { path: V3[]; width: number }[] = [
   { path: [[-4.3, -0.8, 1.07], [-6.2, -2.9, 1.54]], width: 0.35 },
   { path: [[RAVINE_X, 3.2, -2.4], [RAVINE_X - 0.05, 0.2, -0.85]], width: 0.12 },
   { path: [[-0.3, 2.7, 1.75], [-0.3, 0.1, 1.05]], width: 0.1 },
-  { path: [[3.4, 3.1, -2.45], [3.4, 0.3, -1.75]], width: 0.1 },
+  { path: [[3.4, 3.1, -2.45], [3.4, 0.3, -1.75]], width: 0.13 },
   { path: [[3.05, 2.6, 0.15], [3.05, 0.3, -0.5]], width: 0.08 },
-  // S4 W5 (C2 #13, the Alan Lee plate): two more thin ribbons down the north wall up the valley
-  { path: [[4.6, 3.7, -2.6], [4.6, 0.9, -1.8]], width: 0.07 },
-  { path: [[5.6, 3.8, -2.6], [5.6, 1.1, -1.8]], width: 0.06 },
+  // S4 W5 (C2 #13, the Alan Lee plate): two more ribbons down the north wall up the valley; fix round (the
+  // critic: five parallel constant-width ribbons read as white tape): different widths, the first breaking
+  // out of the face a third of the way down (a spring on a ledge), the second a thread from the rim
+  { path: [[4.6, 2.9, -2.37], [4.6, 0.9, -1.8]], width: 0.09 },
+  { path: [[5.6, 3.8, -2.6], [5.6, 1.1, -1.8]], width: 0.04 },
 ];

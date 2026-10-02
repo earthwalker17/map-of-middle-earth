@@ -9,7 +9,7 @@ import { FALLS, LEDGE_N, LEDGE_NE, LEDGE_S, LEDGE_SE, NORTH_FOOT, NORTH_H, PAVIL
  * with ogee caps, open pavilions, arched galleries and terraces cantilevered over the gorge on slender
  * columns — the Last Homely House on a spur above the stream, a second group on the south ledge, single
  * halls on two up-valley shelves, a round Council court among pillars, a thin arched bridge leaping a
- * waterfall's ravine, woods of golden ochre broadleaves, pale-gold birches and slender firs kept under
+ * waterfall's ravine, woods of muted autumn broadleaves, birches and slender firs kept under
  * ~0.6 of the main hall's height — the warmest, calmest place of the film.
  *
  * Local frame: x east, z south (heading 0), km round the display point, heights relative to the base
@@ -17,10 +17,11 @@ import { FALLS, LEDGE_N, LEDGE_NE, LEDGE_S, LEDGE_SE, NORTH_FOOT, NORTH_H, PAVIL
  * falling at x ≈ −4.5 … −6 into the deep Bruinen valley to the west. The gorge is built by RAISING its
  * walls beside the stream (scarps either side, their feet 0.7 km from it, a steep 0.5 km face; the river
  * guard keeps the stream and its banks): a north wall 3.3 high that begins behind the main ledge (so the
- * ledge stands out from its west end as a spur, open to the west), a south wall 2.8 high; kit cliffs
- * (halls.ts) seated at the scarps' feet give the faces sheer, stratified rock. Ledges are cut into the
+ * ledge stands out from its west end as a spur, open to the west), a south wall 2.8 high; the scarps
+ * carry the faces (S4 W5: the kit cliffs are only dark wet gully ledges under the north wall's falls,
+ * halls.ts). Ledges are cut into the
  * walls for the halls, each edged with a band of rim rock; a rock spur east of the main ledge carries a
- * pavilion at the ledge's level, a notch cut between them is the ravine of a waterfall. Five waterfalls
+ * pavilion at the ledge's level, a notch cut between them is the ravine of a waterfall. Seven waterfalls
  * are declared for S4 (no placeholder geometry).
  *
  * The hero looks up the gorge from beyond the valley lip with a long lens (the house on its spur on the

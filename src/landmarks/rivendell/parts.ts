@@ -17,9 +17,10 @@ export const STONE2 = 0xb39f7a;
 export const TRIM = 0xddd0ad;
 /** roofs: verdigris copper, varied (S4 W5: at most a fifth bronze, no terracotta) */
 export const BRONZE = 0x8a6a3c;
-export const VERDIGRIS = 0x6a7f72;
-export const VERDIGRIS2 = 0x748a7c;
-export const VERDIGRIS3 = 0x5f7568;
+/** (fix round: greener and darker — under the warm afternoon grade 0x6a7f72 read as taupe) */
+export const VERDIGRIS = 0x5a7466;
+export const VERDIGRIS2 = 0x5f7d6a;
+export const VERDIGRIS3 = 0x4f6a5a;
 export const GILT = 0xc8a050;
 export const LAMP = 0xffc27a;
 const GLASS = 0x3b3228;
@@ -56,11 +57,16 @@ export function houseFloor(k: ProxyKit, at: V2, w: number, d: number, h: number,
   return Math.max(gMin, gMax - dig * h) - SINK;
 }
 
-/** height fraction of the swept elven roof at |s| = q of the half-width (1 at the ridge, 0 at the eave):
- * a steep, slightly hollow sweep flaring out at the eaves, the eave tips turned up */
+/** where the elven roof's straight plane breaks into its flared eave (share of the half-width) */
+const EAVE_Q = 0.82;
+/**
+ * height fraction of the swept elven roof at |s| = q of the half-width (1 at the ridge, ≈ 0.03 at the
+ * eave): S4 W5 fix round (the critic: fully concave sweeps read as East-Asian pagoda roofs) — a STRAIGHT
+ * plane from the ridge, flaring to half its slope over the last fifth only (a bell-cast eave)
+ */
 function sweep(q: number): number {
-  const t = Math.min(1, Math.max(0, (q - 0.86) / 0.14));
-  return (1 - q) ** 1.7 + 0.07 * t * t * (3 - 2 * t);
+  const h0 = 0.12;
+  return q <= EAVE_Q ? 1 - (q * (1 - h0)) / EAVE_Q : h0 - (q - EAVE_Q) * 0.5;
 }
 
 /**

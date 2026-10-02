@@ -113,9 +113,10 @@ export default defineLandmark({
   lights: LIGHTS,
   emitters: [
     { preset: 'smoke', at: [0, 1, 0], rate: 1, scale: 3 },
-    // S4 W5 (C2 #15): a second, broader and thinner column from the crater's south-west side, bending
-    // downwind into the ash deck beside the first
-    { preset: 'smoke', at: [SECOND_VENT[0], 0.6, SECOND_VENT[1]], rate: 0.5, scale: 5 },
+    // S4 W5 (C2 #15): a second, thinner column from the crater's south-west side, bending downwind into the
+    // ash deck beside the first (fix round: scale 5 / rate 0.5 fused with the first into one giant black
+    // mass that clipped the frame and hid the deck's underglow — now no larger than the main column, sparse)
+    { preset: 'smoke', at: [SECOND_VENT[0], 0.6, SECOND_VENT[1]], rate: 0.3, scale: 2.4 },
     { preset: 'ash', at: [0, 4, 0], rate: 0.6, scale: 6 },
     { preset: 'sparks', at: [0, 0.5, 0], rate: 0.4 },
     // low ash sheets drifting over the Gorgoroth plain (≈ 2 km over the floor at rel −16) south of the cone,

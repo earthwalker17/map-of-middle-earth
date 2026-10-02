@@ -33,8 +33,11 @@ const DECK_INSET = 0.018;
 const PILE_STEP = 0.03;
 const A_PILES = 1.85;
 const B_PILES = 1.45;
-/** at most this many lights (shot-list budget 120; the review asked for ≈ 55) */
-const MAX_LIGHTS = 70;
+/**
+ * at most this many lights (shot-list budget 120; S3's review asked for ≈ 55; S4 W5 fix round: 70 → 112 —
+ * the night pair on the hero camera read as a near-black mass with a dozen lamp dots)
+ */
+const MAX_LIGHTS = 112;
 /** walkway left free along the canals, km */
 const WALK = 0.016;
 
@@ -106,7 +109,8 @@ function buildTown(k: ProxyKit): void {
 
   // ---------------------------------------------------------------- houses
   let houseN = 0;
-  let windowBudget = 44;
+  // (fix round: 44 → 90, the rest of MAX_LIGHTS for the lamps, the towers and the bridge)
+  let windowBudget = 90;
   const storeys = (p: number[]): number => {
     const x = k.r(20);
     let a = 0;
@@ -203,7 +207,7 @@ function buildTown(k: ProxyKit): void {
         const tall = k.r(4) < 0.05;
         // lit windows: a share of the west bank's fronts (facing east, toward the hero across the canal —
         // S4 W5: the hero looks in from the east-north-east)
-        const lit = side < 0 ? 0.14 : 0.03;
+        const lit = side < 0 ? 0.6 : 0.08;
         house(u, vc, along, deep, 0.032 * n_ + 0.012, [-side, 0], { gable: k.r(5) < 0.7, lod: n % 2 === 0 ? 2 : 1, lit, tall });
         n++;
       }
@@ -239,8 +243,9 @@ function buildTown(k: ProxyKit): void {
             const n_ = storeys(edge ? [0.35, 0.45, 0.2, 0] : mid ? [0.1, 0.35, 0.35, 0.2] : [0.25, 0.45, 0.25, 0.05]);
             const face = rotST(0, sgn, rho);
             // lit windows on the fronts that face the hero (S4 W5: east-north-east — the north-facing fronts,
-            // −v), most on the outer rows it sees on the east (the inner fronts hide behind the next row's backs)
-            const lit = face[1] < -0.5 ? (edge && u - v > 0.3 ? 0.65 : u > -0.3 ? 0.18 : 0.05) : 0;
+            // −v, and the east-facing ones, +u), most on the outer rows it sees on the east (the inner fronts
+            // hide behind the next row's backs)
+            const lit = face[1] < -0.5 ? (edge ? 0.9 : u > -0.3 ? 0.6 : 0.3) : face[0] > 0.5 ? (edge ? 0.7 : 0.25) : 0.04;
             const lod: 0 | 1 | 2 = edge ? (n % 3 === 0 ? 2 : 1) : n % 4 === 0 ? 1 : 0;
             house(u, v, along, depth * (0.9 + k.r(6) * 0.1), 0.032 * n_ + 0.012, face, { gable: k.r(7) < 0.6, lod, lit, tall: k.r(8) < 0.04 && along < 0.07 });
             n++;
@@ -481,7 +486,8 @@ export default defineLandmark({
       return { preset: 'smoke' as const, at: [x, 0.19 + 0.03 * (i % 3), z] as [number, number, number], rate: 0.8, scale: 0.075 + 0.015 * (i % 2), color: 0xb4b8bd };
     }),
     // S4 W5 (C2 #16): a low, cold blue-grey mist lying on the water round the town — behind it (north) and
-    // along its flanks, never across the hero's view of the fronts
+    // along its flanks, never across the hero's view of the fronts (fix round: rate 0.55 → 0.9, so the
+    // cards read in daylight)
     ...(
       [
         [[-2.3, -1.75], [2.3, -1.75], 0.45],
@@ -491,7 +497,7 @@ export default defineLandmark({
     ).map(([a, b, w]) => {
       const [ax, az] = T(a[0], a[1]);
       const [bx, bz] = T(b[0], b[1]);
-      return { preset: 'mist' as const, at: [ax, 0.02, az] as [number, number, number], to: [bx, 0.03, bz] as [number, number, number], rate: 0.55, scale: w, color: 0xc2cbd3 };
+      return { preset: 'mist' as const, at: [ax, 0.02, az] as [number, number, number], to: [bx, 0.03, bz] as [number, number, number], rate: 0.9, scale: w, color: 0xc2cbd3 };
     }),
   ],
   annotation: { title: 'Lake-town', subtitle: 'Esgaroth upon the Long Lake', blurb: 'A town of Men built out on the waters, in the shadow of the Lonely Mountain.' },
@@ -501,7 +507,9 @@ export default defineLandmark({
       fStop: 5.6,
       distanceKm: 6.0,
       elevationDeg: 10,
-      azimuthDeg: 60,
+      // (fix round: 60 → 40 — straight into the sun the glitter path clipped and veiled the town's right
+      // third; 20° round, it lies along the frame's right edge)
+      azimuthDeg: 40,
       fov: 34,
       // the aim point sits on the lake bed: lift it to the water surface (≈ 2.4 above the bed here)
       lift: 2.6,
@@ -512,7 +520,7 @@ export default defineLandmark({
       // upper body is in clear view)
       expect: { los: false },
       compare: ['reference/film/lake-town/lake-town-wide.webp', 'reference/concept-art/lake-town/lake-town-alan-lee.jpg'],
-      note: 'afternoon, BACKLIT (S4 W5, C2 #16: the film plate looks into a low sun; from the south-south-west the town stood against a sunny grass ramp across a lake that read as a river): from the east-north-east into the sun (≈ 22°, west-south-west), the dark timber roofscape on its piles against the glittering lake, the far shore’s hills in shadow behind, chimney smoke and a low cold mist on the water. The Long Lake is ≈ 5 km wide between hills 2–4 units high at the ×12 relief, so no framing from the town shows open water to a horizon; Erebor stands 18–25° above the horizon from here (that composition is erebor-wide / w4h-laketown-erebor)',
+      note: 'afternoon, BACKLIT (S4 W5, C2 #16: the film plate looks into a low sun; from the south-south-west the town stood against a sunny grass ramp across a lake that read as a river): from the north-east, the low sun (≈ 22°, west-south-west) ahead and to the right, the dark timber roofscape on its piles against the glittering lake, the far shore’s hills in shadow behind, chimney smoke and a low cold mist on the water. The Long Lake is ≈ 5 km wide between hills 2–4 units high at the ×12 relief, so no framing from the town shows open water to a horizon; Erebor stands 18–25° above the horizon from here (that composition is erebor-wide / w4h-laketown-erebor)',
     },
   ],
 });

@@ -1,4 +1,4 @@
-import { valueNoise } from '../../core/rng.ts';
+import { rand, valueNoise } from '../../core/rng.ts';
 import type { ProxyKit } from '../kit/ProxyKit.ts';
 import type { V2 } from '../records.ts';
 import { PROW_BATTER, type TierArc, WALL, onProw } from './city.ts';
@@ -9,6 +9,8 @@ import { BEACON, C, CITADEL_Y, GATE_BEARING, PROW, PROW_YAW, RADII, TOWER, fromP
  * read as a thin smooth slab — rock, not masonry)
  */
 const ROCK = 0x9b9a92;
+/** the prow's stem rake: at its foot the keel edge stands this fraction of the prow's length further back */
+const PROW_RAKE = 0.13;
 const SLATE = 0x63676c;
 /** the White Tower: the palest stone of the city (highlight #d2c6b7), still not white */
 const TOWER_STONE = 0xdcd9d0;
@@ -47,10 +49,13 @@ export function buildProw(k: ProxyKit): void {
       const strata = 0.03 * (ph - Math.floor(ph) - 0.5);
       const broad = 0.05 * (valueNoise(d * 1.1 + side * 5.1, f * 2.0, 9101) - 0.5);
       const bulge = (block + strata + broad) * Math.sin(Math.min(1, f / 0.95) * Math.PI * 0.5 + 0.35);
-      // (S4 W5: the keel flares to ≈ 1.4× its crest width at its foot)
+      // (S4 W5: the keel flares to ≈ 1.4× its crest width at its foot; fix round, the critic's 'flat dark
+      // box': the front raked like a ship's stem — the keel edge leans out toward the crest, the foot pulled
+      // back along the axis by PROW_RAKE of its length, so the shaded face is a tapering wedge)
       const batter = PROW_BATTER * (1 - f);
       const edge = vi === tip ? 0.25 : 1;
-      return [d - 0.05 * (1 - f) + (vi === tip ? 0.05 * (1 - f) : 0), p * (1 + batter) + side * bulge * edge];
+      const dr = PROW[0][0] + (d - PROW[0][0]) * (1 - PROW_RAKE * (1 - f) ** 1.3);
+      return [dr - 0.05 * (1 - f) + (vi === tip ? 0.05 * (1 - f) : 0), p * (1 + batter) + side * bulge * edge];
     });
     return { outline, y: span * f };
   });
@@ -145,36 +150,58 @@ export function buildGate(k: ProxyKit): void {
 }
 
 /**
- * The apron at the outer wall's foot (S4 W5, C2 #10: the wall met a flat lawn in one hard line): a band of
- * trodden earth and gravel ≈ 0.5 km wide round the wall on the bench, a hair over the ground, its outer
- * edge ragged — so the city stands on worked ground, not on turf.
+ * The apron at the outer wall's foot (S4 W5, C2 #10: the wall met a flat lawn in one hard line): patches of
+ * trodden earth, gravel and broken rock along the wall's foot, broken by turf — an inner row of long
+ * patches from under the wall out to 0.2–0.4 km, an outer row of shorter, scattered ones out to ≈ 0.6 km,
+ * each of its own tone and ragged on its outer edge. Each patch is a low slab whose flat top stands
+ * APRON_H over the highest ground under it, so a patch is laid only where the ground under ALL its outline
+ * vertices and its centre line is level within APRON_LEVEL (fix round — the review's 0.35 km plinth: the
+ * S4 W5 band was one slab over 175° whose top stood on its highest ground while the bench fell away by the
+ * Great Gate); patches span ≤ 1 km, so each top tracks its own ground. (APRON_H ≈ 20 m: the seating gate
+ * counts a thinner slab, sunk SINK, as buried — under a pixel at the hero's 55 km.)
  */
+const APRON_H = 0.021;
+const APRON_LEVEL = 0.01;
 export function buildApron(k: ProxyKit, t1: TierArc): void {
-  const n = 96;
-  // only on the level bench (the extrude's flat top stands on the highest ground under it): runs of the
-  // arc where both edges lie on the bench, each its own slab
-  const runs: { o: V2[]; i: V2[] }[] = [];
-  let run: { o: V2[]; i: V2[] } = { o: [], i: [] };
-  for (let j = 0; j <= n; j++) {
-    const b = t1.bLo + ((t1.bHi - t1.bLo) * j) / n;
-    const rag = 0.38 + 0.22 * valueNoise(b * 0.21, 3.7, 9133);
-    const o = polarC(b, t1.R + rag);
-    const i = polarC(b, t1.R - 0.05);
-    const flat = Math.max(k.ground(o[0], o[1]), k.ground(i[0], i[1]), k.ground(...polarC(b, t1.R + rag / 2))) < 0.04;
-    if (flat) {
-      run.o.push(o);
-      run.i.push(i);
-    } else if (run.o.length) {
-      runs.push(run);
-      run = { o: [], i: [] };
-    }
-  }
-  if (run.o.length) runs.push(run);
+  // (its own random stream: the author stream k.r() would reshuffle every house built after it)
+  let id = 0;
+  const r = (kk: number): number => rand(0x61707231, id, kk);
+  const TONES = [0x857c6a, 0x7b7364, 0x8f887a, 0x6f6a60, 0x938a76];
   const [cx, cz] = C;
-  for (const r of runs) {
-    if (r.o.length < 2) continue;
-    const ring = [...r.o, ...r.i.reverse()];
-    k.extrude('weathered', ring.map(([x, z]): V2 => [x - cx, z - cz]), 0.006, { at: [cx, 0, cz], followGround: true, color: 0x857c6a, grain: 0.5, lod: 1 });
+  for (const row of [0, 1]) {
+    let b = t1.bLo + 1 + r(1) * 3;
+    while (b < t1.bHi - 2) {
+      // patch length (deg of arc: 1° ≈ 0.11 km on the outer wall), then a gap of turf
+      const len = row ? 2 + r(2) * 5 : 4 + r(2) * 5;
+      const b1 = Math.min(t1.bHi - 1, b + len);
+      if (r(3) < (row ? 0.55 : 0.85)) {
+        const w = row ? 0.1 + r(4) * 0.15 : 0.2 + r(4) * 0.2;
+        const r0 = row ? t1.R + 0.25 + r(5) * 0.2 : t1.R - 0.05;
+        const ph = r(6) * 10;
+        const n = Math.max(2, Math.ceil(b1 - b));
+        const outer: V2[] = [];
+        const inner: V2[] = [];
+        const mid: V2[] = [];
+        for (let j = 0; j <= n; j++) {
+          const bb = b + ((b1 - b) * j) / n;
+          // the outer edge ragged, the patch's ends tapering in
+          const end = Math.min(1, Math.min(j, n - j) / 1.5 + 0.35);
+          const ww = w * end * (0.75 + 0.5 * valueNoise(bb * 0.7 + ph, 2.3 + row, 9137));
+          outer.push(polarC(bb, r0 + ww));
+          inner.push(polarC(bb, row ? r0 + w * 0.15 * (1 - end) : r0));
+          mid.push(polarC(bb, r0 + ww / 2));
+        }
+        const gs = [...outer, ...inner, ...mid].map(([x, z]) => k.ground(x, z));
+        const lo = Math.min(...gs);
+        const hi = Math.max(...gs);
+        if (hi - lo <= APRON_LEVEL && lo > -0.03 && hi < 0.04) {
+          const ring = [...outer, ...inner.reverse()].map(([x, z]): V2 => [x - cx, z - cz]);
+          k.extrude('weathered', ring, APRON_H, { at: [cx, 0, cz], followGround: true, color: TONES[Math.floor(r(7) * TONES.length)], grain: 0.5, lod: 1 });
+        }
+      }
+      id++;
+      b = b1 + (row ? 2 + r(8) * 6 : 0.5 + r(8) * 2.5);
+    }
   }
 }
 

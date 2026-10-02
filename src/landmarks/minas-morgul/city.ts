@@ -8,11 +8,12 @@ import { type Band, E0, GLOW, GLOW_HOT, wash } from './wash.ts';
 /**
  * The stone and the corpse-light (the RotK gate still, Nasmith's Tower of the Moon): DARK, dead grey stone
  * (S4 W5, the C2 art director: ≈ 40 % darker than S3's pale stone, which read as lit green glass) washed
- * from below by a green light that pools at the feet and the gate and dies out by mid-height. Every outer face — curtain, tier walls, bastions, gate blades and towers, keep blocks, houses,
- * the bridge's parapets and statues (and the Tower's keep and the lower third of its shaft, tower.ts) —
- * carries night-gated `emissiveGreen` skins in fine bands from its visible foot up (≈ 45 % of the height on
- * towers and blocks, 70 % on the curtain, the whole height on the tier walls — whose feet the curtain
- * hides — fading to a third), one saturated emerald paint in every band, the strength falling smoothly
+ * from below by a green light that pools at the feet and the gate and dies out by mid-height. Every outer
+ * face — curtain, tier walls, bastions, gate blades and towers, keep blocks, houses, the bridge's parapets
+ * and statues (and the lower half of the Tower's keep, tower.ts) — carries night-gated `emissiveGreen`
+ * skins in fine bands from its visible foot up (≈ 40–42 % of the height on the tier walls, towers and
+ * blocks, 50 % on the curtain, the strength falling smoothly to a tenth — WASH_FLOOR — at the zone's top;
+ * a faint rim under the tier walls' coping), one saturated emerald paint in every band
  * (wash.ts); the light pools on the level ground at every wall foot (flat glow strips: the halo at the
  * base) and spills down the retaining plinths. A wall standing on a lower tier rises from that tier's
  * top, so its wash starts at its visible foot. Windows are few, small, dim slits; the gate mouth burns; the Tower's lamp room is
@@ -39,9 +40,11 @@ const DEG = 180 / Math.PI;
 const WALL_WASH = wash(24, 0.5, E0);
 /**
  * the tier walls: the light climbs their lower 40 % only — their feet stand behind the wall in front, so
- * from the hero their visible upper parts are dark stone with a faint glow rising from behind the parapet
+ * from the hero their visible upper parts are dark stone with a faint glow rising from behind the parapet;
+ * fix round (the critic: the darkened tiers melt into the equally dark cliff): a faint green rim just
+ * under the coping (half the foot's strength), so each tier's edge separates from the rock behind it
  */
-const TIER_WASH = wash(14, 0.4, E0 * 0.8);
+const TIER_WASH: Band[] = [...wash(14, 0.4, E0 * 0.8), { ...wash(1, 1, E0 * 0.8 * 0.5)[0], f0: 0.93, f1: 0.985 }];
 const TOWER_WASH = wash(16, 0.42, E0 * 0.9);
 const SMALL_WASH = wash(8, 0.4, E0 * 0.7);
 const RIB_WASH = wash(8, 0.42, E0 * 0.8);
@@ -84,7 +87,7 @@ interface SegOpts {
 }
 
 /**
- * A battered wall segment a → b: pale stone, ends run on by t/2 to close the corners; pilaster ribs up the
+ * A battered wall segment a → b: dark stone, ends run on by t/2 to close the corners; pilaster ribs up the
  * outer face (LOD0), the wash on the outer face (and the ribs' fronts), an optional retaining plinth with
  * the light spilling down it, an optional halo of light on the ground at its foot. Returns its base.
  */
@@ -265,7 +268,7 @@ function bastion(k: ProxyKit, p: V2, r: number, top: number, cap: number, base?:
   if (cap > 0) k.cone('weathered', rr(h) * 1.05, cap, { at: [p[0], b0 + h + 0.02, p[1]], seg: 4, rot: [0, 45, 0], color: ROOF[0], faceted: true, lod });
 }
 
-/** a box block (keep hall, gate tower): pale, its wash as slightly larger shells round its lower part */
+/** a box block (keep hall, gate tower): dark stone, its wash as slightly larger shells round its lower part */
 function block(k: ProxyKit, p: V2, w: number, d: number, h: number, yawDeg: number, y0: number, o: { roof?: 'flat' | 'gable'; color?: number; washBands?: Band[]; shade?: number } = {}): void {
   if (o.roof === 'gable')
     k.house('weathered', 'slate', w, d, h, { at: [p[0], y0, p[1]], rot: [0, yawDeg, 0], seat: false, roof: 'gable', pitch: 58, overhang: 0.008, color: o.color ?? STONE, shade: o.shade, roofColor: ROOF[1] });
@@ -278,7 +281,7 @@ function block(k: ProxyKit, p: V2, w: number, d: number, h: number, yawDeg: numb
 }
 
 /**
- * A great blade flanking the gate (the film's): a broad, tapered pale fin standing out from the wall
+ * A great blade flanking the gate (the film's): a broad, tapered dark fin standing out from the wall
  * along `dir` — `t` thick at its foot, thinning to a knife edge — `len` long at its foot and rising to a
  * point `h` above the wall's foot. It is seated on the curtain's retaining plinth: its outer end is pulled
  * in until the ground under it lies no deeper than the plinth's foot (0.45 below the wall's foot), so it
@@ -367,8 +370,8 @@ interface Tier {
 }
 
 /**
- * A raised terrace (tier): its battered retaining wall round the polygon (pale, washed, a halo on the
- * level ground at its foot), its level top a pale infill slab; top at local y = `top`. Where the wall
+ * A raised terrace (tier): its battered retaining wall round the polygon (dark, washed, a halo on the
+ * level ground at its foot), its level top a dark infill slab; top at local y = `top`. Where the wall
  * stands on a lower tier (`below`), it rises from that tier's top — its line is split where it crosses
  * the lower tier's edge — so its wash and halo start at its visible foot (never inside the lower tier's
  * infill); elsewhere it rises from the lowest ground under it.
@@ -403,7 +406,7 @@ function terrace(k: ProxyKit, poly: V2[], centre: V2, top: number, parapet: numb
  * walls of uneven height between round bastions and two tall capped towers against the mountain, on a
  * retaining plinth where the shelf falls away, the rock spur under it); a second terrace ring stacked up
  * toward the north-east; the keep terrace round the Tower with its heavy blocks; the gate between the two
- * great blades and two gate towers; pale houses with dark roofs packed between the tiers. Fins only at
+ * great blades and two gate towers; dark houses with dark roofs packed between the tiers. Fins only at
  * the gate (the crown is the Tower's).
  */
 export function buildCity(k: ProxyKit): void {
@@ -467,7 +470,7 @@ export function buildCity(k: ProxyKit): void {
   for (const s of [-1, 0, 1]) k.cone('darkStone', 0.012, s ? 0.07 : 0.05, { at: [mouth[0] + GATE_OUT[0] * 0.01 + side[0] * s * 0.04, gy + 0.42, mouth[2] + GATE_OUT[1] * 0.01 + side[1] * s * 0.04], rot: [180, 0, 0], seg: 4, color: 0x59625d });
   k.light([mouth[0] + GATE_OUT[0] * 0.012, gy + 0.1, mouth[2] + GATE_OUT[1] * 0.012], { color: 0x1fe070, intensity: 0.45, radius: 0.016, kind: 'magic', gate: 'night' });
 
-  // ---- houses: pale, dark-roofed, packed between the curtain and the terraces (on the shelf) and on the
+  // ---- houses: dark stone, dark-roofed, packed between the curtain and the terraces (on the shelf) and on the
   // second terrace's ring; the street from the gate kept clear; a few dim slits
   const street: V2[] = [
     [GATE[0] - 0.07, GATE[1] - 0.1],

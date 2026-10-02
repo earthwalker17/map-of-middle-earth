@@ -42,9 +42,10 @@ const STAMPS: LocalStamp[] = [
     side: 'right',
     plateauKm: 2.5,
     falloff: 3,
-    // (S4 W5, C2 #7: a ridged roughness at the heightfield's finest (≈ 1.6 km): buttresses and gullies,
-    // not one flat brown slab behind the city)
-    rough: { amp: 1.3, scaleKm: 0.8, ridged: true },
+    // (S4 W5, C2 #7: a ridged roughness at the heightfield's finest octave (ROUGH_MIN_KM ≈ 1.6 km):
+    // buttresses and gullies, not one flat brown slab behind the city; fix round: amp 1.3 → 1.0 — at 1.3
+    // the crest broke into a row of evenly spaced blunt spikes)
+    rough: { amp: 1.0, scaleKm: 1.6, ridged: true },
     surface: 'rock',
   },
   // the flanks: where the natural front eases into foot slopes north and south of the city, raise the

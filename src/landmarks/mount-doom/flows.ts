@@ -71,7 +71,8 @@ export const DOOM_FLOWS: readonly DoomFlow[] = [
   { az: 104, width: 0.15, strands: 1, coneKm: 5.5, toe: [7.4, 0.0], heading: 96, branches: [], sprites: 0, spills: 0, plain: [10, 0.9, 0.65] },
 ];
 
-/** the terrain's continuation of each kit flow: [toe x, toe z, heading, length, half-width, heat, molten channel] */
-export const DOOM_PLAIN_FLOWS: readonly (readonly [number, number, number, number, number, number, number])[] = DOOM_FLOWS.map(
-  (f) => [f.toe[0], f.toe[1], f.heading, f.plain[0], f.plain[1], f.plain[2], 1] as const,
-);
+/** a lava flow on the plain (src/terrain/volcanic.ts VOLCANIC.flows): [x, z, heading, length, half-width, heat, molten channel 0 / 1] */
+export type PlainFlow = readonly [number, number, number, number, number, number, number];
+
+/** the terrain's continuation of each kit flow, from its toe on its heading */
+export const DOOM_PLAIN_FLOWS: readonly PlainFlow[] = DOOM_FLOWS.map((f): PlainFlow => [f.toe[0], f.toe[1], f.heading, f.plain[0], f.plain[1], f.plain[2], 1]);

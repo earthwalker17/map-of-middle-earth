@@ -1,6 +1,6 @@
 import { tsl, type TslNode } from '../materials/tsl.ts';
 import { srgbNode } from '../materials/looks.ts';
-import { DOOM_PLAIN_FLOWS } from '../landmarks/mount-doom/flows.ts';
+import { DOOM_PLAIN_FLOWS, type PlainFlow } from '../landmarks/mount-doom/flows.ts';
 
 /**
  * Volcanic ground (S4): Gorgoroth's cracked ash crust and basalt, Dagorlad's lighter crust, cinder around
@@ -74,7 +74,7 @@ export const VOLCANIC = {
     [6.0, -14.8, 22, 14, 1.3, 0.35, 0],
     [-13.4, -7.0, 298, 12, 1.2, 0.3, 0],
     [15.2, -7.7, 63, 9, 1.0, 0.25, 0],
-  ] as readonly (readonly [number, number, number, number, number, number, number])[],
+  ] as readonly PlainFlow[],
   /**
    * meander of a flow's centreline: amplitude (km) of a per-flow wave and of the 12 / 3 km noise — pinned
    * at the source (none there, full by flowPin of the length), so a flow leaves its kit toe on its axis

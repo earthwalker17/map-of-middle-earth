@@ -7,15 +7,16 @@ import { archedBridge, BRONZE, deck, elvenTower, gallery, hall, type HallOpts, L
 
 /**
  * The halls, towers, court, galleries, terraces, bridge, rock and trees of Rivendell (local km, heading
- * 0). The main group — the Last Homely House (a long hall with a cross wing and a loggia under a swept
- * verdigris roof), its bronze-roofed wings and back halls, slender towers with ogee caps, the round
- * Council court, arched galleries along the terrace edge and two terraces cantilevered out over the gorge
- * on slender columns — stands on the spur-like north ledge above the stream; a second group on the south
- * ledge; single halls on the up-valley shelves; a thin arched bridge leaps the ravine of a waterfall to a
- * pavilion on a rock spur. The gorge walls are sheer faceted rock (kit cliffs over the stamped scarps);
- * golden broadleaves, pale-gold birches and slender firs, all kept under ~0.6 of the main hall's height
- * near the halls, mass on the ledges, the gorge floor and the moor above. Pure function of the module
- * constants and the kit's ground.
+ * 0). The main group — the Last Homely House (S4 W5: ten pavilions on four terrace levels, the front row
+ * open to the gorge in colonnades, under straight-pitched verdigris roofs with bell-cast eaves), its
+ * back halls, slender towers with ogee caps, the domed Council court, arched galleries along the terrace
+ * edge and two terraces cantilevered out over the gorge on slender columns — stands on the spur-like
+ * north ledge above the stream; a second group on the south ledge; paired halls on the up-valley shelves;
+ * a thin arched bridge leaps the ravine of a waterfall to a pavilion on a rock spur. The gorge walls are
+ * the stamped scarps (dark wet gully ledges under the north wall's falls); muted autumn broadleaves,
+ * birches and slender firs, all kept under ~0.6 of the pavilions' height near the halls, mass on the
+ * ledges, the gorge floor and in stands on the moor above. Pure function of the module constants and
+ * the kit's ground.
  */
 
 const SEED = hashString('rivendell-halls');
@@ -94,8 +95,8 @@ export function buildRivendell(k: ProxyKit): void {
   buildNorthLedge(k);
   buildSouthLedge(k);
   // the two up-valley shelves: their lips, halls, a tower and a pavilion each
-  ledgeLip(k, LEDGE_NE, 120, 250);
-  ledgeLip(k, LEDGE_SE, 290, 410);
+  ledgeLip(k, LEDGE_NE, 120, 250, true);
+  ledgeLip(k, LEDGE_SE, 290, 410, true);
   const taken: { at: V2; r: number }[] = [...SHELF_TOWERS.map((t) => ({ at: t.at, r: t.r + 0.02 })), ...SHELF_PAVILIONS.map((p) => ({ at: p.at, r: 0.06 }))];
   for (const h of SHELF_HALLS) terraceHall(k, h.at, { yaw: h.yaw, w: h.w, d: 0.13, h: 0.12, windows: h.lit, roof: h.roof }, taken);
   for (const p of SHELF_PAVILIONS) pavilion(k, p.at, 0.035, false, undefined, p.roof);
@@ -201,7 +202,7 @@ const atBearing = (l: Ledge, bDeg: number, r: number): V2 => [l.at[0] + Math.sin
  * gorge-side slope, facing out (the kit cliff faces the right of its walking direction: counter-
  * clockwise). Its foot follows the slope, its top meets the terrace.
  */
-function ledgeLip(k: ProxyKit, l: Ledge, from: number, to: number): void {
+function ledgeLip(k: ProxyKit, l: Ledge, from: number, to: number, closeOnly = false): void {
   for (const run of rimRuns(k, l, from, to, 12, 0)) {
     const pts = run
       .map(([x, z], i): V2 => {
@@ -213,7 +214,9 @@ function ledgeLip(k: ProxyKit, l: Ledge, from: number, to: number): void {
       'weathered',
       pts,
       pts.map(([x, z]) => Math.min(0.14, Math.max(0.05, l.h + 0.02 - k.ground(x, z)))),
-      { color: ROCK, rough: 0.35, strata: 0.3, depth: 0.2, soft: 0.5, taper: 0.1 },
+      // (S4 W5 fix round: the up-valley shelves' lips close range only — with the gorge's dry kit ledges
+      // gone, LOD0 fell to ≈ 27k tris and LOD1 must stay ≤ 25 % of it; the main ledges keep theirs)
+      { color: ROCK, rough: 0.35, strata: 0.3, depth: 0.2, soft: 0.5, taper: 0.1, ...(closeOnly ? { lod: 0 as const } : {}) },
     );
   }
 }
@@ -416,17 +419,21 @@ function spanX(path: V2[], xa: number, xb: number, step: number): V2[] {
 
 /** half width of the wet gully under a fall, km */
 const GULLY = 0.08;
-/** the kit rock at the walls' feet: low ledges only (km) */
-const CLIFF_CAP = 0.25;
+/** the wet gullies' kit rock at the walls' feet: low ledges only (km) */
+const CLIFF_CAP = 0.2;
+/**
+ * the dry kit ledges between the gullies (S4 W5 fix round: OFF — capped at 0.25 km they still read as a
+ * row of uniform stepped blocks, a crenellated parapet behind the halls, and as pale shards on the south
+ * wall; the stamped scarps carry the dry faces)
+ */
+const DRY_LEDGES = false;
 
 /**
- * The gorge's sheer walls: faceted, stratified rock faces (kit cliffs) seated at the foot of the stamped
- * scarps on both sides (the wall behind the main ledge is the terrain's own rock). Each face is 0.6 of
- * the terrain's rise within 0.8 km behind its foot (the kit's jagged skyline reaches at most ≈ 0.8 of it,
- * so the top always meets the slope below the rim: no fin, no pointed shard against the sky), its foot
- * resampled every 0.12 km, the ends barely tapered. Under each declared fall the face breaks into a
- * dark, water-worn gully set 0.06 km back into the wall (the wet streak); gaps where the ledges and the
- * ravine break the walls.
+ * The gorge walls' kit rock: the stamped scarps carry the faces (S4 W5, C2 #13: the tall kit faces read as
+ * folded paper); at the foot of the north wall, under each of its falls, a dark, water-worn gully ledge set
+ * 0.06 km back into the wall (the wet streak), 0.55 of the terrain's rise within 0.8 km behind its foot,
+ * capped at CLIFF_CAP, its foot resampled every 0.05 km. The south wall's gully read as a pale faceted slab
+ * in the hero (fix round) and is gone; DRY_LEDGES switches the dry ledges between the gullies back on.
  */
 function gorgeCliffs(k: ProxyKit): void {
   const north = offsetPath(STREAM_WE, FLOOR + 0.12);
@@ -454,9 +461,11 @@ function gorgeCliffs(k: ProxyKit): void {
       if (pts.length < 2) continue;
       if (wet) {
         // the gully: set back into the wall, a little lower than its neighbours, dark and smoother
+        if (!east) continue;
         const back = offsetPath(pts, 0.06);
-        k.cliff('weathered', back, heights(back, 0.55), { color: ROCK_WET, rough: 0.3, strata: 0.5, depth: 1.0, soft: 0.7, taper: 0 });
-      } else {
+        // (close range only, like the faces round them: LOD1 and beyond show the stamped walls)
+        k.cliff('weathered', back, heights(back, 0.55), { color: ROCK_WET, rough: 0.3, strata: 0.5, depth: 1.0, soft: 0.7, taper: 0, lod: 0 });
+      } else if (DRY_LEDGES) {
         // (close range only: at LOD1 and beyond the stamped faces carry the walls on their own)
         k.cliff('weathered', pts, heights(pts, 0.6), { color: ROCK, rough: 0.5, strata: 1.0, depth: 1.1, soft: 0.45, taper: 0.08, lod: 0 });
       }
@@ -565,13 +574,6 @@ const WOOD_BANDS = BANDS.slice(4);
 const pathLength = (p: V2[]) => p.slice(1).reduce((a, q, i) => a + Math.hypot(q[0] - p[i][0], q[1] - p[i][1]), 0);
 
 /**
- * The woods of the gorge floor and the rims as landmark forests (placed by the vegetation system:
- * chunked, LOD-capped, thinned with the quality density): golden ochre broadleaves, pale-gold birches and
- * slender firs, kept small near the halls (≤ ~0.25 km, against the main hall 0.49 high), dense and
- * strongly clumped by stand noise (crowns touching in stands, shadowed gaps between), never inside the
- * halls' keep-out circles. The gorge faces are sheer rock (kit cliffs): no trees there.
- */
-/**
  * the species of a stand: muted autumn broadleaves, GREEN_SHARE dull-green ones, birches and firs; crowns
  * sized so the trees' heights spread over 0.5–1.0 of the valley's 0.28 km cap (S4 W5, C2 #8)
  */
@@ -582,6 +584,15 @@ const species = (conifer: number, birch: number, scale: [number, number]): Fores
   { kind: 'conifer', share: conifer, crownKm: [0.055 * scale[0], 0.055 * scale[1]], heightFactor: [4.2, 4.8], colors: CONIFER },
 ];
 
+/**
+ * The woods of the gorge floor and the rims as landmark forests (placed by the vegetation system:
+ * chunked, LOD-capped, thinned with the quality density): muted autumn broadleaves (ochre, rust,
+ * olive-gold) with a third dull-green, birches and slender firs (S4 W5, C2 #8), kept small near the halls
+ * (heights over 0.5–1.0 of the 0.28 km cap, against the main hall's pavilions), dense and clumped into
+ * broad stands by stand noise (crowns merging into masses, shadowed gaps between), never inside the
+ * halls' keep-out circles; the rims carry irregular polygon stands (STANDS), not continuous bands. The
+ * gorge faces are sheer stamped rock: no trees there.
+ */
 export const FORESTS: ForestDecl[] = [
   ...WOOD_BANDS.map(
     (b): ForestDecl => ({
@@ -612,9 +623,9 @@ export const FORESTS: ForestDecl[] = [
 ];
 
 /**
- * ~120 authored trees (VegetationSystem hero clusters) in clumps of 3–7 along the ledge bands round the
- * halls: golden ochre broadleaves, pale-gold birches and slender firs of mixed sizes, every one under
- * 0.27 km (≤ 0.6 of the Last Homely House, 0.49 to its ridge) — pure function of the seed.
+ * ~95 authored trees (VegetationSystem hero clusters) along the ledge bands round the halls, in clumps of
+ * 2–12 with a quarter of the spots lone trees (S4 W5, C2 #8): muted autumn broadleaves, birches and
+ * slender firs of mixed sizes, every one under 0.27 km — pure function of the seed.
  */
 export const TREES: TreeDecl[] = (() => {
   const out: TreeDecl[] = [];

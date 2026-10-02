@@ -3,7 +3,7 @@ import type { LightDecl, V3 } from '../types.ts';
 
 /**
  * The corpse-light that washes up Minas Morgul's walls (city.ts, tower.ts): thin night-gated
- * `emissiveGreen` skins in fine bands from a face's foot to ≈ 45 % of its height. Every band has the SAME
+ * `emissiveGreen` skins in fine bands from a face's foot to ≈ 40–50 % of its height (S4 W5). Every band has the SAME
  * saturated emerald paint — the hue never drifts toward white (a pale band emits near-white light, which
  * the night grade and AgX turn mint) — and only the strength falls, smoothly, as (1 − t)^0.9 over the
  * washed zone. Enough bands that no step shows at the hero distance.
@@ -36,20 +36,6 @@ export function wash(n: number, top: number, e0: number): Band[] {
     const tm = (i + 0.5) / n;
     const e = e0 * (WASH_FLOOR + (1 - WASH_FLOOR) * (1 - tm) ** 0.9);
     return { f0: (top * i) / n, f1: (top * (i + 1)) / n, color: GLOW, s: Math.min(15, e / LUM_G) };
-  });
-}
-
-/**
- * A full-height wash for the tier walls (their feet stand behind the wall in front of them: from the
- * hero only their upper parts show): `n` bands over the whole face, the strength falling from `e0` at
- * the foot to `floor`·e0 at the top, (1 − t)^0.9 in between.
- */
-export function washFull(n: number, e0: number, floor: number): Band[] {
-  return wash(n, 1, e0).map((b, i) => {
-    const tm = (i + 0.5) / n;
-    const f = Math.max(floor, WASH_FLOOR);
-    const e = e0 * (f + (1 - f) * (1 - tm) ** 0.9);
-    return { ...b, s: Math.min(15, e / LUM_G) };
   });
 }
 
