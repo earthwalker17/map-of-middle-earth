@@ -9,10 +9,10 @@ import type { LightDecl, V2, V3 } from '../types.ts';
  * height and is turned YAW° to follow the face), a hair in front of it — where the rough face bulges
  * forward it swallows the patch's edge, so the doors sit in a smooth, sheer, dark face. On it: faint
  * carved pillars and arch (0.008 km relief) and the ithildin lines (glow family 'ithildin', night gate)
- * — pillars with capitals and bases, the arch and the outer line of the inscription band, the crown with
- * seven stars under the arch, the hammer and anvil, the two trees along the pillars and the Star of
- * Fëanor — simplified to lines ≥ 0.02 km (≥ 2 px at the hero distance), plus ONE ithildin spark at the
- * star (EmissionSystem): a single soft glow from afar.
+ * — pillars with capitals and bases, the arch and the outer line of the inscription band with a dotted
+ * arc of letters, the crown with seven stars under the arch, the hammer and anvil, the two branching trees
+ * along the pillars and the Star of Fëanor — fine lines 0.009–0.013 km (S4 W5), plus ONE ithildin spark at
+ * the star (EmissionSystem): a single soft glow from afar.
  *
  * The ithildin paint is a dim silver whose daytime albedo (glow paint × 0.25) matches the dark stone, so
  * by day the doors are invisible, as in the tale; at night the glow (paint × strength) is as bright as
@@ -36,13 +36,16 @@ export const DOOR = {
   ar: 0.26,
 } as const;
 
-/** the dressed patch: the cliff's dark blue-grey stone, smooth */
-const FACE_ROCK = 0x575e64;
-/** ithildin: a dim silver (daytime albedo ≈ the dark face), strength raised to keep the night glow */
-const SILVER = 0x818e95;
-const GLOW = { gate: 'night' as const, strength: 7.3, flicker: 0.02 };
+/** the dressed patch: the moonlit scarp's own dark blue-grey stone (S4 W5: the S3 0x575e64 read as a lighter slab) */
+const FACE_ROCK = 0x464c51;
+/**
+ * ithildin: a cool blue-silver (daytime albedo ≈ the dark face); S4 W5 (C2 #12): fine lines at half the S3
+ * width, a cooler and fainter glow — the S3 lines read as thick white neon clip-art
+ */
+const SILVER = 0x7c97b0;
+const GLOW = { gate: 'night' as const, strength: 5, flicker: 0.02 };
 /** carved relief: the face's stone, a shade lighter, this proud of the face */
-const RELIEF = 0x60676d;
+const RELIEF = 0x4f565c;
 const RELIEF_T = 0.008;
 /** glow lines: their back this far in front of the face (over the relief), this thick (≤ 0.02 in all) */
 const BACK = RELIEF_T + 0.003;
@@ -94,19 +97,25 @@ export const ITHILDIN_LIGHTS: LightDecl[] = [{ at: onFace(0, 0.36, 0.03, 0), col
 /** The dressed patch, the carved relief and the ithildin lines; `sill` = the sill's local y. */
 export function buildDoors(k: ProxyKit, sill: number): void {
   const { pu, pv, ar, w, h, d } = DOOR;
-  // ---- the dressed patch: a rectangle in the face plane (outline (u, −v)), its foot buried below the sill
+  // ---- the dressed patch in the face plane (outline (u, −v)), its foot buried below the sill: arch-topped
+  // and ragged (S4 W5, C2 #12 — the S3 rectangle with hard top corners read as a poster on the cliff): the
+  // sides wander up to the springing, then a ragged half-ellipse to the crown; no corners above the sill
   const foot = 0.35;
-  k.extrude(
-    'weathered',
-    [
-      [-w / 2, foot],
-      [w / 2, foot],
-      [w / 2, -h],
-      [-w / 2, -h],
-    ],
-    d,
-    { at: onFace(0, 0, 0, sill), rot: STAND, color: FACE_ROCK, grain: 0.3 },
-  );
+  const spring = h * 0.5;
+  const rag = (i: number) => 0.035 * Math.sin(i * 2.7 + 0.6) + 0.025 * Math.sin(i * 5.3 + 1.9);
+  const patch: V2[] = [
+    [-w / 2, foot],
+    [w / 2, foot],
+  ];
+  for (let i = 1; i <= 3; i++) patch.push([w / 2 + rag(i), -(spring * i) / 3]);
+  const n = 16;
+  for (let i = 1; i < n; i++) {
+    const a = (i / n) * Math.PI;
+    const rr = 1 + rag(i + 7) * 1.6;
+    patch.push([(Math.cos(a) * w * rr) / 2, -(spring + Math.sin(a) * (h - spring) * rr)]);
+  }
+  for (let i = 3; i >= 1; i--) patch.push([-w / 2 + rag(i + 30), -(spring * i) / 3]);
+  k.extrude('weathered', patch, d, { at: onFace(0, 0, 0, sill), rot: STAND, color: FACE_ROCK, grain: 0.3 });
   // ---- carved relief: pillars and the arch round the doorway (0.008 km proud of the face)
   for (const s of [-1, 1]) k.box('weathered', 0.075, pv, RELIEF_T, { at: onFace(s * pu, 0, RELIEF_T / 2, sill), rot: inPlane(0), color: RELIEF, lod: 0 });
   k.ring('weathered', ar, 0.075, RELIEF_T, { at: onFace(0, pv, RELIEF_T, sill), rot: STAND, arcDeg: 180, seg: 20, color: RELIEF, lod: 0 });
@@ -114,35 +123,45 @@ export function buildDoors(k: ProxyKit, sill: number): void {
   /** a line of glow from (u, v) on the face, `len` long, turned `deg` from straight up (CCW seen from the pool) */
   const ray = (u: number, v: number, len: number, bw: number, deg = 0) =>
     k.box('ithildin', bw, len, TH, { at: onFace(u, v, BACK + TH / 2, sill), rot: inPlane(deg), color: SILVER, glow: GLOW, lod: 0 });
+  // (S4 W5: every line half the S3 width, 0.009–0.013 km — fine tracery, not neon)
   // pillars, capitals and bases
   for (const s of [-1, 1]) {
-    ray(s * pu, 0.04, pv - 0.04, 0.026);
-    ray(s * pu, pv, 0.024, 0.1);
-    ray(s * pu, 0.02, 0.022, 0.09);
+    ray(s * pu, 0.04, pv - 0.04, 0.013);
+    ray(s * pu, pv, 0.012, 0.1);
+    ray(s * pu, 0.02, 0.011, 0.09);
   }
   // the arch and the outer line of the inscription band
   for (const [r, t] of [
-    [ar, 0.026],
-    [ar + 0.075, 0.02],
+    [ar, 0.013],
+    [ar + 0.075, 0.01],
   ] as [number, number][])
     k.ring('ithildin', r, t, TH, { at: onFace(0, pv + 0.012, BACK + TH, sill), rot: STAND, arcDeg: 180, seg: 22, color: SILVER, glow: GLOW, lod: 0 });
+  // the inscription in the band: a dotted arc of 40 short dashes along its middle (the letters at this scale)
+  for (let i = 0; i < 40; i++) {
+    const a = ((4 + (172 * (i + 0.5)) / 40) * Math.PI) / 180;
+    const rr = ar + 0.0375;
+    ray(Math.cos(a) * rr, pv + 0.012 + Math.sin(a) * rr - 0.007, 0.014 + 0.006 * ((i * 7) % 3 === 0 ? 1 : 0), 0.009, (a * 180) / Math.PI);
+  }
   // the crown (a band with three points) and the seven stars in an arc under the arch
-  ray(0, 0.705, 0.02, 0.075);
-  for (const u of [-0.03, 0, 0.03]) ray(u, 0.725, 0.032, 0.016);
+  ray(0, 0.705, 0.011, 0.075);
+  for (const u of [-0.03, 0, 0.03]) ray(u, 0.725, 0.03, 0.009);
   for (let i = 0; i < 7; i++) {
     const a = ((20 + (140 * i) / 6) * Math.PI) / 180;
-    ray(Math.cos(a) * 0.19, pv + 0.01 + Math.sin(a) * 0.19, 0.022, 0.022, 45);
+    ray(Math.cos(a) * 0.19, pv + 0.01 + Math.sin(a) * 0.19, 0.014, 0.014, 45);
   }
   // the hammer and anvil
-  ray(0, 0.59, 0.022, 0.07);
-  ray(0.01, 0.61, 0.05, 0.02, -30);
-  // the two trees along the pillars: trunks, and boughs meeting under the arch
+  ray(0, 0.59, 0.011, 0.07);
+  ray(0.01, 0.61, 0.05, 0.01, -30);
+  // the two trees along the pillars: trunks, and branching boughs interlacing under the arch
   for (const s of [-1, 1]) {
-    ray(s * 0.17, 0.04, 0.46, 0.018);
-    ray(s * 0.17, 0.48, 0.11, 0.018, s * 40);
-    ray(s * 0.17, 0.46, 0.09, 0.018, -s * 35);
+    ray(s * 0.17, 0.04, 0.46, 0.011);
+    ray(s * 0.17, 0.48, 0.11, 0.009, s * 40);
+    ray(s * 0.17, 0.46, 0.09, 0.009, -s * 35);
+    ray(s * 0.17, 0.4, 0.08, 0.009, s * 55);
+    ray(s * 0.17, 0.34, 0.065, 0.009, -s * 50);
+    ray(s * 0.12, 0.535, 0.07, 0.009, s * 20);
   }
   // the Star of Fëanor: eight rays round a bright centre
-  for (let i = 0; i < 8; i++) ray(0, 0.36, 0.075, 0.022, i * 45);
-  ray(0, 0.343, 0.034, 0.034);
+  for (let i = 0; i < 8; i++) ray(0, 0.36, 0.07, 0.011, i * 45);
+  ray(0, 0.35, 0.02, 0.02);
 }
