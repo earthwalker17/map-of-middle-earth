@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "notes": "S4 W4-S1 acceptance helpers (pnpm qa --set s4-s1 lists the hero closes, wides and river shots; these are extra diagnostics). Owned by the W4-S1 slot (architecture surfaces + river water).",
+  "shots": [
+    { "id": "s4s1-laketown-top", "tod": 16.3, "camera": { "position": [372.6, 16.0, -205.99], "target": [372.6, 3.9, -206.0], "fov": 50 }, "note": "diagnostic: Long Lake's south-west shore under the lake-town-close foreground, top-down (lake mask vs lake ring vs Forest River ribbon)" }
+  ]
+}

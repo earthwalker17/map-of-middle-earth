@@ -7,7 +7,7 @@ import { gateCode, gateNode } from './gates.ts';
 import { spillIrradiance } from '../emission/spill.ts';
 
 // NB: TSL vec3(new Color()) silently yields black in r186 — always use color(Color) for colour constants
-const { Fn, If, float, vec3, attribute, mx_noise_float, positionWorld, positionLocal, normalGeometry, normalView, normalWorld, cameraPosition, reflect, normalize, positionViewDirection, fwidth, length, smoothstep, mix, clamp, max, abs, sin, step, floor, select, hash, dot, sRGBTransferEOTF } = tsl;
+const { Fn, If, float, vec3, vec4, attribute, fract, mx_noise_float, positionWorld, positionLocal, normalGeometry, normalView, normalWorld, cameraPosition, reflect, normalize, positionViewDirection, fwidth, length, smoothstep, mix, clamp, max, abs, sin, step, floor, select, hash, dot, sRGBTransferEOTF } = tsl;
 
 /**
  * Noise class of rock faces (kit cliffs, `ProxyKit.cliff`): stone noise WITHOUT the masonry coursing +
@@ -63,9 +63,66 @@ export type FamilyId =
   | 'lava'
   | 'ithildin';
 
-/** Surface pattern of the structure shader (fwidth-faded landmark-space noise). */
-export const NOISE = { stone: 0, wood: 1, fibre: 2, smooth: 3, foliage: 4, rock: 5 } as const;
+/**
+ * Surface pattern of the structure shader (fwidth-faded landmark-space noise). S4 W4-S1: `roof` (6) —
+ * slates, tiles and shingles: courses along the slope, darker eaves (the fascia / soffit faces of the roof
+ * part), per-slate value jitter, moss; the slate / roofTile families carry it and the kit tags its house
+ * and tower roofs with it (ProxyKit.tagRoof) whatever their family (Lake-town roofs are darkStone).
+ */
+export const NOISE = { stone: 0, wood: 1, fibre: 2, smooth: 3, foliage: 4, rock: 5, roof: 6 } as const;
 export type NoiseClass = (typeof NOISE)[keyof typeof NOISE];
+
+/**
+ * S4 W4-S1 weathering of built surfaces (every class but foliage and rock), all in landmark-local km and
+ * faded by the pixel footprint, so wides keep the crisp model read and never shimmer:
+ *  - tone: the house-scale noise octave (≈ 0.11 km) as a per-part value breakup, plus a district-scale
+ *    (≈ 0.5 km) value / warm–cool drift — neighbouring houses and wall runs never share one flat paint;
+ *  - tonal courses on stone: large masonry courses and staggered blocks with a hashed value each;
+ *  - rain / grime streaks on walls: hashed columns at two widths, each streak hanging from a hashed
+ *    "ledge" line and fading downward (rust-tinted on metals);
+ *  - crevice grime from the baked hemisphere AO (corners, under eaves and ledges, narrow lanes) and a
+ *    stronger, damp-tinted ground-contact term at the foot of every part (soot / damp rising);
+ *  - roofs (class roof): courses with a shadowed lip under each course, slate jitter, darker eaves
+ *    (fascia / soffit), moss; thatch (fibre) courses and grey weathering; wood: boards with dark seams,
+ *    per-board tone, greyed timber in patches.
+ * Toggle with WEATHERING_ON (false = the S3 surfaces).
+ */
+export const WEATHERING_ON = true;
+const W = {
+  /** per-part value amplitude of the house-scale octave */
+  tone: 0.12,
+  /** district-scale value drift and its warm / cool hue shift */
+  district: 0.09,
+  hue: 0.05,
+  /** tonal masonry courses (stone): course height, block length (km), value amplitude */
+  course: 0.07,
+  block: 0.19,
+  courseTone: 0.15,
+  /** darkening of the joint line at the foot of each course */
+  joint: 0.16,
+  /** grime / rain streak column widths (km) and their darkening */
+  streakW: [0.09, 0.032, 0.012] as const,
+  streakDark: 0.5,
+  /** crevice grime from the baked AO (darkening at the AO floor) */
+  aoDirt: 0.2,
+  /** ground-contact weight of built classes (CONTACT_WEIGHT stays for foliage / rock) */
+  contact: 0.5,
+  /** roof courses (km), lip shadow, highlight of the butt edge, slate jitter, eave darkening, moss */
+  roofRow: 0.014,
+  roofLip: 0.34,
+  roofEdge: 0.08,
+  roofJit: 0.2,
+  eave: 0.55,
+  moss: 0.55,
+  /** thatch courses (km) and their shadow band */
+  thatchRow: 0.022,
+  thatchBand: 0.24,
+  /** wood boards (km): width, length, per-board jitter, seam darkening */
+  board: 0.011,
+  boardLen: 0.075,
+  boardJit: 0.18,
+  seam: 0.35,
+} as const;
 
 export interface GlowPreset {
   /** sRGB hex of the emitted light (also the dim daytime albedo) */
@@ -121,8 +178,8 @@ export const FAMILY: Record<FamilyId, FamilyPreset> = {
   plaster: { albedo: 0xe6dfcf, roughness: 0.9, metalness: 0, grain: 0.1, noise: NOISE.smooth },
   wood: { albedo: 0x5a4330, roughness: 0.85, metalness: 0, grain: 0.3, noise: NOISE.wood },
   thatch: { albedo: 0xa88a4a, roughness: 0.95, metalness: 0, grain: 0.35, noise: NOISE.fibre },
-  slate: { albedo: 0x5f6266, roughness: 0.7, metalness: 0, grain: 0.2, noise: NOISE.stone },
-  roofTile: { albedo: 0x8a4b32, roughness: 0.75, metalness: 0, grain: 0.25, noise: NOISE.stone },
+  slate: { albedo: 0x5f6266, roughness: 0.7, metalness: 0, grain: 0.2, noise: NOISE.roof },
+  roofTile: { albedo: 0x8a4b32, roughness: 0.75, metalness: 0, grain: 0.25, noise: NOISE.roof },
   gold: { albedo: 0xb8923a, roughness: 0.45, metalness: 0.5, grain: 0.12, noise: NOISE.smooth },
   obsidian: { albedo: 0x141619, roughness: 0.22, metalness: 0.1, grain: 0.06, noise: NOISE.smooth },
   iron: { albedo: 0x292b25, roughness: 0.5, metalness: 0.6, grain: 0.2, noise: NOISE.stone },
@@ -225,6 +282,118 @@ function glowGate(surfG: TslNode): TslNode {
   return gateNode(surfG.mul(255 / GATE_STEP));
 }
 
+interface WeatherMasks {
+  isStone: TslNode;
+  isWood: TslNode;
+  isFibre: TslNode;
+  isRoof: TslNode;
+  built: TslNode;
+}
+
+/**
+ * S4 W4-S1: the weathering multiplier (linear rgb) of a built surface at landmark-local `p` (km) with
+ * geometry normal `n` (see W / WEATHERING_ON). `n1` / `n2` are the pattern's footprint-faded house-scale
+ * (≈ 0.11 km) and fine (≈ 0.03 km) octaves, `ao` the baked hemisphere AO, `metal` the metalness. Every
+ * hashed cell term fades out where its cell would shrink below ~2–3 px, so wides keep the crisp model
+ * read. Pure function of the fragment (no time, no state); call in uniform control flow (derivatives).
+ */
+function weathering(p: TslNode, n: TslNode, n1: TslNode, n2: TslNode, ao: TslNode, metal: TslNode, c: WeatherMasks): TslNode {
+  // pixel footprint on the surface (km) and the visibility of a feature of `size` km (≥ b px: 1)
+  const fp = max(length(fwidth(p)), 1e-6).toVar();
+  // (fp = |fwidth(p)| ≈ 1.4–2 px of surface: a feature of `size` is fully drawn from ≈ 2.3 px, gone below ≈ 1.1 px)
+  const vis = (size: number, a = 0.8, b = 1.6): TslNode => smoothstep(a, b, float(size).div(fp));
+  const ny = n.y;
+  const ay = abs(ny);
+  const wall = float(1).sub(smoothstep(0.35, 0.6, ay)).toVar();
+  // up-facing slopes: roof planes and cone roofs (flat tops excluded)
+  const slope = smoothstep(0.15, 0.3, ny).mul(float(1).sub(smoothstep(0.97, 0.995, ny))).toVar();
+  // horizontal coordinate along a face (the masonry coursing's convention)
+  const along = select(abs(n.x).greaterThan(abs(n.z)), p.z, p.x).toVar();
+
+  // ---- tone: house-scale value breakup + a district-scale value and warm / cool drift
+  const wD = float(1).sub(smoothstep(0.35, 1, fp.mul(2.1)));
+  const nD = mx_noise_float(p.mul(2.1).add(vec3(17.3, 3.1, 41.7))).mul(wD).toVar();
+  let val: TslNode = float(1).add(n1.mul(W.tone)).add(nD.mul(W.district));
+  const h = nD.mul(W.hue * 2);
+  let tint: TslNode = vec3(float(1).add(h), float(1), float(1).sub(h));
+
+  // ---- tonal masonry courses on stone walls: a value per course and per staggered block
+  // and a darker joint line at the foot of each course (its mean kept where the courses fade out)
+  const cy = p.y.div(W.course);
+  const crs = floor(cy);
+  const blk = floor(along.div(W.block).add(crs.mul(0.5)));
+  const bT = hash(crs.mul(131).add(blk.mul(17)).add(2100000)).sub(0.5);
+  const rT = hash(crs.mul(53).add(2300000)).sub(0.5);
+  const joint = float(1).sub(smoothstep(0.04, 0.16, fract(cy))).mul(W.joint);
+  const courses = mix(float(-W.joint * 0.1), bT.mul(0.65).add(rT.mul(0.35)).mul(W.courseTone * 2).sub(joint), vis(W.course));
+  val = val.add(courses.mul(wall).mul(c.isStone));
+
+  // ---- rain / grime streaks on walls: hashed columns, each streak hanging from a hashed ledge line
+  // and fading downward (strongest just under the ledge), two widths
+  let streak: TslNode = float(0);
+  W.streakW.forEach((sw, k) => {
+    const u = along.div(sw).add(0.37 * k);
+    const colId = floor(u);
+    const fu = fract(u);
+    const h1 = hash(colId.mul(13).add(2500000 + 400000 * k));
+    const h2 = hash(colId.mul(29).add(2700000 + 400000 * k));
+    const amt = smoothstep(0.35, 0.95, h1);
+    const len = h2.mul(10).add(4).mul(sw);
+    const t = fract(p.y.div(len).add(h2.mul(5.3)));
+    // a flat-topped profile across the column (soft edges), a faint tail down the whole run
+    const prof = smoothstep(0, 0.3, fu).mul(smoothstep(1, 0.7, fu));
+    streak = max(streak, amt.mul(prof).mul(t.mul(t.sqrt()).mul(0.7).add(0.3)).mul(vis(sw, 0.7, 1.4)));
+  });
+  streak = streak.mul(wall);
+  // grey-brown grime on stone, plaster and wood; rust on metals
+  const grime = mix(vec3(0.42, 0.43, 0.45), vec3(0.7, 0.42, 0.25), smoothstep(0.2, 0.6, metal));
+  tint = tint.mul(mix(vec3(1), grime, streak.mul(W.streakDark / 0.58)));
+
+  // ---- crevice grime: the baked hemisphere AO (corners, under eaves and ledges, narrow lanes)
+  val = val.mul(float(1).sub(clamp(float(1).sub(ao).div(1 - AO_MIN), 0, 1).mul(W.aoDirt)));
+
+  // ---- roofs: courses (a shadowed lip under each course, a lit butt edge), slate jitter, dark eaves
+  const ry = p.y.div(W.roofRow);
+  const rRow = floor(ry);
+  const rf = fract(ry);
+  const lip = smoothstep(0.55, 1, rf).mul(W.roofLip).sub(float(1).sub(smoothstep(0, 0.12, rf)).mul(W.roofEdge));
+  const tile = floor(along.div(W.roofRow * 1.7).add(rRow.mul(0.5)));
+  const tj = hash(rRow.mul(31).add(tile.mul(7)).add(3100000)).sub(0.5).mul(W.roofJit);
+  // the course pattern's mean, kept where the courses fade out (no value step with distance)
+  const lipMean = W.roofLip * 0.225 - W.roofEdge * 0.06;
+  const rows = mix(float(-lipMean), tj.sub(lip), vis(W.roofRow));
+  // the fascia / soffit faces of a roof part (vertical or down-facing): the dark eave line
+  const eave = float(1).sub(smoothstep(0.08, 0.2, ny));
+  const roofVal = float(1).add(rows.mul(slope)).mul(mix(float(1), float(W.eave), eave));
+  val = val.mul(mix(float(1), roofVal, c.isRoof));
+
+  // ---- thatch: courses with a shadow band, grey weathered patches
+  const tfr = fract(p.y.div(W.thatchRow));
+  const tRows = mix(float(W.thatchBand * 0.2), smoothstep(0.6, 1, tfr).mul(W.thatchBand), vis(W.thatchRow));
+  val = val.mul(mix(float(1), float(1).sub(tRows.mul(slope)), c.isFibre));
+  const greyT = smoothstep(-0.15, 0.35, nD.sub(n1.mul(0.4))).mul(0.7);
+  tint = tint.mul(mix(vec3(1), mix(vec3(1), vec3(0.8, 0.78, 0.76), greyT), c.isFibre));
+
+  // ---- moss / lichen on roofs and thatch
+  const moss = smoothstep(0.05, 0.45, nD.add(n1.mul(0.6)).add(n2.mul(0.25))).mul(W.moss).mul(slope).mul(c.isRoof.add(c.isFibre));
+  tint = tint.mul(mix(vec3(1), vec3(0.68, 0.76, 0.5), moss));
+
+  // ---- wood: boards (horizontal on walls, along z on decks) with dark seams and a tone per board
+  // (staggered board ends), greyed timber in patches
+  const deck = ay.greaterThan(0.7);
+  const by = select(deck, p.x, p.y).div(W.board);
+  const bRow = floor(by);
+  const seam = float(1).sub(smoothstep(0, 0.16, fract(by))).mul(W.seam);
+  const bId = floor(select(deck, p.z, along).div(W.boardLen).add(hash(bRow.mul(11).add(3500000)).mul(3)));
+  const bj = hash(bRow.mul(37).add(bId.mul(5)).add(3700000)).sub(0.5).mul(W.boardJit);
+  const boards = mix(float(-W.seam * 0.08), bj.sub(seam), vis(W.board));
+  val = val.mul(mix(float(1), float(1).add(boards), c.isWood));
+  const greyW = smoothstep(-0.25, 0.3, nD.add(n1.mul(0.5))).mul(0.8);
+  tint = tint.mul(mix(vec3(1), mix(vec3(0.9), vec3(0.68, 0.67, 0.66), greyW), c.isWood));
+
+  return mix(vec3(1), tint.mul(max(val, 0.2)), c.built);
+}
+
 function structureMaterial(): MeshStandardNodeMaterial {
   const m = new MeshStandardNodeMaterial({ roughness: 0.8, metalness: 0 });
   const col = attribute('color', 'vec4');
@@ -241,8 +410,13 @@ function structureMaterial(): MeshStandardNodeMaterial {
   const isFoliage = isClass(NOISE.foliage);
   // S4: rock (kit cliffs — class 5, emitted by ProxyKit.cliff; see the strata helper below)
   const isRock = isClass(ROCK_CLASS);
+  // S4 W4-S1: roof (slate / tile / shingle faces; FAMILY slate & roofTile, ProxyKit.tagRoof)
+  const isRoof = isClass(NOISE.roof);
+  // built surfaces take the weathering (foliage and rock keep their own looks)
+  const built = float(1).sub(isFoliage).sub(isRock);
   const nG = normalGeometry;
-  const pattern = Fn(() => {
+  // xyz = the weathering multiplier (rgb) of built surfaces, w = the albedo pattern (× grain)
+  const surface = Fn(() => {
     // landmark-local km (the meshes sit at the landmark origin): small arguments, so the fine octave
     // never bands on float32 world coordinates of several hundred km
     const p = positionLocal;
@@ -252,11 +426,11 @@ function structureMaterial(): MeshStandardNodeMaterial {
     const q = vec3(p.x.mul(axz), p.y.mul(ay), p.z.mul(axz));
     // octaves ~9, 37, 140 per km, each faded out where it would shimmer (texel footprint)
     const fw = length(fwidth(q));
-    const w1 = float(1).sub(smoothstep(0.35, 1, fw.mul(9)));
+    const w1 = float(1).sub(smoothstep(0.35, 1, fw.mul(9))).toVar();
     const w2 = float(1).sub(smoothstep(0.35, 1, fw.mul(37)));
     const w3 = float(1).sub(smoothstep(0.35, 1, fw.mul(140)));
-    const n1 = mx_noise_float(q.mul(9));
-    const n2 = mx_noise_float(q.mul(37));
+    const n1 = mx_noise_float(q.mul(9)).toVar();
+    const n2 = mx_noise_float(q.mul(37)).toVar();
     const n = n1.mul(w1.mul(0.5)).add(n2.mul(w2.mul(0.3))).add(mx_noise_float(q.mul(140)).mul(w3.mul(0.2)));
     // stone: masonry coursing on walls — 0.02 km courses of 0.055 km blocks (staggered), a small value
     // jitter per block, faded where a course gets thinner than ~2 px
@@ -290,14 +464,28 @@ function structureMaterial(): MeshStandardNodeMaterial {
         rockBands.assign(st.lum.sub(1).mul(sw).div(max(surf.b, 0.1)));
       });
     }
-    return mix(n.mul(float(1).sub(isSmooth.mul(0.75))).add(coursing).add(rockBands), leaf, isFoliage);
-  })();
+    const pattern = mix(n.mul(float(1).sub(isSmooth.mul(0.75))).add(coursing).add(rockBands), leaf, isFoliage);
+    const weather = WEATHERING_ON ? weathering(p, nG, n1.mul(w1), n2.mul(w2), col.a, surf.g, { isStone, isWood, isFibre, isRoof, built }) : vec3(1);
+    return vec4(weather, pattern);
+  })().toVar();
+  const pattern = surface.w;
+  const weather = surface.xyz;
   const albedo = sRGBTransferEOTF(col.rgb);
   // leaf masses: sun-bleached tops, shaded undersides (like the canopy shader's sub-crown shading)
   const leafTone = mix(float(1), mix(float(0.78), float(1.12), smoothstep(-0.6, 0.9, nG.y)), isFoliage);
-  // the baked ground-contact term is the only baked darkening on the albedo; the hemisphere AO (col.a)
-  // goes to the AO slot alone (indirect light) — never both (S3 fix: small parts went near-black)
-  const baseColor = albedo.mul(float(1).add(pattern.mul(surf.b))).mul(leafTone).mul(mix(float(1), contact, CONTACT_WEIGHT));
+  // the baked ground-contact term is the main baked darkening on the albedo; the hemisphere AO (col.a)
+  // goes to the AO slot (indirect light) and, on built surfaces, only as a mild crevice grime inside the
+  // weathering (S3 fix: small parts went near-black when both applied in full). S4 W4-S1: built classes
+  // take a stronger contact (soot / damp at the foot of every part) with a damp tint.
+  const contactW = WEATHERING_ON ? mix(float(CONTACT_WEIGHT), float(W.contact), built) : float(CONTACT_WEIGHT);
+  const foot = float(1).sub(contact);
+  const damp = WEATHERING_ON ? mix(vec3(1), vec3(0.9, 0.93, 0.85), foot.mul(foot).mul(built).mul(0.8)) : vec3(1);
+  const baseColor = albedo
+    .mul(float(1).add(pattern.mul(surf.b)))
+    .mul(leafTone)
+    .mul(mix(float(1), contact, contactW))
+    .mul(damp)
+    .mul(weather);
   m.colorNode = baseColor;
   m.aoNode = col.a;
   m.roughnessNode = clamp(surf.r.add(pattern.mul(0.08)), 0.04, 1);

@@ -1,6 +1,6 @@
 import { Euler, Matrix4, Quaternion, Vector3, type BufferGeometry } from 'three/webgpu';
 import { hash32, rand } from '../../core/rng.ts';
-import { NOISE, aoFloor, familyKey, familyVertex, paintLinear, type FamilyId, type GlowOverride, type MaterialKey } from '../../materials/families.ts';
+import { FAMILY, NOISE, aoFloor, familyKey, familyVertex, paintLinear, type FamilyId, type GlowOverride, type MaterialKey } from '../../materials/families.ts';
 import { lightExtras, type LightExtras, type LightGate, type LightKind, type LodGeometry, type TreeKind, type V2, type V3 } from '../records.ts';
 import { Geo, area2, boxGeo, cross3, face, icoGeo, latheGeo, noise3, packGeometry, prismGeo, sub3, type PackItem } from './geom.ts';
 
@@ -384,6 +384,24 @@ export class ProxyKit {
     };
     this.list.push(p);
     return p;
+  }
+
+  /**
+   * S4 W4-S1: tag a roof part (house / tower roofs) with the structure shader's roof class — courses
+   * along the slope, dark eaves on its fascia / soffit faces, slate jitter, moss — whatever its family
+   * (Lake-town roofs are darkStone, its huts' shingles wood). Thatch keeps its fibre class; smooth families
+   * (plaster, gold, metal domes) and glow skins keep theirs. The contact bits stay.
+   */
+  private tagRoof(part: Part, fam: FamilyId): Part {
+    const cls = FAMILY[fam].noise;
+    if (part.key === 'structure' && (cls === NOISE.stone || cls === NOISE.wood || cls === NOISE.roof))
+      part.surf = [part.surf[0], part.surf[1], part.surf[2], NOISE.roof * 32 + (part.surf[3] % 32)];
+    return part;
+  }
+
+  /** a roof part: addPart + tagRoof */
+  private roofPart(fam: FamilyId, gen: (detail: number) => Geo, m: Matrix4 | null, o: PartOpts, x: { detailed?: boolean; cap?: LodLevel; h?: number } = {}): Part {
+    return this.tagRoof(this.addPart(fam, gen, m, o, x), fam);
   }
 
   /**
@@ -947,7 +965,7 @@ export class ProxyKit {
     const R = h + (d / 2) * tan;
     switch (kind) {
       case 'gable': {
-        this.addPart(
+        this.roofPart(
           fam,
           (dd) => {
             const g = new Geo();
@@ -1015,7 +1033,7 @@ export class ProxyKit {
       case 'hip': {
         const hl = Math.max(0, W - S);
         const Rh = ye + S * tan;
-        this.addPart(
+        this.roofPart(
           fam,
           () => {
             const g = new Geo();
@@ -1046,12 +1064,12 @@ export class ProxyKit {
       }
       case 'flat': {
         const th = Math.min(w, d) * 0.06;
-        this.addPart(fam, () => boxGeo(w + 2 * ov, th, d + 2 * ov).translate(0, h, 0), m, rp);
+        this.roofPart(fam, () => boxGeo(w + 2 * ov, th, d + 2 * ov).translate(0, h, 0), m, rp);
         break;
       }
       case 'dome': {
         const rd = Math.min(w, d) / 2 + ov;
-        this.addPart(
+        this.roofPart(
           fam,
           (dd) => {
             const n = Math.max(3, Math.round(7 * dd));
@@ -1073,7 +1091,7 @@ export class ProxyKit {
         const a = w / 2 + ov;
         const b = d / 2 + ov;
         const rise = (Math.min(w, d) / 2 + ov) * tan;
-        this.addPart(
+        this.roofPart(
           fam,
           () => {
             const g = latheGeo(
@@ -1092,7 +1110,7 @@ export class ProxyKit {
       }
       case 'round': {
         const rise = (d / 2) * tan;
-        this.addPart(
+        this.roofPart(
           fam,
           (dd) => {
             const g = new Geo();
@@ -1183,7 +1201,7 @@ export class ProxyKit {
     if (roof === 'cone' || roof === 'spire') {
       const rh = o.roofH ?? (roof === 'cone' ? 1.2 : 3) * rt;
       const rr = rt * (roof === 'cone' ? 1.18 : 1.05);
-      this.addPart(
+      this.roofPart(
         rf,
         (d) =>
           latheGeo(
@@ -1199,7 +1217,7 @@ export class ProxyKit {
       );
     } else if (roof === 'dome') {
       const rh = o.roofH ?? rt;
-      this.addPart(
+      this.roofPart(
         rf,
         (d) => {
           const n = Math.max(3, Math.round(7 * d));
