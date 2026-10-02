@@ -88,6 +88,10 @@ function slotOf(event: string | undefined): number {
  *  4. beams: additive axis billboards, event-gated (Minas Morgul's signal: `morgul-beam`).
  *  Crater sparks and beacon flames are EmissionSystem dynamic lights (`lights(state)`, wired in boot.ts):
  *  energy-normalised sparkles, gated by the same table.
+ * Render orders: mist 34, falls 35, puffs 51 under an ash deck (after the deck at 30 and the emission
+ * sprites at 50: a plume veils the crater's glow) / 29 seen from above a deck, beam 52 (additive). Every mesh
+ * stays in the scene (compiled by the warm-up's compileAsync); an effect is switched off by an empty draw
+ * range / instance count, never by visibility.
  * No state is carried between frames; evaluate() rewrites everything from the frame.
  */
 export class EffectsSystem implements System {
@@ -213,7 +217,6 @@ export class EffectsSystem implements System {
     if (beams) {
       const m = createBeamMaterial(noise);
       this.beamMesh = this.staticMesh('fx-beam', beams, m, 52);
-      this.beamMesh.frustumCulled = false; // the vertex stage widens the strip
       ctx.scene.add(this.beamMesh);
     }
   }
@@ -227,7 +230,31 @@ export class EffectsSystem implements System {
     mesh.castShadow = false;
     mesh.receiveShadow = false;
     mesh.matrixAutoUpdate = false;
+    // always in the scene and never frustum-culled by three: the warm-up's compileAsync builds every effect
+    // pipeline whatever the first shot sees (no compile hitch when an effect first appears); evaluate()
+    // switches a mesh off with an empty draw range (show())
+    mesh.frustumCulled = false;
     return mesh;
+  }
+
+  /** Draw a static effect mesh or nothing (an empty draw range: three skips the draw, the pipeline stays). */
+  private show(mesh: Mesh | null, on: boolean): void {
+    if (mesh) mesh.geometry.setDrawRange(0, on ? Infinity : 0);
+  }
+
+  /** A world-space bounding sphere against the camera's view cone (conservative). */
+  private inView(frame: FrameContext, s: { center: { x: number; y: number; z: number }; radius: number } | null): boolean {
+    if (!s) return true;
+    const { camera } = frame;
+    const V = camera.matrixWorldInverse.elements;
+    const tanV = Math.tan((camera.fov * Math.PI) / 360);
+    const tanH = tanV * camera.aspect;
+    const { x, y, z } = s.center;
+    const r = s.radius;
+    const vx = V[0] * x + V[4] * y + V[8] * z + V[12];
+    const vy = V[1] * x + V[5] * y + V[9] * z + V[13];
+    const vz = -(V[2] * x + V[6] * y + V[10] * z + V[14]);
+    return !(vz < -r || Math.abs(vx) > vz * tanH + r * Math.hypot(1, tanH) || Math.abs(vy) > vz * tanV + r * Math.hypot(1, tanV));
   }
 
   private buildPuffMesh(atlas: DataTexture, noise: DataTexture, detail: boolean): Mesh {
@@ -257,7 +284,7 @@ export class EffectsSystem implements System {
     mesh.receiveShadow = false;
     mesh.matrixAutoUpdate = false;
     mesh.renderOrder = ORDER_UNDER;
-    mesh.visible = false;
+    // always visible (compiled at warm-up); an instance count of 0 draws nothing
     return mesh;
   }
 
@@ -304,11 +331,11 @@ export class EffectsSystem implements System {
     const cam = camera.position;
     const camDist = (x: number, y: number, z: number) => Math.hypot(x - cam.x, y - cam.y, z - cam.z);
 
-    // ---- beams: hidden while their channel is off
-    if (this.beamMesh) this.beamMesh.visible = this.beamSlots.some((s) => gateOf(s) > 0);
-    // ---- falls / mist: hidden when every one is below a pixel or two (overviews)
-    if (this.fallsMesh) this.fallsMesh.visible = this.fallRefs.some((f) => (f.w * pxPerKm) / camDist(f.p[0], f.p[1], f.p[2]) > 0.8);
-    if (this.mistMesh) this.mistMesh.visible = this.mistCards.some((c) => (2 * c.halfWidth * pxPerKm) / camDist(c.at[0], c.at[1], c.at[2]) > MIST.lodPx[0]);
+    // ---- beams: drawn only while their channel is on
+    this.show(this.beamMesh, this.beamSlots.some((s) => gateOf(s) > 0));
+    // ---- falls / mist: drawn only when one is in view and above a pixel or two (overviews draw none)
+    if (this.fallsMesh) this.show(this.fallsMesh, this.inView(frame, this.fallsMesh.geometry.boundingSphere) && this.fallRefs.some((f) => (f.w * pxPerKm) / camDist(f.p[0], f.p[1], f.p[2]) > 0.8));
+    if (this.mistMesh) this.show(this.mistMesh, this.inView(frame, this.mistMesh.geometry.boundingSphere) && this.mistCards.some((c) => (2 * c.halfWidth * pxPerKm) / camDist(c.at[0], c.at[1], c.at[2]) > MIST.lodPx[0]));
 
     this.evaluatePuffs(frame, gateOf, pxPerKm, quality.density);
   }
@@ -431,7 +458,6 @@ export class EffectsSystem implements System {
       attr.needsUpdate = true;
     }
     geo.instanceCount = n;
-    mesh.visible = n > 0;
     // seen from under the ash deck the puffs are in front of it; from above, behind it
     const deck: DeckSample = { cover: 0, r: 0, g: 0, b: 0, height: 0, topOpacity: 0 };
     atmosphere.deckAt(cam.x, cam.z, deck);
