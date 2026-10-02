@@ -222,6 +222,11 @@ export default defineLandmark({
   placeId: 'rauros',
   tier: 'B',
   stamps: STAMPS,
+  // Tol Brandir in the lake's reflection march (S4 C2): the body to the moss ledge, the upper mass and crown
+  reflectors: [
+    { at: TOL, r: 1.55, top: LEDGE_Y },
+    { at: [TOL[0] + 0.35, TOL[1] - 0.3], r: 0.7, top: LEDGE_Y + 4.4 },
+  ],
   proxy: (k) => {
     // ---- Tol Brandir (see the module doc)
     // (S4 W5: 28 shallow flutes, not 20 deep ones — the loft's flat facets showed the deep flutes as
