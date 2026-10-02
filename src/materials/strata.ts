@@ -35,8 +35,9 @@ export const STRATA = {
   dipDir: [0.8, 0.6] as const,
   /** bed spacings, world units of height: formations, beds, laminae */
   spacing: [2.3, 0.6, 0.17] as const,
-  /** luminance contrast of hard vs soft beds per scale */
-  lum: [0.2, 0.13, 0.06] as const,
+  /** luminance contrast of hard vs soft beds per scale (S4 C2: 0.2 / 0.13 → 0.13 / 0.09 — whole mountains,
+   *  Mindolluin first, read as painted horizontal stripes; the ledges' normals keep the bedding) */
+  lum: [0.13, 0.09, 0.06] as const,
   /** ledge normal tilt per scale (tangent-plane "up" component at a full hard/soft step) */
   tilt: [0.5, 0.55, 0.35] as const,
   /** darkening of a soft bed's top under an overhanging hard bed */
