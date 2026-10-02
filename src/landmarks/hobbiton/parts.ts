@@ -11,25 +11,33 @@ import type { V2, V3 } from '../types.ts';
 
 const DEG = Math.PI / 180;
 
-/** timber of door frames, brick of chimneys, the ochre plaster of hobbit-hole fronts */
+/** timber of posts and door frames, brick of chimneys, the ochre plaster of hobbit-hole fronts */
 export const TIMBER = 0x7a5a3a;
-export const BRICK = 0x8c5a3c;
-export const OCHRE = [0xc9a45f, 0xd2b073, 0xc39a58, 0xceac6c, 0xbf9a5a];
+/** the dark weathered timber ring round a round door */
+export const DOOR_RING = 0x4a3a28;
+export const BRICK = 0x6e4e3e;
+/** (S4 W5: 30 % less saturated — the S3 rings read as orange halos) */
+export const OCHRE = [0xb99f6f, 0xc4ac81, 0xb39668, 0xbfa87b, 0xb09669];
 /** round painted doors: green (Bag End), yellow, red, blue */
 export const DOORS = [0x2f5d3a, 0xd9a441, 0x8e2f25, 0x3c5f8c];
-/** turf of the Hill (the hoods and banks of the holes continue the terrain's grass under the golden grade) */
-export const TURF = 0x4a7a26;
-export const LAWN = 0x538428;
-/** warm window glow; the yellow-painted frames of the round windows */
+/**
+ * turf of the Hill: the banks of the holes continue the terrain's grass (sampled from the rendered Hill
+ * under the golden grade, so the banks read as the hillside, never as lighter caps)
+ */
+export const TURF = 0x4c7630;
+export const LAWN = 0x4f7830;
+/** the fill under a garden terrace: a grassy bank (S4 W5: the S3 dry-stone fronts read as pedestals) */
+export const BANK = 0x4a6c2c;
+/** warm window glow; the yellow-painted frames of the round windows (muted) */
 export const WARM = 0xf0a850;
-export const WINDOW_FRAME = 0xd8b04e;
+export const WINDOW_FRAME = 0xa88c4a;
 /** hedges: dark, dense green */
-export const HEDGE = 0x33521f;
-/** lanes: worn soil (dark and desaturated: golden light warms it), their worn grassy verges */
-export const LANE = 0x5e5848;
-export const VERGE = 0x5a6534;
-/** dry-stone retaining faces of the garden terraces (grey-brown), the moss and turf on their tops */
-export const DRYSTONE = 0x7d7466;
+export const HEDGE = 0x3c5c24;
+/** lanes: worn soil (≤ 15 % luminance contrast to the grass), their worn grassy verges */
+export const LANE = 0x6c6a52;
+export const VERGE = 0x5e6c34;
+/** dry-stone retaining faces of the garden terraces (grey), the moss and turf on their tops */
+export const DRYSTONE = 0x6c6c5c;
 export const MOSS = 0x55702c;
 /** pale weathered timber of picket fences */
 export const PICKET = 0xb39d78;
@@ -117,6 +125,22 @@ export function archOutline(w: number, hs: number, h: number, foot = 0.03, n = 1
 }
 
 /**
+ * A smial facade outline (u, −v) in the door plane: half width `hw`, straight sides to `hs`, then a low
+ * rounded "eyebrow" (steep at the ends, flat over the crown) up to `crown`; foot 0.004 below y = 0.
+ */
+export function eyebrow(hw: number, hs: number, crown: number, n = 12): V2[] {
+  const out: V2[] = [
+    [-hw, 0.004],
+    [hw, 0.004],
+  ];
+  for (let i = 0; i <= n; i++) {
+    const u = 1 - (2 * i) / n;
+    out.push([u * hw, -(hs + (crown - hs) * Math.max(0, 1 - u * u) ** 0.7)]);
+  }
+  return out;
+}
+
+/**
  * A strip lying IN the ground along a local polyline (lanes, tracks, ditches): short thin planks, each in
  * the local ground's tangent plane (pitched along the path AND rolled across it), its top `lift` above
  * the terrain; plank widths, sideways offsets and shades jittered and the odd plank dropped, so the
@@ -170,15 +194,17 @@ export function decal(k: ProxyKit, path: V2[], width: number, o: { fam?: FamilyI
 export function lane(k: ProxyKit, path: V2[], width = 0.036): void {
   // (top 4 m above the heightfield: the rendered terrain triangles may stand a little above the bilinear
   // height on steep convex ground, and a lower strip breaks up into dashes there)
-  decal(k, path, width * 1.75, { color: VERGE, gaps: 0.3, jitter: 1, step: 0.08, lift: 0.0032, grain: 0.75 });
-  decal(k, path, width, { color: LANE, gaps: 0, jitter: 0.25, step: 0.09, lift: 0.004 });
+  // S4 W5: short, barely jittered planks (0.03 km) so the strip follows the ground as one worn ribbon —
+  // the S3 0.09 km planks stepped down the Hill like a LEGO track
+  decal(k, path, width * 1.6, { color: VERGE, gaps: 0.08, jitter: 0.3, step: 0.07, lift: 0.0032, grain: 0.75 });
+  decal(k, path, width, { color: LANE, gaps: 0, jitter: 0.05, step: 0.035, lift: 0.004 });
 }
 
 /**
  * A hedge along a local polyline: a thick clipped volume following the ground, its sides battered in (a
  * rounded-looking section, never a card), its shade broken from step to step — never a string of beads.
  */
-export function hedge(k: ProxyKit, path: V2[], h = 0.03, t = 0.032): void {
+export function hedge(k: ProxyKit, path: V2[], h = 0.022, t = 0.032): void {
   // segments ≤ 0.05 km, each a hump-sectioned prism lying along the ground between its ends (pitched with
   // the slope), its foot sunk 0.02 — plain placed parts: no seating contacts (the gate would read the sink
   // across a sloping hedge line as burial)
@@ -203,10 +229,11 @@ export function hedge(k: ProxyKit, path: V2[], h = 0.03, t = 0.032): void {
       const sec: V2[] = [
         [-t / 2, 0.02],
         [t / 2, 0.02],
-        [t / 2, -hh * 0.55],
-        [t * 0.3, -hh],
-        [-t * 0.3, -hh],
-        [-t / 2, -hh * 0.55],
+        [t / 2, -hh * 0.45],
+        [t * 0.38, -hh * 0.85],
+        [0, -hh],
+        [-t * 0.38, -hh * 0.85],
+        [-t / 2, -hh * 0.45],
       ];
       k.extrude('foliage', sec, L + 0.004, { at: [x0 - D[0] * 0.002, y0 - D[1] * 0.002, z0 - D[2] * 0.002], rot: basisRot(R, D, [-U[0], -U[1], -U[2]]), color: HEDGE, shade: 0.88 + k.r(47) * 0.22, lod: 0 });
     }
@@ -259,14 +286,15 @@ export interface Hole {
 
 /**
  * A hobbit-hole dug into the slope, facing down the fall line, behind its own shallow garden terrace: a
- * LEVEL lawn on a fill in front of the door — its front a low grey-brown dry-stone face under a mossy turf
- * lip, its ends running into the slope; a vegetable bed and a flower bed on the lawn. The hill comes right down over the door: a turf
- * bank face whose brow stands just above the door, and behind it a draped turf mound (the hill swelling over
- * the hole). In the bank a round painted door in a timber frame inside a narrow plaster surround (≈ 1.3 ×
- * the door's radius) on a stone step, round windows in yellow-painted frames set into the turf (warm glass
- * at night when lit), tufts and flowers along the foot of the bank, a brick chimney standing on the mound,
- * a picket fence or a clipped hedge along the terrace's edge with a gap for the gate, sometimes a hedge
- * clump at a corner. Returns the door and terrace frame.
+ * LEVEL lawn on a low grassy fill in front of the door (its visible drop capped at ≈ 0.025 km) under a
+ * mossy turf lip; a vegetable bed and a flower bed on the lawn. The front (S4 W5, the Matamata smials): a
+ * low ochre facade with a shallow eyebrow top round the door and windows, set into a thin turf bank face
+ * (0.025 km deep) whose brow meets it within 0.01 km — the Hill itself is the turf above (no separate kit
+ * mound: kit turf on the Hill shades unlike the terrain grass and read as lighter caps). On the facade a
+ * round painted door in a dark timber ring on a stone step, round windows in muted painted frames (warm
+ * glass at night when lit), low tufts along the foot of the bank, a short brick chimney poking out of the
+ * turf behind (when asked: every third hole), a picket fence or a clipped hedge along the terrace's edge
+ * with a gap for the gate, sometimes a hedge clump at a corner. Returns the door and terrace frame.
  */
 export function hobbitHole(k: ProxyKit, o: HoleOpts): Hole {
   const { yaw: fall, slope } = fallLine(k, o.at[0], o.at[1]);
@@ -280,9 +308,10 @@ export function hobbitHole(k: ProxyKit, o: HoleOpts): Hole {
   const F: V2 = o.at;
   const P = (u: number, v: number): V2 => [F[0] + rx * u + nx * v, F[1] + rz * u + nz * v];
   // ---- the terrace: a level top at the door's foot (ty), filled out over the slope below it
-  // (shallow: the retaining face stays low — about half the drop a full-depth garden would need)
-  const D = Math.min(o.terrace ?? 0.12, 0.055 / Math.max(0.2, slope)) * 0.62;
-  const hw = (w * (o.terraceW ?? 1.45)) / 2;
+  // (shallow: the retaining face stays low — S4 W5: its visible drop capped at ≈ 0.025 km, so no hole
+  // stands on a pedestal)
+  const D = Math.min(Math.min(o.terrace ?? 0.12, 0.055 / Math.max(0.2, slope)) * (slope > 0.8 ? 0.4 : 0.62), 0.028 / Math.max(0.2, slope));
+  const hw = (w * (o.terraceW ?? 1.2)) / 2;
   const ring = (gw: number, gd: number): V2[] => [P(-hw - gw, -0.03), P(hw + gw, -0.03), P(hw + gw, D * 0.62 + gd * 0.5), P(hw * 0.9 + gw * 0.8, D * 0.9 + gd * 0.85), P(hw * 0.62, D + gd), P(-hw * 0.62, D + gd), P(-hw * 0.9 - gw * 0.8, D * 0.9 + gd * 0.85), P(-hw - gw, D * 0.62 + gd * 0.5)];
   const outline = ring(0, 0);
   const gs = outline.map(([x, z]) => k.ground(x, z));
@@ -290,7 +319,7 @@ export function hobbitHole(k: ProxyKit, o: HoleOpts): Hole {
   const ty = Math.max(k.ground(F[0], F[1]) + 0.003, Math.min(...gs) + 0.021);
   // the body under the lawn: its front is the low dry-stone retaining face, its ends running into the slope
   const high = Math.max(...gs);
-  k.extrude('weathered', outline, 0.003, { followGround: true, at: [0, ty - 0.003 - high, 0], taper: 0.12, color: DRYSTONE, shade: 0.92 + k.r(31) * 0.12, grain: 0.85, lod: 0 });
+  k.extrude('foliage', outline, 0.003, { followGround: true, at: [0, ty - 0.003 - high, 0], taper: 0.12, color: BANK, shade: 0.92 + k.r(31) * 0.12, grain: 0.4, lod: 0 });
   // the lawn on the terrace (a hair proud of the stone top), a mossy turf lip overhanging the face
   const lawnW = hw * 2 - 0.01;
   const lawnD = D - 0.006;
@@ -304,20 +333,22 @@ export function hobbitHole(k: ProxyKit, o: HoleOpts): Hole {
   const fx = F[0] + nx * 0.002;
   const fz = F[1] + nz * 0.002;
   const y0 = ty - 0.008;
-  // the bank face: the hillside cut back round the door, its brow just above the door's top
-  const brow = fy + r + 0.016 - y0;
-  k.extrude('foliage', archOutline(w * 1.08, brow * 0.62, brow, 0.06, 8), 0.06, { at: [F[0] - nx * 0.064, y0, F[1] - nz * 0.064], rot: planeRot(yaw), color: TURF, grain: 0.6, lod: 1 });
-  const mr = w * 1.1;
-  const mback = 0.05 + mr * 0.3;
-  const mh = Math.max(0.022, H * 0.45 - slope * mback);
-  const mc: V2 = [F[0] - nx * mback, F[1] - nz * mback];
-  k.mound('foliage', mr, mh, { at: [mc[0], 0, mc[1]], seg: 9, color: TURF, lod: 1 });
-  // the narrow plaster surround, the timber frame, the painted door, a stone step
-  k.cylinder('plaster', r * 1.32, r * 1.32, 0.004, { at: [fx - nx * 0.003, fy, fz - nz * 0.003], rot: faceRot(yaw), seg: 12, color: o.facade ?? OCHRE[0], shade: o.shade, grain: 0.55, lod: 0 });
-  k.cylinder('wood', r * 1.12, r * 1.12, 0.004, { at: [fx - nx * 0.0015, fy, fz - nz * 0.0015], rot: faceRot(yaw), seg: 10, color: TIMBER, lod: 0 });
-  k.cylinder('wood', r, r, 0.005, { at: [fx, fy, fz], rot: faceRot(yaw), seg: 10, color: o.door, lod: 0 });
+  // ---- S4 W5 (C2 #1): the front reads as the Matamata smials — a low ochre facade with a shallow eyebrow
+  // top round the door and windows, set into a thin turf bank face whose brow meets it within 0.01 km, the
+  // hillside swelling softly behind (a smooth low mound) — never an extruded hood on a faceted cap
+  const crown = fy + r * 1.08 + 0.008 - y0;
+  const fhw = r * 2.8 + 0.012;
+  const fhs = r * 1.35 + 0.002;
+  // the turf bank face (0.025 deep, flush behind the facade) and the ochre facade on it
+  k.extrude('foliage', eyebrow(fhw + 0.009, fhs + 0.004, crown + 0.008), 0.025, { at: [F[0] - nx * 0.027, y0, F[1] - nz * 0.027], rot: planeRot(yaw), color: TURF, grain: 0.35, lod: 1 });
+  k.extrude('plaster', eyebrow(fhw, fhs, crown), 0.004, { at: [F[0] - nx * 0.002, y0, F[1] - nz * 0.002], rot: planeRot(yaw), color: o.facade ?? OCHRE[0], shade: o.shade, grain: 0.55, lod: 0 });
+  // (no separate turf mound behind the face: any kit turf lying on the Hill shades unlike the terrain's
+  // grass and read as lighter caps / patches in every C2 frame — the Hill itself is the bank above the door)
+  // the dark timber frame and the painted door on the facade, a stone step
+  k.cylinder('wood', r * 1.12, r * 1.12, 0.004, { at: [fx - nx * 0.0015, fy, fz - nz * 0.0015], rot: faceRot(yaw), seg: 12, color: DOOR_RING, lod: 0 });
+  k.cylinder('wood', r, r, 0.005, { at: [fx, fy, fz], rot: faceRot(yaw), seg: 12, color: o.door, lod: 0 });
   k.box('weathered', r * 2.2, 0.005, 0.02, { at: [fx + nx * 0.008, ly - 0.003, fz + nz * 0.008], rot: [0, yaw, 0], color: 0x8a8272, lod: 0 });
-  // round windows set into the bank either side of the door: yellow-painted frames round warm glass
+  // round windows in the facade either side of the door: painted frames round warm glass
   // (glowing at night when lit) or dark glass
   const nw = o.windows ?? 1;
   for (let i = 0; i < nw; i++) {
@@ -331,22 +362,22 @@ export function hobbitHole(k: ProxyKit, o: HoleOpts): Hole {
     else k.cylinder('wood', r * 0.34, r * 0.34, 0.005, { at: [wx, wy, wz], rot: faceRot(yaw), seg: 8, color: 0x3a3226, lod: 0 });
     if (o.spark && i === 0) k.light([wx + nx * 0.004, wy, wz + nz * 0.004], { color: WARM, intensity: 1.1, radius: 0.012, kind: 'window' });
   }
-  // grass tufts and flowers along the foot of the bank, breaking its edge
+  // grass tufts and the odd muted flower clump along the foot of the bank, breaking its edge (low, squashed:
+  // never a string of beads)
   for (const u of [-0.42, -0.3, 0.3, 0.42]) {
     if (k.r(34) < 0.25) continue;
     const [px, pz] = P(u * w * 1.08 + (k.r(35) - 0.5) * 0.01, 0.004);
-    const flower = k.r(36) < 0.5;
-    const tint = flower ? [0xd9c24a, 0xc95f7a, 0xe0e0d0, 0x9a6ab0][Math.floor(k.r(38) * 4)] : [0x6a8a34, 0x7c9440][Math.floor(k.r(39) * 2)];
-    k.rock('foliage', 0.008 + k.r(37) * 0.006, { at: [px, ly + 0.004, pz], squash: flower ? 0.8 : 1.2, detail: 0, color: tint, lod: 0 });
+    const flower = k.r(36) < 0.3;
+    const tint = flower ? [0xb8a650, 0x9c6a72, 0xb8b4a0, 0x80688e][Math.floor(k.r(38) * 4)] : [0x5e7a30, 0x6c8038][Math.floor(k.r(39) * 2)];
+    k.rock('foliage', 0.009 + k.r(37) * 0.006, { at: [px, ly + 0.002, pz], squash: flower ? 0.55 : 0.7, detail: 0, color: tint, lod: 0 });
   }
-  // a brick chimney with a cap slab, standing on the mound (its base on the mound's surface there)
+  // a short brick chimney with a cap slab poking out of the turf behind the face (its base in the bank or
+  // the hillside, whichever is higher there)
   if (o.chimney) {
-    const [cx, cz] = P(w * 0.22, -0.12);
-    const t = Math.min(1, Math.hypot(cx - mc[0], cz - mc[1]) / mr);
-    const surf = k.ground(cx, cz) + mh * Math.cos((t * Math.PI) / 2) ** 1.5;
-    const base = surf - 0.014;
-    k.box('plaster', 0.026, 0.07, 0.026, { at: [cx, base, cz], rot: [0, yaw, 0], color: BRICK, grain: 0.5, lod: 0 });
-    k.box('weathered', 0.036, 0.008, 0.036, { at: [cx, base + 0.07, cz], rot: [0, yaw, 0], color: 0x5c5650, lod: 0 });
+    const [cx, cz] = P(w * 0.22, -0.1);
+    const base = k.ground(cx, cz) - 0.012;
+    k.box('plaster', 0.022, 0.045, 0.022, { at: [cx, base, cz], rot: [0, yaw, 0], color: BRICK, grain: 0.5, lod: 0 });
+    k.box('weathered', 0.03, 0.006, 0.03, { at: [cx, base + 0.045, cz], rot: [0, yaw, 0], color: 0x5c5650, lod: 0 });
   }
   // ---- the garden on the lawn: a tilled vegetable bed and a flower bed either side of the path
   const bedW = Math.min(0.07, hw * 0.55);

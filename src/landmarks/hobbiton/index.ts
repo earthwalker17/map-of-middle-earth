@@ -248,7 +248,7 @@ export default defineLandmark({
     hedge(
       k,
       MAIN_LANE.slice(1, 5).map(([x, z]) => [x, z + 0.06] as V2),
-      0.032,
+      0.024,
       0.03,
     );
   },
@@ -258,26 +258,26 @@ export default defineLandmark({
       id: 'hobbiton-close',
       fStop: 11,
       distanceKm: 7,
-      elevationDeg: 9,
-      azimuthDeg: 205,
-      fov: 17,
+      elevationDeg: 6.5,
+      azimuthDeg: 212,
+      fov: 20,
       lift: 0.15,
-      aimKm: [-0.25, 0.35],
+      aimKm: [-0.5, 0.4],
       tod: 17.8,
       compare: ['reference/film/hobbiton/hobbiton-wide-fotr.jpg', 'reference/photos/hobbiton/bag-end-hill-set.jpg', 'reference/photos/hobbiton/hobbiton-mill-bridge-set.jpg'],
-      note: 'hero (close, 7 km, fov 17): low from the south-south-west in the golden late-afternoon sun (17.8: the lit south-west face of the Hill) — Bag Hill filling the frame: Bag End near the top under its great oak, the rows of round doors on their terraces with gardens, hedges and lanes below them (the mill, the bridge and the Party Field are outside this tight frame: w5i-hobbiton-mill and hobbiton-wide show them)',
+      note: 'hero (close, 7 km, fov 20): low (6.5°, S4 W5 — the S3 9° read as a steep look-down) from the south-south-west in the golden late-afternoon sun (17.8: the lit south-west face of the Hill), the mill pond at the left edge — Bag Hill filling the frame: Bag End near the top under its great oak, the rows of round doors in their ochre fronts cut into the turf, gardens, hedges and worn lanes below them (at 4–5° the pond rim hides the water and the bare flank fills the frame; az 225 loses the pond: probed and rendered in W5)',
     },
     {
       id: 'hobbiton-wide',
-      distanceKm: 40,
-      elevationDeg: 22,
+      distanceKm: 30,
+      elevationDeg: 12,
       azimuthDeg: 255,
-      fov: 34,
+      fov: 30,
       lift: 0,
-      aimKm: [3, -4],
+      aimKm: [1.2, -4.5],
       tod: 17.8,
       compare: ['reference/film/hobbiton/hobbiton-wide-fotr.jpg'],
-      note: 'the Shire (context, 40 km — at 55 km the S3 final critics lost the Hill —, pitch 22°): Hobbiton’s Hill on the left third with Bag End’s oak, the Water leading in from the west through the patchwork of hedged fields and woods to the far downs (the pitch keeps the snowy ranges beyond the frame), golden afternoon',
+      note: 'the Shire (context, 30 km, pitch 12° — S4 W5: at 40 km / 22° the Hill was a small striped cone): Hobbiton’s Hill on the left third with Bag End’s oak, the Water leading in from the west through the patchwork of hedged fields and woods to the far downs, golden afternoon',
     },
   ],
 });
@@ -294,7 +294,7 @@ function buildHill(k: ProxyKit): void {
   const [bnx, bnz] = facing(beYaw);
 
   // ---- Bag End: the largest front, the big green door, a window either side, a lamp by the gate
-  const bag = hobbitHole(k, { at: be, w: 0.4, door: DOORS[0], doorR: 0.074, facade: 0xcfae6e, windows: 2, chimney: true, lit: true, spark: true, edge: 'picket', terrace: 0.12, terraceW: 1.05, clump: 1 });
+  const bag = hobbitHole(k, { at: be, w: 0.4, door: DOORS[0], doorR: 0.055, facade: 0xc0a97d, windows: 2, chimney: true, lit: true, spark: true, edge: 'picket', terrace: 0.07, terraceW: 1.05, clump: 1 });
   k.light([bag.gate[0] + bag.r[0] * 0.05, bag.ty + 0.05, bag.gate[1] + bag.r[1] * 0.05], { color: 0xffc070, intensity: 1.0, radius: 0.012, kind: 'lamp' });
   k.cylinder('wood', 0.003, 0.004, 0.05, { at: [bag.gate[0] + bag.r[0] * 0.05, bag.ty - 0.004, bag.gate[1] + bag.r[1] * 0.05], seg: 5, color: TIMBER, lod: 0 });
   placed.push(be);
@@ -362,7 +362,7 @@ function buildHill(k: ProxyKit): void {
           door: DOORS[(i * 3 + ri) % DOORS.length],
           facade: OCHRE[i % OCHRE.length],
           windows: i % 3 === 0 ? 1 : 2,
-          chimney: i % 3 !== 1,
+          chimney: i % 3 === 0,
           lit,
           spark,
           edge: i % 3 === 2 ? 'hedge' : 'picket',
@@ -424,8 +424,9 @@ function buildHill(k: ProxyKit): void {
       off.forEach((p, i) => {
         const gap = k.r(41) < 0.22 || placed.some((q) => Math.hypot(q[0] - p[0], q[1] - p[1]) < 0.09);
         if (!gap) piece.push(p);
-        if ((gap || i === off.length - 1) && piece.length >= 2) {
-          hedge(k, piece, 0.026 + k.r(42) * 0.01, 0.034);
+        // (S4 W5: no lone two-sample stubs — they read as dark slabs dropped on the slope)
+        if ((gap || i === off.length - 1) && piece.length >= 3) {
+          hedge(k, piece, 0.019 + k.r(42) * 0.007, 0.034);
           if (k.r(43) < 0.35) {
             const [tx, tz] = piece[Math.floor(piece.length / 2)];
             const crown = 0.08 + k.r(44) * 0.04;
@@ -567,7 +568,7 @@ function buildPartyField(k: ProxyKit): void {
       [px - 0.1, pz + 0.5],
       [px + 0.45, pz + 0.42],
     ],
-    0.032,
+    0.024,
     0.028,
   );
 }
