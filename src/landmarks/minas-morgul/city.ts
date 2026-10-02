@@ -2,39 +2,49 @@ import type { ProxyKit } from '../kit/ProxyKit.ts';
 import { SINK } from '../kit/ProxyKit.ts';
 import { elevation } from '../osgiliath/elev.ts';
 import type { V2, V3 } from '../records.ts';
-import { BRIDGE_END, C, GATE, GATE_OUT, PAD_C, T2, T2_C, T2_TOP, T3, T3_TOP, TOWER, WALL } from './layout.ts';
-import { type Band, E0, GLOW, GLOW_HOT, wash, washFull } from './wash.ts';
+import { BRIDGE_END, BRIDGE_KINK, C, GATE, GATE_OUT, PAD_C, T2, T2_C, T2_TOP, T3, T3_TOP, TOWER, WALL } from './layout.ts';
+import { type Band, E0, GLOW, GLOW_HOT, wash } from './wash.ts';
 
 /**
- * The stone and the corpse-light (the RotK gate still, Nasmith's Tower of the Moon): PALE, ghostly stone
- * (albedo ≈ 0.35–0.45: moonlit it reads bone-grey, by day a pale grey-green) washed from below by a green
- * light. Every outer face — curtain, tier walls, bastions, gate blades and towers, keep blocks, houses,
- * the bridge's parapets and statues (and the Tower's keep and the lower third of its shaft, tower.ts) —
- * carries night-gated `emissiveGreen` skins in fine bands from its visible foot up (≈ 45 % of the height on
- * towers and blocks, 70 % on the curtain, the whole height on the tier walls — whose feet the curtain
- * hides — fading to a third), one saturated emerald paint in every band, the strength falling smoothly
+ * The stone and the corpse-light (the RotK gate still, Nasmith's Tower of the Moon): DARK, dead grey stone
+ * (S4 W5, the C2 art director: ≈ 40 % darker than S3's pale stone, which read as lit green glass) washed
+ * from below by a green light that pools at the feet and the gate and dies out by mid-height. Every outer
+ * face — curtain, tier walls, bastions, gate blades and towers, keep blocks, houses, the bridge's parapets
+ * and statues (and the lower half of the Tower's keep, tower.ts) — carries night-gated `emissiveGreen`
+ * skins in fine bands from its visible foot up (≈ 40–42 % of the height on the tier walls, towers and
+ * blocks, 50 % on the curtain, the strength falling smoothly to a tenth — WASH_FLOOR — at the zone's top;
+ * a faint rim under the tier walls' coping), one saturated emerald paint in every band
  * (wash.ts); the light pools on the level ground at every wall foot (flat glow strips: the halo at the
  * base) and spills down the retaining plinths. A wall standing on a lower tier rises from that tier's
  * top, so its wash starts at its visible foot. Windows are few, small, dim slits; the gate mouth burns; the Tower's lamp room is
  * the one strong light (tower.ts).
  */
-const STONE = 0xaeb2ab;
-const STONE_HI = 0xbabeb7;
-const STONE_LO = 0x9a9f98;
-const RIB = 0xb6bab3;
+const STONE = 0x6a6f69;
+const STONE_HI = 0x757a74;
+const STONE_LO = 0x5c615b;
+const RIB = 0x707570;
 const PLINTH = 0x7e837d;
 const ROCK = 0x5d625e;
 const ROOF = [0x4f5652, 0x5a605c, 0x474d4a];
-const GATE_STONE = 0x939891;
-const BRIDGE_STONE = 0xa6aaa3;
-const STATUE = 0x9da29b;
+const GATE_STONE = 0x62675f;
+const BRIDGE_STONE = 0x5f645e;
+const STATUE = 0x666b65;
+const PARAPET = 0x686d67;
 
 const DEG = 180 / Math.PI;
 
-/** the curtain: its whole front shows, the light climbing 70 % of it */
-const WALL_WASH = wash(28, 0.7, E0);
-/** the tier walls: their upper parts show over the wall in front, so the light climbs all the way */
-const TIER_WASH = washFull(20, E0 * 0.9, 0.3);
+/**
+ * the curtain: its whole front shows, the light climbing half of it (S4 W5: the green pools at the foot and
+ * the gate and dies out by mid-height; the stone above stays dark)
+ */
+const WALL_WASH = wash(24, 0.5, E0);
+/**
+ * the tier walls: the light climbs their lower 40 % only — their feet stand behind the wall in front, so
+ * from the hero their visible upper parts are dark stone with a faint glow rising from behind the parapet;
+ * fix round (the critic: the darkened tiers melt into the equally dark cliff): a faint green rim just
+ * under the coping (half the foot's strength), so each tier's edge separates from the rock behind it
+ */
+const TIER_WASH: Band[] = [...wash(14, 0.4, E0 * 0.8), { ...wash(1, 1, E0 * 0.8 * 0.5)[0], f0: 0.93, f1: 0.985 }];
 const TOWER_WASH = wash(16, 0.42, E0 * 0.9);
 const SMALL_WASH = wash(8, 0.4, E0 * 0.7);
 const RIB_WASH = wash(8, 0.42, E0 * 0.8);
@@ -77,7 +87,7 @@ interface SegOpts {
 }
 
 /**
- * A battered wall segment a → b: pale stone, ends run on by t/2 to close the corners; pilaster ribs up the
+ * A battered wall segment a → b: dark stone, ends run on by t/2 to close the corners; pilaster ribs up the
  * outer face (LOD0), the wash on the outer face (and the ribs' fronts), an optional retaining plinth with
  * the light spilling down it, an optional halo of light on the ground at its foot. Returns its base.
  */
@@ -258,7 +268,7 @@ function bastion(k: ProxyKit, p: V2, r: number, top: number, cap: number, base?:
   if (cap > 0) k.cone('weathered', rr(h) * 1.05, cap, { at: [p[0], b0 + h + 0.02, p[1]], seg: 4, rot: [0, 45, 0], color: ROOF[0], faceted: true, lod });
 }
 
-/** a box block (keep hall, gate tower): pale, its wash as slightly larger shells round its lower part */
+/** a box block (keep hall, gate tower): dark stone, its wash as slightly larger shells round its lower part */
 function block(k: ProxyKit, p: V2, w: number, d: number, h: number, yawDeg: number, y0: number, o: { roof?: 'flat' | 'gable'; color?: number; washBands?: Band[]; shade?: number } = {}): void {
   if (o.roof === 'gable')
     k.house('weathered', 'slate', w, d, h, { at: [p[0], y0, p[1]], rot: [0, yawDeg, 0], seat: false, roof: 'gable', pitch: 58, overhang: 0.008, color: o.color ?? STONE, shade: o.shade, roofColor: ROOF[1] });
@@ -271,7 +281,7 @@ function block(k: ProxyKit, p: V2, w: number, d: number, h: number, yawDeg: numb
 }
 
 /**
- * A great blade flanking the gate (the film's): a broad, tapered pale fin standing out from the wall
+ * A great blade flanking the gate (the film's): a broad, tapered dark fin standing out from the wall
  * along `dir` — `t` thick at its foot, thinning to a knife edge — `len` long at its foot and rising to a
  * point `h` above the wall's foot. It is seated on the curtain's retaining plinth: its outer end is pulled
  * in until the ground under it lies no deeper than the plinth's foot (0.45 below the wall's foot), so it
@@ -360,8 +370,8 @@ interface Tier {
 }
 
 /**
- * A raised terrace (tier): its battered retaining wall round the polygon (pale, washed, a halo on the
- * level ground at its foot), its level top a pale infill slab; top at local y = `top`. Where the wall
+ * A raised terrace (tier): its battered retaining wall round the polygon (dark, washed, a halo on the
+ * level ground at its foot), its level top a dark infill slab; top at local y = `top`. Where the wall
  * stands on a lower tier (`below`), it rises from that tier's top — its line is split where it crosses
  * the lower tier's edge — so its wash and halo start at its visible foot (never inside the lower tier's
  * infill); elsewhere it rises from the lowest ground under it.
@@ -396,7 +406,7 @@ function terrace(k: ProxyKit, poly: V2[], centre: V2, top: number, parapet: numb
  * walls of uneven height between round bastions and two tall capped towers against the mountain, on a
  * retaining plinth where the shelf falls away, the rock spur under it); a second terrace ring stacked up
  * toward the north-east; the keep terrace round the Tower with its heavy blocks; the gate between the two
- * great blades and two gate towers; pale houses with dark roofs packed between the tiers. Fins only at
+ * great blades and two gate towers; dark houses with dark roofs packed between the tiers. Fins only at
  * the gate (the crown is the Tower's).
  */
 export function buildCity(k: ProxyKit): void {
@@ -460,7 +470,7 @@ export function buildCity(k: ProxyKit): void {
   for (const s of [-1, 0, 1]) k.cone('darkStone', 0.012, s ? 0.07 : 0.05, { at: [mouth[0] + GATE_OUT[0] * 0.01 + side[0] * s * 0.04, gy + 0.42, mouth[2] + GATE_OUT[1] * 0.01 + side[1] * s * 0.04], rot: [180, 0, 0], seg: 4, color: 0x59625d });
   k.light([mouth[0] + GATE_OUT[0] * 0.012, gy + 0.1, mouth[2] + GATE_OUT[1] * 0.012], { color: 0x1fe070, intensity: 0.45, radius: 0.016, kind: 'magic', gate: 'night' });
 
-  // ---- houses: pale, dark-roofed, packed between the curtain and the terraces (on the shelf) and on the
+  // ---- houses: dark stone, dark-roofed, packed between the curtain and the terraces (on the shelf) and on the
   // second terrace's ring; the street from the gate kept clear; a few dim slits
   const street: V2[] = [
     [GATE[0] - 0.07, GATE[1] - 0.1],
@@ -533,48 +543,103 @@ function rockSpur(k: ProxyKit): void {
 }
 
 /**
- * The bridge over the Morgulduin from the gate to the road on the south bank: a broad stone deck on
- * round arches and heavy piers (one elevation-drawn slab: the deck line falling gently from the gate, the
- * arches' intrados and the pier feet following the ground), lined on both parapets with hunched statues
- * on plinths, their heads catching the corpse-light.
+ * The bridge over the Morgulduin from the gate to the road on the south bank (S4 W5: the RotK gate still —
+ * a dark stone causeway on arches, kinked, statues on its parapet posts): two legs meeting at a heavy pier
+ * in the ravine (BRIDGE_KINK) — the first falls south from the gate, the second turns south-east to the far
+ * bank, so from the hero (south-south-west) its flank shows its arches. Each leg is one elevation-drawn
+ * slab: the deck line falling evenly over the whole causeway, round arches under the deck between piers
+ * whose feet follow the ground, and where the piers stand tall a second, lower tier of arches (a tie arch
+ * between the piers half-way down), so it reads as a viaduct, never a slide. Dark stone; the statues stand
+ * on posts proud of the parapets, their eyes a dim green glint.
  */
 export function buildBridge(k: ProxyKit, padY: number): void {
   const a: V2 = [GATE[0] + GATE_OUT[0] * 0.115, GATE[1] + GATE_OUT[1] * 0.115];
+  const m: V2 = BRIDGE_KINK;
   const b: V2 = BRIDGE_END;
-  const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
-  const dir: V2 = [(b[0] - a[0]) / L, (b[1] - a[1]) / L];
+  const L1 = Math.hypot(m[0] - a[0], m[1] - a[1]);
+  const L2 = Math.hypot(b[0] - m[0], b[1] - m[1]);
   const yA = padY + 0.05;
   const yB = k.ground(b[0], b[1]) + 0.05;
-  const deckY = (u: number) => yA + ((yB - yA) * u) / L;
+  // the deck line over the whole causeway (u from the gate)
+  const deckAt = (u: number) => yA + ((yB - yA) * u) / (L1 + L2);
   const width = 0.4;
+  arcadeLeg(k, a, m, deckAt(0), deckAt(L1), width, 3, true);
+  arcadeLeg(k, m, b, deckAt(L1), deckAt(L1 + L2), width, 5, false);
+  // the kink pier: a heavy square block under the turn, battered, its top the deck
+  const ym = deckAt(L1);
+  const gm = Math.min(...[-0.25, 0, 0.25].flatMap((dx) => [-0.25, 0, 0.25].map((dz) => k.ground(m[0] + dx, m[1] + dz)))) - SINK;
+  const yawM = -Math.atan2(b[1] - a[1], b[0] - a[0]) * DEG;
+  const hm = Math.max(0.12, ym - gm);
+  k.loft(
+    'weathered',
+    [
+      { outline: rectO(-0.32, 0.32, -0.3, 0.3), y: 0 },
+      { outline: rectO(-0.25, 0.25, -0.23, 0.23), y: hm - 0.1 },
+      { outline: rectO(-0.25, 0.25, -0.23, 0.23), y: hm },
+    ],
+    { at: [m[0], gm, m[1]], rot: [0, yawM, 0], color: BRIDGE_STONE, shade: 0.9 },
+  );
+}
+
+/**
+ * One leg of the bridge a → b: the deck falling from y0 to y1 over `n` spans; `first`: the gate leg (the
+ * wash on its flanks).
+ */
+function arcadeLeg(k: ProxyKit, a: V2, b: V2, y0: number, y1: number, width: number, n: number, first: boolean): void {
+  const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const dir: V2 = [(b[0] - a[0]) / L, (b[1] - a[1]) / L];
+  const deckY = (u: number) => y0 + ((y1 - y0) * u) / L;
   const deck = 0.1;
   const ground = (u: number) => Math.min(...[-0.45, 0, 0.45].map((s) => k.ground(a[0] + dir[0] * u - dir[1] * s * width, a[1] + dir[1] * u + dir[0] * s * width))) - 0.06;
-  const n = 7;
+  /** the highest ground under a stretch of the deck */
+  const groundMax = (u0: number, u1: number) => Math.max(...Array.from({ length: 9 }, (_, i) => ground(u0 + ((u1 - u0) * i) / 8)));
   const span = L / n;
-  const pier = 0.18;
+  const pier = 0.16;
   const rA = (span - pier) / 2;
   const outline: V2[] = [
     [0, deckY(0)],
     [L, deckY(L)],
   ];
   const under: V2[] = [];
+  const ties: V2[][] = [];
   for (let i = n - 1; i >= 0; i--) {
     const u0 = i * span;
     const u1 = (i + 1) * span;
     const uc = (u0 + u1) / 2;
     const p0 = Math.min(L, u1 + pier / 2);
     const p1 = u1 - pier / 2;
+    const q0 = u0 + pier / 2;
     under.push([p0, Math.min(ground(p0), deckY(p0) - deck)], [p1, Math.min(ground(p1), deckY(p1) - deck)]);
     const spring = deckY(uc) - deck - rA * 1.05;
-    if (spring > Math.max(ground(p1), ground(u0 + pier / 2)) + 0.03) {
+    const gMax = groundMax(q0, p1);
+    if (spring > gMax + 0.03) {
       under.push([p1, spring]);
-      for (let j = 1; j < 10; j++) {
-        const t = (j / 10) * Math.PI;
+      for (let j = 1; j < 12; j++) {
+        const t = (j / 12) * Math.PI;
         under.push([uc + Math.cos(t) * rA, spring + Math.sin(t) * rA]);
       }
-      under.push([u0 + pier / 2, spring]);
+      under.push([q0, spring]);
+      // the lower tier: where the piers stand tall, a tie arch half-way down between them
+      const clear = spring - gMax;
+      if (clear > 1.0) {
+        const top = gMax + clear * 0.55;
+        const sl = top - 0.09 - rA;
+        if (sl > gMax + 0.12) {
+          const tie: V2[] = [
+            [q0 - 0.01, top],
+            [p1 + 0.01, top],
+            [p1 + 0.01, sl],
+          ];
+          for (let j = 1; j < 12; j++) {
+            const t = (j / 12) * Math.PI;
+            tie.push([uc + Math.cos(t) * rA, sl + Math.sin(t) * rA]);
+          }
+          tie.push([q0 - 0.01, sl]);
+          ties.push(tie);
+        }
+      }
     }
-    under.push([u0 + pier / 2, Math.min(ground(u0 + pier / 2), deckY(u0 + pier / 2) - deck)]);
+    under.push([q0, Math.min(ground(q0), deckY(q0) - deck)]);
   }
   under.push([0, Math.min(ground(0), deckY(0) - deck)]);
   const clean: V2[] = [];
@@ -584,14 +649,15 @@ export function buildBridge(k: ProxyKit, padY: number): void {
     clean.push(q);
   }
   elevation(k, 'weathered', a, b, [...outline, ...clean], width, { color: BRIDGE_STONE, shade: 0.95 });
-  // pale parapets, and the faint corpse-light washing up the bridge's flanks from below (three bands
-  // over the deck's edge and the parapet's outer face, night): the bridge reads as a pale lit line
-  // against the dark spur
-  const band = (y0: number, y1: number): V2[] => [
-    [0, deckY(0) + y0],
-    [L, deckY(L) + y0],
-    [L, deckY(L) + y1],
-    [0, deckY(0) + y1],
+  // the tie arches: a little thinner than the deck slab (set back from its faces)
+  for (const tie of ties) elevation(k, 'weathered', a, b, tie, width * 0.8, { color: BRIDGE_STONE, shade: 0.85 });
+  // the parapets, and the faint corpse-light washing up the bridge's flanks from below (three bands over
+  // the deck's edge and the parapet's outer face, night), on the gate leg only (the wash's reach)
+  const band = (ya: number, yb: number): V2[] => [
+    [0, deckY(0) + ya],
+    [L, deckY(L) + ya],
+    [L, deckY(L) + yb],
+    [0, deckY(0) + yb],
   ];
   const line = (off: number): [V2, V2] => [
     [a[0] - dir[1] * off, a[1] + dir[0] * off],
@@ -599,31 +665,31 @@ export function buildBridge(k: ProxyKit, padY: number): void {
   ];
   for (const s of [-1, 1]) {
     const [pa, pb] = line((width / 2 - 0.015) * s);
-    elevation(k, 'weathered', pa, pb, band(-0.01, 0.045), 0.03, { color: 0xb2b6af, shade: 0.95, lod: 0 });
+    elevation(k, 'weathered', pa, pb, band(-0.01, 0.045), 0.03, { color: PARAPET, shade: 0.95, lod: 0 });
+    if (!first) continue;
     const [qa, qb] = line((width / 2 + 0.0025) * s);
     for (const g of BRIDGE_WASH) {
-      const y0 = -deck + (deck + 0.045) * g.f0;
-      const y1 = -deck + (deck + 0.045) * g.f1;
-      elevation(k, 'emissiveGreen', qa, qb, band(y0, y1), 0.003, { color: g.color, glow: { strength: g.s, gate: 'night' }, lod: 0 });
+      const ya = -deck + (deck + 0.045) * g.f0;
+      const yb = -deck + (deck + 0.045) * g.f1;
+      elevation(k, 'emissiveGreen', qa, qb, band(ya, yb), 0.003, { color: g.color, glow: { strength: g.s, gate: 'night' }, lod: 0 });
     }
   }
-  // statues along both parapets: a plinth faintly lit green (the light pooling at their feet), a hunched
-  // cloaked body leaning in over the road, a hooded head; a dim green glint under the hood (LOD0)
-  const ns = Math.floor(L / 0.3);
-  for (let i = 1; i < ns; i++) {
-    const u = (i / ns) * L;
+  // statues on posts along both parapets: a square post proud of the parapet, a hunched cloaked body
+  // leaning in over the road, a hooded head; a dim green glint under the hood (LOD0)
+  const ns = Math.max(2, Math.floor(L / 0.3));
+  for (let i = first ? 1 : 0; i < ns; i++) {
+    const u = ((i + (first ? 0 : 0.5)) / ns) * L;
     const y = deckY(u);
     for (const s of [-1, 1]) {
-      const off = (width / 2 - 0.04) * s;
+      const off = (width / 2 - 0.015) * s;
       const px = a[0] + dir[0] * u - dir[1] * off;
       const pz = a[1] + dir[1] * u + dir[0] * off;
       const yaw = -Math.atan2(dir[1], dir[0]) * DEG;
-      k.box('emissiveGreen', 0.06, 0.03, 0.06, { at: [px, y, pz], rot: [0, yaw, 0], color: GLOW, glow: { strength: SMALL_WASH[1].s, gate: 'night' }, lod: 0 });
-      // the body: a tapering hunched cloak (a 5-sided cone, leaning toward the road)
+      k.box('weathered', 0.055, 0.085, 0.055, { at: [px, y - 0.01, pz], rot: [0, yaw, 0], color: PARAPET, shade: 0.9, lod: 0 });
       const lean: V3 = [8 * dir[0] * s, 0, -8 * dir[1] * s];
-      k.cylinder('weathered', 0.012, 0.03, 0.085, { at: [px, y + 0.03, pz], rot: lean, seg: 5, color: STATUE, lod: 0 });
-      k.cone('weathered', 0.02, 0.04, { at: [px + dir[1] * s * 0.008, y + 0.11, pz - dir[0] * s * 0.008], seg: 5, color: STATUE, lod: 0 });
-      k.box('emissiveGreen', 0.012, 0.006, 0.012, { at: [px + dir[1] * s * 0.014, y + 0.118, pz - dir[0] * s * 0.014], color: GLOW_HOT, glow: { strength: 1.0, gate: 'night' }, lod: 0 });
+      k.cylinder('weathered', 0.012, 0.03, 0.085, { at: [px, y + 0.075, pz], rot: lean, seg: 5, color: STATUE, lod: 0 });
+      k.cone('weathered', 0.02, 0.04, { at: [px + dir[1] * s * 0.008, y + 0.155, pz - dir[0] * s * 0.008], seg: 5, color: STATUE, lod: 0 });
+      k.box('emissiveGreen', 0.012, 0.006, 0.012, { at: [px + dir[1] * s * 0.014, y + 0.163, pz - dir[0] * s * 0.014], color: GLOW_HOT, glow: { strength: 1.0, gate: 'night' }, lod: 0 });
     }
   }
 }

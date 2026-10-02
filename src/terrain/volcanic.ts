@@ -1,5 +1,6 @@
 import { tsl, type TslNode } from '../materials/tsl.ts';
 import { srgbNode } from '../materials/looks.ts';
+import { DOOM_PLAIN_FLOWS, type PlainFlow } from '../landmarks/mount-doom/flows.ts';
 
 /**
  * Volcanic ground (S4): Gorgoroth's cracked ash crust and basalt, Dagorlad's lighter crust, cinder around
@@ -63,21 +64,17 @@ export const VOLCANIC = {
    * S4 W4-S2 lava flows on the plain round Orodruin (the fissure glow clusters along them instead of being
    * sprinkled over the plain): [source x, z (km from Doom's summit, x east, z south — the landmark's local
    * frame), compass heading deg (x = sin, z = −cos), length km, half-width km, heat 0..1, molten channel
-   * 0 / 1]. The first four start exactly at the toes of the cone's kit flows (src/landmarks/mount-doom/
-   * parts.ts FLOWS az 152 / 194 / 238 / 104 — measured from the built kit's last tongue runs: the kit traces
-   * its flows by steepest descent, so its toes are not at rim + length on the azimuth) and go on in the
-   * direction of their last run; the rest are older, crusted ones (no channel) from the cone's foot.
-   * Keep the toes in sync with the kit (contract request: the landmark should export them).
+   * 0 / 1]. The first four continue the cone's kit flows from their toes on their headings — read from the
+   * landmark's flow table (src/landmarks/mount-doom/flows.ts DOOM_FLOWS, S4 W5: the kit eases each flow
+   * onto that toe, so the two stay continuous by construction); the rest are older, crusted ones (no
+   * channel) from the cone's foot.
    */
   flows: [
-    [5.17, 14.78, 166, 18, 1.5, 1.0, 1],
-    [-5.33, 12.8, 206, 14, 1.3, 0.9, 1],
-    [-7.84, 5.23, 239, 12, 1.1, 0.75, 1],
-    [8.13, -0.02, 96, 10, 0.9, 0.65, 1],
+    ...DOOM_PLAIN_FLOWS,
     [6.0, -14.8, 22, 14, 1.3, 0.35, 0],
     [-13.4, -7.0, 298, 12, 1.2, 0.3, 0],
     [15.2, -7.7, 63, 9, 1.0, 0.25, 0],
-  ] as const,
+  ] as readonly PlainFlow[],
   /**
    * meander of a flow's centreline: amplitude (km) of a per-flow wave and of the 12 / 3 km noise — pinned
    * at the source (none there, full by flowPin of the length), so a flow leaves its kit toe on its axis

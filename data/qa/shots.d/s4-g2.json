@@ -1,0 +1,76 @@
+{
+ "version": 1,
+ "notes": "S4 W5-G2 hero polish: the reframed heroes' night pairs on their S4 W5 cameras (the review-s4 / s4-a night shots still use the S3 cameras; contract request to retarget them).",
+ "shots": [
+  {
+   "id": "g2-doom-night",
+   "tod": 22.0,
+   "fStop": 4,
+   "camera": {
+    "orbit": {
+     "place": "mount-doom",
+     "distanceKm": 50,
+     "elevationDeg": -1.2,
+     "azimuthDeg": 166,
+     "fov": 46,
+     "lift": 3,
+     "aimKm": [
+      10,
+      -6
+     ]
+    }
+   },
+   "compare": [
+    "reference/film/mount-doom/mount-doom-plume-lava-fotr.jpg"
+   ],
+   "note": "S4 W5-G2: mount-doom-close (S4 W5 camera) at night \u2014 the flows, their pools and the plume's underglow"
+  },
+  {
+   "id": "g2-laketown-night",
+   "tod": 21.5,
+   "dayOfYear": 240,
+   "fStop": 5.6,
+   "camera": {
+    "orbit": {
+     "place": "lake-town",
+     "distanceKm": 6.0,
+     "elevationDeg": 10,
+     "azimuthDeg": 40,
+     "fov": 34,
+     "lift": 2.6,
+     "aimKm": [
+      1.4,
+      0.4
+     ]
+    }
+   },
+   "compare": [
+    "reference/film/lake-town/lake-town-wide.webp"
+   ],
+   "note": "S4 W5-G2: lake-town-close (S4 W5 camera) at night \u2014 the window lights over the piles"
+  },
+  {
+   "id": "g2-tirith-night",
+   "tod": 21.6,
+   "events": {
+    "beacons": 1
+   },
+   "fStop": 8,
+   "camera": {
+    "orbit": {
+     "place": "minas-tirith",
+     "distanceKm": 55,
+     "elevationDeg": 10,
+     "azimuthDeg": 140,
+     "fov": 24,
+     "lift": 7.5,
+     "aimKm": [
+      -1.5,
+      1.0
+     ]
+    }
+   },
+   "note": "S4 W5-G2: minas-tirith-close (S4 W5 camera) at night with the beacons lit"
+  }
+ ]
+}

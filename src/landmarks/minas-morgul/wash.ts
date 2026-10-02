@@ -3,7 +3,7 @@ import type { LightDecl, V3 } from '../types.ts';
 
 /**
  * The corpse-light that washes up Minas Morgul's walls (city.ts, tower.ts): thin night-gated
- * `emissiveGreen` skins in fine bands from a face's foot to ≈ 45 % of its height. Every band has the SAME
+ * `emissiveGreen` skins in fine bands from a face's foot to ≈ 40–50 % of its height (S4 W5). Every band has the SAME
  * saturated emerald paint — the hue never drifts toward white (a pale band emits near-white light, which
  * the night grade and AgX turn mint) — and only the strength falls, smoothly, as (1 − t)^0.9 over the
  * washed zone. Enough bands that no step shows at the hero distance.
@@ -40,20 +40,6 @@ export function wash(n: number, top: number, e0: number): Band[] {
 }
 
 /**
- * A full-height wash for the tier walls (their feet stand behind the wall in front of them: from the
- * hero only their upper parts show): `n` bands over the whole face, the strength falling from `e0` at
- * the foot to `floor`·e0 at the top, (1 − t)^0.9 in between.
- */
-export function washFull(n: number, e0: number, floor: number): Band[] {
-  return wash(n, 1, e0).map((b, i) => {
-    const tm = (i + 0.5) / n;
-    const f = Math.max(floor, WASH_FLOOR);
-    const e = e0 * (f + (1 - f) * (1 - tm) ** 0.9);
-    return { ...b, s: Math.min(15, e / LUM_G) };
-  });
-}
-
-/**
  * S4 W2-D: the corpse-light as LIGHT — spill-only sources (no sprite) at the walls' feet, in front of the
  * gate and up the tiers (WASH_LIGHTS), so the green falls off over each face and across the stone and the
  * ground round it (EmissionSystem spill; the halo of the lamp room greens the vale air). With the sources
@@ -62,12 +48,12 @@ export function washFull(n: number, e0: number, floor: number): Band[] {
  */
 export const WASH_SPILL = true;
 /** the painted bands' share of their S3 strength once the spill lights the walls */
-export const WASH_PAINT = 0.35;
+export const WASH_PAINT = 0.15;
 /**
  * with the spill, the paint no longer falls to nothing up a washed zone: it keeps this share of its foot
  * strength at the zone's top (the hue stays on the stone; never a black cap over a lit foot)
  */
-const WASH_FLOOR = WASH_SPILL ? 0.3 : 0;
+const WASH_FLOOR = WASH_SPILL ? 0.1 : 0;
 
 /** foot emission of the wash (linear green) */
 export const E0 = 0.35 * (WASH_SPILL ? WASH_PAINT : 1);
@@ -84,12 +70,12 @@ const WASH_LIGHT = 0x14b85a;
  * r = 0.12 → the core r0 = 0.24 km, so each face is brightest at its foot and dims up it and along it.
  */
 const WASH_SRC: [V3, number, number][] = [
-  [[0.2, -0.2, 3.15], 1.0, 1.4],
-  [[-1.3, -0.25, 1.92], 0.95, 1.5],
-  [[1.42, -0.25, 2.72], 0.7, 1.3],
-  [[0.42, 0.5, 2.36], 0.6, 1.1],
-  [[0.52, 1.4, 2.0], 0.56, 1.0],
-  [[0.52, 2.25, 1.85], 0.45, 0.9],
+  [[0.2, -0.2, 3.15], 1.3, 1.4],
+  [[-1.3, -0.25, 1.92], 1.0, 1.5],
+  [[1.42, -0.25, 2.72], 0.95, 1.3],
+  [[0.42, 0.5, 2.36], 0.25, 0.6],
+  [[0.52, 1.4, 2.0], 0.18, 0.6],
+  [[0.52, 2.25, 1.85], 0.12, 0.6],
 ];
 
 export const WASH_LIGHTS: LightDecl[] = WASH_SRC.map(([at, intensity, spillKm]) => ({ at, color: WASH_LIGHT, intensity, radius: 0.12, kind: 'magic', gate: 'night', spillKm, sprite: false }));

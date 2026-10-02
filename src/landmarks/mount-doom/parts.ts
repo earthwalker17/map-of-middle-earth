@@ -1,5 +1,6 @@
 import type { ProxyKit } from '../kit/ProxyKit.ts';
 import type { V2, V3 } from '../records.ts';
+import { type DoomFlow, DOOM_FLOWS } from './flows.ts';
 
 /**
  * Mount Doom's kit parts: the crater (a lava lake on its floor and one soft crater glow rising from
@@ -7,15 +8,18 @@ import type { V2, V3 } from '../records.ts';
  * descent on the composite ground, so they follow the real gullies), the Sammath Naur door high on the
  * east flank with the winding path up to it, and scattered volcanic blocks (hero range only).
  *
- * A flow (see `flow`): two or three braided strands spilling from just below the rim lip (spread ≈ 0.8 km
- * at the vent), joining into one tapering tongue (0.26 → 0.12 km at the toe) whose paint alternates
- * between long hot runs and short dark crust breaks along its length (crust lengthens downstream), over a
- * 2.5–3× wider draped underlay of very dim red — the glow spilling onto the rock either side. Lights only where the flow is on the hero
- * cameras' flank, seated on the ribbon's top.
+ * A flow (see `flow`, the table in flows.ts): braided strands spilling from just below the rim lip, joining
+ * into one continuous hot core lane that narrows by a third toward its toe, with lower crusted edge lanes
+ * either side on the wide flows (converging under the core over the last fifth) and a few short dim-red
+ * crust bands cut straight across all lanes; branching toes end in lobed glowing pools on the plain, lit
+ * by spill-only lava lights. Lights only where the flow is on the hero cameras' flank, seated on the
+ * ribbon's top.
  */
 
 /** crater radius (km) of the cone stamp (index.ts) */
 export const CRATER_R = 2.4;
+/** compass azimuth of the notch cut in the crater lip on the hero side (index.ts), the hero flow's vent */
+export const NOTCH_AZ = 166;
 
 const DEG = Math.PI / 180;
 const SINK = 0.02;
@@ -37,10 +41,13 @@ const LAVA_HOT = 0x7a1c06;
  * raises green toward orange) leaves them red enough for the Mordor grade's red exemption
  */
 const RUN: number[] = [0x5a0e02, 0x4c0b02, 0x3e0902];
-/** the crust between the runs: near-black red (a faint glow in the cracks) */
-const CRUST = 0x140401;
-/** the underlay: the glow spilling onto the flank (upper, lower half) — barely there, a red cast */
-const SPILL: [number, number] = [0x1c0602, 0x140401];
+/**
+ * S4 W5 fix: the crust is a dim red, not near-black — the bands across a flow and its crusted edge lanes
+ * read as cooling skin on one continuous flow, never as gaps between separate bricks
+ */
+const CRUST = 0x260702;
+/** the crusted edge lanes either side of a wide flow's hot core */
+const EDGE = 0x3a0a03;
 
 /**
  * Steepest-descent path over the composite ground from `start`, `len` km in `step` km steps, with inertia
@@ -114,34 +121,149 @@ function ribbonTop(k: ProxyKit, p: V2, d: V2, hw: number, h: number): number {
   return Math.min(k.ground(p[0] - d[1] * hw, p[1] + d[0] * hw), k.ground(p[0] + d[1] * hw, p[1] - d[0] * hw)) + h;
 }
 
-/** a flow description: rim azimuth, length (km), vent width (km), braided strands, lights */
-interface Flow {
-  az: number;
-  len: number;
-  w0: number;
-  strands: number;
-  lights: number;
-}
-
-/**
- * The flows. Two thick ones on the flank the hero cameras face (south-south-east), a thinner one on the
- * west-south-west and a short one on the east (the Sammath Naur side, seen from Barad-dûr). One light,
- * on the hero flow's upper tongue (the flank the hero cameras face): sprites are not occluded by the
- * terrain yet, so any light on another flank shows through the cone.
- */
-const FLOWS: Flow[] = [
-  { az: 152, len: 13.5, w0: 0.8, strands: 3, lights: 1 },
-  { az: 194, len: 11.5, w0: 0.75, strands: 2, lights: 0 },
-  { az: 238, len: 6.5, w0: 0.45, strands: 2, lights: 0 },
-  { az: 104, len: 5.5, w0: 0.4, strands: 1, lights: 0 },
-];
-
-/** ribbon heights: the hot tongue stands a little proud of the draped spill */
+/** ribbon heights: the hot tongue stands a little proud of the ground */
 const FLOW_H = 0.2;
 /** the ribbons' sides slope in (top 40 % of the base width): a low rounded tongue, not a tube with walls */
 const LAVA_BATTER = 0.6;
+/** widest lane (km): a ribbon wider than ≈ 0.25 km cannot follow a gully's cross-section (wallPath stands on the lower of its two edges) */
+const LANE_MAX = 0.22;
+/** the pools on the plain: hot core paint, crusted rim paint */
+const POOL_HOT = 0x6a1203;
+const POOL_RIM = 0x1e0602;
 
-function flow(k: ProxyKit, f: Flow): void {
+/** a unit vector on a compass heading (deg) */
+const headingDir = (h: number): V2 => [Math.sin(h * DEG), -Math.cos(h * DEG)];
+
+/**
+ * The flow's centreline: the steepest descent from the vent down the cone's gullies for `coneKm`, then a
+ * Hermite ease onto the authored toe and heading (flows.ts) — the terrain's flow continues from there.
+ */
+function flowPath(k: ProxyKit, f: DoomFlow, vent: V2): V2[] {
+  // the trace, smoothed (a 1-2-1 filter, three passes: no sharp kinks for the side lanes to fold over)
+  let cone = descend(k, vent, f.coneKm);
+  for (let pass = 0; pass < 3; pass++)
+    cone = cone.map((p, i): V2 => (i === 0 || i === cone.length - 1 ? p : [(cone[i - 1][0] + 2 * p[0] + cone[i + 1][0]) / 4, (cone[i - 1][1] + 2 * p[1] + cone[i + 1][1]) / 4]));
+  const p0 = cone[cone.length - 1];
+  const q = cone[Math.max(0, cone.length - 4)];
+  const dl = Math.hypot(p0[0] - q[0], p0[1] - q[1]) || 1;
+  const d0: V2 = [(p0[0] - q[0]) / dl, (p0[1] - q[1]) / dl];
+  const p1: V2 = [f.toe[0], f.toe[1]];
+  const d1 = headingDir(f.heading);
+  const D = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]);
+  const n = Math.max(2, Math.ceil(D / 0.2));
+  const out = cone.slice();
+  for (let i = 1; i <= n; i++) {
+    const t = i / n;
+    const h00 = 2 * t ** 3 - 3 * t ** 2 + 1;
+    const h10 = t ** 3 - 2 * t ** 2 + t;
+    const h01 = -2 * t ** 3 + 3 * t ** 2;
+    const h11 = t ** 3 - t ** 2;
+    out.push([h00 * p0[0] + h10 * d0[0] * D + h01 * p1[0] + h11 * d1[0] * D, h00 * p0[1] + h10 * d0[1] * D + h01 * p1[1] + h11 * d1[1] * D]);
+  }
+  return out;
+}
+
+/**
+ * The widest ribbon (≤ `w`) that stays seated along `pts`: wallPath stands on the lower of its two edges, so
+ * where it crosses the slope or a rib's crest its centre line is buried by the ground's rise across it —
+ * kept under ≈ 40 % of the ribbon's height `h` (sampled every 0.1 km; never narrower than 0.05 km).
+ */
+function fitWidth(k: ProxyKit, pts: V2[], w: number, h = FLOW_H): number {
+  const s = arcs(pts);
+  const L = s[s.length - 1];
+  const n = Math.max(2, Math.ceil(L / 0.1));
+  const bury = (ww: number): number => {
+    let worst = 0;
+    for (let i = 0; i <= n; i++) {
+      const { p, d } = along(pts, s, (L * i) / n);
+      const h = ww / 2;
+      const lo = Math.min(k.ground(p[0] - d[1] * h, p[1] + d[0] * h), k.ground(p[0] + d[1] * h, p[1] - d[0] * h));
+      worst = Math.max(worst, k.ground(p[0], p[1]) - lo);
+    }
+    return worst;
+  };
+  let ww = w;
+  while (ww > 0.05 && bury(ww) > 0.4 * h) ww *= 0.8;
+  return Math.max(0.05, ww);
+}
+
+/** a polyline offset sideways by o(t) (t = arc length) */
+function offsetPath(path: V2[], s: number[], o: (t: number) => number): V2[] {
+  return path.map((p, i) => {
+    const { d } = along(path, s, Math.min(s[s.length - 1] - 1e-6, s[i]));
+    const oo = o(s[i]);
+    return [p[0] - d[1] * oo, p[1] + d[0] * oo];
+  });
+}
+
+/**
+ * The crust bands of one flow, as fractions of its length: a few short bands across the WHOLE flow (every
+ * lane is cut at the same fractions, so a band reads as cooling skin across it), longer and closer
+ * downstream; none in the first 15 %.
+ */
+function crustBands(k: ProxyKit, L: number): [number, number][] {
+  const out: [number, number][] = [];
+  let t = L * 0.15 + 0.6 * k.r();
+  while (t < L - 0.4) {
+    const u = t / L;
+    const len = 0.05 + 0.1 * k.r() * (0.5 + u);
+    out.push([t / L, Math.min(L, t + len) / L]);
+    t += len + (1.8 - u) * (0.7 + 0.6 * k.r());
+  }
+  return out;
+}
+
+/**
+ * One lane of a flow (S4 W5 fix — the review's 'segmented chain of bricks'): ONE continuous ribbon cut only
+ * where its paint changes — at the three stages (vent → toe, the flow narrowing by a third, never widening)
+ * and at the flow's shared crust bands — so consecutive pieces share their end sections exactly and no
+ * square end shows. `paint`: the lane's colour by stage (the hot core's runs, or the crusted edge);
+ * `widths`: per-stage caps (the core's, for the edge lanes), each stage fitted to stay seated.
+ */
+function lane(k: ProxyKit, pts: V2[], w: number, paint: (stage: number) => number, bands: [number, number][], o: { h?: number; caps?: number[] } = {}): number[] {
+  const s = arcs(pts);
+  const L = s[s.length - 1];
+  const h = o.h ?? FLOW_H;
+  const widths: number[] = [];
+  for (let st = 0; st < 3; st++) {
+    const cap = Math.min(w * (1 - 0.3 * ((st + 0.5) / 3)), st ? widths[st - 1] : Infinity, o.caps?.[st] ?? Infinity);
+    widths.push(fitWidth(k, slice(pts, s, (L * st) / 3, (L * (st + 1)) / 3), cap, h));
+  }
+  const cuts = [0, L / 3, (2 * L) / 3, L];
+  for (const [a, b] of bands) cuts.push(a * L, b * L);
+  cuts.sort((x, y) => x - y);
+  for (let i = 0; i + 1 < cuts.length; i++) {
+    const t0 = cuts[i];
+    const t1 = cuts[i + 1];
+    if (t1 - t0 < 0.01) continue;
+    const m = (t0 + t1) / 2;
+    const stage = Math.min(2, Math.floor((m / L) * 3));
+    const crust = bands.some(([a, b]) => m > a * L && m < b * L);
+    const seg = slice(pts, s, t0, t1);
+    if (seg.length >= 2) k.wallPath('lava', seg, h, widths[stage], { followGround: true, batter: LAVA_BATTER, color: crust ? CRUST : paint(stage), step: 0.15 });
+  }
+  return widths;
+}
+
+/**
+ * A glowing pool on the plain: an irregular lobed crust (three overlapping low discs) round two smaller hot
+ * cores, draped on the ground — no single coin-like disc.
+ */
+function pool(k: ProxyKit, p: V2, r: number): void {
+  const a0 = k.r() * Math.PI * 2;
+  for (let i = 0; i < 3; i++) {
+    const a = a0 + (i * Math.PI * 2) / 3 + (k.r() - 0.5) * 0.8;
+    const d = r * (0.3 + 0.15 * k.r());
+    k.mound('lava', r * (0.55 + 0.15 * k.r()), 0.03, { at: [p[0] + Math.cos(a) * d, 0, p[1] + Math.sin(a) * d], seg: 12, color: POOL_RIM, lod: 1 });
+  }
+  for (let i = 0; i < 2; i++) {
+    const a = a0 + 0.5 + i * 2.6;
+    const d = r * 0.22;
+    k.mound('lava', r * (0.32 + 0.08 * k.r()), 0.05, { at: [p[0] + Math.cos(a) * d, 0, p[1] + Math.sin(a) * d], seg: 10, color: POOL_HOT, lod: 1 });
+  }
+}
+
+function flow(k: ProxyKit, f: DoomFlow): void {
   // start 0.4 below the rim lip on the outer flank (never poking over the silhouette)
   const c = crest(k, f.az);
   let r0 = c.r;
@@ -150,80 +272,103 @@ function flow(k: ProxyKit, f: Flow): void {
     r0 = r;
     if (k.ground(p[0], p[1]) <= c.h - 0.4) break;
   }
-  const path = descend(k, polar(f.az, r0), f.len);
+  const path = flowPath(k, f, polar(f.az, r0));
   if (path.length < 6) return;
   const s = arcs(path);
   const L = s[s.length - 1];
-  // the flow's envelope (the braid's spread, the spill's width) and the tongue ribbon's own width: a
-  // ribbon wider than ~0.3 km cannot follow the gully's cross-section (wallPath stands on the lower of
-  // its two edges, so it floats over a V and buries on a cross-slope — the seating gate); the breadth
-  // near the vent comes from the braided strands and the spill
-  const width = (t: number) => f.w0 + (0.2 - f.w0) * Math.min(1, t / L) ** 0.8;
-  const ribbon = (t: number) => Math.min(0.26, f.w0) - 0.14 * Math.min(1, t / L) ** 0.8;
-  // the underlay: overlapping draped discs of dim spill, 2.5–3× the tongue's width (scalloped, soft edges)
-  for (let t = 0.1; t < L - 0.2; t += 0.45 + 0.25 * k.r()) {
-    const { p } = along(path, s, t);
-    const rad = 1.35 * width(t) + 0.12;
-    k.mound('lava', rad, 0.03, { at: [p[0], 0, p[1]], seg: 10, color: SPILL[t < L * 0.5 ? 0 : 1], lod: 0 });
-  }
-  // the braided upper stage: strands fanning out from the main line near the vent and joining it at T
-  const T = Math.min(L * 0.32, 3.2);
+  // ---- the braided upper stage: strands fanning out from the main line near the vent and joining it at T
+  const T = Math.min(L * 0.25, 3.0);
   if (f.strands > 1) {
     for (let j = 0; j < f.strands; j++) {
       const side = f.strands === 2 ? (j ? 1 : -1) : j - 1;
-      const amp = f.w0 * (0.32 + 0.15 * k.r()) * side;
+      const amp = Math.max(0.35, f.width) * (0.55 + 0.2 * k.r()) * side;
       const pts: V2[] = [];
       for (let t = 0; t <= T + 1e-6; t += 0.2) {
         const { p, d } = along(path, s, t);
         const o = amp * Math.max(0, 1 - t / T) ** 0.7 * (1 + 0.25 * Math.sin(t * 2.3 + j * 1.7));
         pts.push([p[0] - d[1] * o, p[1] + d[0] * o]);
       }
-      const ws = Math.min(0.18, (f.w0 / f.strands) * (0.85 + 0.2 * k.r()));
-      k.wallPath('lava', pts, FLOW_H, ws, { followGround: true, batter: LAVA_BATTER, color: RUN[j % 2] });
+      k.wallPath('lava', pts, FLOW_H, fitWidth(k, pts, Math.min(0.16, (f.width / f.strands) * (1 + 0.3 * k.r()))), { followGround: true, batter: LAVA_BATTER, color: RUN[j % 2] });
     }
   }
-  // the tongue: from the vent (single-strand flows) or the braid's junction down to the toe, in runs of
-  // hot lava and dark crust (crust lengthens downstream)
-  let t = f.strands > 1 ? T - 0.3 : 0;
-  let hot = true;
-  while (t < L - 0.05) {
-    const u = t / L;
-    const run = hot ? 0.6 + 0.9 * k.r() * (1 - u) : 0.08 + 0.22 * k.r() * (0.4 + u);
-    const t1 = Math.min(L, t + run);
-    const pts = slice(path, s, t, t1);
-    if (pts.length >= 2) {
-      const stage = Math.min(2, Math.floor(u * 3));
-      k.wallPath('lava', pts, FLOW_H, ribbon((t + t1) / 2), { followGround: true, batter: LAVA_BATTER, color: hot ? RUN[stage] : CRUST });
+  // ---- the body, from the braid's junction down to the toe: one continuous hot core lane, and on a wide
+  // flow (> LANE_MAX) a lower crusted edge lane either side, converging under the core over the last
+  // fifth (so the flow narrows to its core and no edge lane ends in a square cap); the crust bands cut
+  // straight across all lanes at the same fractions of the length
+  const n = f.width > LANE_MAX ? 3 : 1;
+  const lw = f.width / n;
+  const tStart = f.strands > 1 ? T - 0.3 : 0;
+  const sub = slice(path, s, tStart, L);
+  const ss = arcs(sub);
+  const Ls = ss[ss.length - 1];
+  const bands = crustBands(k, Ls);
+  const core = lane(k, sub, lw * 1.08, (st) => RUN[st], bands);
+  if (n === 3) {
+    for (const side of [-1, 1]) {
+      const end = 0.72 + 0.12 * k.r();
+      const ph = k.r() * 6;
+      const conv = (u: number) => 1 - Math.min(1, Math.max(0, (u - end + 0.2) / 0.2)) ** 2;
+      const pts = offsetPath(sub, ss, (t) => side * (lw + 0.025 * Math.sin(t * 1.3 + ph)) * (1 - 0.33 * (t / Ls)) * conv(t / Ls));
+      const ps = arcs(pts);
+      const edgePts = slice(pts, ps, 0, ps[ps.length - 1] * end);
+      // the edge lane's own stages span its shorter length: the bands map onto it by arc length
+      const eb = bands.filter(([a]) => a < end).map(([a, b]): [number, number] => [a / end, Math.min(1, b / end)]);
+      lane(k, edgePts, lw * 1.08, () => EDGE, eb, { h: FLOW_H * 0.75, caps: core });
     }
-    t = t1;
-    hot = !hot;
   }
-  // lights on the ribbon's top (the hero flank only)
-  for (let i = 0; i < f.lights; i++) {
-    const ti = L * (0.22 + 0.3 * i);
+  // ---- the branching toes: short continuous lanes fanning from the toe, each ending in a glowing pool
+  const toe: V2 = [f.toe[0], f.toe[1]];
+  f.branches.forEach((b, i) => {
+    const pts: V2[] = [toe];
+    for (let t = 0.2; t <= b.len + 1e-6; t += 0.2) {
+      const h = f.heading + b.dh * (0.6 + 0.6 * (t / b.len));
+      const [dx, dz] = headingDir(h);
+      const q = pts[pts.length - 1];
+      pts.push([q[0] + dx * 0.2, q[1] + dz * 0.2]);
+    }
+    lane(k, pts, Math.min(LANE_MAX, lw * 1.1, core[2] * 1.1), () => RUN[2], crustBands(k, arcs(pts)[pts.length - 1]));
+    if (b.pool > 0) {
+      const end = pts[pts.length - 1];
+      const [dx, dz] = headingDir(f.heading + b.dh * 1.2);
+      const pc: V2 = [end[0] + dx * b.pool * 0.6, end[1] + dz * b.pool * 0.6];
+      pool(k, pc, b.pool);
+      // its glow on the ash round it (spill only: a sprite would show through the cone from the far side);
+      // S4 W5 fix: a tighter pool of light (spillKm 3 → 1.6), not one broad soft red ellipse
+      k.light([pc[0], k.ground(pc[0], pc[1]) + 0.15, pc[1]], { kind: 'lava', color: 0xff4a12, intensity: 0.1 + 0.05 * i, radius: 0.3, sprite: false, spillKm: 1.6 });
+    }
+  });
+  // ---- lights on the ribbon's top (the hero flank only): sprites (visible glints) and spill-only sources
+  for (let i = 0; i < f.sprites + f.spills; i++) {
+    const ti = L * (0.22 + 0.33 * i);
     const { p, d } = along(path, s, ti);
-    k.light([p[0], ribbonTop(k, p, d, ribbon(ti) / 2, FLOW_H) + 0.03, p[1]], { kind: 'lava', color: 0xff4a12, intensity: 0.1, radius: 0.15 });
+    const sprite = i < f.sprites;
+    k.light([p[0], ribbonTop(k, p, d, lw / 2, FLOW_H) + 0.03, p[1]], { kind: 'lava', color: 0xff4a12, intensity: 0.1, radius: 0.15, ...(sprite ? {} : { sprite: false, spillKm: 4 }) });
   }
 }
 
-/** the Sammath Naur: azimuth (toward Barad-dûr, which stands at bearing ≈ 56° — the door looks a little south of it, onto the path) and distance from the summit */
-export const DOOR_AZ = 66;
+/**
+ * the Sammath Naur: azimuth (toward Barad-dûr, which stands at bearing ≈ 56°) and distance from the summit.
+ * S4 W5: 66 → 54 — at 66 its frame stood on the cone's silhouette from the hero cameras (south-south-east,
+ * the silhouette's tangent at ≈ 76°) as a stepped notch; at 54 it sits just behind the east skyline
+ */
+export const DOOR_AZ = 54;
 export const DOOR_D = 5.4;
 
 export function buildDoom(k: ProxyKit): void {
   const g = (p: V2) => k.ground(p[0], p[1]);
 
-  // ---- the crater: a lava lake on its floor (seen from above) and one soft crater glow at the rim's
+  // ---- the crater: a lava lake on its floor (seen from above; kept to LOD2 — the coarsest level's
+  // silhouette part, since the pools are the largest groups and are capped at LOD1) and one soft crater glow at the rim's
   // height over the crater centre — depth-tested, so from the plain the near rim hides its lower half and
   // it rises from behind the lip as a glow over the crater (not a row of beads on the rim, not an orb)
   const floor = g([0, 0]);
-  k.cylinder('lava', 1.35, 1.5, 0.35, { at: [0, floor - 0.2, 0], seg: 28, color: LAVA_HOT, glow: { strength: 2.4 } });
+  k.cylinder('lava', 1.35, 1.5, 0.35, { at: [0, floor - 0.2, 0], seg: 28, color: LAVA_HOT, glow: { strength: 2.4 }, lod: 2 });
   let rim = -1e9;
   for (let i = 0; i < 24; i++) rim = Math.max(rim, crest(k, (i / 24) * 360).h);
   k.light([0, rim - 0.25, 0], { kind: 'lava', color: 0xff5a1a, intensity: 0.12, radius: 0.6 });
 
   // ---- the flows
-  for (const f of FLOWS) flow(k, f);
+  for (const f of DOOM_FLOWS) flow(k, f);
 
   // ---- the Sammath Naur: a dark doorway let into the east flank, facing Barad-dûr, a glow inside
   const dp = polar(DOOR_AZ, DOOR_D);

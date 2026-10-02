@@ -8,14 +8,19 @@ import type { V2, V3 } from '../types.ts';
  * kit's ground — no module state.
  */
 
-/** warm honey / cream elven stone (the film's sunlit Rivendell), a paler trim, a warmer shadow stone */
-export const STONE = 0xdcc89c;
-export const STONE2 = 0xcdb68a;
-export const TRIM = 0xeee0bd;
-/** roofs: aged bronze and verdigris copper (no slate blue) */
+/**
+ * warm honey elven stone (the film's sunlit Rivendell), a paler trim, a warmer shadow stone — S4 W5 (C2
+ * #4): a little darker than S3's cream (blank cream walls read as a dollhouse)
+ */
+export const STONE = 0xc4b08a;
+export const STONE2 = 0xb39f7a;
+export const TRIM = 0xddd0ad;
+/** roofs: verdigris copper, varied (S4 W5: at most a fifth bronze, no terracotta) */
 export const BRONZE = 0x8a6a3c;
-export const VERDIGRIS = 0x6f9a84;
-export const VERDIGRIS2 = 0x7fa892;
+/** (fix round: greener and darker — under the warm afternoon grade 0x6a7f72 read as taupe) */
+export const VERDIGRIS = 0x5a7466;
+export const VERDIGRIS2 = 0x5f7d6a;
+export const VERDIGRIS3 = 0x4f6a5a;
 export const GILT = 0xc8a050;
 export const LAMP = 0xffc27a;
 const GLASS = 0x3b3228;
@@ -52,11 +57,16 @@ export function houseFloor(k: ProxyKit, at: V2, w: number, d: number, h: number,
   return Math.max(gMin, gMax - dig * h) - SINK;
 }
 
-/** height fraction of the swept elven roof at |s| = q of the half-width (1 at the ridge, 0 at the eave):
- * a steep, slightly hollow sweep flaring out at the eaves, the eave tips turned up */
+/** where the elven roof's straight plane breaks into its flared eave (share of the half-width) */
+const EAVE_Q = 0.82;
+/**
+ * height fraction of the swept elven roof at |s| = q of the half-width (1 at the ridge, ≈ 0.03 at the
+ * eave): S4 W5 fix round (the critic: fully concave sweeps read as East-Asian pagoda roofs) — a STRAIGHT
+ * plane from the ridge, flaring to half its slope over the last fifth only (a bell-cast eave)
+ */
 function sweep(q: number): number {
-  const t = Math.min(1, Math.max(0, (q - 0.86) / 0.14));
-  return (1 - q) ** 1.7 + 0.07 * t * t * (3 - 2 * t);
+  const h0 = 0.12;
+  return q <= EAVE_Q ? 1 - (q * (1 - h0)) / EAVE_Q : h0 - (q - EAVE_Q) * 0.5;
 }
 
 /**
@@ -124,6 +134,11 @@ export interface HallOpts {
   balcony?: boolean;
   /** an explicit floor (local y) on a built terrace instead of seating on the ground */
   floor?: number;
+  /**
+   * S4 W5 (C2 #4): the front (+z, the gorge side) opened as a colonnade — the walls stand back by this
+   * share of the depth behind an arcade of slender piers, a dark void under the roof between them
+   */
+  open?: number;
 }
 
 /** how deep halls dig into the uphill side of their terrace (wall heights) */
@@ -141,10 +156,16 @@ export function hall(k: ProxyKit, o: HallOpts): number {
   const s = Math.sin(o.yaw * DEG);
   /** house-local (x along the ridge, z toward the front) → local */
   const loc = (x: number, z: number): V2 => [o.at[0] + x * c + z * s, o.at[1] - x * s + z * c];
-  const rise = o.rise ?? o.d * 0.9;
+  // S4 W5 (C2 #4): a lower pitch (≈ 38° at the ridge) over a doubled overhang
+  const oh = Math.min(o.w, o.d) * 0.28;
+  const rise = o.rise ?? Math.tan(38 * DEG) * (o.d / 2 + oh) * 0.85;
   const roofC = o.roof ?? VERDIGRIS;
-  k.house('stone', 'stone', o.w, o.d, o.h, {
-    at: [o.at[0], o.floor ?? 0, o.at[1]],
+  // an open front: the walls' box stands back behind the colonnade
+  const back = (o.open ?? 0) * o.d;
+  const wd = o.d - back;
+  const [bx0, bz0] = loc(0, -back / 2);
+  k.house('stone', 'stone', o.w, wd, o.h, {
+    at: [bx0, o.floor ?? 0, bz0],
     rot: [0, o.yaw, 0],
     roof: 'flat',
     overhang: 0.004,
@@ -153,18 +174,29 @@ export function hall(k: ProxyKit, o: HallOpts): number {
     ...(o.floor === undefined ? { dig: DIG, bank: { fam: 'foliage' as const, color: 0x6a6a34, slope: 42, ledge: 0.012 } } : { seat: false }),
     ...(o.windows ? { windows: { count: o.windows, on: 0.85, sides: 2 as const, size: 0.014, color: LAMP, intensity: 1.2 } } : {}),
   });
-  const y0 = o.floor ?? houseFloor(k, o.at, o.w, o.d, o.h, o.yaw, DIG) + SINK;
-  const oh = Math.min(o.w, o.d) * 0.14;
+  const y0 = o.floor ?? houseFloor(k, [bx0, bz0], o.w, wd, o.h, o.yaw, DIG) + SINK;
   sweptRoof(k, o.at, o.yaw, y0 + o.h, o.d / 2 + oh, o.d, o.w, o.w + 2 * oh * 0.6, rise, roofC);
   const yawRot: V3 = [0, o.yaw, 0];
-  // tall narrow window insets along both long sides (dark glass, a hair proud of the wall)
+  // tall narrow window insets along both long sides (dark glass, a hair proud of the wall); an open front
+  // gets the colonnade instead: an arcade of slender piers along the roof's front edge, the recessed wall
+  // behind it dark (the void under the roof)
   const bays = Math.max(2, Math.round(o.w / 0.06));
-  for (const side of [1, -1]) {
+  for (const side of back > 0 ? [-1] : [1, -1]) {
     for (let i = 0; i < bays; i++) {
       const u = (-0.5 + (i + 0.5) / bays) * o.w * 0.86;
       const [x, z] = loc(u, side * (o.d / 2 + 0.002));
       k.box('stone', 0.014, o.h * 0.56, 0.004, { at: [x, y0 + o.h * 0.22, z], rot: yawRot, color: GLASS, lod: 0 });
     }
+  }
+  if (back > 0) {
+    const [vx, vz] = loc(0, o.d / 2 - back + 0.003);
+    k.box('stone', o.w * 0.96, o.h * 0.92, 0.004, { at: [vx, y0, vz], rot: yawRot, color: GLASS, lod: 0 });
+    const ca = loc(-o.w / 2, o.d / 2 - 0.012);
+    const cb = loc(o.w / 2, o.d / 2 - 0.012);
+    k.arcade('stone', ca, cb, { count: Math.max(3, Math.round(o.w / 0.034)), h: o.h, archH: o.h * 0.78, pier: 0.007, depth: 0.018, deck: false, color: TRIM, lod: 0 });
+    // the floor of the colonnade
+    const [fx, fz] = loc(0, o.d / 2 - back / 2);
+    k.box('stone', o.w, 0.01, back, { at: [fx, y0 - 0.006, fz], rot: yawRot, color: STONE2, lod: 0 });
   }
   // a tall arched opening in each gable end
   for (const side of [1, -1]) {

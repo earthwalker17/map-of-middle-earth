@@ -1,6 +1,6 @@
 import type { LightDecl, LocalStamp, V3 } from '../types.ts';
 import { defineLandmark } from '../types.ts';
-import { buildDoom, CRATER_R } from './parts.ts';
+import { buildDoom, CRATER_R, NOTCH_AZ, polar } from './parts.ts';
 
 /**
  * Orodruin, Mount Doom (research §15, §13): an ISOLATED, near-symmetric volcanic cone (the film's
@@ -32,6 +32,10 @@ import { buildDoom, CRATER_R } from './parts.ts';
 /** the Gorgoroth plain the cone rises from (rel. the base ground at the origin) */
 const PLAIN = -0.6;
 const R = 28;
+/** the lower shield's radius (km) */
+const SHIELD_R = 40;
+/** the second smoke column's vent (local x, z): inside the crater's south-west side */
+const SECOND_VENT = polar(205, 1.3);
 const DEG = Math.PI / 180;
 const at = (az: number, d: number): [number, number] => [Math.sin(az * DEG) * d, -Math.cos(az * DEG) * d];
 
@@ -71,6 +75,12 @@ const STAMPS: LocalStamp[] = [
     rough: { amp: 0.6, scaleKm: 1.7, ridged: true },
     surface: 'rock',
   },
+  // 2b. the broad lower shield (S4 W5, the C2 art director: the profile was a perfect straight-sided
+  // triangle): a gentle convex base under the concave cone — the cone dominates above ≈ 17 km out, the shield
+  // carries the foot out to 40 km, so the profile breaks into a steep upper cone over a gentle base
+  { kind: 'cone', at: [0, 0], radius: SHIELD_R, summit: 6, exponent: 0.8, rough: { amp: 0.35, scaleKm: 2.6, ridged: true }, surface: 'rock' },
+  // 2c. a notch in the crater lip on the hero side (south-south-east), the hero flow spilling out of it
+  { kind: 'carve', path: [polar(NOTCH_AZ, CRATER_R - 0.8), polar(NOTCH_AZ, CRATER_R + 0.8)], width: 1.0, depth: 0.9, falloff: 1.3 },
   // 3. the lower shoulder (west-south-west)
   { kind: 'cone', at: at(246, 15), radius: 7, summit: 8.5, exponent: 1.1, rough: { amp: 0.5, scaleKm: 1.8, ridged: true }, surface: 'rock' },
   // 4. radial ribs
@@ -103,6 +113,10 @@ export default defineLandmark({
   lights: LIGHTS,
   emitters: [
     { preset: 'smoke', at: [0, 1, 0], rate: 1, scale: 3 },
+    // S4 W5 (C2 #15): a second, thinner column from the crater's south-west side, bending downwind into the
+    // ash deck beside the first (fix round: scale 5 / rate 0.5 fused with the first into one giant black
+    // mass that clipped the frame and hid the deck's underglow — now no larger than the main column, sparse)
+    { preset: 'smoke', at: [SECOND_VENT[0], 0.6, SECOND_VENT[1]], rate: 0.3, scale: 2.4 },
     { preset: 'ash', at: [0, 4, 0], rate: 0.6, scale: 6 },
     { preset: 'sparks', at: [0, 0.5, 0], rate: 0.4 },
     // low ash sheets drifting over the Gorgoroth plain (≈ 2 km over the floor at rel −16) south of the cone,
@@ -122,31 +136,33 @@ export default defineLandmark({
     {
       id: 'mount-doom-close',
       fStop: 4,
-      distanceKm: 56,
-      elevationDeg: 1,
+      distanceKm: 50,
+      elevationDeg: -1.2,
       azimuthDeg: 166,
       fov: 46,
-      lift: 1,
+      lift: 3,
       aimKm: [10, -6],
       tod: 18.5,
       compare: ['reference/film/mordor/mordor-barad-dur-and-doom-rotk.webp', 'reference/film/mount-doom/mount-doom-plume-lava-fotr.jpg', 'reference/photos/mount-doom/mount-ngauruhoe-cone.jpg'],
-      note: 'low over the Gorgoroth ash plain from the south-south-east (backlit by the low sun in the west-north-west): the broad concave cone with its glowing rim and flows, Barad-dûr on the horizon to the right with headroom over its horns (aimKm toward it, on the plain beyond the foot of the cone so the camera stays low); 56 km (shot-list heroKm 50)',
+      note: 'low over the Gorgoroth ash plain from the south-south-east (backlit by the low sun in the west-north-west): the steep concave cone over its broad shield, the notch in the lip with the hero flow pouring out of it, three flows of different widths with branching toes and glowing pools at the foot, the plume and its second column, Barad-dûr on the horizon to the right with headroom over its horns (aimKm toward it); S4 W5 (C2 #15): 50 km, the view pitched ≈ 2° up (camera height kept, aim 2 km higher) so the plain takes about a third of the frame; 50 km (shot-list heroKm 50)',
       // the probe's upper-body sample (90 % of the subject height on its axis) lies in the crater bowl,
       // ~3 below the rim — no camera low over the plain can see it; the target ground, the rim, the
-      // flows and the summit are in full view
-      expect: { los: false },
+      // flows and the summit are in full view. Sky ≤ 50 %: the probe cannot see the plume and its second
+      // column, which fill most of the sky over the cone
+      expect: { los: false, sky: [0, 0.5] },
     },
     {
       id: 'mount-doom-wide',
-      distanceKm: 120,
-      elevationDeg: 5,
+      distanceKm: 95,
+      elevationDeg: 7,
       azimuthDeg: 165,
       fov: 33,
-      lift: 0,
-      aimKm: [10, 6],
+      // (the frame lifted 4 km: headroom over Barad-dûr's horns, a little less plain)
+      lift: 4,
+      aimKm: [16, 6],
       tod: 18.5,
       compare: ['reference/film/mordor/mordor-barad-dur-and-doom-rotk.webp', 'reference/concept-art/mordor/nasmith-across-gorgoroth.jpg'],
-      note: 'Gorgoroth from the south-south-east: the lone cone on the ash plain, Barad-dûr on its Ered Lithui spur to the right with the plain between them, the Ash Mountains behind',
+      note: 'Gorgoroth from the south-south-east (S4 W5, C2 #15: 95 km, 7°, past the dark foreground ridge of the 120 km view): the lone cone on the left third on the ash plain, its flows ending in glowing pools, Barad-dûr on its Ered Lithui spur right of centre with the plain between them, the Ash Mountains behind',
     },
   ],
 });

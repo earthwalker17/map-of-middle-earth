@@ -9,7 +9,7 @@ import { FALLS, LEDGE_N, LEDGE_NE, LEDGE_S, LEDGE_SE, NORTH_FOOT, NORTH_H, PAVIL
  * with ogee caps, open pavilions, arched galleries and terraces cantilevered over the gorge on slender
  * columns — the Last Homely House on a spur above the stream, a second group on the south ledge, single
  * halls on two up-valley shelves, a round Council court among pillars, a thin arched bridge leaping a
- * waterfall's ravine, woods of golden ochre broadleaves, pale-gold birches and slender firs kept under
+ * waterfall's ravine, woods of muted autumn broadleaves, birches and slender firs kept under
  * ~0.6 of the main hall's height — the warmest, calmest place of the film.
  *
  * Local frame: x east, z south (heading 0), km round the display point, heights relative to the base
@@ -17,10 +17,11 @@ import { FALLS, LEDGE_N, LEDGE_NE, LEDGE_S, LEDGE_SE, NORTH_FOOT, NORTH_H, PAVIL
  * falling at x ≈ −4.5 … −6 into the deep Bruinen valley to the west. The gorge is built by RAISING its
  * walls beside the stream (scarps either side, their feet 0.7 km from it, a steep 0.5 km face; the river
  * guard keeps the stream and its banks): a north wall 3.3 high that begins behind the main ledge (so the
- * ledge stands out from its west end as a spur, open to the west), a south wall 2.8 high; kit cliffs
- * (halls.ts) seated at the scarps' feet give the faces sheer, stratified rock. Ledges are cut into the
+ * ledge stands out from its west end as a spur, open to the west), a south wall 2.8 high; the scarps
+ * carry the faces (S4 W5: the kit cliffs are only dark wet gully ledges under the north wall's falls,
+ * halls.ts). Ledges are cut into the
  * walls for the halls, each edged with a band of rim rock; a rock spur east of the main ledge carries a
- * pavilion at the ledge's level, a notch cut between them is the ravine of a waterfall. Five waterfalls
+ * pavilion at the ledge's level, a notch cut between them is the ravine of a waterfall. Seven waterfalls
  * are declared for S4 (no placeholder geometry).
  *
  * The hero looks up the gorge from beyond the valley lip with a long lens (the house on its spur on the
@@ -35,8 +36,12 @@ const STAMPS: LocalStamp[] = [
   // 4.5–5 km behind the rims (undulating) and falling gently away, so the valley reads as a deep cleft in
   // the high moorland. The fades are bounded: a longer north fade lifts the ground west of the main ledge
   // over the hero's line of sight, a longer south fade carries the stamp box over the hero camera (probe)
-  { kind: 'scarp', path: NORTH_FOOT, side: 'left', height: NORTH_H, run: 0.5, plateauKm: 4.5, falloff: 3.0, rough: { amp: 0.45, scaleKm: 3.0 }, surface: 'rock' },
-  { kind: 'scarp', path: SOUTH_FOOT, side: 'right', height: SOUTH_H, run: 0.5, plateauKm: 5.0, falloff: 2.5, rough: { amp: 0.35, scaleKm: 3.0 }, surface: 'rock' },
+  // (S4 W5, C2 #13: the stamped faces carry the walls — steeper, the north wall behind the halls broken
+  // into buttresses and gullies by a ridged 1 km roughness; the kit cliffs at their feet are only low ledges
+  // now. The south wall keeps its broad roughness: a ridged one moves the stamp box so that the
+  // rivendell-close probe's occlusion samples fall behind the near wall — 40 % < 60 %, the gate)
+  { kind: 'scarp', path: NORTH_FOOT, side: 'left', height: NORTH_H, run: 0.35, plateauKm: 4.5, falloff: 3.0, rough: { amp: 0.8, scaleKm: 1.0, ridged: true }, surface: 'rock' },
+  { kind: 'scarp', path: SOUTH_FOOT, side: 'right', height: SOUTH_H, run: 0.35, plateauKm: 5.0, falloff: 2.5, rough: { amp: 0.35, scaleKm: 3.0 }, surface: 'rock' },
   // the ledges for the halls, level shelves cut into the walls (≥ 1.2 km across, so the heightfield holds
   // them); the north-east shelf only cuts down into its wall
   ...[LEDGE_N, LEDGE_S, LEDGE_SE].map((l) => ({ kind: 'flatten' as const, at: l.at, radius: l.r, falloff: 0.3, height: l.h, surface: 'turf' as const })),
