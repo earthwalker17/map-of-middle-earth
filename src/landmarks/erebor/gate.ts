@@ -45,7 +45,8 @@ export const GATE_STAMPS: LocalStamp[] = [
   // the terrace and the façade's front: a row of three cuts, level from u ±1.0 to one texel behind the
   // façade's face (w −0.1; the 0.4 km heightfield ramps over a texel) and out to the river, fading out by
   // w ≈ −0.7
-  ...[-0.7, 0, 0.7].map((u): LocalStamp => ({ kind: 'flatten', at: G(u, 0.2), radius: 0.6, falloff: 0.3, height: COURT, lowerOnly: true, surface: 'rock' })),
+  // (S4 W5, C2 #11: radius 0.6 → 0.4 — the S3 cut showed as a pale smooth scoop round the gate)
+  ...[-0.7, 0, 0.7].map((u): LocalStamp => ({ kind: 'flatten', at: G(u, 0.2), radius: 0.4, falloff: 0.3, height: COURT, lowerOnly: true, surface: 'rock' })),
   { kind: 'flatten', at: G(-KING_U, 0.15), radius: 0.5, falloff: 0.3, height: COURT + 0.05, lowerOnly: true, surface: 'rock' },
   { kind: 'flatten', at: G(KING_U, 0.15), radius: 0.5, falloff: 0.3, height: COURT + 0.05, lowerOnly: true, surface: 'rock' },
 ];
@@ -431,13 +432,19 @@ export function buildGate(k: ProxyKit): void {
     k.cliff('weathered', path, hs, { at: [0, COURT - 0.1, 0], followGround: false, depth: 1.6, rough: 0.2, strata: 0.35, soft: 0.5, overhang: 0.12, taper: 0.22, color: KING_ROCK });
   }
 
-  // ---- braziers: either side of the door on the upper tier, at the second tier's corners, before the
-  // kings on the court (staggered heights and strengths: not a row of headlights from afar)
-  for (const s of [-1, 1]) {
-    brazier(k, s * 0.5, 0.2, ty, 3.6);
-    brazier(k, s * 0.9, 0.46, ty - 0.09, 2.6);
-    brazier(k, s * KING_U, 0.72, groundRange(s * KING_U, 0.72, 0.07, 0.07)[0] - 0.02, 3.1);
-  }
-  // the gate's inner glow (the halls behind the open door; a window: night gate)
-  k.light(at(0, fy + 0.32, bz + 0.05), { kind: 'window', color: 0xffb35a, intensity: 2.0, radius: 0.1 });
+  // ---- three braziers at different heights and places (S4 W5, C2 #11: the S3 six in an even row read as
+  // an LED strip): beside the door on the upper tier, at a corner of the second tier on the other side,
+  // and high on a ledge of the rock wall behind the east king
+  brazier(k, -0.5, 0.2, ty, 3.6);
+  brazier(k, 0.9, 0.46, ty - 0.09, 2.6);
+  brazier(k, KING_U + 0.62, KING_W - 0.05, ty + 1.05, 3.0);
+  // the gate's inner glow: the halls behind the open door, one broad warm opening from dusk (S4 W5: 2 / 0.1
+  // read as a pin-prick; it reads as the lit gate now)
+  k.light(at(0, fy + 0.34, bz + 0.05), { kind: 'window', gate: 'dusk', color: 0xffb35a, intensity: 4.0, radius: 0.25 });
+  // ---- dark rock backing the recess: a broken cliff wall behind the façade and above the kings' walls,
+  // taller than the gable, walked along −u (its face looks out along +w) — no pale cut ground shows round
+  // the gate
+  const backW = KING_W - 0.42;
+  const back: V2[] = [G(3.1, backW - 0.35), G(2.2, backW - 0.05), G(1.1, backW), G(0, backW + 0.04), G(-1.1, backW), G(-2.2, backW - 0.05), G(-3.1, backW - 0.35)];
+  k.cliff('weathered', back, [3.6, 4.9, 5.4, 5.6, 5.4, 4.9, 3.6], { at: [0, COURT - 0.15, 0], followGround: false, depth: 1.4, rough: 0.35, strata: 0.45, soft: 0.45, overhang: 0.06, taper: 0.5, color: 0x4d5350 });
 }
