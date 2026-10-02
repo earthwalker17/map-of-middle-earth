@@ -100,6 +100,12 @@ export type NoiseClass = (typeof NOISE)[keyof typeof NOISE];
  * Toggle with WEATHERING_ON (false = the S3 surfaces).
  */
 export const WEATHERING_ON = true;
+/**
+ * Tier of the structure material, set by LandmarkSystem.init before the first landmark mesh takes its
+ * (singleton) material: the preview tier renders the S3 surfaces (no weathering — its hashed cells, streak
+ * columns and district noise cost ≈ 10 % of a structure-heavy preview frame); review / final weather.
+ */
+export const structureTier = { full: true };
 const W = {
   /** per-part value amplitude of the house-scale octave */
   tone: 0.12,
@@ -480,6 +486,7 @@ function weathering(p: TslNode, n: TslNode, n1: TslNode, n2: TslNode, ao: TslNod
 
 function structureMaterial(): MeshStandardNodeMaterial {
   const m = new MeshStandardNodeMaterial({ roughness: 0.8, metalness: 0 });
+  const weatherOn = WEATHERING_ON && structureTier.full;
   const col = attribute('color', 'vec4');
   const surf = attribute('surf', 'vec4');
   // surf.a = noise class × 32 + ground contact (0..31)
@@ -553,7 +560,7 @@ function structureMaterial(): MeshStandardNodeMaterial {
   // the albedo pattern (× grain)
   const pattern = mix(n.mul(float(1).sub(isSmooth.mul(0.75))).add(coursing).add(rockBands), leaf, isFoliage).toVar();
   // S4 W4-S1: xyz = the weathering multiplier (rgb) of built surfaces, w = the weathering amount
-  const weather = WEATHERING_ON
+  const weather = weatherOn
     ? weathering(p, nG, n1.mul(w1), n2.mul(w2), col.a, surf.g, surf.r, albedo, contact, { isStone, isWood, isFibre, isRoof, built }).toVar()
     : vec4(1, 1, 1, 0);
   // leaf masses: sun-bleached tops, shaded undersides (like the canopy shader's sub-crown shading)
@@ -566,7 +573,7 @@ function structureMaterial(): MeshStandardNodeMaterial {
   // W.floor, so shadowed crevices and door recesses are not crushed to black.
   const contactS3 = mix(float(1), contact, CONTACT_WEIGHT);
   let rel: TslNode = vec3(1);
-  if (WEATHERING_ON) {
+  if (weatherOn) {
     const contactW = mix(float(CONTACT_WEIGHT), float(W.contact), built);
     const foot = float(1).sub(contact);
     const damp = mix(vec3(1), vec3(0.9, 0.93, 0.85), foot.mul(foot).mul(built).mul(0.8));
@@ -585,9 +592,9 @@ function structureMaterial(): MeshStandardNodeMaterial {
   // them instead of reading as one clean panel — and grimy / dusty metal is partly dielectric. Driven by
   // the weathering AMOUNT (never by how far the albedo multiplier moves, which on near-black paints is
   // ≈ dust / albedo); glossy paints (obsidian) keep their gloss.
-  const weatherRough = WEATHERING_ON ? weather.w.mul(0.35).mul(smoothstep(0.2, 0.45, surf.r)) : float(0);
+  const weatherRough = weatherOn ? weather.w.mul(0.35).mul(smoothstep(0.2, 0.45, surf.r)) : float(0);
   const rough = clamp(surf.r.add(pattern.mul(0.08)).add(weatherRough), 0.04, 1);
-  const metal = WEATHERING_ON ? surf.g.mul(float(1).sub(weatherRough.mul(2))) : surf.g;
+  const metal = weatherOn ? surf.g.mul(float(1).sub(weatherRough.mul(2))) : surf.g;
   m.roughnessNode = rough;
   m.metalnessNode = metal;
   // specular ambient: the scene has no environment map, so metals (iron, gold, metal) and glossy dark
@@ -600,8 +607,8 @@ function structureMaterial(): MeshStandardNodeMaterial {
     const sky = mix(vec3(env.groundColor), vec3(env.skyColor), smoothstep(-0.25, 0.55, r.y)).mul(env.hemiIntensity);
     // (S4 W4-S1: F0 from the weathered paint, roughness and metalness weathered too — metals such as the
     // Morannon's iron are lit mostly by this term, so their weathering has to show here)
-    const f0 = WEATHERING_ON ? mix(vec3(0.04), baseColor, metal) : mix(vec3(0.04), albedo, surf.g);
-    const specAmb = sky.mul(f0).mul(float(1).sub((WEATHERING_ON ? rough : surf.r).mul(0.45))).mul(col.a);
+    const f0 = weatherOn ? mix(vec3(0.04), baseColor, metal) : mix(vec3(0.04), albedo, surf.g);
+    const specAmb = sky.mul(f0).mul(float(1).sub((weatherOn ? rough : surf.r).mul(0.45))).mul(col.a);
     // S4 W2-D: the light the emission spill throws onto the structure (Lambertian: diffuse albedo · E / π;
     // half the baked AO — the spill is local direct light, the AO only hints at the occluded corners)
     const diffuse = baseColor.mul(float(1).sub(metal)).mul(mix(float(0.5), float(1), col.a));

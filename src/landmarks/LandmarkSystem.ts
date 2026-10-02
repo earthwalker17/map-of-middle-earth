@@ -1,6 +1,6 @@
 import { Group, Mesh } from 'three/webgpu';
 import type { FrameContext, InitContext, System } from '../core/types.ts';
-import { materialFor } from '../materials/families.ts';
+import { materialFor, structureTier } from '../materials/families.ts';
 import type { World } from '../world/World.ts';
 import type { BuiltLandmark } from './records.ts';
 
@@ -31,6 +31,8 @@ export class LandmarkSystem implements System {
 
   init(ctx: InitContext): void {
     this.root.name = 'landmarks';
+    // before the first materialFor(): the singleton structure material is built for this tier
+    structureTier.full = ctx.quality.id !== 'preview';
     for (const b of this.built) {
       const g = new Group();
       g.name = `landmark:${b.id}`;
