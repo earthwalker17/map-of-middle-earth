@@ -216,7 +216,8 @@ function ledgeLip(k: ProxyKit, l: Ledge, from: number, to: number, closeOnly = f
       pts.map(([x, z]) => Math.min(0.14, Math.max(0.05, l.h + 0.02 - k.ground(x, z)))),
       // (S4 W5 fix round: the up-valley shelves' lips close range only — with the gorge's dry kit ledges
       // gone, LOD0 fell to ≈ 27k tris and LOD1 must stay ≤ 25 % of it; the main ledges keep theirs)
-      { color: ROCK, rough: 0.35, strata: 0.3, depth: 0.2, soft: 0.5, taper: 0.1, ...(closeOnly ? { lod: 0 as const } : {}) },
+      // (and darker, moss-grey: on the shaded south wall the shelf's lip read as pale shards)
+      { color: closeOnly ? 0x41453f : ROCK, rough: 0.35, strata: 0.3, depth: 0.2, soft: 0.5, taper: 0.1, ...(closeOnly ? { lod: 0 as const } : {}) },
     );
   }
 }
