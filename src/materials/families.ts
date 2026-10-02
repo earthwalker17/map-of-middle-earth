@@ -7,7 +7,7 @@ import { gateCode, gateNode } from './gates.ts';
 import { spillIrradiance } from '../emission/spill.ts';
 
 // NB: TSL vec3(new Color()) silently yields black in r186 — always use color(Color) for colour constants
-const { Fn, If, float, vec3, vec4, attribute, fract, mx_noise_float, positionWorld, positionLocal, normalGeometry, normalView, normalWorld, cameraPosition, reflect, normalize, positionViewDirection, fwidth, length, smoothstep, mix, clamp, max, abs, sin, step, floor, select, hash, dot, sRGBTransferEOTF } = tsl;
+const { Fn, If, float, vec3, vec4, attribute, fract, min, mx_noise_float, positionWorld, positionLocal, normalGeometry, normalView, normalWorld, cameraPosition, reflect, normalize, positionViewDirection, fwidth, length, smoothstep, mix, clamp, max, abs, sin, step, floor, select, hash, dot, sRGBTransferEOTF } = tsl;
 
 /**
  * Noise class of rock faces (kit cliffs, `ProxyKit.cliff`): stone noise WITHOUT the masonry coursing +
@@ -122,6 +122,9 @@ const W = {
   boardLen: 0.075,
   boardJit: 0.18,
   seam: 0.35,
+  /** pale deposit on dark paints (luminance < ≈ 0.1): share of the paint replaced at full dust, its colour (linear) */
+  dust: 0.5,
+  dustColor: [0.1, 0.094, 0.088] as const,
 } as const;
 
 export interface GlowPreset {
@@ -297,7 +300,7 @@ interface WeatherMasks {
  * hashed cell term fades out where its cell would shrink below ~2–3 px, so wides keep the crisp model
  * read. Pure function of the fragment (no time, no state); call in uniform control flow (derivatives).
  */
-function weathering(p: TslNode, n: TslNode, n1: TslNode, n2: TslNode, ao: TslNode, metal: TslNode, c: WeatherMasks): TslNode {
+function weathering(p: TslNode, n: TslNode, n1: TslNode, n2: TslNode, ao: TslNode, metal: TslNode, albedo: TslNode, contact: TslNode, c: WeatherMasks): TslNode {
   // pixel footprint on the surface (km) and the visibility of a feature of `size` km (≥ b px: 1)
   const fp = max(length(fwidth(p)), 1e-6).toVar();
   // (fp = |fwidth(p)| ≈ 1.4–2 px of surface: a feature of `size` is fully drawn from ≈ 2.3 px, gone below ≈ 1.1 px)
@@ -391,7 +394,23 @@ function weathering(p: TslNode, n: TslNode, n1: TslNode, n2: TslNode, ao: TslNod
   const greyW = smoothstep(-0.25, 0.3, nD.add(n1.mul(0.5))).mul(0.8);
   tint = tint.mul(mix(vec3(1), mix(vec3(0.9), vec3(0.68, 0.67, 0.66), greyW), c.isWood));
 
-  return mix(vec3(1), tint.mul(max(val, 0.2)), c.built);
+  // ---- dark materials (iron-dark stone, iron, obsidian): grime cannot darken a near-black paint, so
+  // their weathering is a pale deposit instead — ash / dust / lime streaks, dust on ledges and up-facing
+  // faces, dustier blocks and a dusty foot — replacing part of the paint (as a multiplier of it)
+  const dark = float(1).sub(smoothstep(0.02, 0.12, dot(albedo, vec3(0.2126, 0.7152, 0.0722))));
+  const foot = float(1).sub(contact);
+  const dust = clamp(
+    streak
+      .mul(0.9)
+      .add(smoothstep(0.6, 0.85, ny).mul(0.6))
+      .add(max(bT, 0).mul(1.2).mul(vis(W.course)).mul(c.isStone))
+      .add(foot.mul(foot).mul(0.5))
+      .add(smoothstep(0.1, 0.45, nD.add(n1.mul(0.5))).mul(0.25)),
+    0,
+    1,
+  ).mul(dark).mul(W.dust);
+  const mul = mix(tint.mul(max(val, 0.2)), vec3(W.dustColor[0], W.dustColor[1], W.dustColor[2]).div(max(albedo, vec3(0.004))), dust);
+  return mix(vec3(1), mul, c.built);
 }
 
 function structureMaterial(): MeshStandardNodeMaterial {
@@ -415,6 +434,7 @@ function structureMaterial(): MeshStandardNodeMaterial {
   // built surfaces take the weathering (foliage and rock keep their own looks)
   const built = float(1).sub(isFoliage).sub(isRock);
   const nG = normalGeometry;
+  const albedo = sRGBTransferEOTF(col.rgb);
   // xyz = the weathering multiplier (rgb) of built surfaces, w = the albedo pattern (× grain)
   const surface = Fn(() => {
     // landmark-local km (the meshes sit at the landmark origin): small arguments, so the fine octave
@@ -465,12 +485,11 @@ function structureMaterial(): MeshStandardNodeMaterial {
       });
     }
     const pattern = mix(n.mul(float(1).sub(isSmooth.mul(0.75))).add(coursing).add(rockBands), leaf, isFoliage);
-    const weather = WEATHERING_ON ? weathering(p, nG, n1.mul(w1), n2.mul(w2), col.a, surf.g, { isStone, isWood, isFibre, isRoof, built }) : vec3(1);
+    const weather = WEATHERING_ON ? weathering(p, nG, n1.mul(w1), n2.mul(w2), col.a, surf.g, albedo, contact, { isStone, isWood, isFibre, isRoof, built }) : vec3(1);
     return vec4(weather, pattern);
   })().toVar();
   const pattern = surface.w;
   const weather = surface.xyz;
-  const albedo = sRGBTransferEOTF(col.rgb);
   // leaf masses: sun-bleached tops, shaded undersides (like the canopy shader's sub-crown shading)
   const leafTone = mix(float(1), mix(float(0.78), float(1.12), smoothstep(-0.6, 0.9, nG.y)), isFoliage);
   // the baked ground-contact term is the main baked darkening on the albedo; the hemisphere AO (col.a)
@@ -488,8 +507,14 @@ function structureMaterial(): MeshStandardNodeMaterial {
     .mul(weather);
   m.colorNode = baseColor;
   m.aoNode = col.a;
-  m.roughnessNode = clamp(surf.r.add(pattern.mul(0.08)), 0.04, 1);
-  m.metalnessNode = surf.g;
+  // S4 W4-S1: weathered patches (grime, dust) are matte — the sheen of dark glossy stone and iron breaks
+  // up with them instead of reading as one clean panel
+  // up with them instead of reading as one clean panel; dusty / grimy metal is partly dielectric
+  const weatherRough = WEATHERING_ON ? min(abs(dot(weather, vec3(0.2126, 0.7152, 0.0722)).sub(1)).mul(0.35).mul(built), 0.35) : float(0);
+  const rough = clamp(surf.r.add(pattern.mul(0.08)).add(weatherRough), 0.04, 1);
+  const metal = WEATHERING_ON ? surf.g.mul(float(1).sub(weatherRough.mul(2))) : surf.g;
+  m.roughnessNode = rough;
+  m.metalnessNode = metal;
   // specular ambient: the scene has no environment map, so metals (iron, gold, metal) and glossy dark
   // stone reflected nothing and went black in shade. Approximate image-based specular with the
   // hemisphere light's own sky / ground radiance along the reflection vector, Fresnel-weighted
@@ -498,11 +523,13 @@ function structureMaterial(): MeshStandardNodeMaterial {
     const v = normalize(cameraPosition.sub(positionWorld));
     const r = reflect(v.negate(), normalWorld);
     const sky = mix(vec3(env.groundColor), vec3(env.skyColor), smoothstep(-0.25, 0.55, r.y)).mul(env.hemiIntensity);
-    const f0 = mix(vec3(0.04), albedo, surf.g);
-    const specAmb = sky.mul(f0).mul(float(1).sub(surf.r.mul(0.45))).mul(col.a);
+    // (S4 W4-S1: F0 from the weathered paint, roughness and metalness weathered too — metals such as the
+    // Morannon's iron are lit mostly by this term, so their weathering has to show here)
+    const f0 = WEATHERING_ON ? mix(vec3(0.04), baseColor, metal) : mix(vec3(0.04), albedo, surf.g);
+    const specAmb = sky.mul(f0).mul(float(1).sub((WEATHERING_ON ? rough : surf.r).mul(0.45))).mul(col.a);
     // S4 W2-D: the light the emission spill throws onto the structure (Lambertian: diffuse albedo · E / π;
     // half the baked AO — the spill is local direct light, the AO only hints at the occluded corners)
-    const diffuse = baseColor.mul(float(1).sub(surf.g)).mul(mix(float(0.5), float(1), col.a));
+    const diffuse = baseColor.mul(float(1).sub(metal)).mul(mix(float(0.5), float(1), col.a));
     return specAmb.add(diffuse.mul(spillIrradiance(positionWorld, normalWorld)).mul(1 / Math.PI));
   })();
   return m;
