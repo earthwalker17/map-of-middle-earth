@@ -929,15 +929,30 @@ export const TERRAIN_SHADE = {
    * the 12 / 3 km terms break a long even crest (the Grey Mountains) into snowy and bare reaches
    */
   snowLineNoise: [2.4, 1.7, 0.75] as const,
-  /** snow fades in over this many units above the line (S4: crisper, patchier edges) */
-  snowFade: 1.6,
+  /**
+   * snow v4 (S4 W4-S2): the cover fades in over a band around the line — from line + shift − band[0] to
+   * line + shift + band[1] (world units; ≈ 300 m of real height, not a hard mask) — inside which only
+   * the favoured ground holds it (the terrain material: gullies, ledges, lee sides; ribs bare)
+   */
+  snowBand: [1.8, 2.2] as const,
+  /** (fix round: 1.5 → 2.6 — the massifs read iced; less cover, the gullies still reach below the line) */
+  snowShift: 2.6,
+  /**
+   * snow v4: the lee (east-facing, the westerlies' lee) side holds snow lower and the steep windward (west)
+   * faces shed it — height bonus / penalty in world units (× the lee / windward ramps of snowLeeWind)
+   */
+  snowLee: 0.9,
+  snowWind: 0.9,
   /** north-facing faces hold snow lower: effective height + northness (−n.z) · this */
   snowNorth: 2.8,
   /** snow sheds from slopes steeper than [a, b]; concave gullies hold it `snowGully` steeper */
-  snowSlope: [0.27, 0.55] as const,
-  snowGully: 0.16,
-  /** snow albedo (sRGB): a little grey (wind-packed, shaded by its own micro relief), never paper white */
-  snow: 0xd6dbe2,
+  snowSlope: [0.27, 0.5] as const,
+  snowGully: 0.12,
+  /**
+   * snow albedo (sRGB): blue-grey ≈ 0.65 linear luminance with a cool cast (wind-packed, shaded by its own
+   * micro relief), never paper white — the sunlit snow read neutral white after the grade at 0xd8dde5
+   */
+  snow: 0xcad4e8,
   /**
    * grass on slopes facing the sun (south, +Z) dries by up to this much, shade-facing slopes green up
    * (0 switches the aspect term off in the terrain and in the water's coarse albedo alike)
@@ -1006,9 +1021,22 @@ export function rockAt(slope: N, alpine: N, turf: N = float(0), rockiness: N = f
 export function snowAt(hEff: N, slope: N, line: N, volcanic: N, gully: N = float(0)): N {
   const T = TERRAIN_SHADE;
   const g = gully.mul(T.snowGully);
-  return smoothstep(line, line.add(T.snowFade), hEff)
+  const l0 = line.add(T.snowShift);
+  return smoothstep(l0.sub(T.snowBand[0]), l0.add(T.snowBand[1]), hEff)
     .mul(float(1).sub(smoothstep(g.add(T.snowSlope[0]), g.add(T.snowSlope[1]), slope)))
     .mul(float(1).sub(volcanic));
+}
+
+/**
+ * Snow v4's lee and windward ramps (0..1) from the normal's +X component (`eastness`) and the slope: the
+ * lee (east-facing) side of the westerlies holds snow, the steep windward (west-facing) faces shed it. Shared
+ * by the terrain material and the water's coarse albedo (× TERRAIN_SHADE.snowLee / snowWind on the height).
+ */
+export function snowLeeWind(eastness: N, slope: N): { lee: N; wind: N } {
+  return {
+    lee: clamp(eastness.mul(1.8), 0, 1).mul(smoothstep(0.06, 0.28, slope)),
+    wind: clamp(eastness.negate().mul(1.6), 0, 1).mul(smoothstep(0.18, 0.42, slope)),
+  };
 }
 
 /**
@@ -1032,9 +1060,10 @@ export function coarseGroundAlbedo(pal: GroundPalette, h: N, slope: N, southness
   // the coarse normal (central differences over 4 texels) flattens cliffs: its slope reads low, so the
   // rock rule gets a small bias (a rock face mirrors as rock, not as the grass at its foot)
   const rock = rockAt(slope.add(T.coarseRockBias), alpineAt(hEff, line), float(0), pal.rockiness);
-  // the terrain's mean wind scouring (snow v3): steep west-facing (windward) faces shed their snow first —
-  // `eastness` is the normal's +X component (0 when the caller has none)
-  const windward = clamp(eastness.negate().mul(1.6), 0, 1).mul(smoothstep(0.18, 0.42, slope)).mul(0.8 * 0.5 * 0.24);
-  const snow = snowAt(hEff, slope.add(windward), line, pal.volcanic);
+  // snow v4's lee / windward terms, as the terrain material reads them (its relief terms — gullies, ribs —
+  // average out at this scale): east-facing lee sides hold snow lower, steep west-facing (windward) faces
+  // shed it — `eastness` is the normal's +X component (0 when the caller has none)
+  const lw = snowLeeWind(eastness, slope);
+  const snow = snowAt(hEff.add(lw.lee.mul(T.snowLee)).sub(lw.wind.mul(T.snowWind)), slope.add(lw.wind.mul(0.05)), line, pal.volcanic);
   return mix(mix(ground, pal.rock, rock), srgbNode(T.snow), snow);
 }

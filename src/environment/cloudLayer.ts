@@ -9,7 +9,7 @@ import { SLAB } from '../diorama/slabSpec.ts';
 import { CLOUD_CAPS, CloudField, DETAIL, PERIOD_X, PERIOD_Z } from './clouds.ts';
 
 type N = TslNode;
-const { Fn, abs, attribute, clamp, dot, float, max, mix, normalize, positionWorld, smoothstep, texture, uniform, vec2, vec3, vec4 } = tsl;
+const { Fn, abs, attribute, clamp, dot, float, length, max, mix, normalize, positionWorld, smoothstep, step, texture, uniform, varying, vec2, vec3, vec4 } = tsl;
 
 const _glow: [number, number, number] = [0, 0, 0];
 /** grid cell of the ash-deck mesh (km) and the cover below which a cell is not drawn */
@@ -41,6 +41,21 @@ const DECK_GLOW_FOG = 0.7;
 const UNDER = { trans: [0.3, 0.1], sky: [0.55, 0.4], skySat: 0.1, gnd: 0.45, nBase: 1.12, nSlope: -0.35, sat: 0.35, meanThick: 0.6, meanN: 0.5 } as const;
 /** the sunlit top's brightness on the deck tone (charcoal-brown ash from above, not cream cotton) */
 const DECK_TOP_GAIN = 0.5;
+/**
+ * S4 W4-S2: the deck seen from above shades its masses as a lit volume (review / final: one probe tap
+ * DECK_PROBE_KM towards the key light; the slope gain / key elevation sets the billow contrast)
+ */
+const DECK_VOLUME = true;
+const DECK_PROBE_KM = 6;
+const DECK_VOLUME_GAIN = 2.4;
+/**
+ * fix round: the deck seen from above opens round the line of sight to Orodruin's summit (none within [a]
+ * km of the sight line, full top opacity by [b]) when that line looks down steeply enough (|sin| of its
+ * dip over [c, d]) — the pall parts over the cone, so Doom and its plume stay the focal point of the Mordor
+ * aerials instead of a 3 px ember under a murk. A gap fixed over Doom would not do: the deck stands ~50
+ * units above the plain, so from an oblique eye a hole over the cone opens tens of km beyond it.
+ */
+const DECK_DOOM_SIGHT = [6, 16, 0.25, 0.45] as const;
 /** view elevation (|sin|) below which the underside flattens into the overcast dome colour (no grazing streaks) */
 const DECK_GRAZE = [0.02, 0.14] as const;
 /** opacity of the deck seen from below at full cover (a little light leaks through the thinnest parts) */
@@ -243,6 +258,14 @@ export class CloudLayer {
   private deckShade(billows: boolean): N {
     const tex = this.clouds.texture;
     const near = this.deckNear;
+    // preview (S4 W4-S2 perf): the aerial perspective per VERTEX of the 4 km deck grid (T, S varyings,
+    // one applySplit) instead of the full haze per fragment of a sheet that can fill the frame; review /
+    // final keep it per fragment
+    const vFog = billows ? null : atmosphere.applySplit(env.cameraPos, positionWorld, true, true, true, false);
+    const vT = vFog ? varying(vFog.T, 'vDeckT') : null;
+    const vS = vFog ? varying(vFog.S, 'vDeckS') : null;
+    const doom = this.world.places.get('mount-doom');
+    const doomTop = doom ? vec3(doom.x, this.world.heights.sample(doom.x, doom.z), doom.z) : null;
     return Fn(() => {
       const P = positionWorld;
       const A = attribute('deckA', 'vec4');
@@ -291,18 +314,48 @@ export class CloudLayer {
       const glow = B.xyz.mul(env.deckGlow).mul(thick.mul(0.5).add(0.6));
       // top: sunlit charcoal-brown ash with a faint key rim where it thins
       const rim = float(1).sub(dens).mul(0.4).add(0.6);
-      const top0 = tone.mul(DECK_TOP_GAIN).mul(eKey.mul(n.mul(0.45).add(0.55)).mul(rim).add(eSky.mul(0.55)));
+      // (S4 W4-S2) a cloud-volume read from above: the masses shaded as a height field lit by the key —
+      // review / final probe the masses DECK_PROBE_KM towards the light (billows rising to the sun lit,
+      // their lee in shade); the sky light is weaker in the troughs between them (darker billows)
+      let keyTop: N = n.mul(0.45).add(0.55);
+      if (billows && DECK_VOLUME) {
+        const L = env.keyDir;
+        const lxz = normalize(vec2(L.x, L.z).add(vec2(1e-4, 0)));
+        const qL = q.add(lxz.mul(DECK_PROBE_KM));
+        const tL = texture(tex, vec2(qL.x.mul(DECK_SCALE / PERIOD_X), qL.y.mul(DECK_SCALE / PERIOD_Z)));
+        const nL = tL.r.mul(0.62).add(tL.g.mul(0.38));
+        // the slope towards the light (the base tap's masses, before the billows), steeper with a low sun
+        const rise = t.r.mul(0.62).add(t.g.mul(0.38)).sub(nL).mul(float(DECK_VOLUME_GAIN).div(max(L.y, 0.2)));
+        keyTop = clamp(rise.add(0.62).add(n.sub(0.5).mul(0.4)), 0.12, 1.35);
+      }
+      const skyTop = n.mul(0.5).add(0.6);
+      const top0 = tone.mul(DECK_TOP_GAIN).mul(eKey.mul(keyTop).mul(rim).add(eSky.mul(0.55).mul(skyTop)));
       const top = mix(vec3(dot(top0, lumW)), top0, UNDER.sat);
       const surf = mix(top, under, below);
       // fogged here (the material has fog off) so the fires' glow takes only part of the veil
-      const col = atmosphere.apply(surf, env.cameraPos, P, true, false, true, mix(glow.mul(0.25), glow, below), DECK_GLOW_FOG, billows);
+      const em = mix(glow.mul(0.25), glow, below);
+      const col =
+        vT && vS
+          ? surf.mul(vT).add(vS).add(em.mul(vT.pow(DECK_GLOW_FOG)))
+          : atmosphere.apply(surf, env.cameraPos, P, true, false, true, em, DECK_GLOW_FOG, billows);
       // opacity: dense from below; from above the authored top opacity, relaxed for high eyes so
       // the whole-table views read the plateau and Doom's ember through a trace of the pall, and
       // faded nearer than the subject (the pall never veils the foreground)
-      const table = float(1).sub(smoothstep(250, 1000, cam.y).mul(0.88));
+      const table = float(1).sub(smoothstep(250, 1000, cam.y).mul(0.94));
       const nearFade = smoothstep(near.x, near.y, camDist);
       // from above the pall breaks into masses with the plateau between them
-      const aAbove = smoothstep(th.add(0.12), th.add(0.6), n).mul(dens).mul(B.w).mul(table).mul(nearFade);
+      // (S4 W4-S2: denser masses — 0.12 → 0.6 read as a translucent smoke smear from above)
+      let aAbove: N = smoothstep(th.add(0.06), th.add(0.42), n).mul(dens).mul(B.w).mul(table).mul(nearFade);
+      if (doomTop) {
+        // the pall parts round the line of sight to Doom's summit (DECK_DOOM_SIGHT)
+        const toD = doomTop.sub(cam);
+        const dD = toD.div(max(length(toD), 1e-3));
+        const rel = P.sub(cam);
+        const along = dot(rel, dD);
+        const perp = length(rel.sub(dD.mul(along)));
+        const open = float(1).sub(smoothstep(DECK_DOOM_SIGHT[0], DECK_DOOM_SIGHT[1], perp)).mul(smoothstep(DECK_DOOM_SIGHT[2], DECK_DOOM_SIGHT[3], dD.y.negate())).mul(step(0, along));
+        aAbove = aAbove.mul(float(1).sub(open));
+      }
       const aBelow = dens.mul(DECK_UNDER_OPACITY);
       return vec4(col, clamp(mix(aAbove, aBelow, below), 0, 1));
     })();
