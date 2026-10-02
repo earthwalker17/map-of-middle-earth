@@ -133,7 +133,9 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
   emissive, emissiveGreen, lava, ithildin) packed per vertex: `color` u8×4 = absolute sRGB paint + baked
   hemisphere AO in `a` (→ the material's AO slot only); `surf` u8×4 = roughness, metalness, grain,
   `a` = noise class × 32 + ground-contact term (0..31; class 4 = foliage, 5 = rock: kit cliffs, stone noise
-  without masonry courses + the shared strata) — for glow: strength/16, gate
+  without masonry courses + the shared strata; 6 = roof: FAMILY slate / roofTile and the house / tower roofs
+  ProxyKit.tagRoof marks; 7 = carved: stone without courses or joints, packed by `carvedVertex` for the Blender
+  hero statues in model.ts) — for glow: strength/16, gate
   code, flicker. Contact is the only baked term on the albedo (`× mix(1, contact, 0.3)`). Landmark-local
   fwidth-faded noise (≈9, 37, 140 /km) + stone coursing on walls. Glow = paint × strength × gate × flicker
   (gates from env: always · night = clamp(smoothstep(0.2, 0.7, night) + 0.4·twilight) · dusk =
@@ -148,6 +150,15 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
   the scene has no environment map, so `structure` adds a Fresnel-weighted (F0 0.04 → albedo for metals)
   hemisphere sky / ground radiance along the reflection vector (`env.skyColor / groundColor ×
   hemiIntensity`), dimmed by roughness and the baked AO — metals and glossy dark stone keep form in shade.
+  **Weathering (S4 W4-S1; review / final only — `structureTier.full`, set by LandmarkSystem.init before the
+  first `materialFor`, so preview renders the S3 surfaces):** every built class (not foliage / rock) gets
+  part- and district-scale tone (hue drift, grime stains), tonal masonry courses with warped cell edges and
+  joints (stone), long rain / grime streak tapers (0.2 / 0.08 km columns drawn only from ~4 px, mean beyond;
+  timber at half strength), AO crevice grime away from the foot, a stronger damp contact, and on dark paints a
+  pale dust deposit instead of grime; the total darkening is floored (`W.floor`). Roof faces get slate / tile
+  courses, moss and dark soffits; thatch bands; wood boards with seams. Roughness / metalness follow the
+  weathering AMOUNT (glossy paints keep their gloss), and the specular ambient takes F0 from the weathered
+  paint. All cells are footprint-faded (`vis()`); `WEATHERING_ON` and the `W` constants live in families.ts.
 
 ## Systems (registration order in src/app/boot.ts)
 1. `EnvironmentSystem(world)` (environment/) — time of day → keyframed daylight (by sun elevation), own TSL
@@ -174,7 +185,15 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
    under decks and with the focus distance. Under a deck (RegionLook's focus cover) the hemisphere sky colour
    turns to the deck tone, the fill rises, and the dome becomes an overcast ceiling with no sun, moon or stars.
    Night (S4): moon key 1.8·illum^1.3, hemisphere lift 1 + 1.3·night, NIGHT grade +0.4 stops, stars at about
-   ¼ of S3 with horizon extinction.
+   ¼ of S3 with horizon extinction; W4-S2: moonlit shadows keep a 0.28 floor, a brighter greyer night horizon,
+   sparser stars. **Mordor pall (W4-S2):** the deck field fills the gaps between region masks
+   (`DECK_GAP_FILL`, Ered Lithui / Ephel Dúath ≈ 0.9 cover) and Nurn has its own deck; camera rays take one
+   mid-point ash tap (review / final), a camera under a dense pall sees far haze in the overcast colour
+   ramped in over 30–90 km (`DECK_EYE_HAZE`, `DECK_EYE_DIST`) with a far lift (`DECK_FAR_LIFT`), no sun disc
+   under the deck (`SUN_DECK_HIDE`); seen from above the deck is shaded as a lit volume (review / final) and
+   parts along the line of sight to Doom's summit (`DECK_DOOM_SIGHT`, all tiers); the underglow follows the
+   cloud masses (`GLOW_MOD`, S4 C2). `atmosphere.applySplit(from, to, …)` returns T and S from ONE
+   evaluation (the effects' per-vertex fog); in preview the deck's haze is per vertex.
 2. `TerrainSystem` (terrain/, async init) — one instanced CDLOD draw (root 320 km, 8 levels, morph + skirts).
    Surface pass: 5 shared height taps → normal, slope, curvature; `terrainMask` AO/valley (faded where stamps
    changed the ground); ground look + regional rules (alpine rock, dry-brushed crests, scree, snow v2 with
@@ -189,6 +208,16 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
    `emissiveNode` = fissure glow + albedo · `spillIrradiance` / π (emission spill hook, emission/spill.ts) and
    the `canopyShell()` hook in the forest-floor block (vegetation/canopyShell.ts). The terrain fragment stage
    samples 15 textures (S4 budget, frozen: 13 S3 + atmo2 + the canopy shell; the WebGPU limit is 16).
+   S4 W4-S2: **snow v4** — where snow lies is read from the relief (gullies / couloirs, ledges, the lee side
+   of the westerlies; ribs and windward faces bare), a ≈ 300 m lower band, steep faces shed it, a cool tint on
+   faces turned from the key; `snowLeeWind` is shared with `coarseGroundAlbedo` (water reflections).
+   **Macro relief** (review / final): one 0.42 km fall-line-stretched noise → gully / rib creases as a bump
+   (forward-difference gradient) and tone on slopes, faded far (`MACRO.fade`) and near (`MACRO.near`: close
+   up the fine rock relief carries the face). **Ragged** grass ↔ rock boundary (noise on the rock rule, its
+   ramp steepened). **Fields**: mostly greens with a little straw, soft 0.55 km margins, mow rows along each
+   field's long axis. **Lava flows** (`VOLCANIC.flows`, crust branch): each continues a Mount Doom kit flow
+   from its toe — a crisp molten channel in runs that crust over, a faint spill, lit cracks clustered on the
+   flows; the open plain stays dark. Strata contrast (S4 C2): 0.13 / 0.09 / 0.06.
    `groundMaps.ts` builds CPU masks at init: stamp turf/presence (stamped − base), shore bands, the Shire field
    mask (from `fields.ts`). Detail: 6 CC0-derived layers (`tools/textures/prep.mjs` → `public/textures/terrain`,
    luminance-normalised so the palette keeps the hue; preview 512²×4 planar, review 512²×6, final 1024²×6
@@ -201,9 +230,16 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
    built from the baked v2 points/levels as-is (flat across; whitewater only at declared falls or steep baked
    grades; the v1 heuristic stays as a fallback). Waterfalls → effects (S4). S4: emission spill on the body
    and foam plus `spillGlint` (lights reflect), pools (`waterPool`) with deep scatter (no black slabs), the
-   reflected sky and land honour the ash deck (`env.deckSky`, deck shadow) and `env.horizonTint`. The
-   reflection march sees only the heightfield (landmark geometry such as the Argonath / Tol Brandir is
-   invisible to it — known residual).
+   reflected sky and land honour the ash deck (`env.deckSky`, deck shadow) and `env.horizonTint`.
+   S4 W4-S1: rivers are calm, flow-aligned slicks with brown-green shallows, a far-water Fresnel floor
+   (`farSheen`), a ~2.5 px edge fade (`edgePx`) and a darker, cooler mirror of their banks (`mirrorTint`);
+   lakes get a skirt over their whole baked bed (`LAKE_SKIRT_KM`, LessDepth), lakes and rivers are alpha-tested
+   (`WATER_ALPHA_TEST`), river ends in a lake run on into it (`LAKE_OVERLAP_KM`, the lake share in
+   flowDir.w) and outflows hold the lake level under its visible edge (`OUTFLOW_HOLD`). **Reflection proxies
+   (S4 C2):** the HeightField-only march cannot see landmark geometry, so `landmarkReflectors` (pure, world
+   space) gives one vertical cylinder per GLB model instance (declared bounds) plus each landmark's
+   `reflectors`; lakes and rivers test them by exact ray / cylinder intersection in review / final, and a
+   proxy in front of the terrain hit mirrors as lit grey stone (`WaterSystem.setReflectors`, before init).
 4. `VegetationSystem` (vegetation/) — hashed world-grid placement from forest/look/water masks, forest types
    (Mirkwood, Fangorn, Lórien + emergent mallorns, old, Ithilien groves, deciduous), glades/stands, a Barren
    rule (Mordor, Dagorlad, the Morannon approach, sparse Brown Lands/Emyn Muil), hedgerows on the shared field
@@ -265,7 +301,9 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
    haloOn). `spillIrradiance(p, n)` (wrap-Lambert, finite core, windowed at the reach) lights terrain,
    structures, Morgul glow skins, foliage and water; `spillInScatter` adds analytic point-light airlight halos
    for lava / eye / magic / beacons in the shared fog (`atmosphere.apply`) and the dome (review / final only,
-   soft-capped: no sun disc); `spillGlint` puts GGX glints of the sources on water.
+   soft-capped: no sun disc); `spillGlint` puts GGX glints of the sources on water. A sprite's extinction
+   includes the ash pall along the camera ray (`atmosphere.rayDeck`, eye + mid taps), so Mordor's tower
+   lights fade with their towers.
 8. `EffectsSystem` (effects/, S4) — realizes landmark `emitters` and waterfalls (`landmarkEmitters`,
    `landmarkFalls`, `pools`) in four draws: **puffs** (smoke / ash / steam / wisp / spray billboards: one
    instanced premultiplied draw, CPU-sorted back to front per frame as a pure function of the camera; render
@@ -340,6 +378,10 @@ realize their declarations.
   captures, `pnpm bake` and `pnpm build` (`tools/heavy.ts`) after a free-RAM guard (`tools/capture/host.ts`);
   orphaned capture Chrome of the checkout is swept while the lock is held.
 - `pnpm perf [--gate]` — preview-tier boot/compile/frame-latency probe vs `data/qa/perf-baseline.json`.
+  It waits for a quiet host before the boot and each view (background CPU ≤ `--quiet` %, at most
+  `--quiet-wait` s) and records `noise` per measurement (NOISY ones are flagged). The iGPU shares the package
+  power with the CPU and the laptop has a slow and a fast power regime (~1.7× apart): compare only
+  interleaved A/B runs with a rest before each (S4: 90 s), never against a baseline from another regime.
 - `tools/capture/probe.ts "<expr>"` evaluates an expression against `window.__app` for diagnostics.
 - `tools/capture/exportCameras.ts --set <set> --out <file>` — resolved cameras as explicit shots, so another
   checkout (e.g. the previous session's code) can render exactly the current framings for A/B.
