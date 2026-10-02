@@ -646,10 +646,14 @@ export interface GradeLook {
   greens: number;
   /** 0..1 hue pull of the yellow-greens towards green (lime → lush), 0 = none */
   greensHue: number;
-  /** soft black point added to the base toe (linear HDR; deeper, cleaner blacks), 0 = none */
+  /** soft black point added to the base toe (linear HDR; denser, cleaner blacks), ≥ 0, 0 = none */
   toe: number;
-  /** halation added to the base (red-weighted bloom fringe), 0 = none */
+  /** halation added to the base (orange fringe from the bloom's red), 0 = none (may be negative: less than the base) */
   halation: number;
+  /** highlight gain in stops (day only: RegionLook fades it at night), 0 = none, clamped to [-1, 2] */
+  highlights: number;
+  /** saturation multiplier of warm hues (beige / taupe / orange earth; strong reds exempt), 1 = none, ≥ 0 */
+  warms: number;
   /** local grades around places (Rivendell's autumn gold inside Eriador), blended by the focus */
   spots: GradeSpot[];
 }
@@ -736,6 +740,8 @@ interface GradeJson {
   greensHue?: number;
   toe?: number;
   halation?: number;
+  highlights?: number;
+  warms?: number;
   spots?: (GradeJson & { place: string; radiusKm: number })[];
 }
 /**
@@ -783,9 +789,13 @@ export function splitTint(hex: string | undefined, amount: number): Color {
   return new Color(1 + (c.r / L - 1) * a, 1 + (c.g / L - 1) * a, 1 + (c.b / L - 1) * a);
 }
 
+const clampNum = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
 /**
  * A grade line. The S1–S3 fields default to identity (a spot without a tint pulls towards white); the
- * film-grade fields (split, greens, toe, halation) of a spot default to its region's (`parent`).
+ * film-grade fields (split, greens, greensHue, toe, halation, highlights, warms) of a spot default to its
+ * region's (`parent`). The film-grade fields are clamped to the ranges the post pass is safe for
+ * (greensHue > 1 would drive red negative into the contrast pow; a negative toe could divide by ~0).
  */
 function parseGrade(g: GradeJson, parent?: Omit<GradeLook, 'spots'>): Omit<GradeLook, 'spots'> {
   const lift = g.lift ?? [0, 0, 0];
@@ -801,10 +811,12 @@ function parseGrade(g: GradeJson, parent?: Omit<GradeLook, 'spots'>): Omit<Grade
     bloom: g.bloom ?? 0,
     splitShadow: own || !parent ? splitTint(g.split?.shadow, amount) : parent.splitShadow.clone(),
     splitHighlight: own || !parent ? splitTint(g.split?.highlight, amount) : parent.splitHighlight.clone(),
-    greens: g.greens ?? parent?.greens ?? 1,
-    greensHue: g.greensHue ?? parent?.greensHue ?? 0,
-    toe: g.toe ?? parent?.toe ?? 0,
-    halation: g.halation ?? parent?.halation ?? 0,
+    greens: Math.max(0, g.greens ?? parent?.greens ?? 1),
+    greensHue: clampNum(g.greensHue ?? parent?.greensHue ?? 0, 0, 1),
+    toe: Math.max(0, g.toe ?? parent?.toe ?? 0),
+    halation: clampNum(g.halation ?? parent?.halation ?? 0, -2, 2),
+    highlights: clampNum(g.highlights ?? parent?.highlights ?? 0, -1, 2),
+    warms: Math.max(0, g.warms ?? parent?.warms ?? 1),
   };
 }
 

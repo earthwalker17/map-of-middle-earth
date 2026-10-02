@@ -18,18 +18,19 @@ const BASE = {
   bloomThreshold: 2.2,
   /**
    * S4 W3-F film grade, everywhere (overviews included, so kept gentle): a faint cool-shadow /
-   * warm-highlight split, a soft black point (clean blacks instead of the straight tonemap's grey toe)
-   * and a little halation on the bloom.
+   * warm-highlight split, a soft black point (clean blacks instead of the straight tonemap's grey toe;
+   * small — AgX's own toe is already deep) and a little halation on the bloom. The highlight gain is
+   * regional only (wide views keep the S3 tonality).
    */
-  splitShadow: splitTint('#5b7896', 0.06),
-  splitHighlight: splitTint('#f2d2a4', 0.06),
-  toe: 0.0012,
-  halation: 0.4,
+  splitShadow: splitTint('#5b7896', 0.08),
+  splitHighlight: splitTint('#f2d2a4', 0.08),
+  toe: 0.0005,
+  halation: 0.5,
 };
 /** Night (moonlit) layer: Purkinje-like desaturated blue-grey, a little lift in exposure (contrast
  * held so the moonlit land reads crisp, not murky). S4: +0.62 → +0.4 stops — the moon key doubled and
  * the hemisphere fill dropped (timeOfDay), so the lift no longer has to carry the night read. */
-const NIGHT = { saturation: 0.42, tint: new Color(0.85, 0.95, 1.15), exposure: 0.4, contrast: 1.0, redKeep: 0.75, toe: 0.0025 };
+const NIGHT = { saturation: 0.42, tint: new Color(0.85, 0.95, 1.15), exposure: 0.4, contrast: 1.0, redKeep: 0.75, toe: 0.0003 };
 /** How strongly SceneState.lookOverride pulls the grade towards its region. */
 const OVERRIDE = 0.85;
 /**
@@ -157,6 +158,8 @@ export class RegionLook {
     let greensHue = 0;
     let toe = 0;
     let halation = 0;
+    let highlights = 0;
+    let warms = neutral;
     for (let k = 0; k < n; k++) {
       const a = acc[k];
       if (a <= 1e-5) continue;
@@ -181,6 +184,8 @@ export class RegionLook {
       greensHue += a * g.greensHue;
       toe += a * g.toe;
       halation += a * g.halation;
+      highlights += a * g.highlights;
+      warms += a * g.warms;
       const s = this.atmos[k].sky;
       sky.r += a * s.r;
       sky.g += a * s.g;
@@ -255,6 +260,8 @@ export class RegionLook {
       greensHue = mixTo(greensHue, g.greensHue);
       toe = mixTo(toe, g.toe);
       halation = mixTo(halation, g.halation);
+      highlights = mixTo(highlights, g.highlights);
+      warms = mixTo(warms, g.warms);
     }
 
     // ---- moonlit night layer
@@ -287,7 +294,10 @@ export class RegionLook {
     g.greens.value = greens;
     g.greensHue.value = greensHue;
     g.toe.value = BASE.toe + toe + NIGHT.toe * nn;
-    g.halation.value = BASE.halation + halation;
+    g.halation.value = Math.max(0, BASE.halation + halation);
+    // the highlight gain is a daylight grade: moonlit frames keep their compressed night range
+    g.highlights.value = highlights * (1 - nn);
+    g.warms.value = warms;
     env.skyTint.value.copy(sky);
   }
 }

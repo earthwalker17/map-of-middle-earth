@@ -22,7 +22,7 @@
 import { execSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import { loadShots } from './shotList.ts';
 import { loadLandmarks } from '../check/baked.ts';
 
@@ -46,8 +46,14 @@ interface ReviewManifest {
   stills: Still[];
   pairs: { id: string; day: string; night: string }[];
   beforeAfter: { id: string; before?: string }[];
-  knownIssues?: string[];
+  knownIssues?: KnownIssue[];
 }
+/**
+ * A README known issue: plain text, or text shown only for runs that match (`tiers`: the run's quality
+ * tier is one of them; `minSpp` / `maxSpp`: the run's largest spp is in range). `{tier}`, `{spp}` and
+ * `{size}` in the text are replaced by the run's values.
+ */
+type KnownIssue = string | { text: string; tiers?: string[]; minSpp?: number; maxSpp?: number };
 interface QaResult {
   name: string;
   width: number;
@@ -118,7 +124,7 @@ sharp.cache(false);
 sharp.concurrency(2);
 
 const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-/** a label bar over the top-left of an image buffer */
+/** a label bar over the top-left of an image buffer (resized to w × h — callers keep the aspect) */
 async function labelled(input: string | Buffer, w: number, h: number, text: string): Promise<Buffer> {
   const img = await sharp(input).resize(w, h, { fit: 'fill' }).toBuffer();
   const fs = Math.max(14, Math.round(h * 0.03));
@@ -129,11 +135,17 @@ async function labelled(input: string | Buffer, w: number, h: number, text: stri
   );
   return sharp(img).composite([{ input: svg }]).png().toBuffer();
 }
-/** side by side with a gap, every part already at the same height */
-async function sideBySide(parts: Buffer[], w: number, h: number, file: string): Promise<void> {
+/** side by side with a gap, every part already at the same height `h` (each with its own width) */
+async function sideBySide(parts: { img: Buffer; w: number }[], h: number, file: string): Promise<void> {
   const gap = Math.max(4, Math.round(h * 0.008));
-  await sharp({ create: { width: parts.length * w + (parts.length - 1) * gap, height: h, channels: 3, background: '#101214' } })
-    .composite(parts.map((p, i) => ({ input: p, left: i * (w + gap), top: 0 })))
+  let x = 0;
+  const placed = parts.map((p) => {
+    const at = { input: p.img, left: x, top: 0 };
+    x += p.w + gap;
+    return at;
+  });
+  await sharp({ create: { width: x - gap, height: h, channels: 3, background: '#101214' } })
+    .composite(placed)
     .png({ compressionLevel: 6 })
     .toFile(file);
 }
@@ -154,9 +166,11 @@ interface Written {
   spp?: number;
 }
 const written: Written[] = [];
+const outAbs = resolve(outDir);
 async function record(file: string, kind: Written['kind'], id: string, extra: Partial<Written> = {}): Promise<void> {
   const { w, h } = await size(file);
-  written.push({ file: file.slice(outDir.length + 1).replace(/\\/g, '/'), kind, id, width: w, height: h, sha256: sha(file), ...extra });
+  // relative to the resolved --out (a trailing slash or a relative / absolute spelling cannot shift it)
+  written.push({ file: relative(outAbs, resolve(file)).replace(/\\/g, '/'), kind, id, width: w, height: h, sha256: sha(file), ...extra });
 }
 
 // ------------------------------------------------------------------ stills
@@ -172,11 +186,15 @@ for (const s of doc.stills) {
 const pairsDone: string[] = [];
 for (const p of doc.pairs) {
   if (!existsSync(shotFile(p.day)) || !existsSync(shotFile(p.night))) continue;
-  const { w, h } = await size(shotFile(p.day));
-  const day = await labelled(shotFile(p.day), w, h, `Day · ${fmtTod(shotInfo(p.day).tod)}`);
-  const night = await labelled(shotFile(p.night), w, h, `Night · ${fmtTod(shotInfo(p.night).tod)}`);
+  const D = await size(shotFile(p.day));
+  const N = await size(shotFile(p.night));
+  // both halves at the day still's height, each keeping its own aspect
+  const h = D.h;
+  const wn = Math.round((N.w * h) / N.h);
+  const day = await labelled(shotFile(p.day), D.w, h, `Day · ${fmtTod(shotInfo(p.day).tod)}`);
+  const night = await labelled(shotFile(p.night), wn, h, `Night · ${fmtTod(shotInfo(p.night).tod)}`);
   const file = join(outDir, 'pairs', `dn-${p.id}.png`);
-  await sideBySide([day, night], w, h, file);
+  await sideBySide([{ img: day, w: D.w }, { img: night, w: wn }], h, file);
   await record(file, 'pair', p.id);
   pairsDone.push(p.id);
 }
@@ -192,15 +210,14 @@ for (const b of doc.beforeAfter) {
   }
   const A = await size(beforeFile(before));
   const B = await size(shotFile(b.id));
-  // a common height: the smaller one (never upscale a render), widths keep each aspect
+  // a common height: the smaller one (never upscale a render); each side keeps its own aspect
   const h = Math.min(A.h, B.h);
   const wa = Math.round((A.w * h) / A.h);
   const wb = Math.round((B.w * h) / B.h);
-  const w = Math.max(wa, wb);
-  const left = await labelled(beforeFile(before), w, h, `S3 · ${before}`);
-  const right = await labelled(shotFile(b.id), w, h, `S4 · ${b.id}`);
+  const left = await labelled(beforeFile(before), wa, h, `S3 · ${before}`);
+  const right = await labelled(shotFile(b.id), wb, h, `S4 · ${b.id}`);
   const file = join(outDir, 'before-after', `ba-${number.get(b.id) ?? '00'}-${b.id}.png`);
-  await sideBySide([left, right], w, h, file);
+  await sideBySide([{ img: left, w: wa }, { img: right, w: wb }], h, file);
   await record(file, 'before-after', b.id);
   baDone.push({ id: b.id, before });
 }
@@ -265,7 +282,15 @@ for (const b of doc.beforeAfter) {
   lines.push(done ? `- [${b.id}](before-after/ba-${number.get(b.id) ?? '00'}-${b.id}.png) (S3 \`${done.before}\`)` : `- ${b.id}: **missing**`);
 }
 lines.push('', '## Known issues', '');
-for (const k of doc.knownIssues ?? []) lines.push(`- ${k}`);
+// issues that apply to this run only (tier / spp conditions), with the run's values filled in
+const maxSpp = spps.length ? Math.max(...spps) : 0;
+for (const k of doc.knownIssues ?? []) {
+  const it = typeof k === 'string' ? { text: k } : k;
+  if (it.tiers && !it.tiers.includes(tier)) continue;
+  if (it.minSpp !== undefined && maxSpp < it.minSpp) continue;
+  if (it.maxSpp !== undefined && maxSpp > it.maxSpp) continue;
+  lines.push(`- ${it.text.replace(/\{tier\}/g, tier).replace(/\{spp\}/g, spps.join('/') || '?').replace(/\{size\}/g, sizeStr)}`);
+}
 if (missing.length) lines.push(`- Missing stills in this run: ${missing.join(', ')}.`);
 if (baMissing.length) lines.push(`- Missing before/after sheets: ${baMissing.join(', ')}.`);
 lines.push('');

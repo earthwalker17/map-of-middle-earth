@@ -48,8 +48,10 @@
     { "id": "mount-doom-close", "before": "mount-doom-close" }
   ],
   "knownIssues": [
-    "The S3 stills (before) are 1600×900 review-tier renders at spp 4; the S4 stills are final tier — the before/after sheets rescale both to one height.",
-    "Depth of field is only on the hero stills whose bookmark carries an f-stop (deep focus f/22 otherwise) and only at spp >= 8; it is deliberately very subtle (blur at infinity <= 0.3 % of the frame height).",
-    "Film grain is part of the final tier: the stills carry ≈ 1 % luminance grain in the mid-tones (deterministic per film frame)."
+    "The S3 stills (before) are 1600×900 review-tier renders at spp 4; these S4 stills are {size} {tier}-tier renders at spp {spp} — the before/after sheets rescale both to one height.",
+    { "text": "Depth of field is only on the hero stills whose shot carries an f-stop (deep focus f/22 otherwise); it is deliberately very subtle (blur at infinity <= 0.3 % of the frame height).", "minSpp": 8 },
+    { "text": "This run is below spp 8, so every still is a pinhole: no depth of field (the lens needs >= 8 aperture samples).", "maxSpp": 7 },
+    { "text": "Film grain is part of the final tier: the stills carry ≈ 1 % grain (≈ 1.5 px grains, a little chroma) in the mid-tones, deterministic per film frame.", "tiers": ["final"] },
+    { "text": "No film grain in this run: grain is drawn at the final tier only ({tier} tier here).", "tiers": ["preview", "review"] }
   ]
 }
