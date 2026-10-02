@@ -69,32 +69,45 @@ export const LAKE: WaterParams = {
   traceGrowth: 1.6,
 };
 
-/** Rivers: flow-aligned ripples scrolling downstream, slightly milky green-teal body. */
+/**
+ * Rivers: flow-aligned ripples scrolling downstream, a teal body over a brown-green shallow band.
+ * S4 W4-S1 (rivers read as matte 'concrete canals'): the chop that printed a hammered-metal texture at
+ * 10–20 km (short crests across the flow, strong slopes → a broad grey sun sheen everywhere) became a
+ * calmer surface of long flow-aligned slicks, so the sky and the banks mirror and the sun keeps a glint
+ * path; the pale sand bed in the shallows (the pale lip inside the waterline) is a dark brown-green; far
+ * water keeps a Fresnel floor (silver-blue threads at regional range); the ribbon edge fades over a few
+ * pixels (no dark see-through outline); mirrored banks are a darker, cooler copy (a calm reach no longer
+ * mirrors a lit hillside at its own albedo and reads as grass).
+ */
 export const RIVER: WaterParams = {
   kind: 'river',
-  deep: [0.003, 0.011, 0.014],
-  shallow: [0.008, 0.026, 0.025],
+  deep: [0.004, 0.012, 0.016],
+  shallow: [0.012, 0.022, 0.014],
   scatterDepth: 0.25,
-  absorb: [5.0, 2.4, 1.9],
-  bedNear: [0.2, 0.18, 0.13],
-  bedFar: [0.07, 0.07, 0.05],
+  absorb: [5.0, 2.6, 2.2],
+  bedNear: [0.075, 0.072, 0.045],
+  bedFar: [0.03, 0.034, 0.024],
   bedDepth: 0.2,
   waves: [
-    { scale: 2.4, angle: 0, slope: 0.03, speed: 0.03, stretch: 0.55 },
-    { scale: 0.7, angle: 18, slope: 0.04, speed: 0.02, stretch: 0.6 },
-    { scale: 0.2, angle: -25, slope: 0.045, speed: 0.01, stretch: 0.7, heavy: true },
-    { scale: 0.06, angle: 40, slope: 0.04, speed: 0.005, heavy: true },
+    { scale: 2.4, angle: 0, slope: 0.016, speed: 0.03, stretch: 2.2 },
+    { scale: 0.7, angle: 8, slope: 0.022, speed: 0.02, stretch: 1.8 },
+    { scale: 0.2, angle: -14, slope: 0.033, speed: 0.01, stretch: 1.3, heavy: true },
+    { scale: 0.06, angle: 30, slope: 0.03, speed: 0.005, heavy: true },
   ],
-  calmAlpha: 0.07,
-  reflection: 0.85,
+  calmAlpha: 0.05,
+  reflection: 1.0,
   foam: 0,
   foamWidth: 0.015,
   lap: 0,
-  variation: 0.5,
+  variation: 0.6,
   pullK: 0.003,
   pullMax: 2.5,
   flowSpeed: 0.12,
   traceSteps: 6,
   traceStart: 0.2,
   traceGrowth: 1.8,
+  bedLightMax: 1.2,
+  farSheen: 0.16,
+  edgePx: 2.5,
+  mirrorTint: [0.48, 0.56, 0.68],
 };

@@ -127,7 +127,8 @@ function smoothLine(p: [number, number][], passes: number): void {
  *  - v1 bakes: see buildEstimatedRivers (runtime level estimate + drape clamps).
  * Widths taper at sources, ribbons fade into the sea at mouths and into the main river at
  * confluences. Attributes: flow = (along km, across −1..1, half width km, fade),
- * flowDir = (dir.x, dir.z, rapid 0..1, 0).
+ * flowDir = (dir.x, dir.z, rapid 0..1, lake share 0..1: 1 where a ribbon runs on into a lake, fading out
+ * over LAKE_BLEND_KM of the river — the material matches the lake there).
  */
 export function buildRiverGeometry(world: World, lakes: LakeInfo[], opts: RiverBuildOptions): { geometry: BufferGeometry; stats: RiverStats } {
   const baked = world.rivers.length > 0 && world.rivers.every((r) => r.level && r.level.length === r.points.length);
@@ -385,6 +386,49 @@ const RAPID_GRADE: [number, number] = [1.5, 4.0];
 const FALL_SPRAY_KM = 1.0;
 /** a free end (a stream ending in its own valley) fades out over this length (km) */
 const FREE_END_FADE_KM = 0.8;
+/**
+ * S4 W4-S1 P4: a ribbon whose end lies in a lake at the lake's level (± LAKE_LEVEL_TOL) runs on this far
+ * (km) into the lake along its end tangent, fading out, so river and lake cross-fade instead of meeting
+ * at the bake's straight clip edge (the Forest River's seam on the Long Lake). 0 switches it off.
+ */
+const LAKE_OVERLAP_KM = 1.2;
+const LAKE_OVERLAP_STEP = 0.4;
+const LAKE_LEVEL_TOL = 0.06;
+/** the river's share of 'lake look' (flowDir.w) fades out over this length (km) beyond the lake */
+const LAKE_BLEND_KM = 1.0;
+/**
+ * S4 W4-S1: an outflow (a ribbon starting in a lake at its level) keeps the lake's level while the lake
+ * surface is still visible over it (baked lake mask above the lake material's cut, LAKE_MASK_VISIBLE)
+ * and one point beyond, so its first drop lies past the lake's edge. Dropping under the lake's fading
+ * edge, the ribbon was hidden by the lake surface there and the edge showed the channel paint as a dark
+ * straight line across the outflow (water-long-lake, the Celduin).
+ */
+const OUTFLOW_HOLD = true;
+const LAKE_MASK_VISIBLE = 0.12;
+
+/** CPU bilinear lake mask (water.g, the same texel convention as the GPU) at (x, z). */
+function lakeMaskSampler(world: World): (x: number, z: number) => number {
+  const img = world.water.image as { data?: Uint8Array; width: number; height: number };
+  const data = img.data;
+  if (!data) return () => 0;
+  const w = img.width;
+  const h = img.height;
+  const sp = world.spec;
+  return (x, z) => {
+    const fx = Math.min(w - 1, Math.max(0, ((x - sp.xMin) / sp.width) * w - 0.5));
+    const fz = Math.min(h - 1, Math.max(0, ((z - sp.zMin) / sp.depth) * h - 0.5));
+    const x0 = Math.floor(fx);
+    const z0 = Math.floor(fz);
+    const x1 = Math.min(w - 1, x0 + 1);
+    const z1 = Math.min(h - 1, z0 + 1);
+    const tx = fx - x0;
+    const tz = fz - z0;
+    const at = (xx: number, zz: number) => data[(zz * w + xx) * 4 + 1];
+    const a = at(x0, z0) + (at(x1, z0) - at(x0, z0)) * tx;
+    const b = at(x0, z1) + (at(x1, z1) - at(x0, z1)) * tx;
+    return (a + (b - a) * tz) / 255;
+  };
+}
 /** on a bend tighter than the ribbon, the inner edge stays inside this share of the bend radius */
 const INNER_EDGE = 0.9;
 
@@ -442,19 +486,63 @@ function buildBakedRivers(world: World, lakes: LakeInfo[], opts: RiverBuildOptio
   let dry = 0;
   let sections = 0;
   let count = 0;
+  const lakeMask = lakeMaskSampler(world);
   for (const r of lines) {
-    const pts = r.points;
-    const lv = r.level!;
-    const bed = r.bed ?? lv;
-    const n = pts.length;
-    if (n < 2) continue;
+    const pts0 = r.points;
+    const lv0 = r.level!;
+    const bed0 = r.bed ?? lv0;
+    const n0 = pts0.length;
+    if (n0 < 2) continue;
     count++;
-    const s = new Float64Array(n);
-    for (let i = 1; i < n; i++) s[i] = s[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
-    const L = s[n - 1];
+    const s0 = new Float64Array(n0);
+    for (let i = 1; i < n0; i++) s0[i] = s0[i - 1] + Math.hypot(pts0[i][0] - pts0[i - 1][0], pts0[i][1] - pts0[i - 1][1]);
+    const L = s0[n0 - 1];
     lengthKm += L;
-    const [sx, sz] = pts[0];
-    const [ex, ez] = pts[n - 1];
+    const [sx, sz] = pts0[0];
+    const [ex, ez] = pts0[n0 - 1];
+    // S4 W4-S1 P4: an end in a lake at the lake's level runs on into the lake, fading out (LAKE_OVERLAP_KM)
+    const lakeAt = (x: number, z: number, level: number) => {
+      const l = lakeNear(lakes, x, z, 1.0);
+      return l !== null && Math.abs(l.level - level) < LAKE_LEVEL_TOL;
+    };
+    const extA = LAKE_OVERLAP_KM > 0 && lakeAt(sx, sz, lv0[0]) ? LAKE_OVERLAP_KM : 0;
+    const extB = LAKE_OVERLAP_KM > 0 && lakeAt(ex, ez, lv0[n0 - 1]) ? LAKE_OVERLAP_KM : 0;
+    const pts: [number, number][] = [];
+    const lv: number[] = [];
+    const bed: number[] = [];
+    const sl: number[] = [];
+    const extend = (from: number, to: number, ext: number, sign: number) => {
+      const [fx, fz] = pts0[from];
+      const [tx0, tz0] = pts0[to];
+      const dl = Math.hypot(tx0 - fx, tz0 - fz) || 1;
+      const k = Math.max(1, Math.ceil(ext / LAKE_OVERLAP_STEP));
+      const out: number[] = [];
+      for (let j = 1; j <= k; j++) out.push((ext * j) / k);
+      if (sign < 0) out.reverse();
+      for (const d of out) {
+        pts.push([tx0 + ((tx0 - fx) / dl) * d, tz0 + ((tz0 - fz) / dl) * d]);
+        lv.push(lv0[to]);
+        bed.push(bed0[to]);
+        sl.push(sign < 0 ? -d : L + d);
+      }
+    };
+    if (extA) extend(Math.min(2, n0 - 1), 0, extA, -1);
+    const first = pts.length;
+    for (let i = 0; i < n0; i++) {
+      pts.push(pts0[i]);
+      lv.push(lv0[i]);
+      bed.push(bed0[i]);
+      sl.push(s0[i]);
+    }
+    if (extB) extend(Math.max(0, n0 - 3), n0 - 1, extB, 1);
+    if (extA && OUTFLOW_HOLD) {
+      for (let i = first + 1; i < first + n0; i++) {
+        if (lakeMask(pts[i - 1][0], pts[i - 1][1]) <= LAKE_MASK_VISIBLE) break;
+        lv[i] = Math.max(lv[i], lv0[0]);
+      }
+    }
+    const n = pts.length;
+    const s = Float64Array.from(sl);
     const up = lakeNear(lakes, sx, sz, 1.0) ? null : feeder(r, sx, sz);
     const source = !up && !lakeNear(lakes, sx, sz, 1.0);
     const parent = typeof r.into === 'string' ? byId.get(r.into) : undefined;
@@ -467,7 +555,7 @@ function buildBakedRivers(world: World, lakes: LakeInfo[], opts: RiverBuildOptio
     const startFade = up && distToPolyline(up.points, sx, sz) > 0.3 ? overlap(up) : 0;
     const hwFull = halfWidth(r);
     const taperLen = Math.min(L * 0.25, r.widthKm * 5 + 2);
-    const at = (i: number) => s[Math.min(n - 1, i)];
+    const at = (i: number) => s0[Math.min(n0 - 1, i)];
     const fallS = (r.falls ?? []).map((f) => 0.5 * (at(f.index) + at(f.index + 1)));
     const base = pos.length / 3;
     for (let i = 0; i < n; i++) {
@@ -512,18 +600,23 @@ function buildBakedRivers(world: World, lakes: LakeInfo[], opts: RiverBuildOptio
       if (startFade) fade *= smooth01(0, startFade, s[i]);
       if (joinFade) fade *= smooth01(L, L - joinFade, s[i]);
       if (freeEnd) fade *= smooth01(L, L - Math.min(FREE_END_FADE_KM, 0.5 * L), s[i]);
+      if (extA) fade *= smooth01(-extA, 0, s[i]);
+      if (extB) fade *= smooth01(L + extB, L, s[i]);
       const nx = -tz;
       const nz = tx;
       const y = lv[i];
+      const lakeShare = Math.max(extA ? 1 - smooth01(0, LAKE_BLEND_KM, s[i]) : 0, extB ? 1 - smooth01(L, L - LAKE_BLEND_KM, s[i]) : 0);
       for (let k = 0; k < K; k++) {
         const v = -1 + (2 * k) / (K - 1);
         const off = v === inner ? Math.min(hw, INNER_EDGE * rInner) : hw;
         pos.push(pts[i][0] + nx * v * off, y, pts[i][1] + nz * v * off);
         flow.push(s[i], v, hw, fade);
-        dir.push(tx, tz, rapid, 0);
+        dir.push(tx, tz, rapid, lakeShare);
       }
-      sections++;
-      if (y < hf.sample(pts[i][0], pts[i][1]) - 0.005) dry++;
+      if (i >= first && i < first + n0) {
+        sections++;
+        if (y < hf.sample(pts[i][0], pts[i][1]) - 0.005) dry++;
+      }
       if (i > 0) {
         const r0 = base + (i - 1) * K;
         const r1 = base + i * K;
