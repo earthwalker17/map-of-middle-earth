@@ -122,10 +122,13 @@ const W = {
   courseWarp: 0.22,
   /** darkening of the joint line at the foot of each course */
   joint: 0.16,
-  /** grime / rain streak column widths (km), lengths (in widths), darkening, mean where unresolved */
-  streakW: [0.2, 0.08, 0.03] as const,
+  /** grime / rain streak column widths (km), lengths (in widths), darkening, mean where unresolved; timber
+   *  takes streakWood of it (its boards already carry the grain). S4 C2: 0.62 → 0.34 and no 0.03 km width —
+   *  the critics read the denser, darker streaks as vertical wood grain on stone (Argonath, Morannon) */
+  streakW: [0.2, 0.08] as const,
   streakLen: [8, 24] as const,
-  streakDark: 0.62,
+  streakDark: 0.34,
+  streakWood: 0.5,
   streakMean: 0.08,
   /** crevice grime from the baked AO (darkening at the AO floor, away from the foot) */
   aoDirt: 0.2,
@@ -403,7 +406,7 @@ function weathering(p: TslNode, n: TslNode, n1: TslNode, n2: TslNode, ao: TslNod
     const run = t.mul(t.sqrt()).mul(0.85).add(0.15).mul(float(1).sub(smoothstep(0.97, 1, t)));
     streak = max(streak, mix(float(W.streakMean), amt.mul(prof).mul(run), vis(sw, 1.8, 3.0)));
   });
-  streak = streak.mul(wall).toVar();
+  streak = streak.mul(wall).mul(float(1).sub(c.isWood.mul(1 - W.streakWood))).toVar();
   // grey-brown grime on stone, plaster and wood; rust on metals
   const grime = mix(vec3(0.42, 0.43, 0.45), vec3(0.7, 0.42, 0.25), smoothstep(0.2, 0.6, metal));
   tint = tint.mul(mix(vec3(1), grime, streak.mul(W.streakDark / 0.58)));
