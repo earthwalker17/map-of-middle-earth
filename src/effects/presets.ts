@@ -96,7 +96,7 @@ export const PUFF: Record<PuffKind, PuffPreset> = {
     albedo: [0.2, 0.185, 0.17],
     spill: 1,
     dissolve: 0.35,
-    lodPx: [14, 90],
+    lodPx: [36, 140],
   },
   wisp: {
     family: 'plume',
@@ -138,8 +138,8 @@ export const PUFF: Record<PuffKind, PuffPreset> = {
     albedo: [0.14, 0.132, 0.125],
     spill: 0.5,
     dissolve: 0,
-    lodPx: [24, 120],
-    soft: 1,
+    lodPx: [60, 200],
+    soft: 2,
   },
   steam: {
     family: 'plume',
@@ -159,7 +159,7 @@ export const PUFF: Record<PuffKind, PuffPreset> = {
     albedo: [0.62, 0.62, 0.63],
     spill: 0.6,
     dissolve: 0.75,
-    lodPx: [14, 90],
+    lodPx: [30, 120],
     soft: 2,
   },
   spray: {

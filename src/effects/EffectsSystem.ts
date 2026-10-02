@@ -356,8 +356,8 @@ export class EffectsSystem implements System {
       if (count <= 0) break;
       // fewer puffs: each a little bigger and denser (the column keeps its body)
       const thin = e.count / count;
-      const sizeK = Math.pow(thin, 0.2);
-      const alphaK = Math.min(2, Math.pow(thin, 0.35)) * vis;
+      const sizeK = Math.pow(thin, 0.3);
+      const alphaK = Math.min(2, Math.pow(thin, 0.25)) * vis;
       drawn++;
       for (let k = 0; k < count; k++) {
         const o = n * PS;
@@ -404,7 +404,8 @@ export class EffectsSystem implements System {
       B[q] = ar;
       B[q + 1] = ag;
       B[q + 2] = ab;
-      B[q + 3] = S[o + PO.alpha];
+      // opacity (0..1) + 2 × the deck cover in eighths (the shader adds the overcast's light under a deck)
+      B[q + 3] = Math.min(1, S[o + PO.alpha]) + 2 * Math.round(8 * Math.min(1, Math.max(0, e.cover)));
       // spill (CPU mirror of the selected sources) × albedo / π, the preset's share
       const sp = this.spillAt(x, y, z);
       // a plume takes the glow of its source on its lower third; above, it stays dark (the film's ash column)

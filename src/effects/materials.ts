@@ -31,6 +31,8 @@ const { Fn, abs, attribute, cameraProjectionMatrix, cameraViewMatrix, clamp, cos
 
 /** gain on the puff lighting (the deck's light model scale: radiance = albedo · E · PUFF_LIGHT) */
 const PUFF_LIGHT = 0.85;
+/** share of the ash deck's overcast radiance (env.deckSky × π) lighting a puff under it from above */
+const PUFF_OVERCAST = 1;
 /** wrap of the puffs' key term: a volume is lit well past its terminator */
 const PUFF_WRAP = 0.6;
 
@@ -76,7 +78,8 @@ const eGnd = (): N => env.groundColor.mul(env.hemiIntensity);
 
 /**
  * Billboard puffs. Instance attributes (+ the quad corner = 5 vertex buffers):
- *  fxA = (x, y, z, radius km) · fxB = (albedo rgb, opacity) · fxC = (spill radiance rgb, key visibility)
+ *  fxA = (x, y, z, radius km) · fxB = (albedo rgb, opacity + 2 × round(8 × ash-deck cover)) · fxC = (spill
+ *  radiance rgb, key visibility)
  *  · fxD = (rotation rad, atlas frame + 16 × softness, sky visibility, vertical direction to the spill
  *  sources −1..1)
  */
@@ -106,10 +109,12 @@ export function createPuffMaterial(atlas: DataTexture, noise: Texture, o: FxMate
   const vS = varying(fog.S, 'vFxS');
   const vKey = varying(toQuad(env.keyDir), 'vFxKey');
   const vUp = varying(toQuad(vec3(0, 1, 0)), 'vFxUp');
-  const vAlb = varying(vec4(B.rgb, B.a.mul(nearFade)), 'vFxAlb');
+  // opacity and the ash-deck cover over the puff (packed: opacity + 2 × cover in eighths)
+  const coverQ = floor(B.a.mul(0.5));
+  const vAlb = varying(vec4(B.rgb, B.a.sub(coverQ.mul(2)).mul(nearFade)), 'vFxAlb');
   const vSpill = varying(C, 'vFxSpill');
   // atlas frame (0..15) + 16 × softness level (0..3: a billowing smoke edge … a diffuse spray / wisp)
-  const vAux = varying(vec3(D.z, D.w, floor(D.y.div(16)).div(3)), 'vFxAux');
+  const vAux = varying(vec4(D.z, D.w, floor(D.y.div(16)).div(3), coverQ.div(8)), 'vFxAux');
   // atlas cell of the frame (half-texel inset: the frames never sample their neighbours)
   const f = mod(D.y, 16);
   const cell = vec2(mod(f, 4), floor(f.div(4)));
@@ -143,7 +148,9 @@ export function createPuffMaterial(atlas: DataTexture, noise: Texture, o: FxMate
       .mul(vSpill.a)
       .mul(wrapKey.add(back))
       .add(eSky().mul(vAux.x).mul(up.mul(0.55).add(0.5)))
-      .add(eGnd().mul(float(0.3).sub(up.mul(0.25))));
+      .add(eGnd().mul(float(0.3).sub(up.mul(0.25))))
+      // under an ash deck the overcast itself lights the puff from above (its radiance is env.deckSky)
+      .add(env.deckSky.mul(Math.PI * PUFF_OVERCAST).mul(vAux.w).mul(vAux.x).mul(up.mul(0.5).add(0.5)));
     // the spill sources light the side of the puff facing them (dy < 0: below — the crater)
     const spillW = clamp(up.mul(vAux.y).mul(0.85).add(0.45), 0.08, 1);
     const rad = vAlb.rgb.mul(E).mul(PUFF_LIGHT).add(vSpill.rgb.mul(spillW));
