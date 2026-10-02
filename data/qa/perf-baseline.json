@@ -1,31 +1,32 @@
 {
-  "createdAt": "2026-10-01T17:05:51.268Z",
-  "label": "s3b",
+  "createdAt": "2026-10-02T17:30:08.270Z",
+  "label": "s4",
   "quality": "preview",
   "width": 1280,
   "height": 720,
   "gpu": "intel/gen-11",
   "timings": {
-    "engineCreated": 1419,
-    "worldLoaded": 2277,
-    "landmarksBuilt": 5400,
-    "init:environment": 6161,
-    "init:terrain": 7531,
-    "init:water": 7746,
-    "init:vegetation": 8276,
-    "init:diorama": 8288,
-    "init:landmarks": 8290,
-    "init:emission": 8295,
-    "compiled": 13332,
-    "warm": 14283
+    "engineCreated": 990,
+    "worldLoaded": 1788,
+    "landmarksBuilt": 4978,
+    "init:environment": 5831,
+    "init:terrain": 7247,
+    "init:water": 7464,
+    "init:vegetation": 8534,
+    "init:diorama": 8542,
+    "init:landmarks": 8545,
+    "init:emission": 8554,
+    "init:effects": 8662,
+    "compiled": 10535,
+    "warm": 11175
   },
-  "compileMs": 5037,
-  "bootMs": 14283,
-  "jsHeapMB": 355,
+  "compileMs": 1873,
+  "bootMs": 11175,
+  "jsHeapMB": 398,
   "footprint": {
-    "chromeMB": 1720,
+    "chromeMB": 1642,
     "chromeProcs": 8,
-    "nodeMB": 201
+    "nodeMB": 208
   },
   "views": [
     {
@@ -33,60 +34,97 @@
       "width": 1280,
       "height": 720,
       "frames": 60,
-      "medianMs": 56.8000000002794,
-      "p95Ms": 62,
-      "meanMs": 57.019999999979824,
-      "maxMs": 64.1999999997206
+      "medianMs": 57.1000000089407,
+      "p95Ms": 88.70000000298023,
+      "meanMs": 61.61500000009934,
+      "maxMs": 94
     },
     {
       "name": "shire",
       "width": 1280,
       "height": 720,
       "frames": 60,
-      "medianMs": 50.39999999990687,
-      "p95Ms": 54.39999999990687,
-      "meanMs": 50.623333333339545,
-      "maxMs": 55.89999999990687
+      "medianMs": 48.79999999701977,
+      "p95Ms": 58.30000001192093,
+      "meanMs": 49.750000000496705,
+      "maxMs": 59.8999999910593
     },
     {
       "name": "anduin-gondor",
       "width": 1280,
       "height": 720,
       "frames": 60,
-      "medianMs": 42.8000000002794,
-      "p95Ms": 47.1999999997206,
-      "meanMs": 43.39500000001863,
-      "maxMs": 48.700000000186265
+      "medianMs": 55.8999999910593,
+      "p95Ms": 67.29999999701977,
+      "meanMs": 57.521666666616994,
+      "maxMs": 68.40000000596046
     },
     {
       "name": "minas-tirith-close",
       "width": 1280,
       "height": 720,
       "frames": 60,
-      "medianMs": 61.299999999813735,
-      "p95Ms": 65.8000000002794,
-      "meanMs": 61.611666666646485,
-      "maxMs": 67.8000000002794
+      "medianMs": 68.5,
+      "p95Ms": 71.29999999701977,
+      "meanMs": 68.57833333238959,
+      "maxMs": 73.59999999403954
     },
     {
       "name": "mordor",
       "width": 1280,
       "height": 720,
       "frames": 60,
-      "medianMs": 33.09999999962747,
-      "p95Ms": 35.3000000002794,
-      "meanMs": 32.99166666668995,
-      "maxMs": 35.799999999813735
+      "medianMs": 48.20000000298023,
+      "p95Ms": 51.70000000298023,
+      "meanMs": 48.255000000198685,
+      "maxMs": 58.70000000298023
     },
     {
       "name": "rivendell-close",
       "width": 1280,
       "height": 720,
       "frames": 60,
-      "medianMs": 52.799999999813735,
-      "p95Ms": 56.299999999813735,
-      "meanMs": 52.80999999999379,
-      "maxMs": 58.39999999990687
+      "medianMs": 51.5,
+      "p95Ms": 55.20000000298023,
+      "meanMs": 51.546666667113705,
+      "maxMs": 55.30000001192093
     }
-  ]
+  ],
+  "noise": {
+    "boot": {
+      "waitedS": 5,
+      "beforePct": 10,
+      "duringPct": 8.7
+    },
+    "overview-day": {
+      "waitedS": 5,
+      "beforePct": 5.8,
+      "duringPct": 7.2
+    },
+    "shire": {
+      "waitedS": 5,
+      "beforePct": 7.3,
+      "duringPct": 6
+    },
+    "anduin-gondor": {
+      "waitedS": 5,
+      "beforePct": 5.1,
+      "duringPct": 6.7
+    },
+    "minas-tirith-close": {
+      "waitedS": 5,
+      "beforePct": 5.8,
+      "duringPct": 5.3
+    },
+    "mordor": {
+      "waitedS": 5,
+      "beforePct": 4.5,
+      "duringPct": 7.3
+    },
+    "rivendell-close": {
+      "waitedS": 5,
+      "beforePct": 6.3,
+      "duringPct": 6.2
+    }
+  }
 }
