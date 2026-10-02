@@ -1,6 +1,6 @@
 {
  "version": 1,
- "notes": "S4 W5-G2 hero polish: framing trials and checks for Minas Morgul, Lake-town, Mount Doom, Rivendell, Minas Tirith.",
+ "notes": "S4 W5-G2 hero polish: the reframed heroes' night pairs on their S4 W5 cameras (the review-s4 / s4-a night shots still use the S3 cameras; contract request to retarget them).",
  "shots": [
   {
    "id": "g2-doom-night",
@@ -23,27 +23,39 @@
    "compare": [
     "reference/film/mount-doom/mount-doom-plume-lava-fotr.jpg"
    ],
-   "note": "S4 W5-G2: the new mount-doom-close at night (= w1a-doom-night on the S4 W5 camera; contract request: retarget w1a-doom-night)"
+   "note": "S4 W5-G2: mount-doom-close (S4 W5 camera) at night \u2014 the flows, their pools and the plume's underglow"
   },
   {
-   "id": "g2-mt-a",
-   "tod": 6.3,
-   "note": "trial",
+   "id": "g2-laketown-night",
+   "tod": 21.5,
+   "dayOfYear": 240,
+   "fStop": 5.6,
    "camera": {
     "orbit": {
-     "place": "minas-tirith",
-     "distanceKm": 55,
-     "elevationDeg": 8,
-     "azimuthDeg": 125,
-     "fov": 24,
-     "lift": 6.5
+     "place": "lake-town",
+     "distanceKm": 6.0,
+     "elevationDeg": 10,
+     "azimuthDeg": 60,
+     "fov": 34,
+     "lift": 2.6,
+     "aimKm": [
+      1.4,
+      0.4
+     ]
     }
-   }
+   },
+   "compare": [
+    "reference/film/lake-town/lake-town-wide.webp"
+   ],
+   "note": "S4 W5-G2: lake-town-close (S4 W5 camera) at night \u2014 the window lights over the piles"
   },
   {
-   "id": "g2-mt-b",
-   "tod": 6.3,
-   "note": "trial",
+   "id": "g2-tirith-night",
+   "tod": 21.6,
+   "events": {
+    "beacons": 1
+   },
+   "fStop": 8,
    "camera": {
     "orbit": {
      "place": "minas-tirith",
@@ -57,26 +69,8 @@
       1.0
      ]
     }
-   }
-  },
-  {
-   "id": "g2-mt-c",
-   "tod": 6.3,
-   "note": "trial",
-   "camera": {
-    "orbit": {
-     "place": "minas-tirith",
-     "distanceKm": 55,
-     "elevationDeg": 8,
-     "azimuthDeg": 132,
-     "fov": 26,
-     "lift": 6.5,
-     "aimKm": [
-      -1.0,
-      0.5
-     ]
-    }
-   }
+   },
+   "note": "S4 W5-G2: minas-tirith-close (S4 W5 camera) at night with the beacons lit"
   }
  ]
 }
