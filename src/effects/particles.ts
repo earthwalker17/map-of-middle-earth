@@ -171,7 +171,8 @@ export function puffBounds(e: PuffEmitter, w: FxWind, out: [number, number, numb
   out[0] = e.p[0] + (w.dx * dU) / 2;
   out[1] = e.p[1] + e.H / 2;
   out[2] = e.p[2] + (w.dz * dU) / 2;
-  out[3] = Math.hypot(e.H / 2, dU / 2) + Math.max(e.rU, e.rTop) + size;
+  // (the umbrella is sheared downwind: up to 1.8 + 0.55 of its radius past the drift)
+  out[3] = Math.hypot(e.H / 2, dU / 2) + Math.max(e.capped ? 2.4 * e.rU : e.rU, e.rTop) + size;
   return out;
 }
 
@@ -223,7 +224,8 @@ export function evalPuff(e: PuffEmitter, k: number, tFx: number, w: FxWind, out:
       const t = a / aTop;
       hf = 1 - Math.pow(1 - t, 1.4);
       R = e.r0 + (e.rTop - e.r0) * Math.pow(hf, 0.6);
-      drift = dTop * Math.pow(hf, e.capped ? 1.6 : 1.3);
+      // the column leans downwind from low down (shear grows with height), not a vertical stalk
+      drift = dTop * Math.pow(hf, e.capped ? 1.25 : 1.3);
       y = e.p[1] + e.H * hf + vj * R * 0.6 + ty * R * 0.4;
     } else {
       umb = (a - aTop) / (1 - aTop);
@@ -233,10 +235,18 @@ export function evalPuff(e: PuffEmitter, k: number, tFx: number, w: FxWind, out:
     }
     lx = rr * Math.cos(ang) + tx * 0.5;
     lz = rr * Math.sin(ang) + tz * 0.5;
-    x = e.p[0] + w.dx * drift + lx * R;
-    z = e.p[2] + w.dz * drift + lz * R;
+    // the spread under the ceiling is sheared downwind (an anvil smeared into the pall, not a symmetric
+    // mushroom cap): stretched and shifted along the wind, narrower across it
+    const along = lx * w.dx + lz * w.dz;
+    const across = lz * w.dx - lx * w.dz;
+    const sh = umb * Math.min(1, w.s);
+    const al = along * (1 + 0.8 * sh) + 0.4 * sh;
+    const ac = across * (1 - 0.2 * sh);
+    x = e.p[0] + w.dx * drift + (al * w.dx - ac * w.dz) * R;
+    z = e.p[2] + w.dz * drift + (al * w.dz + ac * w.dx) * R;
     size = s * (P.size0 + (P.size1 - P.size0) * Math.pow(hf, 0.7)) * (1 + 0.9 * umb) * c[q + 9];
-    alpha = fadeIn * (1 - P.dissolve * Math.pow(hf, 1.2)) * Math.pow(1 - umb, 1.3);
+    // the umbrella is a thinner veil than the column (the pall and what lies behind it show through)
+    alpha = fadeIn * (1 - P.dissolve * Math.pow(hf, 1.2)) * Math.pow(1 - umb, 1.3) * (1 - 0.35 * smooth(0, 0.25, umb));
     if (!e.capped) alpha *= 1 - smooth(0.75, 1, a); // a free plume dissolves at its top
     merge = e.capped ? 0.25 * smooth(0.6, 1, hf) + 0.75 * smooth(0, 0.7, umb) : 0;
     // the lower column sits under the umbrella: less of the overcast reaches it; the core of the column is

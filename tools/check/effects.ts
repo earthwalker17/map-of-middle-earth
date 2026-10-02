@@ -5,8 +5,11 @@
  *    ≥ 2 points falling from the lip and a positive width
  *  - textures: the puff atlas and the fx noise are pure functions of their seed (built twice, identical) and
  *    every atlas frame is empty on its border (no bleeding between frames under mipmapping)
- *  - particles: every puff emitter evaluates to finite values, and random access is exact — evaluating a
- *    frame, other frames, then the first again gives the identical result (no hidden state)
+ *  - particles: the emitter set is the renderer's own (effects/build.ts buildEffects on the baked world with
+ *    its ash deck: capped plumes, umbrellas, ash ceilings, fall spray and mist columns, a synthetic beacon);
+ *    every puff emitter evaluates to finite values, and random access is exact — evaluating a frame, other
+ *    frames, then the first again gives the identical result (no hidden state)
+ *  - wisps: no declared smoke sits within 10 % of WISP_SCALE (a nudge across it turns a chimney into a column)
  *  - budget: the worst case (every emitter on, quality density 1) fits the puff instance capacity
  *  - on the baked world (when one exists): emitter sources, fall lips / feet and mist cards are not buried
  *    in the ground (warnings: a misplaced declaration draws nothing)
@@ -17,6 +20,7 @@ import { bakedDir, hasBake, loadLandmarks, loadWorld } from './baked.ts';
 export async function checkEffects(): Promise<CheckResult> {
   const out: CheckResult = { errors: [], warnings: [], info: [] };
   const Pr = await import('../../src/effects/presets.ts');
+  const Bu = await import('../../src/effects/build.ts');
   const Pa = await import('../../src/effects/particles.ts');
   const Tx = await import('../../src/effects/textures.ts');
   const { hash32 } = await import('../../src/core/rng.ts');
@@ -63,6 +67,9 @@ export async function checkEffects(): Promise<CheckResult> {
       if (!Pr.KNOWN_PRESETS.includes(e.preset)) out.errors.push(`effects: ${where}: unknown preset`);
       if ((e.rate ?? 1) <= 0 || (e.scale ?? 1) <= 0) out.errors.push(`effects: ${where}: rate and scale must be positive`);
       if (e.preset === 'beam' && !(e.to && e.to[1] > e.at[1])) out.errors.push(`effects: ${where}: a beam needs a 'to' above its source`);
+      // the effective scale carries the landmark's design scale (landmarks/world.ts landmarkEmitters)
+      const sc = (e.scale ?? 1) * (d.scale ?? 1);
+      if (e.preset === 'smoke' && Math.abs(sc - Pr.WISP_SCALE) < 0.1 * Pr.WISP_SCALE) out.errors.push(`effects: ${where}: scale ${sc.toFixed(3)} is within 10 % of WISP_SCALE ${Pr.WISP_SCALE} (a wisp / column flip on a small edit)`);
     }
     for (const [i, f] of (d.waterFeatures ?? []).entries()) {
       if (f.kind === 'pool') continue;
@@ -86,7 +93,6 @@ export async function checkEffects(): Promise<CheckResult> {
   const ground = (x: number, z: number) => world.heights.sample(x, z);
   const f3 = (p: readonly number[]) => p.map((v) => v.toFixed(2)).join(', ');
 
-  const emit: ReturnType<typeof Pa.makePuffEmitter>[] = [];
   for (const r of emitters) {
     const g = ground(r.p[0], r.p[2]);
     if (r.preset === 'mist') {
@@ -99,15 +105,36 @@ export async function checkEffects(): Promise<CheckResult> {
       continue;
     }
     if (r.p[1] < g - 0.5) out.warnings.push(`effects: ${r.landmark} ${r.preset} source ${f3(r.p)} is ${(g - r.p[1]).toFixed(2)} under the ground`);
-    emit.push(Pa.makePuffEmitter({ landmark: r.landmark, preset: r.preset as 'smoke' | 'ash' | 'steam', p: r.p, ...(r.to ? { to: r.to } : {}), rate: r.rate, scale: r.scale, slot: -1, seed: r.seed, cover: 0, deckY: 0 }));
   }
   for (const f of falls) {
     const lip = f.path[0];
     const foot = f.path[f.path.length - 1];
     if (lip[1] < ground(lip[0], lip[2]) - 0.3) out.warnings.push(`effects: ${f.landmark} fall lip ${f3(lip)} is under the ground`);
     if (foot[1] > ground(foot[0], foot[2]) + 1.5) out.warnings.push(`effects: ${f.landmark} fall foot ${f3(foot)} hangs ${(foot[1] - ground(foot[0], foot[2])).toFixed(2)} over the ground`);
-    emit.push(Pa.makePuffEmitter({ landmark: f.landmark, preset: 'spray', p: foot, rate: 1, scale: Math.max(0.8 * f.width, 0.1), slot: -1, seed: f.seed, cover: 0, deckY: 0 }));
   }
+
+  // the renderer's own emitter set: the deck field bound to this world (capped plumes, ash ceilings), the
+  // falls' spray and mist columns, and a synthetic beacon (the real beacon records come from the kit)
+  const { atmosphere } = await import('../../src/materials/atmosphere.ts');
+  try {
+    atmosphere.bindWorld(world);
+  } catch (err) {
+    out.warnings.push(`effects: atmosphere.bindWorld failed in Node (${(err as Error).message}) — the deck caps are not checked`);
+  }
+  const { landmarkPools } = await import('../../src/landmarks/world.ts');
+  const tirith = emitters.find((e) => e.landmark === 'minas-tirith')?.p ?? [0, ground(0, 0) + 0.5, 0];
+  const beacon = { landmark: 'check-beacon', p: [tirith[0], ground(tirith[0], tirith[2]) + 0.2, tirith[2]] as [number, number, number], color: [1, 0.6, 0.2] as [number, number, number], intensity: 2, radiusKm: 0.1, kind: 'beacon' as const, gate: 'event' as const, event: 'beacons', flicker: 0, seed: 77 };
+  const L = Bu.buildEffects({ emitters, falls, lights: [beacon], pools: landmarkPools(world, landmarks) }, { heightAt: ground, waterLevelAt: (x, z) => world.waterLevelAt(x, z), deckAt: (x, z, o) => atmosphere.deckAt(x, z, o) });
+  L.fallsGeometry?.dispose();
+  const emit = L.puffEmitters;
+  const capped = emit.filter((e) => e.capped).length;
+  const underDeck = emit.filter((e) => e.cover > Pr.DECK_CEILING_COVER).length;
+  if (!emit.some((e) => e.landmark === 'check-beacon')) out.errors.push('effects: a beacon light raised no smoke emitter');
+  if (L.fallRefs.length > Pr.FX_VIS_SLOTS) out.warnings.push(`effects: ${L.fallRefs.length} falls > ${Pr.FX_VIS_SLOTS} key-visibility slots (the rest draw lit)`);
+  if (L.mistCards.length > Pr.FX_VIS_SLOTS) out.warnings.push(`effects: ${L.mistCards.length} mist cards > ${Pr.FX_VIS_SLOTS} key-visibility slots (the rest draw lit)`);
+  // the HeightField key march: a point far above the map is fully lit
+  const keyVis = Bu.keyVisibility(ground, 0, 1e4, 0, 0.3, 0.9, 0.3);
+  if (!(keyVis === 1)) out.errors.push(`effects: keyVisibility of a point far above the map is ${keyVis}, not 1`);
 
   // random access: frame A, other frames, frame A again → identical; all finite
   const w = Pa.fxWind([0.8, 0.3]);
@@ -141,7 +168,7 @@ export async function checkEffects(): Promise<CheckResult> {
   if (total > Pr.MAX_PUFFS) out.warnings.push(`effects: every puff emitter on at density 1 needs ${total} puffs > capacity ${Pr.MAX_PUFFS} (the farthest emitters would be dropped)`);
   const by = (p: string) => emitters.filter((e) => e.preset === p).length;
   out.info.push(
-    `effects: ${emitters.length} emitters (smoke ${by('smoke')}, ash ${by('ash')}, steam ${by('steam')}, mist ${by('mist')}, beam ${by('beam')}, sparks ${by('sparks')}, embers ${by('embers')}), ${falls.length} falls; ${emit.length} puff emitters, worst case ${total} puffs at density 1 (capacity ${Pr.MAX_PUFFS}); ${evaluated} random-access evaluations identical`,
+    `effects: ${emitters.length} emitters (smoke ${by('smoke')}, ash ${by('ash')}, steam ${by('steam')}, mist ${by('mist')}, beam ${by('beam')}, sparks ${by('sparks')}, embers ${by('embers')}), ${falls.length} falls; ${emit.length} puff emitters (${capped} capped by a deck, ${underDeck} under one; + 1 synthetic beacon), worst case ${total} puffs at density 1 (capacity ${Pr.MAX_PUFFS}); ${evaluated} random-access evaluations identical`,
   );
   return out;
 }

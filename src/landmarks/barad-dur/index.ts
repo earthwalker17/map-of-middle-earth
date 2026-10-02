@@ -55,11 +55,12 @@ export default defineLandmark({
   stamps: STAMPS,
   proxy: (k) => buildTower(k),
   // fumes of the forges round the foundation (behind and beside the tower from the Gorgoroth cameras),
-  // rising along the spire and dissolving below the pall; the Eye stays clear
+  // staggered in place, height, strength and size (no symmetric pair flanking the spire), rising and
+  // dissolving below the pall; the Eye stays clear
   emitters: [
-    { preset: 'smoke', at: [4.6, 0.3, 1.8], rate: 0.22, scale: 1.5 },
-    { preset: 'smoke', at: [-4.4, 0.3, 2.4], rate: 0.2, scale: 1.3 },
-    { preset: 'smoke', at: [1.2, 0.3, 4.6], rate: 0.2, scale: 1.6 },
+    { preset: 'smoke', at: [5.4, 0.2, 3.6], rate: 0.26, scale: 1.65 },
+    { preset: 'smoke', at: [-3.1, 0.7, 6.2], rate: 0.13, scale: 0.85 },
+    { preset: 'smoke', at: [1.4, 0.1, 8.0], rate: 0.2, scale: 1.2 },
   ],
   lookOverride: 'mordor',
   vegetationExclusion: 12,

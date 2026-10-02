@@ -445,7 +445,7 @@ export default defineLandmark({
   anchor: 'water',
   proxy: buildTown,
   // a few thin chimney smokes over the roofs (town frame u, v; all on the deck, off the canals) at the
-  // town's design scale (houses ×9): wisps 40–240 m wide bending downwind, dissolving ≈ 1 km up
+  // town's design scale (houses ×9): pale wisps bending downwind, dissolving ≈ 0.4–0.5 km up
   emitters: (
     [
       [-0.9, -0.5],
@@ -457,7 +457,7 @@ export default defineLandmark({
     ] as V2[]
   ).map(([u, v], i) => {
     const [x, z] = T(u, v);
-    return { preset: 'smoke' as const, at: [x, 0.19 + 0.03 * (i % 3), z] as [number, number, number], rate: 0.8, scale: 0.075 + 0.015 * (i % 2), color: 0x8e9196 };
+    return { preset: 'smoke' as const, at: [x, 0.19 + 0.03 * (i % 3), z] as [number, number, number], rate: 0.8, scale: 0.075 + 0.015 * (i % 2), color: 0xb4b8bd };
   }),
   annotation: { title: 'Lake-town', subtitle: 'Esgaroth upon the Long Lake', blurb: 'A town of Men built out on the waters, in the shadow of the Lonely Mountain.' },
   bookmarks: [

@@ -65,8 +65,11 @@ export function buildFalls(falls: FallRecord[], heightAt: HeightFn, waterAt: (x:
   const sprays: FallSpray[] = [];
   const S = FALLS.segments;
   const COLS = 5;
+  // index of a drawn fall (fallT.w: its key-visibility slot in the material, EffectsSystem.fallRefs order)
+  let index = -1;
   for (const [fi, f] of falls.entries()) {
     if (f.path.length < 2 || !(f.width > 0)) continue;
+    index++;
     const lip = f.path[0];
     const footIn = f.path[f.path.length - 1];
     const drop = Math.max(0.01, lip[1] - footIn[1]);
@@ -146,7 +149,7 @@ export function buildFalls(falls: FallRecord[], heightAt: HeightFn, waterAt: (x:
           const s = (u - 0.5) * 2 * half;
           pos.push(p[0] + nx * off, p[1] + ny * off, p[2] + nz * off);
           side.push(wx * s, 0, wz * s);
-          tan.push(tx, ty, tz);
+          tan.push(tx, ty, tz, index);
           nrm.push(nx, ny, nz);
           fa.push(u, arc[i], L, layer);
           fb.push(width * wk, seed + layer * 0.21, width, 0);
@@ -175,7 +178,7 @@ export function buildFalls(falls: FallRecord[], heightAt: HeightFn, waterAt: (x:
         const an = (s / SEC) * Math.PI * 2;
         pos.push(fcx + Math.cos(an) * R * rr, fy, fcz + Math.sin(an) * R * rr);
         side.push(0, 0, 0);
-        tan.push(0, 0, 0);
+        tan.push(0, 0, 0, index);
         nrm.push(0, 1, 0);
         fa.push(rr, s / SEC, 1, 2);
         fb.push(R * 2, seed, R, R);
@@ -185,7 +188,7 @@ export function buildFalls(falls: FallRecord[], heightAt: HeightFn, waterAt: (x:
         const v0 = fBase + r * (SEC + 1) + s;
         idx.push(v0, v0 + SEC + 1, v0 + 1, v0 + 1, v0 + SEC + 1, v0 + SEC + 2);
       }
-    sprays.push({ landmark: f.landmark, p: [foot[0], fy + 0.01, foot[2]], out: [dx, dz], scale: Math.max(Math.min(0.8 * width, FALLS.sprayMax), 0.14 * drop), seed: (f.seed ^ (0x9e3779b9 + fi)) >>> 0, column: width >= FALLS.columnWidth ? FALLS.column * width : 0 });
+    sprays.push({ landmark: f.landmark, p: [foot[0], fy + 0.01, foot[2]], out: [dx, dz], scale: Math.max(Math.min(FALLS.sprayWidth * width, FALLS.sprayMax), FALLS.sprayDrop * drop), seed: (f.seed ^ (0x9e3779b9 + fi)) >>> 0, column: width >= FALLS.columnWidth ? FALLS.column * width : 0 });
   }
   if (!idx.length) return { geometry: null, sprays };
   const g = new BufferGeometry();
@@ -194,7 +197,7 @@ export function buildFalls(falls: FallRecord[], heightAt: HeightFn, waterAt: (x:
   g.setAttribute('fallA', new Float32BufferAttribute(fa, 4));
   g.setAttribute('fallB', new Float32BufferAttribute(fb, 4));
   g.setAttribute('fallW', new Float32BufferAttribute(side, 3));
-  g.setAttribute('fallT', new Float32BufferAttribute(tan, 3));
+  g.setAttribute('fallT', new Float32BufferAttribute(tan, 4));
   g.setIndex(new Uint32BufferAttribute(idx, 1));
   g.computeBoundingSphere();
   // the vertices sit on the axes: the curtains' half-widths reach beyond them
@@ -223,9 +226,10 @@ export function buildMist(cards: MistCard[], heightAt: HeightFn): BufferGeometry
   const ma: number[] = [];
   const mb: number[] = [];
   const mc: number[] = [];
+  const mi: number[] = [];
   const idx: number[] = [];
   const [GX, GZ] = MIST.grid;
-  for (const c of cards) {
+  for (const [ci, c] of cards.entries()) {
     const to = c.to ?? c.at;
     let ax = to[0] - c.at[0];
     let az = to[2] - c.at[2];
@@ -258,6 +262,7 @@ export function buildMist(cards: MistCard[], heightAt: HeightFn): BufferGeometry
           ma.push(u, v, lt, heightAt(x, z));
           mb.push(c.tint[0], c.tint[1], c.tint[2], (c.opacity * MIST.opacity) / Math.sqrt(L));
           mc.push(spacing, c.halfWidth, ((c.seed >>> 0) % 1000) / 1000 + l * 0.29, lt);
+          mi.push(ci);
         }
       for (let j = 0; j < GZ; j++)
         for (let i = 0; i < GX; i++) {
@@ -271,6 +276,8 @@ export function buildMist(cards: MistCard[], heightAt: HeightFn): BufferGeometry
   g.setAttribute('mistA', new Float32BufferAttribute(ma, 4));
   g.setAttribute('mistB', new Float32BufferAttribute(mb, 4));
   g.setAttribute('mistC', new Float32BufferAttribute(mc, 4));
+  // the card's index: its key-visibility slot in the material (EffectsSystem, per frame)
+  g.setAttribute('mistI', new Float32BufferAttribute(mi, 1));
   g.setIndex(new Uint32BufferAttribute(idx, 1));
   g.computeBoundingSphere();
   return g;

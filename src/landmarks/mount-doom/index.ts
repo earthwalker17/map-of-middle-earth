@@ -85,10 +85,11 @@ const STAMPS: LocalStamp[] = [
 ];
 
 /**
- * Low ash sheets over the Gorgoroth foreground (S4 W3-E, C1 note): in the dark dusk plates they hardly
- * read yet (pale billboards against the black plain at 30–50 km) — switch for the main agent's review.
+ * Low ash sheets over the Gorgoroth foreground (S4 W3-E, C1 note): OFF — in the dark dusk plates they hardly
+ * read yet (pale billboards against the black plain at 30–50 km) for ≈ 316 large puffs (the preview's
+ * Mordor fill rate); knownIssues.
  */
-const ASH_SHEETS = true;
+const ASH_SHEETS = false;
 
 /** declared lights beyond the kit records (the kit records the crater, door and flow lights) */
 const LIGHTS: LightDecl[] = [];

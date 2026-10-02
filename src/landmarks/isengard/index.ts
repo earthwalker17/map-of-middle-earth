@@ -303,11 +303,11 @@ const STAMPS: LocalStamp[] = [
 ];
 
 /**
- * smoke over five of the pits, steam over one (EffectsSystem, S4 W3-E): thin sooty columns (wisps, scale <
- * WISP_SCALE) ≈ 1.7 km tall leaning downwind, so Orthanc stands clear between them (a column scale merges
- * them into one blanket over the ring)
+ * smoke over five of the pits, steam over one (EffectsSystem, S4 W3-E): thin sooty columns (wisps, scale
+ * well under WISP_SCALE — the check keeps it ≥ 10 % away) ≈ 0.7 km tall leaning downwind, so Orthanc stands
+ * clear between them (a column scale merges them into one blanket over the ring)
  */
-const EMITTERS: EmitterDecl[] = [0, 3, 6, 9, 12, 13].map((i, n): EmitterDecl => (n === 5 ? { preset: 'steam', at: [PITS[i][0], 0.1, PITS[i][1]], rate: 0.8, scale: 0.6 } : { preset: 'smoke', at: [PITS[i][0], 0.1, PITS[i][1]], rate: 1.4, scale: 0.14, color: 0x3a3632 }));
+const EMITTERS: EmitterDecl[] = [0, 3, 6, 9, 12, 13].map((i, n): EmitterDecl => (n === 5 ? { preset: 'steam', at: [PITS[i][0], 0.1, PITS[i][1]], rate: 0.8, scale: 0.6 } : { preset: 'smoke', at: [PITS[i][0], 0.1, PITS[i][1]], rate: 1.4, scale: 0.12, color: 0x3a3632 }));
 
 export default defineLandmark({
   id: 'isengard',

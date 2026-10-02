@@ -88,35 +88,35 @@ export const PUFF: Record<PuffKind, PuffPreset> = {
     rise: 6,
     r0: 0.75,
     r1: 3.8,
-    spread: 2.6,
+    spread: 2.1,
     umbrella: 0.32,
-    bend: 0.35,
+    bend: 0.5,
     drift: 2.6,
     size0: 0.5,
     size1: 1.9,
     opacity: 0.5,
     albedo: [0.2, 0.185, 0.17],
     spill: 1,
-    dissolve: 0.35,
+    dissolve: 0.45,
     lodPx: [36, 140],
   },
   wisp: {
     family: 'plume',
-    count: 30,
-    minCount: 8,
+    count: 44,
+    minCount: 10,
     life: 18,
-    rise: 12,
+    rise: 5.5,
     r0: 0.25,
-    r1: 1.8,
+    r1: 1.5,
     spread: 1,
     umbrella: 0,
-    bend: 0.75,
+    bend: 0.5,
     drift: 0,
-    size0: 0.6,
-    size1: 2.2,
-    opacity: 0.42,
+    size0: 0.55,
+    size1: 1.8,
+    opacity: 0.4,
     albedo: [0.5, 0.51, 0.53],
-    spill: 0.25,
+    spill: 0.08,
     dissolve: 0.6,
     lodPx: [12, 60],
     soft: 2,
@@ -178,8 +178,8 @@ export const PUFF: Record<PuffKind, PuffPreset> = {
     drift: 0,
     size0: 0.3,
     size1: 1.0,
-    opacity: 0.6,
-    albedo: [0.78, 0.8, 0.82],
+    opacity: 0.5,
+    albedo: [0.86, 0.88, 0.9],
     spill: 0.4,
     dissolve: 0.6,
     lodPx: [10, 80],
@@ -212,7 +212,7 @@ export const EMBERS = { flames: 5, sparks: 8, life: 1.6, rise: 0.22, radiusKm: 0
 export const MIST = { layers: 3, spacing: 0.06, maxSpacing: 0.18, grid: [16, 8] as [number, number], opacity: 0.9, lodPx: [12, 60] as [number, number], occlusion: 0.65 };
 
 /** The Morgul beam: core / glow half-widths (km per scale), HDR radiance, linear colour. */
-export const BEAM = { core: 0.05, glow: 0.22, radiance: 14, color: [0.32, 1, 0.5] as [number, number, number], segments: 24 };
+export const BEAM = { core: 0.05, glow: 0.6, radiance: 14, color: [0.32, 1, 0.5] as [number, number, number], segments: 32 };
 
 /**
  * Waterfalls: ribbon segments, the veil layer's width ratio, plunge-foam radius (× the fall's size) and its
@@ -220,7 +220,11 @@ export const BEAM = { core: 0.05, glow: 0.22, radiance: 14, color: [0.32, 1, 0.5
  * 1 = an axis billboard: a fall seen along its wall never collapses to a thread), the draped falls'
  * visual widening, the width from which a fall raises a tall mist column over its foot (Rauros: the "smoke"
  * of the falls, seen behind the Argonath) and that column's scale per km of width, how much longer than
- * wide the curtain's streaks are, and the largest foot-spray scale (a wide fall's spray stays a cloud at
- * its foot, the mist column carries the rest).
+ * wide the curtain's streaks are, and the foot spray's scale: max(min(sprayWidth · width, sprayMax),
+ * sprayDrop · drop) (a wide fall's spray stays a cloud at its foot, the mist column carries the rest; a
+ * tall thin fall still throws a big cloud).
  */
-export const FALLS = { segments: 24, veil: 1.35, foam: 0.75, foamRings: 4, foamSectors: 24, facing: 0.45, drapeWiden: 1.4, columnWidth: 2, column: 0.55, streakStretch: 3, sprayMax: 2.5 };
+export const FALLS = { segments: 24, veil: 1.35, foam: 0.75, foamRings: 4, foamSectors: 24, facing: 0.45, drapeWiden: 1.4, columnWidth: 2, column: 0.55, streakStretch: 3, sprayMax: 2.5, sprayWidth: 1.4, sprayDrop: 0.25 };
+
+/** per-frame key-visibility slots of the falls / mist cards materials (uniform arrays; more draw lit) */
+export const FX_VIS_SLOTS = 16;

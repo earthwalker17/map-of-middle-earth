@@ -1,4 +1,4 @@
-import { AdditiveBlending, CustomBlending, DoubleSide, NodeMaterial, OneFactor, OneMinusSrcAlphaFactor, AddEquation, type DataTexture, type Texture } from 'three/webgpu';
+import { AdditiveBlending, CustomBlending, DoubleSide, NodeMaterial, OneFactor, OneMinusSrcAlphaFactor, AddEquation, Vector4, type DataTexture, type Texture } from 'three/webgpu';
 import { tsl, type TslNode } from '../materials/tsl.ts';
 import { env } from '../materials/environment.ts';
 import { atmosphere } from '../materials/atmosphere.ts';
@@ -6,10 +6,10 @@ import { gateNode } from '../materials/gates.ts';
 import { spillIrradiance } from '../emission/spill.ts';
 import type { WorldSpec } from '../world/WorldSpec.ts';
 import { ATLAS } from './textures.ts';
-import { FALLS, MIST } from './presets.ts';
+import { FALLS, FX_VIS_SLOTS, MIST } from './presets.ts';
 
 type N = TslNode;
-const { Fn, abs, attribute, cameraProjectionMatrix, cameraViewMatrix, clamp, cos, cross, dot, exp, float, floor, length, max, min, mix, mod, normalize, pow, select, sign, sin, smoothstep, sqrt, texture, varying, vec2, vec3, vec4 } = tsl;
+const { Fn, abs, attribute, cameraProjectionMatrix, cameraViewMatrix, clamp, cos, cross, dot, exp, float, floor, int, length, max, min, mix, mod, normalize, pow, select, sign, sin, smoothstep, sqrt, texture, uniformArray, varying, vec2, vec3, vec4 } = tsl;
 
 /**
  * The EffectsSystem's material module (S4 W3-E) — four pipelines, all transparent with no depth write,
@@ -29,10 +29,29 @@ const { Fn, abs, attribute, cameraProjectionMatrix, cameraViewMatrix, clamp, cos
  *  - beam, additive: an axis-aligned billboard (never edge-on), Gaussian core + glow, event-gated
  */
 
+/**
+ * Per-frame key visibility over the HeightField (EffectsSystem, CPU march): per fall (lip, middle, foot)
+ * and per mist card (its `at` end, middle, `to` end); w unused. Slots beyond FX_VIS_SLOTS draw lit.
+ */
+export const fxVisU = {
+  falls: uniformArray(Array.from({ length: FX_VIS_SLOTS }, () => new Vector4(1, 1, 1, 1)), 'vec4'),
+  mist: uniformArray(Array.from({ length: FX_VIS_SLOTS }, () => new Vector4(1, 1, 1, 1)), 'vec4'),
+};
+
+/** visibility along a fall / card from its three samples (t 0..1) */
+function vis3(v: N, t: N): N {
+  return select(t.lessThan(0.5), mix(v.x, v.y, t.mul(2)), mix(v.y, v.z, t.mul(2).sub(1)));
+}
+
 /** gain on the puff lighting (the deck's light model scale: radiance = albedo · E · PUFF_LIGHT) */
 const PUFF_LIGHT = 0.85;
 /** share of the ash deck's overcast radiance (env.deckSky × π) lighting a puff under it from above */
-const PUFF_OVERCAST = 1;
+const PUFF_OVERCAST = 1.6;
+/**
+ * multiple scattering of bright media (spray, steam, chimney smoke): their light is scattered many times
+ * inside the cloud, so they stay pale in the shade — × the albedo's luminance² (dark ash takes ~none)
+ */
+const PUFF_MULTI = 0.8;
 /** wrap of the puffs' key term: a volume is lit well past its terminator */
 const PUFF_WRAP = 0.6;
 
@@ -148,12 +167,15 @@ export function createPuffMaterial(atlas: DataTexture, noise: Texture, o: FxMate
       .mul(vSpill.a)
       .mul(wrapKey.add(back))
       .add(eSky().mul(vAux.x).mul(up.mul(0.55).add(0.5)))
-      .add(eGnd().mul(float(0.3).sub(up.mul(0.25))))
+      // ground bounce, half desaturated: a white cloud over brown rock does not turn brown
+      .add(mix(vec3(dot(eGnd(), vec3(0.2126, 0.7152, 0.0722))), eGnd(), 0.5).mul(float(0.3).sub(up.mul(0.25))))
       // under an ash deck the overcast itself lights the puff from above (its radiance is env.deckSky)
       .add(env.deckSky.mul(Math.PI * PUFF_OVERCAST).mul(vAux.w).mul(vAux.x).mul(up.mul(0.5).add(0.5)));
     // the spill sources light the side of the puff facing them (dy < 0: below — the crater)
     const spillW = clamp(up.mul(vAux.y).mul(0.85).add(0.45), 0.08, 1);
-    const rad = vAlb.rgb.mul(E).mul(PUFF_LIGHT).add(vSpill.rgb.mul(spillW));
+    const lumA = dot(vAlb.rgb, vec3(0.2126, 0.7152, 0.0722));
+    const multi = eSky().add(eKey().mul(vSpill.a).mul(0.35)).mul(lumA.mul(lumA).mul(PUFF_MULTI));
+    const rad = vAlb.rgb.mul(E.add(multi)).mul(PUFF_LIGHT).add(vSpill.rgb.mul(spillW));
     const col = rad.mul(vT).add(vS);
     return vec4(col.mul(a), a);
   })();
@@ -167,7 +189,8 @@ export function createPuffMaterial(atlas: DataTexture, noise: Texture, o: FxMate
  * Waterfall ribbons and plunge-foam discs (one static mesh). Vertex attributes:
  *  position · normal (the curtain's outward normal; foam: up) · fallA = (u across 0..1 | foam radius
  *  0..1, v km from the lip | foam angle 0..1, length km, layer: 0 core, 1 veil, 2 foam) · fallB = (width km,
- *  seed, projected-size reference km, opacity)
+ *  seed, projected-size reference km, foam disc radius km | 0 on the curtains) · fallW = the half-width
+ *  offset across (turned toward the camera here) · fallT = (tangent xyz, the fall's index: its fxVisU slot)
  */
 export function createFallsMaterial(noise: Texture, o: FxMaterialOptions): NodeMaterial {
   const P0 = attribute('position', 'vec3');
@@ -175,7 +198,8 @@ export function createFallsMaterial(noise: Texture, o: FxMaterialOptions): NodeM
   const FA = attribute('fallA', 'vec4');
   const FB = attribute('fallB', 'vec4');
   const SW = attribute('fallW', 'vec3');
-  const TG = attribute('fallT', 'vec3');
+  const TG4 = attribute('fallT', 'vec4');
+  const TG = TG4.xyz;
   // the offset across the curtain turns part-way toward the camera around the fall's axis (a fall seen
   // along its wall keeps some width); foam vertices have no offset
   const sLen = length(SW);
@@ -191,14 +215,19 @@ export function createFallsMaterial(noise: Texture, o: FxMaterialOptions): NodeM
   // light: two-sided (a curtain is translucent), key + sky + a little ground + the spill
   const camDist = max(length(env.cameraPos.sub(P)), 1e-3);
   const ndl = abs(dot(Nrm, env.keyDir));
-  const E = Fn(() =>
-    eKey()
+  const E = Fn(() => {
+    // the key's visibility over the terrain (a fall in its gorge's shade takes no sun): lip → foot
+    const slot = int(clamp(TG4.w, 0, FX_VIS_SLOTS - 1)).toVar();
+    const vv = fxVisU.falls.element(slot);
+    const kv = select(FA.w.greaterThan(1.5), vv.z, vis3(vv, clamp(FA.y.div(max(FA.z, 1e-3)), 0, 1)));
+    return eKey()
       .mul(ndl.mul(0.6).add(0.4))
       .mul(max(env.keyDir.y, 0).mul(4).min(1))
+      .mul(kv)
       .add(eSky().mul(0.85))
       .add(eGnd().mul(0.2))
-      .add(spillIrradiance(P, Nrm).mul(0.5)),
-  )();
+      .add(spillIrradiance(P, Nrm).mul(0.5));
+  })();
   // projected width (px): sub-pixel ribbons fade out (no aliased threads in wide shots)
   const px = FB.z.mul(env.pxPerKm).div(camDist);
   const vis = smoothstep(0.8, 3, px);
@@ -230,20 +259,23 @@ export function createFallsMaterial(noise: Texture, o: FxMaterialOptions): NodeM
     const n1 = texture(noise, uvA).r;
     let n = n1;
     if (o.detail) n = n1.mul(0.65).add(texture(noise, uvA.mul(vec2(2.3, 1.7)).add(vec2(0.31, env.tFx.mul(-0.4)))).b.mul(0.35));
-    // across: aerated core, ragged translucent edges
-    const edgeW = mix(float(0.16), float(0.3), layer.min(1)).add(n.sub(0.5).mul(0.12));
+    // across: aerated core, ragged translucent edges (wide, noise-eaten: no paper-cut border)
+    const edgeW = mix(float(0.22), float(0.36), layer.min(1)).add(n.sub(0.5).mul(0.18));
     const edge = smoothstep(0, edgeW, u).mul(smoothstep(1, float(1).sub(edgeW), u));
-    // along: glassy at the lip, white lower down, thinning into the spray at the foot
+    // along: glassy at the lip, white lower down, thinning into the spray at the foot; the lip itself fades
+    // in over the first few percent (a ragged top edge, never a flat cut line)
     const vf = v.div(L);
     const aer = smoothstep(0.02, 0.3, vf);
+    const lip = smoothstep(0, 0.07, vf.add(n.sub(0.5).mul(0.06)));
     const foot = float(1).sub(smoothstep(0.88, 1, vf).mul(0.55));
-    const core = edge.mul(mix(float(0.55), float(1), aer)).mul(clamp(n.mul(1.3).add(0.22), 0, 1)).mul(foot);
+    const core = edge.mul(mix(float(0.55), float(1), aer)).mul(clamp(n.mul(1.3).add(0.22), 0, 1)).mul(foot).mul(lip);
     const veil = core.mul(0.38);
     const aCurtain = mix(core, veil, layer.min(1));
     // plunge foam: churning patches round the foot (world-space noise drifting with the effect clock),
     // thinning out to a ragged edge
     const r = u;
-    const fq = vP.xz.div(max(vB.w, 1e-3).mul(0.45)).add(vec2(seed.mul(7), env.tFx.mul(0.08)));
+    // (curtains carry no foam radius: a fixed divisor keeps their discarded coordinates small)
+    const fq = vP.xz.div(max(vB.w, 0.05).mul(0.45)).add(vec2(seed.mul(7), env.tFx.mul(0.08)));
     const fn = texture(noise, fq.div(4)).g;
     const aFoam = float(1).sub(smoothstep(0.25, 1, r.add(fn.sub(0.5).mul(0.5)))).mul(smoothstep(0.3, 0.7, fn.add(float(1).sub(r).mul(0.25)))).mul(0.8);
     const alpha = mix(aCurtain, aFoam, select(isFoam, float(1), float(0))).mul(vB.z);
@@ -263,13 +295,15 @@ export function createFallsMaterial(noise: Texture, o: FxMaterialOptions): NodeM
 /**
  * Mist cards (one static mesh of stacked horizontal grids). Vertex attributes: position ·
  * mistA = (u, v across the card −1..1, layer 0..1, ground height under the vertex) · mistB = (tint rgb,
- * opacity) · mistC = (layer spacing km, half-width km, noise offset, top-light share).
+ * opacity) · mistC = (layer spacing km, half-width km, noise offset, top-light share) · mistI = the card's
+ * index (its fxVisU slot).
  */
 export function createMistMaterial(noise: Texture, heights: Texture, spec: WorldSpec, o: FxMaterialOptions): NodeMaterial {
   const P = attribute('position', 'vec3');
   const MA = attribute('mistA', 'vec4');
   const MB = attribute('mistB', 'vec4');
   const MC = attribute('mistC', 'vec4');
+  const MI = attribute('mistI', 'float');
   const clip = cameraProjectionMatrix.mul(cameraViewMatrix.mul(vec4(P, 1)));
   const fog = fogSplit(P, o.detail);
   // pale droplet light (the W1 valley mist's model, brighter: a card is the dense core of that layer): key
@@ -280,11 +314,16 @@ export function createMistMaterial(noise: Texture, heights: Texture, spec: World
   const lit = Fn(() => {
     const view = normalize(P.sub(env.cameraPos));
     const fwd = pow(clamp(dot(view, env.keyDir), 0, 1), 6).mul(1.2);
-    const e = eKey().mul(keyK.add(fwd)).mul(max(env.keyDir.y, 0).mul(5).min(1)).add(eSky().mul(0.85));
+    // the key's visibility over the terrain along the card (a layer in a gorge's shade takes no sun)
+    const slot = int(clamp(MI, 0, FX_VIS_SLOTS - 1)).toVar();
+    const kv = vis3(fxVisU.mist.element(slot), MA.x.mul(0.5).add(0.5));
+    const e = eKey().mul(keyK.add(fwd)).mul(max(env.keyDir.y, 0).mul(5).min(1)).mul(kv).add(eSky().mul(0.85));
     const grey = vec3(dot(e, lum));
     const reg = atmosphere.regional(P.xz, true).rgb;
     const chroma = mix(vec3(1), reg.div(max(dot(reg, lum), 0.05)), 0.6);
-    return mix(grey, e, 0.45).mul(chroma).mul(MB.rgb).add(spillIrradiance(P, vec3(0, 1, 0)).mul(MB.rgb).mul(0.6));
+    // the lower layers a little cooler (the shade under the layer), the top one warmer (its lit skin)
+    const strata = mix(vec3(0.93, 0.97, 1.04), vec3(1.03, 1.0, 0.96), MA.z);
+    return mix(grey, e, 0.45).mul(chroma).mul(strata).mul(MB.rgb).add(spillIrradiance(P, vec3(0, 1, 0)).mul(MB.rgb).mul(0.6));
   })();
   // dawn, dusk and night weighted; thin wisps by day
   const tod = float(0.3).add(clamp(max(max(env.golden, env.twilight.mul(0.9)), env.night.mul(0.75)), 0, 1).mul(0.7));
@@ -311,17 +350,25 @@ export function createMistMaterial(noise: Texture, heights: Texture, spec: World
   m.fragmentNode = Fn(() => {
     const u = vA.x;
     const v = vA.y;
-    // soft rounded-rectangle footprint (no card edge ever shows)
-    const edge = float(1).sub(smoothstep(0.45, 1, abs(u))).mul(float(1).sub(smoothstep(0.3, 1, abs(v))));
-    // drifting billows (world xz, wind × tFx), a finer octave in review / final
+    // drifting billows (world xz, wind × tFx), a finer octave in review / final; preview's one tap is a
+    // broader, lower-frequency layer (no discrete blobs)
     const q = vP.xz.sub(env.wind.mul(env.tFx).mul(0.012)).div(2.4).add(vec2(vK.z, vA.z.mul(0.37)));
-    let n = texture(noise, q.div(4)).g;
+    const t0 = texture(noise, q.div(o.detail ? 4 : 7));
+    let n: N = t0.g;
     if (o.detail) n = n.mul(0.6).add(texture(noise, q.mul(0.61).add(vec2(0.17, 0.53))).r.mul(0.4));
+    // footprint: a rounded band whose border is eaten by the low-frequency noise (the same tap's other
+    // channel) — no straight card edge, no parallelogram ends
+    const ne = t0.r.sub(0.5);
+    const ru = abs(u).add(ne.mul(0.45));
+    const rv = abs(v).add(ne.mul(0.6));
+    const edge = float(1).sub(smoothstep(0.3, 0.95, ru)).mul(float(1).sub(smoothstep(0.15, 0.9, rv)));
     const dens = smoothstep(0.28, 0.8, n.add(edge.mul(0.25))).mul(edge);
-    // where the ground rises to the layer the mist thins out (soft against the valley sides)
+    // where the ground rises to the layer the mist thins out over a broad, ragged ramp (soft against the
+    // valley sides: no contour line along the slope)
     let ground: N = vA.w;
     if (o.detail) ground = texture(heights, vec2(vP.x.sub(hFrame.x).mul(hFrame.z), vP.z.sub(hFrame.y).mul(hFrame.w))).r;
-    const soft = smoothstep(0, vK.y.mul(2.5), vP.y.sub(ground));
+    const ramp = max(vK.y.mul(3.5), 0.06);
+    const soft = smoothstep(0, ramp, vP.y.sub(ground).add(n.sub(0.5).mul(ramp).mul(0.8)));
     const a = clamp(dens.mul(soft).mul(vK.x), 0, 1);
     const col = vLit.mul(vT).add(vS);
     // a scattering layer: it veils the ground less than its in-scatter adds (it never darkens a dim scene)
@@ -359,15 +406,22 @@ export function createBeamMaterial(noise: Texture): NodeMaterial {
   m.name = 'fx-beam';
   m.vertexNode = clip;
   m.fragmentNode = Fn(() => {
-    const x = abs(vA.x);
     const t = vA.y;
-    const kc = max(vK.x, 0.05);
-    // a hot core and a wide soft glow (the glow carries most of the width)
-    const prof = exp(pow(x.div(kc), 2).mul(-1.5)).add(exp(x.mul(x).mul(-4.5)).mul(0.22)).mul(float(1).sub(smoothstep(0.8, 1, x)));
-    // brightest at the crown, fading into the pall; ripples running up the beam
+    // a roiling column: the width breathes along the axis and with the effect clock, and the axis sways a
+    // little (more toward the top) — the Great Signal, not a laser line
+    const roil = texture(noise, vec2(0.31, t.mul(vK.y).div(4).sub(env.tFx.mul(0.18))));
+    const sway = roil.g.sub(0.5).mul(0.35).mul(t);
+    const width = roil.r.mul(0.7).add(0.65);
+    const x = abs(vA.x.sub(sway)).div(width);
+    const kc = max(vK.x, 0.03);
+    // a narrow hot core inside a broad soft glow (3–5 × wider), the glow streaked by the ripples
+    const rip = texture(noise, vec2(vA.x.mul(0.35).add(0.3), t.mul(vK.y).div(2.5).sub(env.tFx.mul(0.6)))).r;
+    const core = exp(pow(x.div(kc), 2).mul(-1.5));
+    const glow = exp(x.mul(x).mul(-3.2)).mul(0.16).mul(rip.mul(0.9).add(0.55));
+    const prof = core.mul(rip.mul(0.5).add(0.75)).add(glow).mul(float(1).sub(smoothstep(0.75, 1, abs(vA.x))));
+    // brightest at the crown, fading into the pall
     const along = smoothstep(0, 0.03, t).mul(float(1).sub(smoothstep(0.7, 1, t))).mul(float(1.25).sub(t.mul(0.55)));
-    const rip = texture(noise, vec2(vA.x.mul(0.15).add(0.3), t.mul(vK.y).div(3).sub(env.tFx.mul(0.6)))).r.mul(0.5).add(0.75);
-    return vec4(vC.mul(prof.mul(along).mul(rip)), 1);
+    return vec4(vC.mul(prof.mul(along)), 1);
   })();
   m.transparent = true;
   m.blending = AdditiveBlending;
