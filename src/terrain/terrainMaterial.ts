@@ -23,6 +23,7 @@ const {
   clamp,
   dFdx,
   dFdy,
+  dot,
   float,
   fract,
   fwidth,
@@ -37,7 +38,9 @@ const {
   pow,
   property,
   select,
+  sin,
   smoothstep,
+  step,
   texture,
   uniform,
   uniformArray,
@@ -91,6 +94,29 @@ const CRUST_ON = true;
 /** P3: patchy, wind-scoured snow edges; grass tonal breakup (lush ↔ straw mottling, lusher hollows) */
 const SNOW_V3_ON = true;
 const GRASS_BREAKUP_ON = true;
+/**
+ * S4 W4-S2 snow v4 (supersedes v3's noise-driven edge and its crisp sharpening): the cover follows the
+ * relief. SNOW4: the height bonus (world units, ≈ 85 m real each) of gullies and lee sides and the
+ * penalty of ribs and windward faces on the snow line.
+ */
+const SNOW_V4_ON = true;
+/**
+ * S4 W4-S2 macro relief (review / final): noise scale km, the vertical stretch of the noise (gullies down
+ * the fall line), the forward-difference step km, the bump amplitude (world units) on rock / on soft ground,
+ * the footprint fade (km / px) and the tone it adds (gullies darker, ribs paler)
+ */
+const MACRO_ON = true;
+/** S4 W4-S2: ragged grass ↔ rock boundary (fine noise + macro ribs / gullies on the rock rule's slope) */
+const RAGGED_ON = true;
+/**
+ * S4 W4-S2 field rows: period km, luminance amplitude, footprint fade (km / px). The Shire field lattice's
+ * rotation (src/world/fields.ts shireFieldGrid `ang`) — keep in sync.
+ */
+const FIELD_ROWS_ON = true;
+const FIELD_ROWS = { km: 0.4, amp: 0.2, fade: [0.08, 0.16] as const } as const;
+const FIELD_LATTICE_ANGLE = 0.38;
+const MACRO = { km: 0.42, stretch: 6, eps: 0.05, amp: [0.14, 0.08] as const, fade: [0.04, 0.12] as const, tone: [0.2, 0.1] as const } as const;
+const SNOW4 = { gully: 2.6, lee: 0.9, rib: 1.6, wind: 0.9, mGully: 1.4, mRib: 1.0, coolShade: [0.86, 0.93, 1.08] as const } as const;
 
 /**
  * Terrain material family (the only terrain material in the project).
@@ -220,24 +246,90 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     // first, so a massif shows broken snowfields between bare ribs, never an icing line
     // the 0.4 km 3D noise (offline tiers only; faded once it would shimmer): snow edge patches, grass mottling
     const n5f: N = !preview && (SNOW_V3_ON || GRASS_BREAKUP_ON) ? mx_noise_float(p.mul(1 / 0.4)).mul(float(1).sub(smoothstep(0.03, 0.15, fp))) : float(0);
+
+    // ---- macro relief (S4 W4-S2, review / final): the 50–500 m the height field cannot carry — erosion
+    // gullies and the ribs between them on slopes, low swells on the flats — as a bump (the world-space
+    // gradient of a procedural height: one noise + three forward-difference taps, no fetch) and as tone, so a
+    // mid-range face reads as eroded rock, not inflated clay. The noise is stretched along y: on steep faces its
+    // creases run down the fall line (gullies), on gentle ground the stretch is moot. Faded by footprint.
+    let mGully: N = float(0);
+    let mRib: N = float(0);
+    let macroDn: N = vec3(0);
+    if (MACRO_ON && !preview) {
+      const mFade = float(1).sub(smoothstep(MACRO.fade[0], MACRO.fade[1], fp));
+      // the noise frame: stretched along y, so on steep faces the creases run down the fall line
+      const fm = (dp: [number, number, number]): N =>
+        mx_noise_float(vec3(p.x.add(dp[0]), p.y.add(dp[1]).mul(1 / MACRO.stretch), p.z.add(dp[2])).mul(1 / MACRO.km).add(vec3(5.3, 1.7, 9.1)));
+      const e = MACRO.eps;
+      const m1 = fm([0, 0, 0]);
+      // creases (|n| → 0): the gully floors; the swells between them: the ribs
+      const steepW = smoothstep(0.05, 0.3, slope);
+      // (creased on slopes only: |n| on rocky flats printed round 'hammered' pits — they take the swell)
+      const creaseW = steepW;
+      mGully = float(1).sub(smoothstep(0.04, 0.3, abs(m1))).mul(creaseW).mul(mFade);
+      mRib = smoothstep(0.42, 0.75, abs(m1)).mul(creaseW).mul(mFade);
+      // the bump height (world units): creased on slopes and rocky ground, swelling on the soft flats, deeper in rock
+      const amp = mix(float(MACRO.amp[1]), float(MACRO.amp[0]), max(smoothstep(0.2, 0.44, slope), pal.rockiness)).mul(mFade);
+      const H = (f: N): N => mix(f.mul(0.5), abs(f), creaseW);
+      // world-space gradient by forward differences (3 taps; screen-derivative bumps streaked at grazing
+      // views), projected onto the surface: n' ∝ n − (∇h − n (∇h · n))
+      const h0 = H(m1);
+      const g = vec3(H(fm([e, 0, 0])).sub(h0), H(fm([0, e, 0])).sub(h0), H(fm([0, 0, e])).sub(h0)).mul(amp.div(e));
+      macroDn = g.sub(nM.mul(dot(g, nM))).negate();
+    }
     let snowJit: N = float(0);
     let scour: N = float(0);
-    if (SNOW_V3_ON) {
+    if (SNOW_V3_ON && !SNOW_V4_ON) {
       snowJit = n4.mul(1.0).add(n5f.mul(0.6));
       const windward = clamp(nM.x.negate().mul(1.6), 0, 1).mul(smoothstep(0.18, 0.42, slope));
       scour = crest.mul(0.6).add(windward.mul(0.8)).mul(smoothstep(-0.3, 0.3, n3.add(n4.mul(0.6))));
     }
-    // snow sheds from convex ribs and collects in gullies
-    const snowRegional = snowAt(hEff.add(snowJit), slope.add(n3.mul(0.04)).add(crest.mul(0.12)).add(scour.mul(SNOW_V3_ON ? 0.24 : 0.18)), line, pal.volcanic, max(curv, 0));
+    // ---- snow v4 (S4 W4-S2): where the snow LIES is read from the relief, not from a noise — it gathers in
+    // the gullies and couloirs (concave: the 0.4 km Laplacian + the multi-scale index), on ledges and on
+    // the lee (east) side of the westerlies, and the convex ribs and windward faces go bare, so a massif shows
+    // snow streaking down its gullies between dark rock ribs (no cow-print blotches, no icing). Its lower
+    // edge is a ≈ 300 m band (TERRAIN_SHADE.snowBand) in which only that favoured ground holds it; the fine
+    // noises only fray the edges.
+    let snowRegional: N;
+    let gullyS: N = float(0);
+    let ribS: N = float(0);
+    let leeS: N = float(0);
+    let windS: N = float(0);
+    if (SNOW_V4_ON) {
+      gullyS = smoothstep(0.04, 0.4, curv.add(hollow.mul(0.35)).add(n4.mul(0.05)));
+      ribS = smoothstep(0.04, 0.35, crest.mul(0.8).sub(curv.mul(0.6)).add(n4.mul(0.05)));
+      leeS = clamp(nM.x.mul(1.8), 0, 1).mul(smoothstep(0.06, 0.28, slope));
+      windS = clamp(nM.x.negate().mul(1.6), 0, 1).mul(smoothstep(0.18, 0.42, slope));
+      const lie = hEff
+        .sub(line)
+        .add(gullyS.mul(SNOW4.gully))
+        .add(leeS.mul(SNOW4.lee))
+        .sub(ribS.mul(SNOW4.rib))
+        .sub(windS.mul(SNOW4.wind))
+        .add(mGully.mul(SNOW4.mGully))
+        .sub(mRib.mul(SNOW4.mRib))
+        .add(n3.mul(0.6))
+        .add(n4.mul(0.7))
+        .add(n5f.mul(0.5));
+      const alt = smoothstep(float(TS.snowShift - TS.snowBand[0]), float(TS.snowShift + TS.snowBand[1]), lie);
+      // ledges hold it, steep faces shed it; gullies hold it steeper, ribs shed it sooner
+      const s0 = slope.add(ribS.mul(0.08)).sub(gullyS.mul(TS.snowGully)).add(windS.mul(0.05)).sub(mGully.mul(0.16)).add(mRib.mul(0.08)).add(n4.mul(0.03));
+      snowRegional = alt.mul(float(1).sub(smoothstep(TS.snowSlope[0], TS.snowSlope[1], s0))).mul(float(1).sub(pal.volcanic));
+    } else {
+      // snow sheds from convex ribs and collects in gullies
+      snowRegional = snowAt(hEff.add(snowJit), slope.add(n3.mul(0.04)).add(crest.mul(0.12)).add(scour.mul(SNOW_V3_ON ? 0.24 : 0.18)), line, pal.volcanic, max(curv, 0));
+    }
     // stamp snow caps: above the cap's line (streaky edge, lower on north faces) on all but the sheerest
     // faces, fading out over the outer fifth of the stamp's reach
     let capSnow: N = float(0);
     if (caps.length) {
       // rock buttresses break through the cap on its steep, scoured parts (snow v3)
       // ribs (convex crests) go bare first: buttresses, not blotches
-      const sheer = SNOW_V3_ON
-        ? float(1).sub(smoothstep(0.56, 0.8, slope.add(n3.mul(0.06)).add(crest.mul(0.3)).add(n4.mul(0.08)).add(scour.mul(0.22))))
-        : float(1).sub(smoothstep(0.8, 0.96, slope.add(n3.mul(0.08)).add(crest.mul(0.06))));
+      const sheer = SNOW_V4_ON
+        ? float(1).sub(smoothstep(0.54, 0.8, slope.add(ribS.mul(0.12)).sub(gullyS.mul(0.12)).add(windS.mul(0.06)).sub(mGully.mul(0.4)).add(mRib.mul(0.22)).add(n4.mul(0.04))))
+        : SNOW_V3_ON
+          ? float(1).sub(smoothstep(0.56, 0.8, slope.add(n3.mul(0.06)).add(crest.mul(0.3)).add(n4.mul(0.08)).add(scour.mul(0.22))))
+          : float(1).sub(smoothstep(0.8, 0.96, slope.add(n3.mul(0.08)).add(crest.mul(0.06))));
       for (let i = 0; i < caps.length; i++) {
         const cx = snowCaps.element(i * 4);
         const cz = snowCaps.element(i * 4 + 1);
@@ -245,11 +337,13 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
         const cl = snowCaps.element(i * 4 + 3);
         const d = length(p.xz.sub(vec2(cx, cz)));
         const wR = clamp(reach.sub(d).div(reach.mul(0.2).add(1e-3)), 0, 1);
-        // the cap's lower edge: ±≈1 unit of 3 / 12 km noise, the fine jitter and the scoured crests — a ragged
-        // line across the shoulders, never a level icing rim
-        const up = SNOW_V3_ON
-          ? smoothstep(cl.sub(0.5), cl.add(1.2), hEff.add(n3.mul(2.0)).add(n2.mul(1.0)).add(snowJit.mul(1.5)).sub(crest.mul(0.8)).sub(scour.mul(0.6)))
-          : smoothstep(cl.sub(0.6), cl.add(1.6), hEff.add(n3.mul(1.4)).add(n2.mul(0.8)).add(snowJit.mul(1.3)));
+        // the cap's lower edge: v4 — the relief's gullies / ribs / lee and a fine fray (a ragged line that
+        // runs down the couloirs, never a level icing rim nor noise blotches); v3 — ±≈1 unit of 3 / 12 km noise
+        const up = SNOW_V4_ON
+          ? smoothstep(cl.sub(1.6), cl.add(1.6), hEff.add(gullyS.mul(SNOW4.gully)).add(leeS.mul(SNOW4.lee)).sub(ribS.mul(SNOW4.rib)).sub(windS.mul(SNOW4.wind)).add(mGully.mul(SNOW4.mGully)).sub(mRib.mul(SNOW4.mRib)).add(n3.mul(0.7)).add(n2.mul(0.5)).add(n4.mul(0.6)).add(n5f.mul(0.4)))
+          : SNOW_V3_ON
+            ? smoothstep(cl.sub(0.5), cl.add(1.2), hEff.add(n3.mul(2.0)).add(n2.mul(1.0)).add(snowJit.mul(1.5)).sub(crest.mul(0.8)).sub(scour.mul(0.6)))
+            : smoothstep(cl.sub(0.6), cl.add(1.6), hEff.add(n3.mul(1.4)).add(n2.mul(0.8)).add(snowJit.mul(1.3)));
         capSnow = max(capSnow, wR.mul(up));
       }
       capSnow = capSnow.mul(sheer).mul(float(1).sub(pal.volcanic));
@@ -270,8 +364,13 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
       .mul(float(1).sub(rockStamp))
       .mul(float(1).sub(alpineRaw))
       .mul(float(1).sub(smoothstep(BANK_TURF_SLOPE[0], BANK_TURF_SLOPE[1], slope)));
+    // the slope the rock rule reads: S4 W4-S2 — a ragged grass ↔ rock boundary (the 0.9 / 0.4 km noise and the
+    // macro ribs / gullies: outcrops on the ribs, turf down the gullies) instead of a contour-painted band
+    const slopeR = RAGGED_ON
+      ? slope.add(n2.mul(0.035)).add(n3.mul(0.03)).add(n4.mul(0.06)).add(n5f.mul(0.05)).add(mRib.mul(0.08)).sub(mGully.mul(0.05))
+      : slope.add(n2.mul(0.035)).add(n3.mul(0.02));
     const rockBase = max(
-      rockAt(slope.add(n2.mul(0.035)).add(n3.mul(0.02)).add(crest.mul(0.06).add(pal.rockiness.mul(crest).mul(0.12))).sub(hollow.mul(0.03)), alpine, max(turf, bankTurf), pal.rockiness),
+      rockAt(slopeR.add(crest.mul(0.06).add(pal.rockiness.mul(crest).mul(0.12))).sub(hollow.mul(0.03)), alpine, max(turf, bankTurf), pal.rockiness),
       smoothstep(0.1, 0.5, crest.add(n3.mul(0.15))).mul(subalpine).mul(0.85),
       smoothstep(0.08, 0.4, crest.add(slope.mul(1.4)).add(n3.mul(0.12))).mul(pal.rockiness).mul(0.85),
     );
@@ -286,7 +385,7 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     let breakup: N = aspectDryness(nM.z, slope);
     if (GRASS_BREAKUP_ON) breakup = breakup.add(n3.mul(0.14).add(n4.mul(0.16)).add(n5f.mul(0.12)).mul(pal.pattern.add(0.5))).sub(hollow.mul(0.06));
     const dryness = clamp(
-      pal.dryness.add(n1.mul(0.2)).add(n2.mul(0.12)).add(hC.mul(TS.drynessPerHeight)).add(crest.mul(0.12)).sub(hollow.mul(0.08)).sub(moist.mul(0.3)).sub(water.a.mul(0.15)).add(breakup),
+      pal.dryness.add(n1.mul(0.2)).add(n2.mul(0.12)).add(hC.mul(TS.drynessPerHeight)).add(crest.mul(0.12)).sub(hollow.mul(0.08)).sub(moist.mul(0.3)).sub(water.a.mul(0.15)).add(breakup).add(mRib.mul(0.08)).sub(mGully.mul(0.1)),
       0,
       1,
     );
@@ -379,7 +478,8 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     const rockTint = pal.rock.mul(vec3(float(1).add(n2.mul(0.05)), float(1), float(1).sub(n2.mul(0.05))));
     const rockFace = rockTint.mul(float(0.86).add(n2.mul(0.1)).add(n3.mul(0.12)).add(n4.mul(0.06))).mul(brush);
     const screeCol = mix(pal.rock, srgbNode(TS.scree), float(0.5).mul(float(1).sub(pal.volcanic.mul(0.7)))).mul(float(1.02).add(n4.mul(0.06)));
-    const rockCol = mix(rockFace, screeCol, scree).mul(lumHard).toVar();
+    // (macro relief: gullies darker, ribs paler — S4 W4-S2)
+    const rockCol = mix(rockFace, screeCol, scree).mul(lumHard).mul(float(1).sub(mGully.mul(MACRO.tone[0])).add(mRib.mul(MACRO.tone[1]))).toVar();
 
     // ---- strata on steep rock: bedding planes across the face (hard beds pale and proud with lit ledge
     // tops, soft beds dark and recessed), folded by the 60 km noise and wiggled by the 3 km one — the
@@ -414,12 +514,28 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     // above the treeline the turf turns thin, grey-green and stony
     ground.assign(mix(ground, mix(pal.grass, pal.rock, 0.55).mul(0.9), alpine.mul(0.6)));
     ground.assign(mix(ground, pal.soil, smoothstep(0.1, 0.3, slope).mul(0.5).mul(float(1).sub(turf.mul(0.8)))));
-    ground.assign(ground.mul(float(1).add(crest.mul(0.05)).sub(hollow.mul(0.05))));
+    ground.assign(ground.mul(float(1).add(crest.mul(0.05)).sub(hollow.mul(0.05)).sub(mGully.mul(0.07)).add(mRib.mul(0.04))));
 
     // Shire / Bree-land patchwork under the hedgerows
     const f = texture(maps.fields, vec2(p.x.sub(fieldFrame.x).mul(fieldFrame.z), p.z.sub(fieldFrame.y).mul(fieldFrame.w)));
     const fieldW = f.a.mul(float(1).sub(smoothstep(0.08, 0.22, slope))).mul(float(1).sub(lc.r));
-    ground.assign(mix(ground, f.rgb.mul(float(0.95).add(n4.mul(0.08))).mul(lumSoft), fieldW.mul(0.7)));
+    // (S4 W4-S2) the mask holds raw sRGB bytes (blue's lowest bit is the field's row axis): decode here
+    let fCol: N = pow(f.rgb, vec3(2.2)).mul(float(0.95).add(n4.mul(0.08))).mul(lumSoft);
+    if (FIELD_ROWS_ON) {
+      // mow / crop rows along each field's long axis (a lattice axis; the lattice's warp bends them a
+      // little), a soft square wave that wanders a few tens of metres, faded once a period nears 3–4 px
+      const axisBit = step(0.25, fract(f.b.mul(127.5).add(0.01)));
+      const ca = Math.cos(FIELD_LATTICE_ANGLE);
+      const sa = Math.sin(FIELD_LATTICE_ANGLE);
+      const cU = p.x.mul(ca).add(p.z.mul(sa));
+      const cV = p.z.mul(ca).sub(p.x.mul(sa));
+      // rows along u vary across v, and vice versa
+      const c = mix(cV, cU, axisBit).add(n4.mul(0.05));
+      const rowsVis = float(1).sub(smoothstep(FIELD_ROWS.fade[0], FIELD_ROWS.fade[1], fp));
+      const stripe = smoothstep(-0.55, 0.55, sin(c.mul((2 * Math.PI) / FIELD_ROWS.km)));
+      fCol = fCol.mul(float(1).add(stripe.sub(0.5).mul(FIELD_ROWS.amp).mul(rowsVis)));
+    }
+    ground.assign(mix(ground, fCol, fieldW.mul(0.7)));
     // grass breakup (P3): a tonal mottle independent of the palette's grass ↔ dry pair — patches of lush,
     // darker green and of pale straw at 0.4 / 0.9 / 3 / 12 km with fairly crisp margins (pasture seen from
     // the air, not a soft cloud noise), on the field patchwork too (within each field). Never on volcanic
@@ -479,10 +595,18 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
 
     // snow v3: a crisp snow / rock margin (the grey airbrushed halo round every rock patch was the soft
     // ramp of the height rules) — sharpened about the half-cover line
-    if (SNOW_V3_ON) snow.assign(smoothstep(0.28, 0.72, snow));
+    // (v4: a gentler shoulder — the edges follow the relief, so they need no hard cut)
+    if (SNOW_V4_ON) snow.assign(smoothstep(0.1, 0.9, snow));
+    else if (SNOW_V3_ON) snow.assign(smoothstep(0.28, 0.72, snow));
     const col = mix(ground, rockCol, rock.mul(float(1).sub(shell.weight))).toVar();
     // snow: a slightly grey, varied albedo (old wind-packed vs fresh), never paper white
-    const snowCol = srgbNode(TS.snow).mul(float(0.97).add(n3.mul(0.03)).add(n4.mul(0.03))).mul(mix(float(1), lumHard, 0.6));
+    let snowCol: N = srgbNode(TS.snow).mul(float(0.97).add(n3.mul(0.03)).add(n4.mul(0.03))).mul(mix(float(1), lumHard, 0.6));
+    // v4: thin snow over the gully floors and the faces turned from the key take a cool blue-grey (skylit
+    // shade), so the snow fields model with the relief instead of reading as flat white paint
+    if (SNOW_V4_ON) {
+      const away = float(1).sub(smoothstep(-0.05, 0.4, dot(nM, env.keyDir)));
+      snowCol = snowCol.mul(mix(vec3(1), vec3(...SNOW4.coolShade), clamp(away.add(gullyS.mul(0.25)), 0, 1)));
+    }
     col.assign(mix(col, snowCol, snow));
 
     // ---- coasts, shores, wetlands, ash, roads, channels
@@ -541,13 +665,13 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
     const nB = normalize(vec3(nRelief.x.mul(kH), nRelief.y, nRelief.z.mul(kH)));
     let nW: N;
     if (detail) {
-      nW = normalize(nB.add(dN).add(crustDn).add(shell.dn.mul(shell.weight)));
+      nW = normalize(nB.add(dN).add(crustDn).add(shell.dn.mul(shell.weight)).add(macroDn.mul(float(1).sub(shell.weight))));
     } else {
       const dFade = float(1).sub(smoothstep(0.05, 0.6, fp));
       const dx = mx_noise_float(p.mul(1 / 0.7).add(vec3(3.1, 0, 7.7)));
       const dz = mx_noise_float(p.mul(1 / 0.7).add(vec3(11.3, 0, 1.9)));
       const amt = dFade.mul(float(0.12).add(rock.mul(0.2)));
-      nW = normalize(nB.add(vec3(dx, 0, dz).mul(amt)).add(dN).add(crustDn).add(shell.dn.mul(shell.weight)));
+      nW = normalize(nB.add(vec3(dx, 0, dz).mul(amt)).add(dN).add(crustDn).add(shell.dn.mul(shell.weight)).add(macroDn.mul(float(1).sub(shell.weight))));
     }
 
     // ---- outputs

@@ -5,7 +5,7 @@ import type { World } from '../world/World.ts';
 import { env } from '../materials/environment.ts';
 import { atmosphere } from '../materials/atmosphere.ts';
 import { SLAB } from '../diorama/slabSpec.ts';
-import { daylight, moonDirection, moonIllumination, moonlight, moonPhase, siderealAngle, sunDirection } from './timeOfDay.ts';
+import { daylight, moonDirection, moonIllumination, moonlight, moonPhase, NIGHT_SHADOW_FLOOR, siderealAngle, sunDirection } from './timeOfDay.ts';
 import { SkyModel } from './sky.ts';
 import { KeyShadow, type ShadowBounds } from './shadows.ts';
 import { CloudField } from './clouds.ts';
@@ -155,6 +155,8 @@ export class EnvironmentSystem implements System {
     env.keyIntensity.value = this.keyIsMoon ? ml.key : dl.sunIntensity;
     this.sun.color.copy(env.keyColor.value);
     this.sun.intensity = env.keyIntensity.value;
+    // moonlit cast shadows keep a floor (S4 W4-S2): no black holes behind the ranges at night
+    this.sun.shadow.intensity = 1 - NIGHT_SHADOW_FLOOR * dl.night;
     // cloud shadows: full strength at regional range; wide views of the whole slab keep only a
     // trace, so the map's geography stays clean (the same framing rule as the regional grade)
     const [tx, ty, tz] = state.camera.target;

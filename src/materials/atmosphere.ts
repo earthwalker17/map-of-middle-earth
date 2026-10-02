@@ -90,6 +90,14 @@ const ASH_RAMP_DEFAULT = [30, 220] as const;
  * overcast horizon without a seam (the dome's horizon uses the same colour).
  */
 export const DECK_HAZE_CHROMA = 0.6;
+/** ray deck cover over which the under-deck haze takes the overcast's colour (S3/W1: 0.1 → 0.45) */
+const DECK_HAZE_ONSET = [0.06, 0.3] as const;
+/** deck cover at the camera over which a camera under the pall sees all haze in the overcast's colour */
+const DECK_EYE_HAZE = [0.3, 0.65] as const;
+/** S4 W4-S2: the along-ray ash cover takes a mid-point tap on camera rays (review / final, with the haze's mid tap) */
+const ASH_MID_TAP = true;
+/** S4 W4-S2: the deck field ignores the default region in the gaps between region masks (see bindWorld) */
+const DECK_GAP_FILL = true;
 const LUM_W = [0.2126, 0.7152, 0.0722] as const;
 
 /** Regional haze texture over the map frame (≈ 6.3 km per texel before the blur). */
@@ -343,6 +351,19 @@ export class Atmosphere {
             const wx = spec.xMin + ((x + (sx + 0.5) / SS) / HAZE_W) * spec.width;
             const wz = spec.zMin + ((y + (sy + 0.5) / SS) / HAZE_H) * spec.depth;
             field.weights(wx, wz, w);
+            // the deck's weights (S4 W4-S2): the default region (index 0) fills the gaps the baked
+            // region masks leave — the ranges ringing Mordor (Ered Lithui, Ephel Dúath) — so it only
+            // counts where it dominates (the ground look's rule) and the pall spans those ranges
+            // instead of thinning to ~0.65 over them (a daylit band behind Doom)
+            let rest = 0;
+            let all = 0;
+            for (let k = 0; k < n; k++) {
+              all += w[k];
+              if (k > 0) rest += w[k];
+            }
+            const t0 = Math.min(1, Math.max(0, (w[0] - 0.55) / 0.4));
+            const w0d = DECK_GAP_FILL && rest > 1e-6 ? w[0] * t0 * t0 * (3 - 2 * t0) : w[0];
+            const kRest = rest > 1e-6 ? (all - w0d) / rest : 1;
             let s = 0;
             for (let k = 0; k < n; k++) {
               if (w[k] <= 0) continue;
@@ -353,7 +374,7 @@ export class Atmosphere {
               a += w[k] * L.density;
               acc[6] += w[k] * L.mist;
               const D = decks[k];
-              const c = w[k] * D.cover;
+              const c = (k === 0 ? w0d : w[k] * kRest) * D.cover;
               if (c > 0) {
                 acc[0] += c;
                 acc[1] += c * D.tone.r;
@@ -640,14 +661,31 @@ export class Atmosphere {
     return sum.div(wt);
   }
 
-  /** Ash-deck cover along the ray: the end point and (camera rays) the eye, air-density weighted. */
-  rayDeck(from: N, to: N, explicitLod = false, eye = true): N {
+  /**
+   * Ash-deck cover along the ray: the end point, (review / final: `midTap`) the mid point and (camera
+   * rays) the eye, air-density weighted like rayRegional. The mid tap (S4 W4-S2) carries the pall over a
+   * long low ray that leaves the deck: a camera under Doom's pall looking out over the Gate sees the
+   * world beyond through ~100 km of ash, not through the average of its two clear ends.
+   */
+  rayDeck(from: N, to: N, explicitLod = false, eye = true, midTap = false): N {
     const k = env.airFalloff;
     const end = this.deckCover(to.xz, explicitLod);
-    if (!eye) return end;
+    if (!eye && !midTap) return end;
     const wE = exp(k.mul(max(to.y, 0)).negate());
-    const wC = exp(k.mul(max(from.y, 0)).negate()).mul(this.eyeIn);
-    return end.mul(wE).add(this.eyeDeck.mul(wC)).div(wE.add(wC));
+    let sum = end.mul(wE);
+    let wt = wE;
+    if (midTap) {
+      const mid = this.deckCover(from.xz.add(to.xz).mul(0.5), explicitLod);
+      const wM = exp(k.mul(max(from.y.add(to.y).mul(0.5), 0)).negate()).mul(2);
+      sum = sum.add(mid.mul(wM));
+      wt = wt.add(wM);
+    }
+    if (eye) {
+      const wC = exp(k.mul(max(from.y, 0)).negate()).mul(this.eyeIn);
+      sum = sum.add(this.eyeDeck.mul(wC));
+      wt = wt.add(wC);
+    }
+    return sum.div(wt);
   }
 
   /**
@@ -723,8 +761,33 @@ export class Atmosphere {
    * Must run inside a TSL Fn (the valley-mist pre-test is a branch).
    */
   apply(color: N, from: N, to: N, inScatter = true, explicitLod = false, fromCamera = false, emissive: N | null = null, emissiveFog = 1, midTap = true): N {
+    const { T, S } = this.terms(from, to, inScatter, explicitLod, fromCamera, midTap);
+    const out = color.mul(T).add(S);
+    // an additive light source seen through the haze: extinction only, softened by `emissiveFog`
+    // (< 1: the light also scatters forward in the haze around it, so it survives the veil better)
+    return emissive ? out.add(emissive.mul(T.pow(emissiveFog))) : out;
+  }
+
+  /**
+   * The aerial perspective of a point split into transmittance T (rgb) and the additive in-scatter +
+   * halos S (rgb), apply(c) = c·T + S, from ONE evaluation (S4 W4-S2 perf): S and the optical depth are
+   * packed in one vec4 by one inlined Fn (so the valley-mist branch has its stack), T = exp(−β·τ) is
+   * rebuilt from τ (the extinction is a uniform). Used per vertex by the effects and the preview ash deck
+   * (two apply() calls there built the whole graph twice).
+   */
+  applySplit(from: N, to: N, inScatter = true, explicitLod = false, fromCamera = false, midTap = true): { T: N; S: N } {
+    const packed = Fn(() => {
+      const t = this.terms(from, to, inScatter, explicitLod, fromCamera, midTap);
+      return vec4(t.S, t.tau);
+    })();
+    const beta = inScatter ? env.extinction : vec3(1);
+    return { T: exp(beta.mul(packed.w).negate()), S: packed.xyz };
+  }
+
+  /** T, S (see applySplit) and the optical depth τ of a ray. Must run inside a TSL Fn (valley-mist branch). */
+  private terms(from: N, to: N, inScatter: boolean, explicitLod: boolean, fromCamera: boolean, midTap: boolean): { T: N; S: N; tau: N } {
     const reg = this.rayRegional(from, to, explicitLod, fromCamera, midTap);
-    const ash = this.rayDeck(from, to, explicitLod, fromCamera);
+    const ash = this.rayDeck(from, to, explicitLod, fromCamera, fromCamera && midTap && ASH_MID_TAP);
     const tauMist = this.mistDepth(from, to, this.valleyMist(to));
     const tau = this.opticalDepth(from, to, reg.a, float(0), ash).add(tauMist);
     const beta = inScatter ? env.extinction : vec3(1);
@@ -744,7 +807,12 @@ export class Atmosphere {
     if (fromCamera) {
       // under the ash deck the haze glows with the overcast's own light — the dome's colour — so
       // far land fades into the overcast horizon (no seam), never brighter than the sky above it
-      const k = smoothstep(0.1, 0.45, ash).mul(this.eyeUnder);
+      // (S4 W4-S2: an earlier, steeper onset — with the mid tap a long ray out of the pall reads ≈ 0.3–0.5)
+      // A camera standing under a dense pall sees every ray's haze lit by the overcast, however clear the
+      // ray's far end: whatever lies beyond the pall's edge is seen through ~100 km of ash (its own
+      // sunlit haze is extinguished on the way) — the far world beyond the Ered Lithui (Rhovanion,
+      // Mirkwood: deck 0 at both the end and the mid point) faded into a daylit band behind Doom
+      const k = max(smoothstep(DECK_HAZE_ONSET[0], DECK_HAZE_ONSET[1], ash), smoothstep(DECK_EYE_HAZE[0], DECK_EYE_HAZE[1], this.eyeDeck)).mul(this.eyeUnder);
       cInf = mix(cInf, env.deckSky.mul(mix(vec3(1), chroma, DECK_HAZE_CHROMA)), k);
     }
     // the valley mist scatters the low sun / moon and the sky light (pale), tinted by its region
@@ -753,11 +821,10 @@ export class Atmosphere {
     const lit = env.keyColor.mul(keyMist).add(env.skyColor.mul(env.hemiIntensity.mul(MIST_SKY)));
     const mistCol = mix(vec3(dot(lit, vec3(...LUM_W))), lit, MIST_SAT).mul(chroma);
     cInf = mix(cInf, mistCol, clamp(tauMist.div(max(tau, 1e-4)), 0, 1));
-    const lit0 = color.mul(T).add(cInf.mul(vec3(1).sub(T)));
-    const out = this.full ? lit0.add(spillInScatter(from, to, reg.a)) : lit0; // + W2-D halos round strong lights (review / final graphs)
-    // an additive light source seen through the haze: extinction only, softened by `emissiveFog`
-    // (< 1: the light also scatters forward in the haze around it, so it survives the veil better)
-    return emissive ? out.add(emissive.mul(T.pow(emissiveFog))) : out;
+    const S0 = cInf.mul(vec3(1).sub(T));
+    // + W2-D halos round strong lights (review / final graphs)
+    const S = this.full ? S0.add(spillInScatter(from, to, reg.a)) : S0;
+    return { T, S, tau };
   }
 
   /** `scene.fogNode`: the material output seen through the atmosphere from the camera. */

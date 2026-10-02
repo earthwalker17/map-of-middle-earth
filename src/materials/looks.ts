@@ -929,15 +929,20 @@ export const TERRAIN_SHADE = {
    * the 12 / 3 km terms break a long even crest (the Grey Mountains) into snowy and bare reaches
    */
   snowLineNoise: [2.4, 1.7, 0.75] as const,
-  /** snow fades in over this many units above the line (S4: crisper, patchier edges) */
-  snowFade: 1.6,
+  /**
+   * snow v4 (S4 W4-S2): the cover fades in over a band around the line — from line + shift − band[0] to
+   * line + shift + band[1] (world units; ≈ 300 m of real height, not a hard mask) — inside which only
+   * the favoured ground holds it (the terrain material: gullies, ledges, lee sides; ribs bare)
+   */
+  snowBand: [1.8, 2.2] as const,
+  snowShift: 1.5,
   /** north-facing faces hold snow lower: effective height + northness (−n.z) · this */
   snowNorth: 2.8,
   /** snow sheds from slopes steeper than [a, b]; concave gullies hold it `snowGully` steeper */
-  snowSlope: [0.27, 0.55] as const,
-  snowGully: 0.16,
-  /** snow albedo (sRGB): a little grey (wind-packed, shaded by its own micro relief), never paper white */
-  snow: 0xd6dbe2,
+  snowSlope: [0.3, 0.54] as const,
+  snowGully: 0.12,
+  /** snow albedo (sRGB): blue-grey ≈ 0.73 (wind-packed, shaded by its own micro relief), never paper white */
+  snow: 0xd8dde5,
   /**
    * grass on slopes facing the sun (south, +Z) dries by up to this much, shade-facing slopes green up
    * (0 switches the aspect term off in the terrain and in the water's coarse albedo alike)
@@ -1006,7 +1011,8 @@ export function rockAt(slope: N, alpine: N, turf: N = float(0), rockiness: N = f
 export function snowAt(hEff: N, slope: N, line: N, volcanic: N, gully: N = float(0)): N {
   const T = TERRAIN_SHADE;
   const g = gully.mul(T.snowGully);
-  return smoothstep(line, line.add(T.snowFade), hEff)
+  const l0 = line.add(T.snowShift);
+  return smoothstep(l0.sub(T.snowBand[0]), l0.add(T.snowBand[1]), hEff)
     .mul(float(1).sub(smoothstep(g.add(T.snowSlope[0]), g.add(T.snowSlope[1]), slope)))
     .mul(float(1).sub(volcanic));
 }

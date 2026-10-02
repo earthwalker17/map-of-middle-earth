@@ -210,18 +210,26 @@ function surfaceOverride(world: World, a: Float32Array, W: number, H: number): v
   }
 }
 
-/** Crop colours of the Shire patchwork (sRGB) and their shares. */
+/**
+ * Crop colours of the Shire patchwork (sRGB) and their shares. S4 W4-S2: a narrow, mostly green palette —
+ * pastures and meadows in close greens, a few straw fields, rare fallow / ploughed earth (the S3 lime /
+ * olive / brown alternation read as a board game). The first three entries are pasture (the fringe's).
+ */
 const CROPS: [string, number][] = [
-  ['#5b8a33', 0.24], // pasture
-  ['#679336', 0.18],
-  ['#53792e', 0.12],
-  ['#76993f', 0.1], // young crop
-  ['#939b4a', 0.1], // hay meadow
-  ['#b3a257', 0.1], // wheat
-  ['#a39447', 0.06], // barley
-  ['#6f5a3c', 0.05], // ploughed
-  ['#7b8246', 0.05], // fallow
+  ['#5c8a37', 0.29], // pasture
+  ['#66903b', 0.2],
+  ['#557f33', 0.14],
+  ['#6f8f3d', 0.12], // young crop
+  ['#7d9143', 0.09], // hay meadow
+  ['#a39a5c', 0.06], // ripe wheat (straw)
+  ['#979257', 0.04], // barley stubble
+  ['#6e6a4a', 0.03], // ploughed
+  ['#6b7a46', 0.03], // fallow
 ];
+/** S4 W4-S2: the field margins — a field's colour weight fades over this distance (km) inside its border */
+const FIELD_EDGE_KM = 0.55;
+/** weight kept at the very border (the hedge line between two fields) */
+const FIELD_EDGE_MIN = 0.15;
 const FIELD_KM = 0.2;
 /** zero-weight texels around the patchwork, so the clamped sampler reads 0 outside it */
 const FIELD_PAD = 2;
@@ -291,6 +299,8 @@ function buildFieldMask(world: World): { texture: DataTexture; frame: Vector4 } 
     q: [number, number][];
     col: [number, number, number];
     w: number;
+    /** 1 when the field's long axis is the lattice's v axis (its rows run along v), else 0 */
+    axis: number;
   }
   const cells: Cell[] = [];
   let x0 = Infinity;
@@ -324,7 +334,10 @@ function buildFieldMask(world: World): { texture: DataTexture; frame: Vector4 } 
       const col = new Color(CROPS[k][0]);
       // per-field tone jitter (the same crop is never quite the same colour twice)
       col.multiplyScalar(0.93 + 0.14 * rand(seed, id, 2));
-      cells.push({ q, col: [toS(col.r), toS(col.g), toS(col.b)], w: w * (0.75 + 0.25 * rand(seed, id, 3)) });
+      // the long axis: lattice u (i → i + 1) or v (j → j + 1), from the quad's mid-edge spans
+      const lu = Math.hypot((q[1][0] + q[2][0] - q[0][0] - q[3][0]) / 2, (q[1][1] + q[2][1] - q[0][1] - q[3][1]) / 2);
+      const lv = Math.hypot((q[2][0] + q[3][0] - q[0][0] - q[1][0]) / 2, (q[2][1] + q[3][1] - q[0][1] - q[1][1]) / 2);
+      cells.push({ q, col: [toS(col.r), toS(col.g), toS(col.b)], w: w * (0.75 + 0.25 * rand(seed, id, 3)), axis: lv > lu ? 1 : 0 });
       for (const [x, z] of q) {
         x0 = Math.min(x0, x);
         z0 = Math.min(z0, z);
@@ -333,7 +346,7 @@ function buildFieldMask(world: World): { texture: DataTexture; frame: Vector4 } 
       }
     }
   if (!cells.length) {
-    return { texture: makeTexture(new Uint8Array(4), 1, 1, true, 'terrain-fields'), frame: new Vector4(0, 0, 1, 1) };
+    return { texture: makeTexture(new Uint8Array(4), 1, 1, false, 'terrain-fields'), frame: new Vector4(0, 0, 1, 1) };
   }
   x0 -= FIELD_PAD * FIELD_KM;
   z0 -= FIELD_PAD * FIELD_KM;
@@ -348,7 +361,20 @@ function buildFieldMask(world: World): { texture: DataTexture; frame: Vector4 } 
     const maxZ = Math.min(H - 1 - FIELD_PAD, Math.ceil((Math.max(a[1], b[1], c[1]) - z0) / FIELD_KM));
     const area = (b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1]);
     if (Math.abs(area) < 1e-9) return;
-    const wa = Math.max(1, Math.round(Math.min(1, cell.w) * 255));
+    const q = cell.q;
+    // distance (km) from a point to the field's border (its four edges)
+    const edgeDist = (px: number, pz: number): number => {
+      let d = Infinity;
+      for (let e = 0; e < 4; e++) {
+        const [ax, az] = q[e];
+        const [bx, bz] = q[(e + 1) & 3];
+        const ex = bx - ax;
+        const ez = bz - az;
+        const t = Math.min(1, Math.max(0, ((px - ax) * ex + (pz - az) * ez) / (ex * ex + ez * ez || 1)));
+        d = Math.min(d, Math.hypot(px - ax - ex * t, pz - az - ez * t));
+      }
+      return d;
+    };
     for (let y = minZ; y <= maxZ; y++)
       for (let x = minX; x <= maxX; x++) {
         const px = x0 + (x + 0.5) * FIELD_KM;
@@ -359,10 +385,13 @@ function buildFieldMask(world: World): { texture: DataTexture; frame: Vector4 } 
         if (w0 < 0 || w1 < 0 || w2 < 0) continue;
         const o = (y * W + x) * 4;
         if (data[o + 3] > 0) continue; // first field wins on shared edges
+        // soft field margins: the weight eases in over FIELD_EDGE_KM inside the border (S4 W4-S2)
+        const edge = FIELD_EDGE_MIN + (1 - FIELD_EDGE_MIN) * smooth(0, FIELD_EDGE_KM, edgeDist(px, pz));
         data[o] = cell.col[0];
         data[o + 1] = cell.col[1];
-        data[o + 2] = cell.col[2];
-        data[o + 3] = wa;
+        // the row axis rides in blue's lowest bit (raw bytes: the mask is sampled without an sRGB decode)
+        data[o + 2] = (cell.col[2] & 0xfe) | cell.axis;
+        data[o + 3] = Math.max(1, Math.round(Math.min(1, cell.w) * edge * 255));
       }
   };
   for (const cell of cells) {
@@ -394,7 +423,8 @@ function buildFieldMask(world: World): { texture: DataTexture; frame: Vector4 } 
         }
       }
   const frame = new Vector4(x0, z0, 1 / (W * FIELD_KM), 1 / (H * FIELD_KM));
-  return { texture: makeTexture(data, W, H, true, 'terrain-fields'), frame };
+  // raw bytes (NoColorSpace): the terrain decodes the sRGB colour itself and reads the row-axis bit
+  return { texture: makeTexture(data, W, H, false, 'terrain-fields'), frame };
 }
 
 const cache = new WeakMap<World, GroundMaps>();

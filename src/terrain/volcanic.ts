@@ -55,7 +55,43 @@ export const VOLCANIC = {
   glowSlope: [0.05, 0.12] as const,
   /** horizontal part of the base normal kept on gentle volcanic ground (the baked sub-km ripples read as dunes) */
   flatten: 0.4,
+  /**
+   * S4 W4-S2 lava flows radiating from Orodruin (the fissure glow clusters along them instead of being
+   * sprinkled over the plain): [compass azimuth deg (x = sin, z = −cos, as the landmark), start km from
+   * Doom, length km, half-width km, heat 0..1]. The first four continue the cone's kit flows from their
+   * toes (src/landmarks/mount-doom/parts.ts FLOWS: rim + length), the rest are older, mostly crusted ones.
+   */
+  flows: [
+    [152, 17, 19, 1.7, 1.0],
+    [194, 15, 15, 1.5, 0.9],
+    [238, 10.5, 13, 1.2, 0.7],
+    [104, 9.5, 10, 1.0, 0.6],
+    [22, 16, 14, 1.3, 0.35],
+    [298, 15, 12, 1.2, 0.3],
+    [63, 17, 9, 1.0, 0.25],
+  ] as const,
+  /** meander of a flow's centreline: amplitude (km) of a per-flow wave and of the 12 / 3 km noise */
+  flowMeander: [1.6, 1.8, 0.6] as const,
+  /** lit share of the 1.5 km cracks inside a flow (hot → cooled end) and on the open plain */
+  flowLit: [0.55, 0.12] as const,
+  plainLit: 0.015,
+  /**
+   * glow colours (LINEAR, × strength): molten core → deep red → (the cooled crust: none). Deep reds like the
+   * cone's kit lava (0xff4a12 ≈ linear 1, 0.07, 0.006): the Mordor grade desaturates warm hues (looks.json
+   * grade `warms`, strong reds exempt), so a linear orange (1, 0.34, 0.06) greyed out to beige
+   */
+  glowHot: [1.0, 0.2, 0.022] as const,
+  glowRed: [1.0, 0.08, 0.008] as const,
+  glowHotGain: 1.5,
+  /** gain of the molten channel and of the flows' lit cracks (the channel is wide: keep it dim, never white) */
+  channelGain: 0.22,
+  flowCrackGain: 0.7,
+  /** the molten channel: width as a share of the flow's half-width; heat (along-flow share) where it ends */
+  channelWidth: 0.15,
+  channelEnd: 0.45,
 } as const;
+/** S4 W4-S2: fissure glow along the flows (false: the S4 W1-B ring of lit cracks) */
+const FLOWS_ON = true;
 
 /**
  * Voronoi on a unit lattice: F1, F2 (euclidean, cell units), a random value of the nearest cell and one of
@@ -136,6 +172,42 @@ export function volcanicCrust(i: CrustInputs): CrustOut {
   const doomP = doomProximity(p, i.doom);
   // full Gorgoroth (volcanic ≈ 1) vs Dagorlad / Nurn (≈ 0.4–0.5): the glow and basalt are Gorgoroth's
   const gorgoroth = smoothstep(0.8, 0.95, i.volcanic);
+  // ---- lava flows (S4 W4-S2): a few meandering tongues radiating from Doom's foot; `flow` 0..1 across a
+  // tongue, `heat` 1 at its source → 0 at its toe (the cooling gradient), `channel` the molten core line
+  let flow: N = float(0);
+  let heat: N = float(0);
+  let channel: N = float(0);
+  if (FLOWS_ON) {
+    const d = p.xz.sub(i.doom);
+    let hw: N = float(0);
+    let hs: N = float(0);
+    V.flows.forEach(([az, r0, len, half, h0], k) => {
+      const a = (az * Math.PI) / 180;
+      const ux = Math.sin(a);
+      const uz = -Math.cos(a);
+      const along = d.x.mul(ux).add(d.y.mul(uz)).sub(r0);
+      const t = along.div(len);
+      // lateral offset from the meandering centreline (a per-flow wave + the shared 12 / 3 km noise)
+      const lat = d.x.mul(uz).sub(d.y.mul(ux));
+      const wave = tsl.sin(along.mul(0.21).add(k * 1.73)).mul(V.flowMeander[0]);
+      const m = lat.add(wave).add(n2.mul(V.flowMeander[1])).add(n3.mul(V.flowMeander[2]));
+      // the tongue tapers to its toe, which frays (the 3 km noise)
+      const wk = float(half).mul(float(1.2).sub(clamp(t, 0, 1).mul(0.55)));
+      const q = m.div(wk);
+      const inside = smoothstep(-0.04, 0.06, t).mul(float(1).sub(smoothstep(0.7, 1.02, t.add(n3.mul(0.18)))));
+      const fk = tsl.exp(q.mul(q).negate()).mul(inside);
+      const qc = m.div(wk.mul(V.channelWidth));
+      const ck = tsl.exp(qc.mul(qc).negate()).mul(inside).mul(float(1).sub(smoothstep(V.channelEnd * 0.5, V.channelEnd, t))).mul(h0);
+      flow = max(flow, fk);
+      channel = max(channel, ck);
+      // heat: the source end of the hotter flows (weighted by their presence here)
+      hs = hs.add(fk.mul(float(1).sub(clamp(t, 0, 1)).mul(h0)));
+      hw = hw.add(fk);
+    });
+    heat = hs.div(max(hw, 1e-3));
+    flow = flow.mul(gorgoroth);
+    channel = channel.mul(gorgoroth);
+  }
   // a gentle warp of the coarse network only (the plates stay angular — a warped edge wiggles like a worm)
   const warp = vec2(n3, n2).mul(0.3);
   let crack: N = float(0);
@@ -163,7 +235,10 @@ export function volcanicCrust(i: CrustInputs): CrustOut {
       // two plates is lit or dark along its whole length — short angular segments, a network at night)
       if (k === 1) {
         const pair = fract(v.id.add(v.id2).mul(91.7).add(v.id.mul(v.id2).mul(37.3)));
-        const lit = smoothstep(1 - V.glowLit - 0.04, 1 - V.glowLit + 0.04, pair);
+        // (S4 W4-S2) inside a flow many cracks of its crust glow (more at the hot end); the open plain
+        // keeps a rare few
+        const litFrac: N = FLOWS_ON ? mix(float(V.plainLit), mix(float(V.flowLit[1]), float(V.flowLit[0]), heat), smoothstep(0.08, 0.6, flow)) : float(V.glowLit);
+        const lit = smoothstep(float(1).sub(litFrac).sub(0.04), float(1).sub(litFrac).add(0.04), pair);
         const wg = float(width * 0.5);
         // anti-aliased like the cracks: below a pixel the line keeps its energy (dimmer, never gone)
         const hw = max(wg, fp.div(L).mul(0.6));
@@ -186,7 +261,8 @@ export function volcanicCrust(i: CrustInputs): CrustOut {
   // basalt flow lobes (sparse on the open plain, more towards Doom) with ragged, fingering margins and
   // pressure ridges — a darker, rougher ground, never a black blot
   const lobes = n2.mul(0.7).add(n3.mul(0.45)).add(n4.mul(0.3)).add(doomP.mul(0.55)).sub(0.3);
-  const basalt = smoothstep(-0.08, 0.3, lobes).mul(gorgoroth).mul(0.8);
+  // (the flows are fresh basalt: darker, rougher tongues across the ash)
+  const basalt = max(smoothstep(-0.08, 0.3, lobes).mul(gorgoroth).mul(0.8), smoothstep(0.15, 0.6, flow).mul(0.95));
   const ridge = float(1).sub(abs(mx_noise_float(p.xz.div(0.7).add(vec2(n3, n4).mul(0.9)))));
   const ridgeVis = float(1).sub(smoothstep(0.03, 0.12, fp));
   const ridges = ridge.mul(ridge).mul(ridge).mul(ridgeVis);
@@ -212,13 +288,31 @@ export function volcanicCrust(i: CrustInputs): CrustOut {
   const ring = smoothstep(V.glowRing[0], V.glowRing[1], dDoom).mul(float(1).sub(smoothstep(V.glowRing[1], V.glowRing[2], dDoom)));
   // each lit crack burns along part of its length only (short segments, not whole polygons)
   const run = smoothstep(-0.12, 0.12, n4.mul(0.8).add(n3.mul(0.5)).add(0.5 - V.glowRun));
-  const glowAmt = core
-    .mul(run)
-    .mul(ring.mul(V.glowDoom).add(gorgoroth.mul(V.glowPlain)))
-    .mul(smoothstep(V.glowRing[0], V.glowRing[1], dDoom))
-    .mul(float(1).sub(smoothstep(V.glowSlope[0], V.glowSlope[1], slope)))
-    .mul(w);
-  const glow = vec3(V.glow[0], V.glow[1], V.glow[2]).mul(glowAmt);
+  let glow: N;
+  if (FLOWS_ON) {
+    // S4 W4-S2: glowing cracks in the flows' crust (brightest at the hot end) and a molten channel down the
+    // hot tongues, coloured by the cooling gradient: yellow core → orange-red → dark crust; the open plain
+    // keeps a rare dim crack. Never on the cone's steep flank (the kit's flows are there).
+    const flat = float(1).sub(smoothstep(V.glowSlope[0] * 2, V.glowSlope[1] * 2, slope));
+    const crackAmt = core.mul(run).mul(mix(gorgoroth.mul(V.glowPlain * 0.5), heat.mul(0.85).add(0.15).mul(V.flowCrackGain), smoothstep(0.08, 0.5, flow)));
+    // the channel is broken into glowing runs by the 0.9 / 3 km noise (crusted over between them)
+    const chRun = smoothstep(-0.25, 0.2, n4.mul(0.9).add(n3.mul(0.6)).add(0.15));
+    const chAmt = channel.mul(chRun);
+    const hot = vec3(V.glowHot[0], V.glowHot[1], V.glowHot[2]).mul(V.glowHotGain);
+    const red = vec3(V.glowRed[0], V.glowRed[1], V.glowRed[2]);
+    // the cooling gradient: the channel is hot, the cracks take the flow's heat
+    const crackCol = mix(red.mul(0.8), mix(red, hot, 0.35), smoothstep(0.4, 0.95, heat));
+    const chCol = mix(red.mul(1.4), hot, smoothstep(0.55, 0.95, heat.add(channel.mul(0.3))));
+    glow = crackCol.mul(crackAmt).add(chCol.mul(chAmt.mul(V.channelGain))).mul(flat).mul(w);
+  } else {
+    const glowAmt = core
+      .mul(run)
+      .mul(ring.mul(V.glowDoom).add(gorgoroth.mul(V.glowPlain)))
+      .mul(smoothstep(V.glowRing[0], V.glowRing[1], dDoom))
+      .mul(float(1).sub(smoothstep(V.glowSlope[0], V.glowSlope[1], slope)))
+      .mul(w);
+    glow = vec3(V.glow[0], V.glow[1], V.glow[2]).mul(glowAmt);
+  }
   const rough = mix(float(0.95), float(0.72), basalt);
   return { w, col, dn, glow, rough, cinder: cinder.mul(w) };
 }

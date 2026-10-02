@@ -72,6 +72,13 @@ export function celestialPole(out = new Vector3(), latDeg = LATITUDE_DEG): Vecto
  * blue-grey shadow floor while the doubled moon key still reads ≥ 3 : 1.
  */
 const HEMI_NIGHT_LIFT = 1.3;
+/**
+ * S4 W4-S2: moonlit cast shadows keep this share of the moon key (the key shadow's intensity is
+ * 1 − NIGHT_SHADOW_FLOOR · night; EnvironmentSystem) — the moon is a broad, sky-scattered source, and the
+ * ranges' long night shadows printed as black holes in the overview; with the hemisphere fill a shadowed
+ * face reads at ≈ 30 % of a lit one
+ */
+export const NIGHT_SHADOW_FLOOR = 0.28;
 /** moon key light at full moon, high in a dark sky (S4: 0.85 → 1.8, a readable moonlit key) */
 const MOON_KEY = 1.8;
 
@@ -188,9 +195,10 @@ const TWI_ZENITH: [number, Rgb][] = [
   [3, [0.0060, 0.0100, 0.0250]],
   [8, [0, 0, 0]],
 ];
+// S4 W4-S2: the night horizon band brighter and greyer (the night dome read as a flat navy wash) — ×1.7 at −18°
 const TWI_HORIZON: [number, Rgb][] = [
-  [-18, [0.0045, 0.0066, 0.0140]],
-  [-12, [0.0075, 0.0105, 0.0240]],
+  [-18, [0.0080, 0.0112, 0.0215]],
+  [-12, [0.0105, 0.0142, 0.0300]],
   [-9, [0.0125, 0.0170, 0.0400]],
   [-6, [0.0260, 0.0320, 0.0720]],
   [-4, [0.0450, 0.0480, 0.0980]],

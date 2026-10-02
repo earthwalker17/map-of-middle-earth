@@ -83,9 +83,8 @@ function premultiplied(m: NodeMaterial): void {
  * additive in-scatter + halos (rgb): apply(c) = c·T + S. Vertex stage (explicit-LOD fetches).
  */
 function fogSplit(P: N, midTap: boolean): { T: N; S: N } {
-  const S = Fn(() => atmosphere.apply(vec3(0), env.cameraPos, P, true, true, true, null, 1, midTap))();
-  const T1 = Fn(() => atmosphere.apply(vec3(1), env.cameraPos, P, true, true, true, null, 1, midTap))();
-  return { T: clamp(T1.sub(S), 0, 1), S };
+  // one evaluation of the haze (S4 W4-S2: atmosphere.applySplit — two apply() calls built the graph twice)
+  return atmosphere.applySplit(env.cameraPos, P, true, true, true, midTap);
 }
 
 /** hemisphere + key irradiance (the env uniforms every lit material reads) */

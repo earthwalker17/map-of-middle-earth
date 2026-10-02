@@ -49,15 +49,18 @@ const EE = 1000;
 /** angular radii (radians) — both a little larger than life, as a film would frame them */
 const SUN_RADIUS = 0.0082;
 const MOON_RADIUS = 0.0118;
+/** the sun disc fades out over this ash-deck cover at the camera (atmosphere.eyeDeck) */
+const SUN_DECK_HIDE = [0.25, 0.6] as const;
 
 /**
  * Star field (S4: the S3 field read "too dense and crisp"): two lattice layers with these presence
  * densities and gains, magnitude = hash^STAR_MAG_EXP (a steeper power law: few bright stars, a faint
  * crowd), and atmospheric extinction towards the horizon exp(−STAR_EXTINCTION·(1/sin h − 1)).
  */
+// (S4 W4-S2: sparser — 0.3 / 0.25 → 0.22 / 0.15)
 const STAR_LAYERS: [scale: number, density: number, gain: number, seed: number][] = [
-  [95, 0.3, 6, 0],
-  [230, 0.25, 2.2, 71.3],
+  [95, 0.22, 6, 0],
+  [230, 0.15, 2.2, 71.3],
 ];
 const STAR_MAG_EXP = 9;
 const STAR_EXTINCTION = 0.12;
@@ -329,7 +332,10 @@ export class SkyModel {
     const aa = fwidth(rho).add(0.02);
     const disc = float(1).sub(smoothstep(float(1).sub(aa), float(1).add(aa), rho));
     const limb = float(1).sub(float(1).sub(sqrt(max(float(1).sub(rho.mul(rho)), 0))).mul(0.55));
-    const sunVis = smoothstep(-0.004, 0.014, h);
+    // (S4 W4-S2) no sun disc or aureole while the camera stands in the ash deck's footprint (above or
+    // under the pall: the Gate and Gorgoroth frames never show a sun) — env.deck alone hides it only for
+    // a camera under the deck height
+    const sunVis = smoothstep(-0.004, 0.014, h).mul(float(1).sub(smoothstep(SUN_DECK_HIDE[0], SUN_DECK_HIDE[1], atmosphere.eyeDeck)));
     const sunCol = env.sunColor.mul(u.sunDisc.mul(limb).mul(disc).mul(sunVis));
     const aureole = env.sunColor
       .mul(exp(ts.div(-0.01)).mul(0.7).mul(u.sunAureole).add(exp(ts.div(-0.05)).mul(u.sunGlow)).add(exp(ts.div(-0.16)).mul(u.sunGlow.mul(0.18))))
