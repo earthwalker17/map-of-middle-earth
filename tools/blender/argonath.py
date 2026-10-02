@@ -33,7 +33,10 @@ SEED = 0x4A26A7
 # keep in sync with src/landmarks/argonath/king.ts KING (the GLB pedestal foot stops at -1.2: still buried
 # under the river bed / the banks, fewer hidden triangles)
 PED_FOOT = -1.2
-PED_TOP = 1.6
+# S4 W5 (C2 #6): the pedestal 1.4x taller (1.6 -> 2.24 above the waterline) and battered, laid in courses
+PED_TOP = 2.24
+PED_BATTER = 0.14
+PED_COURSES = 5
 PED_W = 2.1
 PED_D = 1.55
 SHOULDER_Y = 3.5
@@ -62,12 +65,12 @@ ROBE_TOP = ROBE[-1][0]
 VOXEL_BODY = 0.012
 VOXEL_HAND = 0.006
 VOXEL_HEAD = 0.007
-VOXEL_PED = 0.025
+VOXEL_PED = 0.02
 # triangles per LOD of each piece (+ the boulders ≈ 1.1k at lod0 only)
 BODY_TRIS = (24000, 5800, 1130)
 HAND_TRIS = (2500, 500, 90)
 HEAD_TRIS = (4300, 950, 200)
-PED_TRIS = 1100
+PED_TRIS = 2400
 STONE = 0x7C847E
 PLINTH = 0x76736A
 LICHEN = 0x8E8C63
@@ -482,11 +485,47 @@ def pedestal_outline(scale=1.0):
     return [(x, -z) for x, z in block]
 
 
-def pedestal_block():
+def ped_scale(z):
+    """the battered block's outline scale at height z (1 at the waterline)"""
+    return 1.0 - PED_BATTER * max(0.0, z) / PED_TOP
+
+
+def pedestal_block(simple=False):
+    """the buried foot, then PED_COURSES courses of dressed stone up a battered block, each course sitting
+    on a recessed joint (a dark horizontal line in the sun), under the moulded top step; `simple`: one
+    battered prism (lod2)"""
     bl = pedestal_outline()
-    m = lib.prism(bl, PED_FOOT, PED_TOP - 0.16, taper=0.1)
-    m.add(lib.prism([(x * 0.86, y * 0.86) for x, y in bl], PED_TOP - 0.17, PED_TOP, taper=0.05))
+    top = PED_TOP - 0.16
+    sc = lambda f: [(x * f, y * f) for x, y in bl]  # noqa: E731
+    if simple:
+        m = lib.prism(bl, PED_FOOT, top, taper=1 - ped_scale(top))
+    else:
+        m = lib.prism(bl, PED_FOOT, 0.0, taper=0.0)
+        h = top / PED_COURSES
+        for i in range(PED_COURSES):
+            z0, z1 = i * h, (i + 1) * h
+            s0, s1 = ped_scale(z0), ped_scale(z1)
+            # the course (its foot a joint's height up) and the recessed joint band under it
+            m.add(lib.prism(sc(s0), z0 + 0.05, z1 + 0.002, taper=1 - s1 / s0))
+            m.add(lib.prism(sc(s0 - 0.045), z0 - 0.01, z0 + 0.06, taper=0.0))
+    st = ped_scale(top)
+    m.add(lib.prism(sc(0.86 * st / 0.9), PED_TOP - 0.17, PED_TOP, taper=0.05))
     return m
+
+
+def course_joints(p):
+    """inward offset (km) of a pedestal surface point for the staggered vertical joints between the blocks
+    of each course (0.6 km blocks along the perimeter, half a block offset course to course)"""
+    top = PED_TOP - 0.16
+    if p.z <= 0.0 or p.z >= top:
+        return 0.0
+    h = top / PED_COURSES
+    i = int(p.z / h)
+    pw, pd = PED_W / 2, PED_D / 2
+    s = math.atan2(p.y / pd, p.x / pw) * (pw + pd) / 2
+    u = (s / 0.6 + 0.5 * (i % 2)) % 1.0
+    d = min(u, 1 - u) * 0.6
+    return 0.035 * (1 - smoothstep(0.012, 0.03, d))
 
 
 def chips(rnd):
@@ -524,7 +563,7 @@ def pedestal(lod, rocks, rnd):
     """lod0: the block and moulded step fused by a voxel pass, broken at its edges by planar chips (flat-shaded
     facets) and lightly eroded, with boulders at the waterline; lod1/2: the plain block"""
     if lod > 0:
-        return pedestal_block().obj(f'pedestal{lod}', smooth=False)
+        return pedestal_block(simple=lod > 1).obj(f'pedestal{lod}', smooth=False)
     ob = pedestal_block().obj('ped0', smooth=False)
     lib.voxel_remesh(ob, VOXEL_PED)
     top, corners = chips(rnd)
@@ -545,6 +584,10 @@ def pedestal(lod, rocks, rnd):
             s = (p - c).dot(cn) + dd
             if s > 0:
                 p -= cn * (s * (1 - smoothstep(0.6 * hl, hl, dz)))
+        cj = course_joints(p)
+        if cj > 0:
+            hn = Vector((p.x / (PED_W / 2) ** 2, p.y / (PED_D / 2) ** 2, 0)).normalized()
+            p -= hn * cj
         v.co = p
     me.update()
     lib.displace(ob, lambda co, n: 0.004 * lib.fbm(co * 6.0 + Vector((3.3, 1.1, 0.4)), 2))
@@ -553,11 +596,13 @@ def pedestal(lod, rocks, rnd):
     lib.set_smooth(dec, False)
     parts = [dec]
     pw, pd = PED_W / 2, PED_D / 2
-    for i, (a, r) in enumerate(rocks):
-        c = KB(math.cos(a) * (pw + 0.05), 0.02, math.sin(a) * (pd + 0.05))
-        rk = lib.ellipsoid(c, (r * 1.1, r, r * 0.7), seg=12, rings=7).obj(f'rock{i}')
+    # dark tumbled rubble round the foot, half drowned (centres just under the waterline): angular,
+    # flattened blocks of mixed sizes — the S3 pale eggs read as toy pebbles
+    for i, (a, r, zc) in enumerate(rocks):
+        c = KB(math.cos(a) * (pw + 0.04 + 0.3 * r), zc, math.sin(a) * (pd + 0.04 + 0.3 * r))
+        rk = lib.ellipsoid(c, (r * 1.25, r * 0.9, r * 0.55), seg=10, rings=6, rot=Matrix.Rotation(a * 1.7, 3, 'Z')).obj(f'rock{i}')
         off = Vector((i * 3.1, i * 1.7, 0.0))
-        lib.displace(rk, lambda co, n, off=off, r=r: 0.22 * r * lib.fbm(co * 5.0 + off, 2))
+        lib.displace(rk, lambda co, n, off=off, r=r: 0.38 * r * lib.fbm(co * 7.0 + off, 2))
         parts.append(rk)
     return lib.join('pedestal0', parts)
 
@@ -612,12 +657,13 @@ def paint(co, n, cav, cavb, dark=0.0):
     k *= 1 - 0.4 * clamp01(cav * 1.8) - 0.45 * clamp01(cavb * 3.2)
     k *= 1 + 0.2 * clamp01(-cav * 1.8) + 0.1 * clamp01(-cavb * 3.2)
     side = 1 - abs(n.z)
-    # rain streaks: vertical, but in irregular patches and of varying pitch (not a regular wood grain)
-    st = lib.fbm(Vector((co.x * 21.0, co.y * 21.0, co.z * 0.9)) + Vector((2.2, 5.1, 0.0)), 2)
-    st2 = lib.fbm(Vector((co.x * 47.0, co.y * 47.0, co.z * 1.6)) + Vector((8.4, 0.7, 3.0)), 2)
+    # rain streaks: vertical, in irregular patches, broad and faint (S4 W5, C2 #6: -60 % contrast and about
+    # twice as wide — the S3 streaks read as wood grain / candle wax on the robes and the pedestal)
+    st = lib.fbm(Vector((co.x * 9.0, co.y * 9.0, co.z * 0.6)) + Vector((2.2, 5.1, 0.0)), 2)
+    st2 = lib.fbm(Vector((co.x * 20.0, co.y * 20.0, co.z * 1.1)) + Vector((8.4, 0.7, 3.0)), 2)
     patch = smoothstep(-0.05, 0.35, lib.fbm(co * 2.2 + Vector((0.4, 6.2, 1.9)), 2))
-    k *= 1 - (0.42 * smoothstep(0.0, 0.3, st) * patch + 0.2 * smoothstep(0.05, 0.3, st2) * (1 - patch)) * (0.35 + 0.65 * side)
-    k *= 0.66 + 0.34 * smoothstep(0.0, 0.55, co.z)  # wet foot at the waterline
+    k *= 1 - (0.17 * smoothstep(0.0, 0.3, st) * patch + 0.08 * smoothstep(0.05, 0.3, st2) * (1 - patch)) * (0.35 + 0.65 * side)
+    k *= 0.45 + 0.55 * smoothstep(-0.1, 0.6, co.z)  # a dark wet foot and rubble at the waterline
     k *= 0.96 + 0.1 * max(0.0, n.z)  # sun-bleached tops
     k *= 1 - dark
     col = [c * k for c in base]
@@ -690,7 +736,7 @@ def main():
     ], VOXEL_BODY)
     lib.displace(body, weathering_body)
     hnd = fused('hand', [hand().obj('hand_parts')], VOXEL_HAND, smooth_iter=2)
-    rocks = [(2 * math.pi * i / 7 + 0.4 + rnd.random() * 0.5, 0.18 + 0.16 * rnd.random()) for i in range(7)]
+    rocks = [(2 * math.pi * i / 12 + 0.3 + rnd.random() * 0.4, 0.1 + 0.2 * rnd.random() ** 1.5, -0.12 + 0.1 * rnd.random()) for i in range(12)]
     rnd_ped = random.Random(SEED + 7)
     lods = []
     for i in range(3):

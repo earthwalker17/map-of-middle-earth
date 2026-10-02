@@ -21,6 +21,54 @@
     }
    },
    "note": "S4 W5-G1: hobbiton-night at the new hobbiton-close camera (review-s4.json hobbiton-night keeps the S3 camera until the main agent moves it)"
+  },
+  {
+   "id": "s4g1-arg-a",
+   "camera": {
+    "orbit": {
+     "place": "argonath",
+     "distanceKm": 12,
+     "elevationDeg": -6,
+     "azimuthDeg": 28,
+     "fov": 40,
+     "lift": 3.8
+    }
+   },
+   "tod": 16,
+   "dayOfYear": 56,
+   "fStop": 4
+  },
+  {
+   "id": "s4g1-arg-b",
+   "camera": {
+    "orbit": {
+     "place": "argonath",
+     "distanceKm": 12,
+     "elevationDeg": -6,
+     "azimuthDeg": 31,
+     "fov": 40,
+     "lift": 3.8
+    }
+   },
+   "tod": 16,
+   "dayOfYear": 56,
+   "fStop": 4
+  },
+  {
+   "id": "s4g1-arg-c",
+   "camera": {
+    "orbit": {
+     "place": "argonath",
+     "distanceKm": 12,
+     "elevationDeg": -6,
+     "azimuthDeg": 19,
+     "fov": 40,
+     "lift": 3.8
+    }
+   },
+   "tod": 16,
+   "dayOfYear": 56,
+   "fStop": 4
   }
  ]
 }

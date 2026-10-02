@@ -14,7 +14,7 @@ import type { V2, V3 } from '../records.ts';
 export const KING = {
   /** pedestal: buried foot, top above the waterline, footprint (x × z), km */
   pedFoot: -2.0,
-  pedTop: 1.6,
+  pedTop: 2.24,
   pedW: 2.1,
   pedD: 1.55,
   /** figure height above the pedestal top (helm top), km */
