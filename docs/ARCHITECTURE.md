@@ -216,7 +216,8 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
    up the fine rock relief carries the face). **Ragged** grass ↔ rock boundary (noise on the rock rule, its
    ramp steepened). **Fields**: mostly greens with a little straw, soft 0.55 km margins, mow rows along each
    field's long axis. **Lava flows** (`VOLCANIC.flows`, crust branch): each continues a Mount Doom kit flow
-   from its toe — a crisp molten channel in runs that crust over, a faint spill, lit cracks clustered on the
+   from its toe (the first four rows are `DOOM_PLAIN_FLOWS` from `src/landmarks/mount-doom/flows.ts`, the one
+   data table the kit eases its flows onto and the terrain reads — S4 W5) — a crisp molten channel in runs that crust over, a faint spill, lit cracks clustered on the
    flows; the open plain stays dark. Strata contrast (S4 C2): 0.13 / 0.09 / 0.06.
    `groundMaps.ts` builds CPU masks at init: stamp turf/presence (stamped − base), shore bands, the Shire field
    mask (from `fields.ts`). Detail: 6 CC0-derived layers (`tools/textures/prep.mjs` → `public/textures/terrain`,
@@ -238,7 +239,7 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
    flowDir.w) and outflows hold the lake level under its visible edge (`OUTFLOW_HOLD`). **Reflection proxies
    (S4 C2):** the HeightField-only march cannot see landmark geometry, so `landmarkReflectors` (pure, world
    space) gives one vertical cylinder per GLB model instance (declared bounds) plus each landmark's
-   `reflectors`; lakes and rivers test them by exact ray / cylinder intersection in review / final, and a
+   `reflectors` (local `{at, r, top}` cylinders, e.g. Tol Brandir's body and upper mass in rauros); lakes and rivers test them by exact ray / cylinder intersection in review / final, and a
    proxy in front of the terrain hit mirrors as lit grey stone (`WaterSystem.setReflectors`, before init).
 4. `VegetationSystem` (vegetation/) — hashed world-grid placement from forest/look/water masks, forest types
    (Mirkwood, Fangorn, Lórien + emergent mallorns, old, Ithilien groves, deciduous), glades/stands, a Barren
