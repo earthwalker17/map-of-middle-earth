@@ -263,9 +263,9 @@ export function createTerrainMaterial(world: World, cdlod: Cdlod, patchAttr: Ins
       const e = MACRO.eps;
       const m1 = fm([0, 0, 0]);
       // creases (|n| → 0): the gully floors; the swells between them: the ribs
-      const steepW = smoothstep(0.05, 0.3, slope);
-      // (creased on slopes only: |n| on rocky flats printed round 'hammered' pits — they take the swell)
-      const creaseW = steepW;
+      // creased on steep faces only, where the stretched noise runs down the fall line (|n| on the flats and
+      // moderate slopes printed round 'hammered' pits / brain-coral cells under a grazing moon — they swell)
+      const creaseW = smoothstep(0.22, 0.45, slope);
       mGully = float(1).sub(smoothstep(0.04, 0.3, abs(m1))).mul(creaseW).mul(mFade);
       mRib = smoothstep(0.42, 0.75, abs(m1)).mul(creaseW).mul(mFade);
       // the bump height (world units): creased on slopes and rocky ground, swelling on the soft flats, deeper in rock

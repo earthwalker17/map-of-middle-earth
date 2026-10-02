@@ -47,7 +47,7 @@ const DECK_TOP_GAIN = 0.5;
  */
 const DECK_VOLUME = true;
 const DECK_PROBE_KM = 6;
-const DECK_VOLUME_GAIN = 1.4;
+const DECK_VOLUME_GAIN = 2.4;
 /** view elevation (|sin|) below which the underside flattens into the overcast dome colour (no grazing streaks) */
 const DECK_GRAZE = [0.02, 0.14] as const;
 /** opacity of the deck seen from below at full cover (a little light leaks through the thinnest parts) */
@@ -334,7 +334,8 @@ export class CloudLayer {
       const table = float(1).sub(smoothstep(250, 1000, cam.y).mul(0.94));
       const nearFade = smoothstep(near.x, near.y, camDist);
       // from above the pall breaks into masses with the plateau between them
-      const aAbove = smoothstep(th.add(0.12), th.add(0.6), n).mul(dens).mul(B.w).mul(table).mul(nearFade);
+      // (S4 W4-S2: denser masses — 0.12 → 0.6 read as a translucent smoke smear from above)
+      const aAbove = smoothstep(th.add(0.06), th.add(0.42), n).mul(dens).mul(B.w).mul(table).mul(nearFade);
       const aBelow = dens.mul(DECK_UNDER_OPACITY);
       return vec4(col, clamp(mix(aAbove, aBelow, below), 0, 1));
     })();
