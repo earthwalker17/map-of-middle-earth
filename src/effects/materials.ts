@@ -369,7 +369,8 @@ export function createMistMaterial(noise: Texture, heights: Texture, spec: World
     if (o.detail) ground = texture(heights, vec2(vP.x.sub(hFrame.x).mul(hFrame.z), vP.z.sub(hFrame.y).mul(hFrame.w))).r;
     const ramp = max(vK.y.mul(3.5), 0.06);
     const soft = smoothstep(0, ramp, vP.y.sub(ground).add(n.sub(0.5).mul(ramp).mul(0.8)));
-    const a = clamp(dens.mul(soft).mul(vK.x), 0, 1);
+    // (preview: its one broad layer and per-vertex ground cover more — a lighter veil)
+    const a = clamp(dens.mul(soft).mul(vK.x).mul(o.detail ? 1 : 0.7), 0, 1);
     const col = vLit.mul(vT).add(vS);
     // a scattering layer: it veils the ground less than its in-scatter adds (it never darkens a dim scene)
     return vec4(col.mul(a), a.mul(MIST.occlusion));

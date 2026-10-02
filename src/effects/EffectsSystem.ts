@@ -382,9 +382,10 @@ export class EffectsSystem implements System {
       const count = Math.min(full, MAX_PUFFS - n);
       if (count <= 0) break;
       const lastA = count === full ? wantF - (full - 1) : 1;
-      // fewer puffs: each a little bigger and denser (the column keeps its body)
+      // fewer puffs: each a little bigger and denser (the column keeps its body); a spray cloud keeps its
+      // puff size (bigger diffuse puffs would swell the cloud into a smear — it only thickens)
       const thin = e.count / wantF;
-      const sizeK = Math.pow(thin, 0.3);
+      const sizeK = Math.pow(thin, e.P.family === 'spray' ? 0.1 : 0.3);
       const alphaK = Math.min(2, Math.pow(thin, 0.25)) * vis;
       if (e.cover > DECK_CEILING_COVER) underDeckY = Math.max(underDeckY, e.deckY);
       // key visibility over the HeightField at the source and the top of the column
