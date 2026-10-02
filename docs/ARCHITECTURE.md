@@ -51,7 +51,12 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
 - Quality tiers `preview | review | final` (`src/core/quality.ts`): pixel ratio, spp, terrain patch grid,
   shadow map, density, `terrainDetail {size, layers}`, `atmosphere {inScatter}`, `clouds {shadows, layer}`.
 - `Engine.renderAccumulated(stateAt, spp)` — jittered sub-samples (Halton), optional sub-frame time
-  (motion blur), running average in HDR, then one post pass.
+  (motion blur), running average in HDR, then one post pass. **Lens (S4, render/lens.ts):** depth of field by
+  aperture jitter — after `applyState` (systems and LOD keep the pinhole camera) each sub-sample moves the
+  camera over a Halton(5,7) aperture disc with a compensating view offset (the focus plane stays fixed);
+  aperture = K·F/N with the blur at infinity capped at 0.3 % of frame height; active only at `fStop < 22` and
+  spp ≥ 8 (`DEEP_FOCUS_FSTOP` 22 is the default: wides, QA at spp 4 and the explorer stay pinhole). Close
+  heroes carry their f-stop on the bookmark. The bigatures were shot deep-focus: keep DOF very subtle.
 
 ## World services (src/world)
 - `HeightField` — **the only height API**: `sample`, `normal`, `rangeMinMax` (culling bounds), `raycast`,
@@ -151,7 +156,12 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
    slab-clipped, size-quantized, texel-snapped soft PCF shadow (re-rotated per accumulation sample).
    **RegionLook** (regionLook.ts): the post grade is a pure function of the camera focus — region weights
    sampled on the CPU over a disk around the target, blended `looks.json grade`, `lookOverride` honoured,
-   no temporal smoothing. **Cloud shadows** (clouds.ts): deterministic world-XZ field scrolled by
+   no temporal smoothing. **Film grade (S4, PostPipeline):** one post pass — bloom → halation (warm fringe
+   keyed on the bloom's red) → glow key → tint / lift → saturation (redKeep, glowKeep, `greens`, `warms`) →
+   `greensHue` (yellow-green pull) → contrast → split-tone × highlight gain × toe (black point with a floor) →
+   vignette → night compress → AgX → dither → film grain (final tier only, seeded by pixel and frame). Grade
+   fields: `split {shadow, highlight, amount}`, `greens`, `greensHue`, `toe`, `halation`, `highlights` (day
+   only, faded between 50 and 250 km camera distance), `warms`; spots inherit their region's film fields. **Cloud shadows** (clouds.ts): deterministic world-XZ field scrolled by
    `weather.wind × tFx`, coverage from `weather`, applied through the key light's `colorNode`, slab top only;
    the key loses `max(cloud·cloudShadow, atmo2.R·deckShadow)` (overcast light under a deck, all tiers).
    **Visible clouds** (S4, cloudLayer.ts): the **ash deck** — a static 4 km grid mesh at the deck height
@@ -256,7 +266,23 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
    structures, Morgul glow skins, foliage and water; `spillInScatter` adds analytic point-light airlight halos
    for lava / eye / magic / beacons in the shared fog (`atmosphere.apply`) and the dome (review / final only,
    soft-capped: no sun disc); `spillGlint` puts GGX glints of the sources on water.
-8. (later) `EffectsSystem`, `RouteSystem`, `AnnotationSystem`.
+8. `EffectsSystem` (effects/, S4) — realizes landmark `emitters` and waterfalls (`landmarkEmitters`,
+   `landmarkFalls`, `pools`) in four draws: **puffs** (smoke / ash / steam / wisp / spray billboards: one
+   instanced premultiplied draw, CPU-sorted back to front per frame as a pure function of the camera; render
+   order 51 under an ash deck — after the emission sprites, so a plume veils its crater orb — and 29 when the
+   camera is above the deck), **falls** (core + veil ribbons with scrolling streaks and plunge foam floating on
+   the pool / lake surface, order 35), **mist cards** (3 stacked layers per card, order 34; a `mist` emitter's
+   rate is its opacity, scale its half-width, `at → to` its band) and the **beam** (additive camera-facing axis
+   billboard, order 52; rate = radiance gain, scale = width). Particles are STATELESS: instance (emitter, k),
+   `age = fract(tFx / life + hash)`, the position a preset trajectory of (age, hash, wind) — any `tFx` renders
+   in isolation, no pre-roll. Strong plumes rise to and spread under the ash deck (Doom's column lit by a CPU
+   copy of the spill on its lower third — keep it in step with spillSources' falloff / flicker); smoke below
+   `WISP_SCALE` becomes a thin wisp (chimneys, Isengard's pits); falls ≥ 2 km wide raise a mist column (Rauros);
+   event emitters (`morgul-beam`, beacons) follow `SceneState.events`; the beam and beacon fires add spill
+   lights through `emission.setDynamic`. Emitter LOD by projected size, counts × quality density; all effect
+   pipelines are compiled at warm-up. `tools/check/effects.ts` builds the same records (shared `buildEffects`)
+   and checks random access determinism.
+9. (later) `RouteSystem`, `AnnotationSystem`.
 
 ## Landmarks (src/landmarks)
 `defineLandmark({ id, placeId, tier, headingDeg, scale, anchor, stamps[], proxy(kit), model, lodPx,
@@ -321,6 +347,10 @@ realize their declarations.
   `reference/`. `qa.ts --blind <set>` picks the anonymised set; bookmark ids `<landmarkId>-<suffix>` pair
   with references by the longest landmark-id prefix.
 - `tools/capture/pair.ts --a <run> --b <run>` — blind A/B sheets (left/right shuffled; key outside the folder).
+- `pnpm review --from <qa run> --before <run> --manifest data/qa/review-s4.json --out review/s4`
+  (tools/capture/review.ts, CPU / sharp) composes a session's review stills for the user: numbered stills,
+  labelled day / night pairs, S3 → S4 before / after sheets, a contact sheet, README.md (what to look at, the
+  critic issue each still answers) and manifest.json (commit, tier, spp, sha256). `review/` is gitignored.
 
 ## Validation (tools/check, CPU only)
 - `pnpm check` (run.ts): places/footprints, landmark definitions, assets vs CREDITS (incl. derived detail
