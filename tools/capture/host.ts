@@ -158,13 +158,16 @@ interface ProcRow {
   ParentProcessId: number;
   CommandLine: string | null;
   WorkingSetSize: number;
+  /** CPU time so far, 100 ns units */
+  KernelModeTime: number;
+  UserModeTime: number;
 }
 
 function listProcesses(name: string): ProcRow[] {
   if (process.platform !== 'win32') return [];
   try {
     const out = powershell(
-      `Get-CimInstance Win32_Process -Filter "Name='${name}'" | Select-Object ProcessId,ParentProcessId,CommandLine,WorkingSetSize | ConvertTo-Json -Compress`,
+      `Get-CimInstance Win32_Process -Filter "Name='${name}'" | Select-Object ProcessId,ParentProcessId,CommandLine,WorkingSetSize,KernelModeTime,UserModeTime | ConvertTo-Json -Compress`,
     ).trim();
     if (!out) return [];
     const rows = JSON.parse(out) as ProcRow | ProcRow[];
@@ -184,6 +187,11 @@ function profileChromes(profile: string): ProcRow[] {
     const dir = m?.[1] ?? m?.[2];
     return dir !== undefined && norm(dir) === want;
   });
+}
+
+/** CPU seconds used so far by this checkout's capture Chrome tree (perf noise accounting). */
+export function profileCpuSeconds(profile = chromeProfileDir()): number {
+  return profileChromes(profile).reduce((s, p) => s + ((p.KernelModeTime ?? 0) + (p.UserModeTime ?? 0)) / 1e7, 0);
 }
 
 /**
