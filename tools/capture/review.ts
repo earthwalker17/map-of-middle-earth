@@ -1,7 +1,7 @@
 /**
  * Review stills — compose a curated review folder from a QA run (CPU only, sharp):
  *
- *   node --import tsx tools/capture/review.ts --from renders/qa/<stamp> [--before <S3 qa run>]
+ *   node --import tsx tools/capture/review.ts --from renders/qa/<stamp> [--before <before qa run>]
  *        [--manifest data/qa/review-s4.json] [--out review/s4] [--allow-missing]
  *
  * Render the stills first (one bounded qa run, see the manifest's `render`), e.g.

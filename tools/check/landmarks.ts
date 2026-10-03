@@ -104,14 +104,14 @@ export async function checkLandmarks(world: World, landmarks: LandmarkDefinition
         floatN++;
         worstF = Math.max(worstF, fl);
       }
-      if (-fl > Math.max(0.5 * c.h, SINK)) {
+      if (-fl > Math.max(0.5 * c.h, SINK + 1e-6)) {
         buryN++;
         worstB = Math.max(worstB, -fl / c.h);
       }
     }
     const seatSev = b.def.tier === 'A' ? out.errors : out.warnings;
     if (floatN) seatSev.push(`landmarks: ${b.id} ${floatN}/${b.contacts.length} contacts float (worst ${(worstF * 1000).toFixed(0)} m above the ground)`);
-    if (buryN) seatSev.push(`landmarks: ${b.id} ${buryN}/${b.contacts.length} contacts buried > 50 % (worst ${(worstB * 100).toFixed(0)} % of the part height)`);
+    if (buryN) seatSev.push(`landmarks: ${b.id} ${buryN}/${b.contacts.length} contacts buried > max(50 % of the part, SINK) (worst ${(worstB * 100).toFixed(0)} % of the part height)`);
     hashes.set(b.id, hashOf(b));
   }
   if (lod0 > LIMITS.lod0Total) out.errors.push(`landmarks: total LOD0 ${lod0} tris > ${LIMITS.lod0Total}`);

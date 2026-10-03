@@ -255,6 +255,7 @@ if (process.env.SLAB) {
       console.log(`${s.id.padEnd(18)} ${tag} ${JSON.stringify(o)}  slab px x[${P(x0, FW)}..${P(x1, FW)}] y(top-down)[${P(-y1, FH)}..${P(-y0, FH)}]`);
     }
   }
+  for (const id of only ?? []) if (!seenIds.has(id)) console.warn(`slab: ONLY id '${id}' is not an orbit shot in data/qa/shots.json / shots.d — skipped`);
 }
 
 if (asJson) console.log(JSON.stringify(results, null, 1));
