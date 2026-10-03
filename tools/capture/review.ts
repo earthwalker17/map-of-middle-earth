@@ -10,7 +10,8 @@
  * Writes into --out (gitignored `review/`; its previous stills / pairs / before-after are replaced):
  *  - stills/NN-<id>.png             the renders in the manifest's order (bytes as rendered)
  *  - pairs/dn-<pair>.png            day | night side by side, labelled with the time of day
- *  - before-after/ba-NN-<id>.png    S3 | S4 side by side at a common height (the smaller one), labelled
+ *  - before-after/ba-NN-<id>.png    before | after side by side at a common height (the smaller one), labelled
+ *                                   with the manifest's `before.tag` / `after.tag` (default S3 / S4)
  *  - contact.jpg                    all stills, numbered and titled
  *  - README.md                      table (#, shot, time of day, distance, what to look at, S3 issue
  *                                   addressed), the pairs, the before/after list, known issues
@@ -20,9 +21,9 @@
  * `--tod` override of the QA run wins).
  */
 import { execSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
+import { esc, labelled, sha, sideBySide, size } from './compose.ts';
 import { loadShots } from './shotList.ts';
 import { loadLandmarks } from '../check/baked.ts';
 
@@ -42,7 +43,9 @@ interface ReviewManifest {
   title: string;
   set?: string;
   render?: { quality?: string; w?: number; h?: number; spp?: number };
-  before?: { run?: string; label?: string };
+  /** `tag` / `after.tag`: the before / after labels of the before-after sheets and the README (default S3 / S4) */
+  before?: { run?: string; label?: string; tag?: string };
+  after?: { tag?: string };
   stills: Still[];
   pairs: { id: string; day: string; night: string }[];
   beforeAfter: { id: string; before?: string }[];
@@ -72,6 +75,8 @@ const doc = JSON.parse(readFileSync(manifestPath, 'utf8')) as ReviewManifest;
 const beforeRun = arg('before') ?? doc.before?.run;
 const outDir = arg('out', join('review', 's4'))!;
 const allowMissing = flag('allow-missing');
+const beforeTag = doc.before?.tag ?? 'S3';
+const afterTag = doc.after?.tag ?? 'S4';
 
 const fromShots = join(from, 'shots');
 if (!existsSync(fromShots)) throw new Error(`review: no shots/ folder in ${from}`);
@@ -119,41 +124,10 @@ for (const d of ['stills', 'pairs', 'before-after']) rmSync(join(outDir, d), { r
 for (const f of ['contact.jpg', 'README.md', 'manifest.json']) rmSync(join(outDir, f), { force: true });
 for (const d of ['stills', 'pairs', 'before-after']) mkdirSync(join(outDir, d), { recursive: true });
 
+// the same sharp module instance as compose.ts (the settings apply to its helpers too)
 const { default: sharp } = await import('sharp');
 sharp.cache(false);
 sharp.concurrency(2);
-
-const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-/** a label bar over the top-left of an image buffer (resized to w × h — callers keep the aspect) */
-async function labelled(input: string | Buffer, w: number, h: number, text: string): Promise<Buffer> {
-  const img = await sharp(input).resize(w, h, { fit: 'fill' }).toBuffer();
-  const fs = Math.max(14, Math.round(h * 0.03));
-  const bw = Math.round(fs * 0.62 * text.length + fs * 1.4);
-  const svg = Buffer.from(
-    `<svg width="${w}" height="${h}"><rect x="0" y="0" width="${Math.min(w, bw)}" height="${Math.round(fs * 1.9)}" fill="rgba(0,0,0,0.55)"/>` +
-      `<text x="${Math.round(fs * 0.7)}" y="${Math.round(fs * 1.35)}" font-family="Georgia" font-size="${fs}" fill="#eee4cf">${esc(text)}</text></svg>`,
-  );
-  return sharp(img).composite([{ input: svg }]).png().toBuffer();
-}
-/** side by side with a gap, every part already at the same height `h` (each with its own width) */
-async function sideBySide(parts: { img: Buffer; w: number }[], h: number, file: string): Promise<void> {
-  const gap = Math.max(4, Math.round(h * 0.008));
-  let x = 0;
-  const placed = parts.map((p) => {
-    const at = { input: p.img, left: x, top: 0 };
-    x += p.w + gap;
-    return at;
-  });
-  await sharp({ create: { width: x - gap, height: h, channels: 3, background: '#101214' } })
-    .composite(placed)
-    .png({ compressionLevel: 6 })
-    .toFile(file);
-}
-async function size(file: string): Promise<{ w: number; h: number }> {
-  const m = await sharp(file).metadata();
-  return { w: m.width ?? 0, h: m.height ?? 0 };
-}
-const sha = (file: string) => createHash('sha256').update(readFileSync(file)).digest('hex');
 
 interface Written {
   file: string;
@@ -199,7 +173,7 @@ for (const p of doc.pairs) {
   pairsDone.push(p.id);
 }
 
-// ------------------------------------------------------------------ before / after (S3 → S4)
+// ------------------------------------------------------------------ before / after (e.g. S3 → S4)
 const baDone: { id: string; before: string }[] = [];
 const baMissing: string[] = [];
 for (const b of doc.beforeAfter) {
@@ -214,8 +188,8 @@ for (const b of doc.beforeAfter) {
   const h = Math.min(A.h, B.h);
   const wa = Math.round((A.w * h) / A.h);
   const wb = Math.round((B.w * h) / B.h);
-  const left = await labelled(beforeFile(before), wa, h, `S3 · ${before}`);
-  const right = await labelled(shotFile(b.id), wb, h, `S4 · ${b.id}`);
+  const left = await labelled(beforeFile(before), wa, h, `${beforeTag} · ${before}`);
+  const right = await labelled(shotFile(b.id), wb, h, `${afterTag} · ${b.id}`);
   const file = join(outDir, 'before-after', `ba-${number.get(b.id) ?? '00'}-${b.id}.png`);
   await sideBySide([{ img: left, w: wa }, { img: right, w: wb }], h, file);
   await record(file, 'before-after', b.id);
@@ -264,8 +238,8 @@ const cell = (t: string) => t.replace(/\|/g, '\\|').replace(/\n/g, ' ');
 const lines: string[] = [];
 lines.push(`# ${doc.title}`, '');
 lines.push(`Rendered from \`${from.replace(/\\/g, '/')}\` · tier **${tier}** · ${sizeStr} · spp ${spps.join('/') || '?'} · commit \`${commit.slice(0, 10)}\`${dirty ? ' (dirty tree)' : ''}.`);
-if (beforeRun) lines.push(`Before (S3): \`${beforeRun.replace(/\\/g, '/')}\`${doc.before?.label ? ` — ${doc.before.label}` : ''}.`);
-lines.push('', '`stills/` the renders in film order · `pairs/` day / night · `before-after/` S3 → S4 · `contact.jpg` all stills · `manifest.json` hashes.', '');
+if (beforeRun) lines.push(`Before (${beforeTag}): \`${beforeRun.replace(/\\/g, '/')}\`${doc.before?.label ? ` — ${doc.before.label}` : ''}.`);
+lines.push('', `\`stills/\` the renders in film order · \`pairs/\` day / night · \`before-after/\` ${beforeTag} → ${afterTag} · \`contact.jpg\` all stills · \`manifest.json\` hashes.`, '');
 lines.push('| # | Shot | Time of day | Distance | What to look at | S3 issue addressed |', '|---|---|---|---|---|---|');
 for (const s of doc.stills) {
   const info = shotInfo(s.id);
@@ -276,10 +250,10 @@ for (const s of doc.stills) {
 lines.push('', '## Day / night pairs', '');
 for (const p of doc.pairs)
   lines.push(pairsDone.includes(p.id) ? `- [${p.id}](pairs/dn-${p.id}.png): \`${p.day}\` (${fmtTod(shotInfo(p.day).tod)}) / \`${p.night}\` (${fmtTod(shotInfo(p.night).tod)})` : `- ${p.id}: **missing** (\`${p.day}\` / \`${p.night}\`)`);
-lines.push('', '## Before / after (S3 → S4)', '');
+lines.push('', `## Before / after (${beforeTag} → ${afterTag})`, '');
 for (const b of doc.beforeAfter) {
   const done = baDone.find((x) => x.id === b.id);
-  lines.push(done ? `- [${b.id}](before-after/ba-${number.get(b.id) ?? '00'}-${b.id}.png) (S3 \`${done.before}\`)` : `- ${b.id}: **missing**`);
+  lines.push(done ? `- [${b.id}](before-after/ba-${number.get(b.id) ?? '00'}-${b.id}.png) (${beforeTag} \`${done.before}\`)` : `- ${b.id}: **missing**`);
 }
 lines.push('', '## Known issues', '');
 // issues that apply to this run only (tier / spp conditions), with the run's values filled in
