@@ -3,8 +3,8 @@
 _Rolling document: roadmap, current state, decisions, next steps. Keep it compact; replace stale detail
 instead of appending logs._
 
-**Last updated:** 2026-10-03 · end of Session 4.5 (static finalization + repo polish) — push and tag
-`v0.5.0` pending user approval
+**Last updated:** 2026-10-03 · end of Session 4.5 (static finalization + repo polish) — pushed (user-approved);
+tag `v0.5.0` = 98f70ce, GitHub release published, description + 20 topics set, CI green (actions on Node 24)
 
 ## Where we are
 **S1–S4.5 are complete; the static world is locked for V1 (`v0.5.0`, see below).** The world renders
@@ -243,7 +243,7 @@ pools; marsh fills ≈ 271 km² > 0.5. A re-bake needs the user's explicit OK.
 ## Open issues / notes
 - **User actions after S4.5:** upload `docs/images/social-preview.jpg` (Settings → Social preview); send the
   heads-up / permission note to the ME-GIS (jvangeld / andrewheiss), Arda (bburns) and ME-DEM (Outerra forum)
-  authors; grant `gh` the `workflow` scope (`gh auth refresh -h github.com -s workflow`) so the CI file can be
-  pushed.
+  authors (Arda: also tetrakai1). (The `gh` token lacks the `workflow` scope, but git's stored credential has it:
+  workflow-file pushes work; `gh` cannot edit workflows.)
 - Permission from the ME-GIS / Arda / ME-DEM authors is needed before publishing the film.
 - S5 proposal: move the checkout to `C:\dev\MAP` (shorter paths, outside Desktop / OneDrive churn) — ask.
