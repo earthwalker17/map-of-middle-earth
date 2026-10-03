@@ -297,6 +297,9 @@ export function latheGeo(profile: V2[], o: LatheOpts = {}): Geo {
       }
       continue;
     }
+    // a segment on the axis (r0 = r1 = 0) has no surface: a full revolution would only add zero-area
+    // triangles, and a partial one would read apex column `seg`, which does not exist
+    if (r0 < 1e-9 && r1 < 1e-9) continue;
     const ring = (r: number, y: number, nn: V2): number[] => {
       const out: number[] = [];
       for (let j = 0; j < cols; j++) {
