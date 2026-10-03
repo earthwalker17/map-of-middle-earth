@@ -2,10 +2,7 @@
 
 **Scope and checks.** Every image URL below was fetched with HTTP GET on 2026-09-28/29 and returned 200 with an image content type. I looked directly at 15 of the stills. Hex values marked **[S]** were sampled with Pillow from the still named in brackets. Hex values marked **[E]** are my own estimates. Anything marked **[mem]** comes from memory of the films and I could not confirm it against a source.
 
-**Download notes (important):**
-- **Tolkien Gateway (TG)** `https://tolkiengateway.net/w/images/...`: a normal browser User-Agent is enough.
-- **Fandom** `https://static.wikia.nocookie.net/lotr/images/<h>/<hh>/<File>/revision/latest`: Cloudflare returns 403 unless the request sends both `Referer: https://lotr.fandom.com/` and `Accept: image/avif,image/webp,image/*,*/*;q=0.8`. With those headers you get 200 and the image comes back as **WebP**. WebFetch gets 402 on these.
-- **Wikimedia Commons** `https://upload.wikimedia.org/...`: send a descriptive User-Agent.
+**Image sources:** URLs (Tolkien Gateway, Fandom, Wikimedia Commons) are listed for identification only; the images are copyrighted (except the Commons items, which carry their own CC licences) and are not redistributed.
 - **Licensing:** the film stills and Lee/Howe/Nasmith art are copyrighted. Use them for look-dev reference only and never put them in the final video. The Commons photos are CC-licensed.
 
 ## Global findings that change the plan
@@ -318,7 +315,7 @@
 ---
 
 ## PRIORITY REFERENCE DOWNLOADS
-All resolved with HTTP 200. Fandom URLs need the Referer and Accept headers and return WebP; save them as `.webp`.
+All resolved with HTTP 200 when checked.
 
 | # | URL | Shows | Filename |
 |---|---|---|---|

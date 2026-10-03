@@ -18,12 +18,8 @@ data/source/*
 data/baked/
 data/baked-*/
 
-# reference material is dev-only (binaries never pushed; README + manifest are committed)
-reference/**
-!reference/README.md
-!reference/manifest.json
-!reference/*/
-reference/_fragments/
+# reference material is dev-only and local: images, index and manifest are never committed (S4.5)
+reference/
 
 # third-party CC0 texture sources are fetched by script (manifest committed) and never shipped;
 # the runtime terrain detail layers in public/textures/ are derived from them (tools/textures/prep.mjs)

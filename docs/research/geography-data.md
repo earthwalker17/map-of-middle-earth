@@ -134,7 +134,7 @@ Also present: `Combined_Placenames.xyz`, a plain-text file with a `DESCRIPTION=/
 
 ## 3. Reference map images (dev-only; all copyrighted unless stated)
 
-**Access note for Tolkien Gateway:** it sits behind Cloudflare. `api.php` and requests without a browser User-Agent get 403. With a browser User-Agent, all URLs below returned 200. Every TG file listed is copyrighted and hosted there as "fair use".
+Image URLs are listed for identification only; the images are copyrighted and are not redistributed (Tolkien Gateway hosts them as "fair use").
 
 **Canonical and film maps:**
 

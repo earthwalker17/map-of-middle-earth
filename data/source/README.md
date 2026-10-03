@@ -39,6 +39,6 @@ for credits/terms). Dev reference only.
 
 ## Canonical maps
 
-Reference maps live in `reference/maps/` (see `reference/manifest.json` and
-`reference/README.md` for URLs, licences, sizes and sha256). Most are copyrighted (Tolkien Estate / HarperCollins /
+Reference maps live in the local, never-committed `reference/maps/` (indexed by the local
+`reference/manifest.json`). Most are copyrighted (Tolkien Estate / HarperCollins /
 New Line) and are dev reference only; a few Wikimedia Commons files are CC BY / CC BY-SA / PD.

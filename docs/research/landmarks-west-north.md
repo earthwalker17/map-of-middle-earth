@@ -1,10 +1,7 @@
 Research ran on 2026-09-28/29 (web search, fetch, and HTTP checks). Every image URL below returned HTTP 200 when checked. Hex values marked **[measured]** were computed from the actual film stills: each still was fetched into memory and reduced with a 6-colour median-cut (Pillow), plus the average colour of the top 30% / middle 40% / bottom 30% bands (T/M/B). No files were written. These are graded film colours and lean dark, so use the mid-tones as base colours, not the shadows. Values marked **[est]** are my own estimates. **[unverified]** means I could not confirm it.
 
-### DOWNLOAD NOTES
-- **Tolkien Gateway (TG)** images at `tolkiengateway.net/w/images/...` return 200 with any user agent (including the curl and Python defaults). TG wiki pages need a browser user agent. The WebFetch tool gets 403 there, but curl works.
-- **Fandom** `static.wikia.nocookie.net/lotr/images/...` returns **403 unless you send `Referer: https://lotr.fandom.com/`**. With that header it returns 200 (tested).
-- **Wikimedia Commons**: `https://commons.wikimedia.org/wiki/Special:FilePath/<File_name>` redirects (302/301) to upload.wikimedia.org and then returns 200. Send a descriptive user agent. Licences are CC.
-- **Weta shop product shots** (`wetanz.com/media/catalog/product/...`): drop the `?optimize=...` query to get full size. All returned 200.
+### IMAGE SOURCES
+- Image URLs (Tolkien Gateway, Fandom, Wikimedia Commons, Weta shop) are listed for identification only; the images are copyrighted (except the Commons items, which carry their own CC licences) and are not redistributed.
 - **Copyright**: the film stills and concept art are copyrighted. Use them only as internal reference; do not put them in the video.
 
 ---
@@ -79,7 +76,7 @@ Research ran on 2026-09-28/29 (web search, fetch, and HTTP checks). Every image 
   - TG Prancing Pony: https://tolkiengateway.net/w/images/1/12/The_Lord_of_the_Rings_-_The_Fellowship_of_the_Ring_-_At_the_Sign_of_the_Prancing_Pony.jpg
   - TG Ringwraiths enter Bree: https://tolkiengateway.net/w/images/1/19/The_Lord_of_the_Rings_%28film_series%29_-_Ringwraiths_Enter_Bree.jpg
   - Alan Lee "The Inn at Bree": https://tolkiengateway.net/w/images/2/2b/Alan_Lee_-_The_Inn_at_Bree.jpg
-  - Fandom wide shot (needs Referer), caption "Bree at night-time": https://static.wikia.nocookie.net/lotr/images/a/ad/Image-Breewide.jpg
+  - Fandom wide shot, caption "Bree at night-time": https://static.wikia.nocookie.net/lotr/images/a/ad/Image-Breewide.jpg
 
 ## 3. WEATHERTOP / AMON SÛL
 - **Location**: the Weathertop camp scenes were shot near Te Anau (movie-locations.com).
@@ -93,7 +90,7 @@ Research ran on 2026-09-28/29 (web search, fetch, and HTTP checks). Every image 
   - TG Fellowship still: https://tolkiengateway.net/w/images/0/00/The_Lord_of_the_Rings_-_The_Fellowship_of_the_Ring_-_Weathertop.png
   - Alan Lee, 1600×1103: https://tolkiengateway.net/w/images/8/89/Alan_Lee_-_Weathertop.jpg
   - John Howe "Weathertop on the Horizon": https://tolkiengateway.net/w/images/2/29/John_Howe_-_Weathertop_on_the_Horizon.jpg
-  - Fandom (Referer): https://static.wikia.nocookie.net/lotr/images/2/2e/Weathertop%27s_view.png
+  - Fandom: https://static.wikia.nocookie.net/lotr/images/2/2e/Weathertop%27s_view.png
 
 ## 4. RIVENDELL
 - **Location and sources**: Kaitoke Regional Park (Upper Hutt) plus studio sets plus the 1/24 bigature. The Wellington set had an autumn glade of fibreglass trunks, a Japanese-style bridge over a waterfall, slim wooden pillars and rooms with no outer walls (Ian McKellen's blog, https://mckellen.com/cinema/lotr/001128.htm).
@@ -128,7 +125,7 @@ Research ran on 2026-09-28/29 (web search, fetch, and HTTP checks). Every image 
   - TG Fellowship still, 2560×1070: https://tolkiengateway.net/w/images/f/fe/The_Lord_of_the_Rings_-_The_Fellowship_of_the_Ring_-_The_Fellowship_on_Caradhras.png
   - Alan Lee "Pass of Caradhras": https://tolkiengateway.net/w/images/d/de/Alan_Lee_-_The_Pass_of_Caradhras.jpg
   - John Howe "Company Approaches Caradhras": https://tolkiengateway.net/w/images/6/61/John_Howe_-_The_Company_Approaches_Caradhras.jpg
-  - Fandom (Referer): https://static.wikia.nocookie.net/lotr/images/a/a4/Caradhras.png
+  - Fandom: https://static.wikia.nocookie.net/lotr/images/a/a4/Caradhras.png
 
 ## 6. MORIA: West-gate (Doors of Durin, lake) and Dimrill Dale (east side)
 - **(a) Silhouette, west**: a sheer dark cliff wall rising straight out of a still black lake (the dammed Sirannon), a narrow shelf path along its foot, and two holly trees marking where the doors are.
@@ -145,8 +142,8 @@ Research ran on 2026-09-28/29 (web search, fetch, and HTTP checks). Every image 
   - TG film Doors of Durin prop illustration: https://tolkiengateway.net/w/images/f/f1/The_Lord_of_the_Rings_-_The_Fellowship_of_the_Ring_-_Doors_of_Durin_Illustration.png
   - Alan Lee "West-gate of Moria": https://tolkiengateway.net/w/images/e/ed/Alan_Lee_-_The_West-gate_of_Moria.jpg
   - John Howe "Moria Gate": https://tolkiengateway.net/w/images/c/c9/John_Howe_-_Moria_Gate.jpg
-  - Fandom Durin's door (Referer): https://static.wikia.nocookie.net/lotr/images/2/2e/Durin%27s_door.png
-  - Fandom Dimrill Dale (Referer): https://static.wikia.nocookie.net/lotr/images/5/52/Az.JPG
+  - Fandom Durin's door: https://static.wikia.nocookie.net/lotr/images/2/2e/Durin%27s_door.png
+  - Fandom Dimrill Dale: https://static.wikia.nocookie.net/lotr/images/5/52/Az.JPG
   - TG Moria hall: https://tolkiengateway.net/w/images/e/e4/The_Lord_of_the_Rings_-_The_Motion_Picture_Trilogy_-_Moria.jpg
   - Weta Doors of Durin mini: https://www.wetanz.com/media/catalog/product/8/6/86-10-03273_lotr_moriagates_001.png
 
@@ -167,7 +164,7 @@ Research ran on 2026-09-28/29 (web search, fetch, and HTTP checks). Every image 
   - TG Caras Galadhon: https://tolkiengateway.net/w/images/3/38/The_Lord_of_the_Rings_-_The_Motion_Picture_Trilogy_-_Caras_Galadhon.jpg
   - TG Farewell to Lórien, 2560×1068: https://tolkiengateway.net/w/images/7/73/The_Lord_of_the_Rings_-_The_Fellowship_of_the_Ring_-_Farewell_to_L%C3%B3rien.png
   - Alan Lee: https://tolkiengateway.net/w/images/0/02/Alan_Lee_-_Lothl%C3%B3rien.png
-  - Fandom Caras Galadhon (Referer): https://static.wikia.nocookie.net/lotr/images/7/7c/Carasgaladhon.jpg
+  - Fandom Caras Galadhon: https://static.wikia.nocookie.net/lotr/images/7/7c/Carasgaladhon.jpg
   - Weta Lothlórien product: https://www.wetanz.com/media/catalog/product/5/0/509x297-01-web_thumbnail.jpg.png
 
 ## 8. FANGORN
@@ -179,7 +176,7 @@ Research ran on 2026-09-28/29 (web search, fetch, and HTTP checks). Every image 
 - **(d) Lighting**: very low-key, green-grey, shafts through mist; claustrophobic.
 - **(e) Refs**:
   - TG Two Towers, 2556×1096: https://tolkiengateway.net/w/images/3/33/The_Lord_of_the_Rings_-_The_Two_Towers_-_Fangorn_Forest_and_the_Misty_Mountains.png
-  - Fandom (Referer): https://static.wikia.nocookie.net/lotr/images/3/36/TTTFangornForest.jpg
+  - Fandom: https://static.wikia.nocookie.net/lotr/images/3/36/TTTFangornForest.jpg
   - Alan Lee "The Forest of Fangorn": https://tolkiengateway.net/w/images/4/4a/Alan_Lee_-_The_Forest_of_Fangorn.jpg
 
 ## 9. ISENGARD / ORTHANC
@@ -199,7 +196,7 @@ Research ran on 2026-09-28/29 (web search, fetch, and HTTP checks). Every image 
   - TG Isengard, 2026×1157: https://tolkiengateway.net/w/images/c/cc/The_Lord_of_the_Rings_%28film_series%29_-_Isengard.jpg
   - TG Orthanc: https://tolkiengateway.net/w/images/c/c7/Orthanc_film.jpg
   - TG Return of the King Isengard: https://tolkiengateway.net/w/images/0/06/The_Lord_of_the_Rings_-_The_Return_of_the_King_-_Isengard.jpg
-  - Fandom before (Referer): https://static.wikia.nocookie.net/lotr/images/0/03/Isengard_before.jpeg
+  - Fandom before: https://static.wikia.nocookie.net/lotr/images/0/03/Isengard_before.jpeg
   - John Howe "Orthanc": https://tolkiengateway.net/w/images/f/fc/John_Howe_-_Orthanc.jpg
   - Weta Orthanc mini: https://www.wetanz.com/media/catalog/product/_/l/_lotr_miniorthanc_002.jpg
 
@@ -219,7 +216,7 @@ Research ran on 2026-09-28/29 (web search, fetch, and HTTP checks). Every image 
 - **(e) Refs**:
   - TG Meduseld, 2940×1230: https://tolkiengateway.net/w/images/7/7f/The_Lord_of_the_Rings_-_The_Two_Towers_-_Meduseld.jpg
   - TG Return of the King at Edoras: https://tolkiengateway.net/w/images/7/76/The_Lord_of_the_Rings_-_The_Return_of_the_King_-_Gandalf_and_Aragorn_at_Edoras.png
-  - Fandom (Referer): https://static.wikia.nocookie.net/lotr/images/2/2e/Edoras.jpg
+  - Fandom: https://static.wikia.nocookie.net/lotr/images/2/2e/Edoras.jpg
   - John Howe "Edoras 01": https://tolkiengateway.net/w/images/4/4f/John_Howe_-_Edoras_01.jpg
   - Commons Mount Sunday: https://commons.wikimedia.org/wiki/Special:FilePath/Mount_Sunday_MRD_01.jpg
 
@@ -238,7 +235,7 @@ Research ran on 2026-09-28/29 (web search, fetch, and HTTP checks). Every image 
 - **(e) Refs**:
   - TG Aragorn arrives: https://tolkiengateway.net/w/images/f/fd/The_Lord_of_the_Rings_-_The_Two_Towers_-_Aragorn_Arrives_At_Helm%27s_Deep.jpg
   - TG Fangorn comes to Helm's Deep, 2560×1076: https://tolkiengateway.net/w/images/e/e3/The_Lord_of_the_Rings_-_The_Two_Towers_-_Fangorn_Comes_to_Helm%27s_Deep.png
-  - Fandom (Referer): https://static.wikia.nocookie.net/lotr/images/d/d3/Helm%27s_Deep_-_TtT.png
+  - Fandom: https://static.wikia.nocookie.net/lotr/images/d/d3/Helm%27s_Deep_-_TtT.png
   - Alan Lee: https://tolkiengateway.net/w/images/f/f9/Alan_Lee_-_Helm%27s_Deep.png
   - John Howe: https://tolkiengateway.net/w/images/6/6d/John_Howe_-_Helm%27s_Deep.jpg
   - Weta Helm's Deep mini: https://www.wetanz.com/media/catalog/product/_/l/_lotr_helmsdeep_001_1.png
@@ -266,7 +263,7 @@ Research ran on 2026-09-28/29 (web search, fetch, and HTTP checks). Every image 
 - **(d) Lighting**: Unexpected Journey prologue has warm, prosperous, golden light. Desolation and Battle of the Five Armies are bleak, grey-teal and hazy.
 - **(e) Refs**:
   - TG Desolation of Smaug: https://tolkiengateway.net/w/images/8/8e/The_Hobbit_-_The_Desolation_of_Smaug_-_Erebor.jpg
-  - Fandom front gate (Referer): https://static.wikia.nocookie.net/lotr/images/4/4b/Erebor_front_gate.webp
+  - Fandom front gate: https://static.wikia.nocookie.net/lotr/images/4/4b/Erebor_front_gate.webp
   - Alan Lee "The Front Gate": https://tolkiengateway.net/w/images/6/68/Alan_Lee_-_The_Front_Gate.jpg
   - Weta Front Gate mini: https://www.wetanz.com/media/catalog/product/8/7/87-10-01284_hobbit_front_gate_erebor_002.jpg
 
@@ -286,7 +283,7 @@ Research ran on 2026-09-28/29 (web search, fetch, and HTTP checks). Every image 
 - **(c) Palette** [measured, fandom and TG stills agree]: `#7d7b76` `#595a58` `#3f494e` `#283235` `#121b1d`; T/M/B `#898b83` `#3e4444` `#1b2429` (misty grey-green). [est] Lantern `#f0a54a`.
 - **(d) Lighting**: cold, overcast, mist on the water; night scenes have snow and warm lanterns; the Smaug attack is orange firelight on black water.
 - **(e) Refs**:
-  - Fandom (Referer), 1920×800: https://static.wikia.nocookie.net/lotr/images/a/ac/LakeTown.jpg
+  - Fandom, 1920×800: https://static.wikia.nocookie.net/lotr/images/a/ac/LakeTown.jpg
   - TG concept art: https://tolkiengateway.net/w/images/1/12/The_Hobbit_-_The_Desolation_of_Smaug_-_Lake-town_concept_art.jpg
   - Alan Lee: https://tolkiengateway.net/w/images/b/b5/Alan_Lee_-_Lake-town.jpg
 
@@ -310,7 +307,7 @@ Research ran on 2026-09-28/29 (web search, fetch, and HTTP checks). Every image 
 - **(e) Refs**:
   - TG Return of the King: https://tolkiengateway.net/w/images/2/2f/The_Lord_of_the_Rings_-_The_Return_of_the_King_-_The_Grey_Havens.jpg
   - Alan Lee film concept art, 3654×2005: https://tolkiengateway.net/w/images/2/2c/Alan_Lee_-_Grey_Havens_concept_art.jpg
-  - Fandom wide (Referer): https://static.wikia.nocookie.net/lotr/images/8/81/Mithlondwide.jpg
+  - Fandom wide: https://static.wikia.nocookie.net/lotr/images/8/81/Mithlondwide.jpg
   - Weta mini: https://www.wetanz.com/media/catalog/product/_/l/_lotr_greyhavens_001.png
 
 ---
@@ -322,7 +319,7 @@ Research ran on 2026-09-28/29 (web search, fetch, and HTTP checks). Every image 
 - Not verified: the film height of Orthanc; whether Erebor, Dale or Lake-town had bigatures; exact door and flag colours.
 
 ## PRIORITY REFERENCE DOWNLOADS (url | what it shows | suggested local filename)
-Fandom URLs need the header `Referer: https://lotr.fandom.com/`.
+Fandom URLs are hotlink-protected and listed for identification only.
 
 1. https://tolkiengateway.net/w/images/b/b6/The_Lord_of_the_Rings_-_The_Fellowship_of_the_Ring_-_Hobbiton.jpg | Hobbiton wide, Fellowship | ref/west/hobbiton_fotr_wide.jpg
 2. https://commons.wikimedia.org/wiki/Special:FilePath/Hobbiton_mill_and_double-arched_bridge.jpg | real set: mill, bridge, pond (CC) | ref/west/hobbiton_mill_bridge_commons.jpg
