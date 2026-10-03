@@ -373,7 +373,7 @@ realize their declarations.
   `renders/shots/<stamp>/` + `latest/`. Shots live in `data/qa/shots.json` + `shots.d/` (explicit camera or
   `orbit`); named sets in `data/qa/sets.json`.
 - `pnpm qa --set s1 --batch 8` renders a set in bounded batches (fresh Vite + Chrome each), then composes
-  contact / compare sheets (references paired from `reference/manifest.json` by subject) and an anonymised
+  contact / compare sheets (references paired from the local, never-committed `reference/manifest.json` by subject) and an anonymised
   `blind/` set for recognizability critics.
 - Heavy-job lock: one machine-wide lock (`%LOCALAPPDATA%\map-of-middle-earth\gpu.lock`, heartbeat) taken by
   captures, `pnpm bake` and `pnpm build` (`tools/heavy.ts`) after a free-RAM guard (`tools/capture/host.ts`);
@@ -394,6 +394,22 @@ realize their declarations.
   (tools/capture/review.ts, CPU / sharp) composes a session's review stills for the user: numbered stills,
   labelled day / night pairs, S3 → S4 before / after sheets, a contact sheet, README.md (what to look at, the
   critic issue each still answers) and manifest.json (commit, tier, spp, sha256). `review/` is gitignored.
+  Manifest `before.tag` / `after.tag` label the sheets (default S3 / S4; `review-v1.json`: S4 → V1).
+- Shared helpers: `compose.ts` (`labelled`, `sideBySide` / `sideBySideImage`, `size`, `sha` / `shaBuf`) and
+  `runs.ts` (`readRun`: a qa run folder, its `shots/` folder or a `pnpm shots` output folder →
+  `results[]` from `manifest(-N).json`, later batches win; `chrome`, `info`, `args`). Both have no side
+  effects; the CLIs import them.
+- `pnpm lock` (lock.ts, CPU only) — the V1 pixel-hash lock: `--write <run> --set lock-v1 [--out
+  data/qa/lock-v1.json]` records commit (+ dirty), settings (w / h / spp / tier, consistent across the set),
+  Chrome, GPU, the Windows display driver and `shots {id: sha256}`; `--verify <run> [--lock …]` exits 0
+  identical · 1 changed / missing · 2 Chrome or driver differ (hashes advisory) · 3 other settings;
+  `--compare <runA> <runB> [--only] [--strict]` diffs two runs. Usage errors exit 64.
+- `pnpm showcase` (showcase.ts, CPU / sharp) — the README images: `data/qa/showcase.json` (runs `review` /
+  `hero`, defaults quality / chroma / budget, images of kind still / pair / social / banner) → mozjpeg
+  4:4:4 JPEGs in `docs/images/` + `manifest.json` (commit, sharp / libvips versions, per image size / bytes /
+  sha256 / alt / caption / source renders). Titles use only the OFL Cinzel / Cormorant files (checked
+  against Pango's fallback; without them the title is dropped). Byte-reproducible; writes only listed files,
+  deletes only files its own previous manifest listed, refuses foreign folders; `--dry`, `--snippet`.
 
 ## Validation (tools/check, CPU only)
 - `pnpm check` (run.ts): places/footprints, landmark definitions, assets vs CREDITS (incl. derived detail
@@ -405,7 +421,7 @@ realize their declarations.
   ground and named-peak changes, snowline/treeline area moved, steepness — vs a frozen bake.
 - **Landmark gates** (tools/check/landmarks.ts) — per landmark LOD0 tris / lights vs the shot-list budget,
   LOD1 ≤ 25 % of LOD0, coarsest ≤ 4k tris; totals (LOD0 ≤ 1.2 M tris, ≤ 48 MB, ≤ 4096 lights, ≤ 2000
-  authored trees); seating (no floating, ≤ 50 % buried); valid material keys; double-build determinism.
+  authored trees); seating (no floating, buried ≤ max(50 % of the part, the kit SINK of 20 m)); valid material keys; double-build determinism.
 - **Bookmark + shot-list gates** (tools/check/bookmarks.ts) — `data/tour/shotlist.json` coverage and film
   length (180–240 s); per landmark `<id>-close` within ±35 % of heroKm with subject ≥ 25 % of frame height,
   ≥ 60 % visible, top-of-frame void ≤ 1 %, void ≤ 3 %, sky ≤ 45 %, clear line of sight; `<id>-wide` when
@@ -414,5 +430,9 @@ realize their declarations.
 - **Camera probe v2** (tools/check/probe.ts + the cameras.ts CLI) — ray classes terrain / water / sky /
   void (studio backdrop) / edge (strata cut face), top-of-frame void, near foreground, line of sight, and
   the subject's projected px (build bounds ∪ the landmark's raising stamps) with visibility. CLI modes:
-  ONLY / OVR / SEARCH / OTHERS / SHOT / SHOTS (file or set) / JSON / LAKES / RINGS / SLAB. Node world loads
-  wait for ≥ 1 GB free RAM.
+  ONLY / OVR / SEARCH / OTHERS / SHOT / SHOTS (file or set) / JSON / LAKES / RINGS / SLAB (`ASPECT=2.4`
+  frames the slab at another aspect; shots from `shots.json` + `shots.d/`). Node world loads wait for
+  ≥ 1 GB free RAM.
+- `tools/check/stamploss.ts [id…]` — where the river guard bites a landmark's stamps (totals and the
+  largest corrected cells with the nearest river). `tools/bake/overlay.py` — CT-1980 geography overlay QA
+  against `data/qa/ct1980-points.json` (CPU, the bake's uv env).

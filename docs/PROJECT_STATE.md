@@ -3,14 +3,61 @@
 _Rolling document: roadmap, current state, decisions, next steps. Keep it compact; replace stale detail
 instead of appending logs._
 
-**Last updated:** 2026-10-03 · end of Session 4 (Look + still effects) — push pending user approval; the user
-reviews `review/s4/` before S5
+**Last updated:** 2026-10-03 · end of Session 4.5 (static finalization + repo polish) — push and tag
+`v0.5.0` pending user approval
 
 ## Where we are
-**S1–S4 are complete.** The world renders deterministically on the Intel UHD iGPU with the S4 look: ash pall
-over Mordor, strata / crust / snow terrain, vegetation archetypes, emission that lights its surroundings,
-water reflections, still effects (plumes, falls, mist, beam, beacons), a filmic lens and grade, and all 24
-landmarks at status s3 (10 heroes polished in S4).
+**S1–S4.5 are complete; the static world is locked for V1 (`v0.5.0`, see below).** The world renders
+deterministically on the Intel UHD iGPU with the S4 look: ash pall over Mordor, strata / crust / snow
+terrain, vegetation archetypes, emission that lights its surroundings, water reflections, still effects
+(plumes, falls, mist, beam, beacons), a filmic lens and grade, and all 24 landmarks at status s3. The repo
+presents as an open-source project (README with showcase stills, MIT licence, CI). **S5 is the film.**
+
+## Static world locked for V1 (S4.5)
+- **Lock:** `data/qa/lock-v1.json` = pixel sha256 of the 12 `lock-v1` sentinels (overviews day / night, shire,
+  mordor, erebor / hobbiton / rivendell / argonath / lake-town close, minas-tirith-night, minas-morgul-beam,
+  s4e-doom-fx) at 1600×900 spp 4 review tier, Chrome 154.0.8037.95, Intel driver 31.0.101.2145, code
+  91993b3 (`dirty` = uncommitted docs only). Written from the full `s4` run `renders/qa/20261003-225000`
+  (57 shots, KEEP); a fresh-process re-render (`20261003-225208`) verified 12/12 IDENTICAL.
+  Verify: `pnpm qa --set lock-v1 --w 1600 --h 900 --spp 4 --batch 13` → `pnpm lock --verify <run>` (exit 0
+  identical · 1 changed · 2 Chrome / driver differ, hashes advisory · 3 other settings).
+- **Review stills:** `review/v1/` (24 stills, 4 day / night pairs, 4 S4 → V1 sheets) from
+  `renders/qa/20261003-230100` (final 1920×1080 spp 12, KEEP); 14 of 24 are pixel-identical to the S4 stills.
+- **README stills:** `docs/images/` (15 JPEGs, 2.25 MB) by `pnpm showcase` from `data/qa/showcase.json`
+  (the V1 review run + `renders/shots/20261003-231307`: the 2.4:1 golden-hour hero `pano-golden-sw`
+  3072×1280 spp 16 and black-gate-wide; KEEP); provenance and render hashes in `docs/images/manifest.json`.
+- **Change control:** S5+ film work (timeline, route line, title cards, camera moves, music) must leave
+  locked frames bit-identical — run the lock verify after any change to shared systems (`src/` outside the
+  new film modules). A look change happens only on the user's request, with before / after renders, and
+  ends with a re-lock (`lock-v2`, new KEEP runs, README stills re-encoded). After a Chrome or driver update,
+  re-render the set on the locked code and re-write the lock before judging code.
+- **Accepted for V1** (no further world-building unless the user asks): far Doom plume dark over the Black
+  Gate / a brown smear in anduin-gondor (puff lighting under the deck, not haze height — S4.5 measured);
+  Hobbiton bank shelf / segmented lanes / bar hedges / no pond mirror; Lake-town close half hillside, lamps
+  without facade spill; Black Gate wall short and box-like, smooth foreground butte; Doom flows thin at 50 km
+  (the lane cap is the lever), straight flanks; Minas Tirith prow on the dark side, apron foreshortened;
+  Minas Morgul city merging with its cliff, an edge-on mist card in the wide (the card is also the gate veil
+  in the hero); Erebor a centred pyramid at 62 km; Rauros falls a pale block, Tol Brandir columnar; faceted
+  foreground rock at Moria; the film-look gate (2.35 / 3.0) stays open by decision (V1 does not chase max
+  detail).
+
+**S4.5 log (2026-10-03):** Intel driver 31.0.101.2145 + pagefile active; smoke PASS, determinism
+IDENTICAL, cross-process hashes 26/26 identical (`20261003-212112` vs `-212344`, reordered and rebatched),
+`models --verify` IDENTICAL, no driver regressions (the S4 review stills re-render pixel-identical where the
+code did not change). **Fixes (worktree `s45/look`, reviewed + blind-critiqued):** black-gate-wide reframed
+(az 342, aim [4,-0.3], fov 23: the pale strip and green foothill are gone), Moria ithildin softer and bluer
+(0x4a72c8, strength 1.0, halo 0.3, spill tinted), Minas Tirith prow lighter with blocks (clamped short of the
+keel), Rauros plunge rocks flatter / darker; tried and reverted: far-plume haze height (no visible effect),
+the Morgul mist card (it is also the hero's gate veil), wider Doom flows (only crust lanes). **Hygiene +
+tooling (`s45/tools`):** latheGeo on-axis guard, seating bury floor = SINK, hero-camera copies synced,
+obsolete shot files removed, stale notes; `pnpm lock`, `pnpm showcase`, `compose.ts` / `runs.ts`, camera
+probe `ASPECT`. **Repo:** README, MIT LICENSE, CREDITS (published renders), `.nvmrc` / `.editorconfig`,
+CI (typecheck + check, verified in a data-free worktree), package 0.5.0 metadata, research briefs marked
+historical (download how-tos removed), `reference/README.md` + `manifest.json` untracked (a public index of
+143 copyrighted image URLs, 34 with Fandom Referer workarounds; they stay local and remain in git history),
+~2.2 GB of superseded renders removed (blind-test keys copied into the KEEP runs; the S4.5 battery perf
+record is in `20261003-225000/`). README reviewed by 4 read-only agents (accuracy, newcomer setup,
+licensing / IP, rendered layout at 1280 / 830 / 390 px).
 
 **World and landmarks (S1–S3):** bake v2 geography and water; RegionLook grade, regional haze, cloud shadows,
 studio backdrop; landmark platform (kit v2, families v2, stamps v2, EmissionSystem, landmark trees /
@@ -67,11 +114,13 @@ anonymised images, keys decoded in code):
 - **Checks:** typecheck; `pnpm check` OK (24/24 status s3, 34/34 bookmarks, gates, effects random access);
   determinism IDENTICAL on Doom (`tFx` 37.25), Rivendell falls, the Morgul beam and the beacons (each effect
   shot first, repeated after another render); `pnpm models --verify` IDENTICAL; `pnpm build` OK.
-- **Review stills for the user:** `review/s4/` (24 stills, 4 day / night pairs, 8 S3 → S4 sheets, contact,
-  README with what to look at and known issues, manifest with SHA-256).
+- **Review stills for the user:** `review/s4/` (approved by the user for V1; superseded by `review/v1/`,
+  rebuildable from `20261003-010300` with `data/qa/review-s4.json`).
 
 **Baselines (KEEP):** `renders/qa/20260929-215504` (S1) · `20260930-092759` (S2) · `20261001-174844` (S3
 final) · `20261002-211200` (S4 C2) · `20261003-005500` (S4 final) · `20261003-010300` (S4 review stills) ·
+`20261001-181521` (S3 fix re-renders) · `20261003-212112` (S4 code on the new driver) · `20261003-225000` (V1 lock) · `20261003-225208` (lock
+verify) · `20261003-230100` (V1 review stills) · `renders/shots/20261003-231307` (README hero) ·
 `data/baked-s1`.
 
 ## Roadmap (6 sessions)
@@ -81,21 +130,20 @@ final) · `20261002-211200` (S4 C2) · `20261003-005500` (S4 final) · `20261003
 | 2 | World look | host hygiene + bounded QA, bake v2, atmosphere + RegionLook, terrain look v2, vegetation look | ✅ |
 | 3 | Landmarks (all 24) | shot list v0, kit v2 + families v2, stamps v2, emission, landmark trees / forests, Blender spike (GO: Argonath), all 24 rebuilt and gated | ✅ |
 | 4 | Look + still effects | ash deck / atmosphere / night / mist, terrain material, vegetation archetypes + canopy shell, emission spill / gates / halos, water + reflection proxies, EffectsSystem, lens + grade, weathering, one hero-polish wave, review stills | ✅ (film-look gate open: 2.35 / 3.0) |
-| 5 | Cinematic journey + music | user review of `review/s4` first; re-baseline after the driver update; tour timeline v0 + animatic from the shot list, route line, title cards, transitions; music spike → original score | **next** |
-| 6 | Performance, final polish, render & release | Landmark build / AO in a worker, vegetation placement worker, compile time; final 1080p24 render (resumable, overnight, user-started); encode; README/CREDITS; ME-GIS/Arda permission | — |
+| 4.5 | Static finalization + repo polish | driver re-baseline, small fixes, V1 lock (`lock-v1.json`, `review/v1`), showcase stills, README / LICENSE / CI, cleanup | ✅ (`v0.5.0`) |
+| 5 | Cinematic journey + music | tour timeline v0 + animatic from the shot list, route line, title cards, transitions; music spike → original score | **next** |
+| 6 | Performance, final polish, render & release | Landmark build / AO in a worker, vegetation placement worker, compile time; final 1080p24 render (resumable, overnight, user-started); encode; film embed in the README; ME-GIS/Arda permission for the film | — |
 
 ## S5 priorities
-1. **The user's review of `review/s4/`** decides any look adjustments before the video work.
-2. **Re-baseline after the Intel driver (31.0.101.2145) + pagefile reboot:** determinism on the effect shots
-   and Argonath, a rested `pnpm perf --save-baseline s5` (cold and warm compile), one smoke QA.
-3. **Timeline v0 + animatic** (moved from S4): `Timeline.evaluate(t)` over the shot list's 16 segments,
-   events (beacons, beam) keyed in time, low-res animatic; the route line and title cards; music spike.
-4. **Film-look backlog (only what the user prioritises; V1 does not chase max detail):** secondary detail on
-   kit architecture (smial doors set in turf arches, Rivendell galleries / window tracery, the Morannon's
-   height and buttresses, Lake-town facades and lit windows), effects that read as light (lava with crust
-   and soft cores, softer fall ribbons, ithildin glow falloff), far plumes faded by distance / haze (the Doom
-   plume over the Black Gate and anduin-gondor), settlement windows that spill (Hobbiton, Lake-town),
-   foreground rock without facets (Moria), the Argonath pedestals (S3's rough plinths won the blind pair).
+1. **Perf re-baseline on mains power** (S4.5 ran on battery: the cold pass was 1.2–1.6× the S4 baseline,
+   compile 3.6 s cold, so no baseline was saved): rested `pnpm perf` cold, then `--save-baseline v1-static`
+   on the six S4 views; keep `s4` until then.
+2. **Timeline v0 + animatic:** `Timeline.evaluate(t)` over the shot list's 16 segments (`data/tour/`), camera
+   moves between bookmarks, events (beacons, beam) keyed in time, `tFx` from film time, low-res animatic.
+3. **Route line + title cards** (canvas-2D textures on quads, OFL fonts), transitions; **music spike** →
+   original score (no imitation of Howard Shore).
+4. **Lock discipline:** film modules plug into the existing systems; `pnpm lock --verify` stays exit 0 after
+   every merge (change control above).
 
 ## Decisions (stable)
 - **Presentation and film:** floating diorama slab; film 3–4 min (shot-list draft 204 s), 16:9, 1080p24 with
@@ -113,20 +161,27 @@ final) · `20261002-211200` (S4 C2) · `20261003-005500` (S4 final) · `20261003
   emitters, falls, reflectors, treeCaps, flows), systems realize.
 - **S4 scope (user, 2026-10-02):** look + still effects, one bounded hero wave, subtle filmic DOF; timeline /
   animatic / music moved to S5.
-- **Repo:** public, code only; push only after user approval; raw CC0 texture sources in `data/textures-src`
+- **Repo:** public; push only after user approval; raw CC0 texture sources in `data/textures-src`
   (gitignored), derived layers in `public/textures/terrain` (gitignored, credited); GLBs in `public/models`
   are original, generated by `tools/blender` (credited); `review/` is gitignored.
+- **Licence and stills (user, S4.5):** code and original models MIT (`LICENSE`, earthwalker17); the README
+  shows the project's own renders (`docs/images/`: not MIT, no reuse licence granted; `docs/images/README.md`) with
+  prominent ME-DEM / ME-GIS / Arda credit; source and baked data never committed; the user sends the data
+  authors a heads-up / permission note, and permission is needed before the film or any derived data is
+  published.
 
 ## Host and workflow (Surface Laptop Go, i5-1035G1, 7.6 GB RAM shared with the iGPU)
 - **Session start:** `pnpm host --fix` (approved: stop windowless Edge / WPS / OneDrive / Teams / Phone Link /
   PC Manager, keep their autostart disabled). Idle ≈ 3.3–3.6 GB available.
-- **S4 host changes:** Defender folder exclusions for the project, pnpm store, the app cache, ms-playwright,
-  `%TEMP%\claude`, `%TEMP%\tsx-A` and `~/.claude/projects`; fixed pagefile 8–16 GB (active after the reboot);
-  Intel driver 31.0.101.2145 downloaded to `Downloads\gfx_win_101.2145.exe` for the user to install at the
-  end of S4. Windows Update was not paused.
+- **Host:** Defender folder exclusions for the project, pnpm store, the app cache, ms-playwright,
+  `%TEMP%\claude`, `%TEMP%\tsx-A` and `~/.claude/projects`; fixed pagefile 8–16 GB; Intel driver
+  31.0.101.2145 (installed after S4; pixel-neutral for unchanged code). Windows Update was not paused.
 - **One heavy job at a time; captures in the FOREGROUND** (≤ 10 min per call: split with `qa --only`; the
-  background-shell reaper kills long background captures on low memory). In the fast power regime the
-  57-shot `s4` set at 1600×900 spp 4 takes ≈ 6.5 min, 24 final-tier stills at 1920×1080 spp 12 ≈ 5.5 min.
+  background-shell reaper kills long background captures on low memory). The 57-shot `s4` set at 1600×900
+  spp 4 takes ≈ 6.5 min (two calls of ~3 min), 24 final-tier stills at 1920×1080 spp 12 ≈ 7 min (two calls),
+  a 3072×1280 spp 16 hero ≈ 1 min. Merged runs: copy the parts' shots + renumbered manifests into one stamped
+  folder (`pnpm lock` / `pnpm showcase` read `manifest(-N).json`). In PowerShell quote `--only "a,b,c"`
+  (an unquoted comma list becomes an array → "0/1 shots").
 - **Perf:** the iGPU shares the package power with the CPU and the laptop has a slow and a fast regime
   (~1.7× apart; it can run on battery under load even when plugged in). `pnpm perf` waits for a quiet host
   and records `noise`; compare only rested (90 s) interleaved A/B runs against a frozen worktree of the
@@ -142,22 +197,15 @@ final) · `20261002-211200` (S4 C2) · `20261003-005500` (S4 final) · `20261003
 wide (> 300 km) ~15 % · regional (60–300 km) ~50 % · mid (15–60 km) ~30 % · close (< 15 km) ~5 % of screen
 time. Landmark detail budgets target 15–60 km.
 
-## Known residuals (fix opportunistically)
-**Heroes (S4 final critics):** Hobbiton fronts show a thin bank shelf, segmented lanes, bar hedges, no pond
-reflection; Lake-town close is half shaded hillside (no Erebor / horizon), night lamps without facade
-spill; Black Gate wall short and box-like, the foreground butte a smooth dome, black-gate-wide shows a pale
-strip and green foothill at the right edge; Doom flows thin at 50 km, straight flanks, preview flow gaps;
-Minas Tirith prow face a flat dark slab, Mindolluin runs out of the frame; Minas Morgul city merges with the
-cliff (no value separation) and an edge-on mist card by the bridge in the wide; Erebor still a centred
-pyramid at 62 km; Rauros falls a pale block with round boulders, Tol Brandir still columnar; Moria ithildin
-hard-edged near-white, faceted foreground rock; Argonath GLB at ~76k of the 80k budget.
-**Shared:** far plumes are barely hazed at altitude (Doom's plume over the Black Gate, a brown smear in
-anduin-gondor); settlement windows outside the top-N spill set do not light facades; mist-card look
-(#20); steep-face vertical smear on stamped walls (Morgulduin, Rivendell); the seating gate counts thin
-ground decals (< 0.02 km) as buried; Rivendell's occlusion gate is very sensitive to scarp roughness;
-`latheGeo` with an on-axis segment and partial `arcDeg` emits stray triangles; Shire field patchwork
-contrast (S3 preferred). Older: daytime torch floor 0.25; boot +2–3 s (landmark build + AO → worker in S6);
-the probe's subject box includes raising stamps.
+## Known residuals (accepted for V1 — hero list above; change only on the user's request)
+**Heroes:** as listed under "Accepted for V1"; also Doom preview flow gaps, Mindolluin running out of the
+minas-tirith-close frame, the Argonath GLB at ~76k of the 80k budget.
+**Shared:** settlement windows outside the top-N spill set do not light facades; mist-card look (#20);
+steep-face vertical smear on stamped walls (Morgulduin, Rivendell); Rivendell's occlusion gate is very
+sensitive to scarp roughness; Shire field patchwork contrast (S3 preferred); daytime torch floor 0.25;
+boot +2–3 s (landmark build + AO → worker in S6); the probe's subject box includes raising stamps. Copy
+drift outside the synced heroes: `w3e-barad-night` lacks `lookOverride: mordor`, `s4e-riv-fx` lacks
+`fStop: 8`, `w1a-doom-night` uses an old Doom camera (all outside `lock-v1`).
 **Bake:** 98 torrent step cells (warning); stream-36 22 km source trim; Entwash / Forest River confluence
 pools; marsh fills ≈ 271 km² > 0.5. A re-bake needs the user's explicit OK.
 
@@ -175,7 +223,11 @@ pools; marsh fills ≈ 271 km² > 0.5. A re-bake needs the user's explicit OK.
   below the horizon gives a black frame (S4: lake-town-night, rivendell-night re-dated); dayOfYear only
   moves the sun / moon / sky.
 - **Copies of hero cameras** (review / lens / night shots in `data/qa/shots.d`) go stale when a bookmark is
-  reframed — regenerate them from the bookmarks after hero work.
+  reframed — regenerate them from the bookmarks after hero work (with the landmark's `lookOverride` and the
+  bookmark `fStop`, which the bookmark path adds; a copy is proven equal by an identical pixel hash).
+- **Hashes:** renders are bit-identical across processes, batch orders and batch sizes for fixed code +
+  Chrome + driver + settings; a far geometry edit (e.g. Rauros rocks) changes a few pixels of the overviews,
+  so sentinels catch it. `pnpm lock --compare <runA> <runB>` diffs two runs.
 - **Tooling:** Bash heredocs can mangle backslashes — write code with the file tools; Python edits must use
   `newline=''`; tsx scripts outside the project need `.mts`; print UTF-8 with `PYTHONIOENCODING=utf-8`.
 - **Worktrees / merges:** adjacent one-line entries in shotlist.json / looks.json / sets.json conflict —
@@ -189,7 +241,9 @@ pools; marsh fills ≈ 271 km² > 0.5. A re-bake needs the user's explicit OK.
   ridge west of the Gulf of Lune (`vertical.seaArtefacts`).
 
 ## Open issues / notes
-- **User action at the end of S4:** install the Intel driver (`Downloads\gfx_win_101.2145.exe`; it replaces
-  the Surface OEM driver) and reboot (also applies the pagefile). S5 starts with the re-baseline.
-- Ask the ME-GIS / Arda authors for permission before publishing the film.
+- **User actions after S4.5:** upload `docs/images/social-preview.jpg` (Settings → Social preview); send the
+  heads-up / permission note to the ME-GIS (jvangeld / andrewheiss), Arda (bburns) and ME-DEM (Outerra forum)
+  authors; grant `gh` the `workflow` scope (`gh auth refresh -h github.com -s workflow`) so the CI file can be
+  pushed.
+- Permission from the ME-GIS / Arda / ME-DEM authors is needed before publishing the film.
 - S5 proposal: move the checkout to `C:\dev\MAP` (shorter paths, outside Desktop / OneDrive churn) — ask.

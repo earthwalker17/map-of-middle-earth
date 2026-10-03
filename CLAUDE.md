@@ -7,7 +7,7 @@ title cards, original score).
 
 **Start every session with `pnpm host --fix`** (frees RAM: stops windowless approved background apps,
 re-disables their autostart, sweeps orphans), **then read `docs/PROJECT_STATE.md`** (where we are, what's next), then
-`docs/ARCHITECTURE.md` (contracts) as needed. Research briefs: `docs/research/`. References: `reference/`.
+`docs/ARCHITECTURE.md` (contracts) as needed. Research briefs: `docs/research/`. References: `reference/` (local only).
 
 ## Architectural principles
 - **One world, shared systems.** Features plug into existing systems (terrain, water, vegetation,
@@ -46,6 +46,8 @@ re-disables their autostart, sweeps orphans), **then read `docs/PROJECT_STATE.md
   main agent reviews and integrates — never accept subagent output unseen. `pnpm perf --gate` guards the
   preview tier against `data/qa/perf-baseline.json`; the laptop has slow / fast power regimes (~1.7×), so
   compare code only by rested, interleaved A/B runs against a frozen worktree, never across days.
+- **The static world is locked for V1** (S4.5, `data/qa/lock-v1.json`): film work keeps `pnpm lock --verify` at exit 0;
+  a look change needs the user's request, before / after renders and a re-lock (change control in PROJECT_STATE).
 - Commit at meaningful milestones; update `docs/PROJECT_STATE.md` at each milestone.
   **Push only at session end, after explicit user approval.**
 - `CLAUDE.md` changes only when stable rules change; session logs go to `PROJECT_STATE.md`.
@@ -64,8 +66,9 @@ re-disables their autostart, sweeps orphans), **then read `docs/PROJECT_STATE.md
   gitignored data instead of re-fetching or junctioning it.
 
 ## Licensing & IP (hard rules)
-- Never commit `data/source/`, `data/baked/`, reference images or fetched textures (public repo).
-  ME-GIS/Arda-derived data needs the authors' permission before any public release.
+- Never commit `data/source/`, `data/baked/`, anything in `reference/` (images, index, manifest) or fetched textures (public repo).
+  The only published derivative is the README's own renders (`docs/images/`, `pnpm showcase`, credited, user decision
+  S4.5); the film and any derived data need the ME-GIS / Arda / ME-DEM authors' permission before release.
 - Every shipped asset in `public/` must be listed in `CREDITS.md`.
 - OFL fonts only; no Tengwar/Cirth, no film logos or film typography; no imitation of Howard Shore's music.
 
@@ -73,4 +76,6 @@ re-disables their autostart, sweeps orphans), **then read `docs/PROJECT_STATE.md
 `pnpm dev` · `pnpm typecheck` · `pnpm build` · `pnpm data:fetch` · `pnpm bake` · `pnpm shots --smoke|--shot <id>` ·
 `pnpm qa [--set s4|s4-review|s4-heroes|s3|landmarks-s3|wides-s3|overview|regions] [--only a,b] [--batch 8] [--blind <set>]` · `pnpm perf [--gate]` ·
 `pnpm check` · `pnpm models [--only id] [--verify]` · `node --import tsx tools/check/cameras.ts` (camera probe) ·
-`pnpm review --from <qa run> [--before <run>]` (review stills folder) · `pnpm perf --save-baseline <label>`
+`pnpm review --from <qa run> [--before <run>]` (review stills folder) · `pnpm perf --save-baseline <label>` ·
+`pnpm lock --write|--verify <run> [--set lock-v1]` · `pnpm lock --compare <runA> <runB>` (pixel-hash lock) ·
+`pnpm showcase [--dry|--snippet]` (README images from `data/qa/showcase.json` → `docs/images/`)
