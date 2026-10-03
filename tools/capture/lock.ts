@@ -23,9 +23,9 @@
  * Usage errors (unknown set, ids missing from a --write run, no manifests) exit 64.
  */
 import { execSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fwd, readRun, showPath, type Settings, type Shot } from './runs.ts';
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -33,27 +33,6 @@ function arg(name: string): string | undefined {
 }
 const flag = (name: string) => process.argv.includes(`--${name}`);
 
-export interface Settings {
-  w: number;
-  h: number;
-  spp: number;
-  quality: string;
-  /** a --tod override of the run (null = each shot's own time of day) */
-  tod: number | null;
-}
-export interface Shot {
-  id: string;
-  sha256: string;
-  settings: Settings;
-  chrome: string;
-  gpu: unknown;
-  three: string | null;
-  driver: string | null;
-}
-export interface Run {
-  dir: string;
-  shots: Map<string, Shot>;
-}
 interface LockFile {
   version: number;
   set: string;
@@ -72,57 +51,7 @@ interface LockFile {
 }
 
 const ROOT = process.cwd();
-const fwd = (p: string) => p.replace(/\\/g, '/');
-/** a path relative to the repo when inside it, else absolute (forward slashes) */
-export const showPath = (p: string) => {
-  const r = relative(ROOT, resolve(p));
-  return fwd(r && !r.startsWith('..') && !/^[a-zA-Z]:/.test(r) ? r : resolve(p));
-};
 
-// ------------------------------------------------------------------ run manifests
-export function shotsFolder(run: string): string {
-  const has = (d: string) => existsSync(d) && readdirSync(d).some((f) => /^manifest(-\d+)?\.json$/.test(f) && hasResults(join(d, f)));
-  if (has(join(run, 'shots'))) return join(run, 'shots');
-  if (has(run)) return run;
-  throw new Error(`lock: no run manifests (manifest(-N).json with results[]) in ${run} or ${join(run, 'shots')}`);
-}
-function hasResults(file: string): boolean {
-  try {
-    return Array.isArray((JSON.parse(readFileSync(file, 'utf8')) as { results?: unknown }).results);
-  } catch {
-    return false;
-  }
-}
-/** every rendered shot of a run (later batches win), with its settings and environment */
-export function readRun(run: string): Run {
-  const dir = shotsFolder(run);
-  const shots = new Map<string, Shot>();
-  for (const f of readdirSync(dir).filter((x) => /^manifest(-\d+)?\.json$/.test(x)).sort()) {
-    const m = JSON.parse(readFileSync(join(dir, f), 'utf8')) as {
-      chrome?: string;
-      driver?: string;
-      info?: { quality?: string; gpu?: unknown; three?: string; driver?: string };
-      args?: { tod?: number | string };
-      results?: { name: string; sha256: string; width: number; height: number; spp: number }[];
-    };
-    if (!Array.isArray(m.results)) continue;
-    const tod = m.args?.tod === undefined || m.args.tod === null ? null : Number(m.args.tod);
-    for (const r of m.results) {
-      if (!r.sha256) continue; // a failed shot
-      shots.set(r.name, {
-        id: r.name,
-        sha256: r.sha256,
-        settings: { w: r.width, h: r.height, spp: r.spp, quality: m.info?.quality ?? 'unknown', tod },
-        chrome: m.chrome ?? 'unknown',
-        gpu: m.info?.gpu ?? null,
-        three: m.info?.three ?? null,
-        // forward-compatible: a run that records its driver wins over the one queried now
-        driver: m.driver ?? m.info?.driver ?? null,
-      });
-    }
-  }
-  return { dir, shots };
-}
 const fmtSettings = (s: Settings) => `${s.w}×${s.h} spp ${s.spp} ${s.quality}${s.tod !== null ? ` tod ${s.tod}` : ''}`;
 const sameSettings = (a: Settings, b: Settings) => a.w === b.w && a.h === b.h && a.spp === b.spp && a.quality === b.quality && a.tod === b.tod;
 /** the one value of `pick` over the shots, else null (with the distinct values) */
@@ -320,14 +249,10 @@ function main(): number {
   console.error(usage);
   return 64;
 }
-// importable (showcase.ts reads run manifests through readRun): the CLI runs only as the entry script
-const entry = process.argv[1] ? resolve(process.argv[1]) : '';
-const self = fileURLToPath(import.meta.url);
-if (process.platform === 'win32' ? entry.toLowerCase() === self.toLowerCase() : entry === self) {
-  try {
-    process.exitCode = main();
-  } catch (e) {
-    console.error(`[lock] error: ${(e as Error).message}`);
-    process.exitCode = 64;
-  }
+// a CLI only (the run-manifest reader shared with showcase.ts lives in runs.ts), so it always runs
+try {
+  process.exitCode = main();
+} catch (e) {
+  console.error(`[lock] error: ${(e as Error).message}`);
+  process.exitCode = 64;
 }

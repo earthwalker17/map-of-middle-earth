@@ -21,17 +21,19 @@
  *
  * Writes ONLY the listed files (encoded in memory, written to a temp folder, then moved into --out) and
  * deletes the files listed in the previous <out>/manifest.json that are no longer listed — never anything
- * else. <out>/manifest.json records the commit, the sharp / libvips versions, the runs and per image file,
+ * else. It refuses (exit 1, before encoding) to write into a folder whose manifest.json was not written by
+ * pnpm showcase, to overwrite an existing file that its previous manifest does not list, or to reuse a
+ * non-empty <out>/.showcase-tmp. <out>/manifest.json records the commit, the sharp / libvips versions, the runs and per image file,
  * size, bytes, sha256, alt, caption and its sources (run, id, render sha256, size, spp, tier from the run
  * manifests). Fails (writes nothing) if the total exceeds `budgetMB`. --dry encodes in memory and prints the
  * sizes; --snippet prints the README HTML (stills in rows of 3 with a caption row, pairs / banners full width).
  */
 import { execSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, rmdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import sharp, { type OverlayOptions, type Sharp } from 'sharp';
 import { esc, shaBuf, sideBySideImage } from './compose.ts';
-import { readRun, showPath, type Run } from './lock.ts';
+import { fwd, readRun, showPath, type Run } from './runs.ts';
 
 function arg(name: string, def?: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -112,9 +114,9 @@ const SOCIAL = { w: 1280, h: 640, maxBytes: 1024 * 1024 };
 const FONT_TITLE = { family: 'Cinzel', file: resolve('public/fonts/cinzel/Cinzel-VariableFont_wght.ttf') };
 const FONT_SUB = { family: 'Cormorant Garamond', file: resolve('public/fonts/cormorantgaramond/CormorantGaramond-VariableFont_wght.ttf') };
 const FILE_RE = /^[a-z0-9][a-z0-9._-]*\.jpe?g$/i;
-const fwd = (p: string) => p.replace(/\\/g, '/');
 const attr = (t: string) => esc(t).replace(/"/g, '&quot;');
 const MiB = 1024 * 1024;
+const GENERATED_BY = 'tools/capture/showcase.ts (pnpm showcase)';
 
 // ------------------------------------------------------------------ inputs
 const manifestPath = arg('manifest', join('data', 'qa', 'showcase.json'))!;
@@ -173,6 +175,48 @@ for (const [i, img] of (doc.images ?? []).entries()) {
 if (problems.length) {
   console.error(`[showcase] ${manifestPath}:\n  - ${problems.join('\n  - ')}`);
   process.exit(1);
+}
+
+// ------------------------------------------------------------------ the output folder (checked before any encoding)
+// Only a folder this tool owns is written to: its manifest.json (if any) must be one pnpm showcase wrote, and
+// only the files that manifest lists may be replaced or removed.
+const prevFile = join(outDir, 'manifest.json');
+const tmp = join(outDir, '.showcase-tmp');
+let previous: string[] = []; // the files listed in the previous showcase manifest
+const outProblems: string[] = [];
+if (existsSync(prevFile)) {
+  let prev: { generatedBy?: unknown; images?: unknown } | null = null;
+  try {
+    prev = JSON.parse(readFileSync(prevFile, 'utf8')) as { generatedBy?: unknown; images?: unknown };
+  } catch {
+    prev = null;
+  }
+  if (!prev || typeof prev.generatedBy !== 'string' || !prev.generatedBy.startsWith('tools/capture/showcase.ts'))
+    outProblems.push(`${fwd(prevFile)} was not written by pnpm showcase — refusing to write into ${fwd(outDir)}`);
+  else
+    previous = (Array.isArray(prev.images) ? (prev.images as { file?: unknown }[]) : [])
+      .map((i) => (i && typeof i.file === 'string' ? i.file : ''))
+      .filter((f) => FILE_RE.test(f));
+}
+const owned = new Set(previous.map((f) => f.toLowerCase()));
+for (const img of doc.images)
+  if (existsSync(join(outDir, img.file)) && !owned.has(img.file.toLowerCase()))
+    outProblems.push(`${fwd(join(outDir, img.file))} exists but no pnpm showcase manifest lists it — refusing to overwrite it`);
+if (existsSync(tmp)) {
+  let entries: string[] | null = null;
+  try {
+    entries = readdirSync(tmp);
+  } catch {
+    entries = null;
+  }
+  if (!entries || entries.length) outProblems.push(`${fwd(tmp)} exists and is not an empty folder (an interrupted run?) — inspect it and remove it first`);
+}
+if (outProblems.length) {
+  if (!dry) {
+    console.error(`[showcase] refusing to write into ${fwd(outDir)} (nothing written):\n  - ${outProblems.join('\n  - ')}`);
+    process.exit(1);
+  }
+  console.warn(`[showcase] warning: a real run would refuse to write into ${fwd(outDir)}:\n  - ${outProblems.join('\n  - ')}`);
 }
 
 sharp.cache(false);
@@ -366,21 +410,10 @@ if (fail.length) {
 // ------------------------------------------------------------------ write (temp folder, then move; only listed files)
 if (!dry) {
   mkdirSync(outDir, { recursive: true });
-  const tmp = join(outDir, '.showcase-tmp');
-  rmSync(tmp, { recursive: true, force: true });
-  mkdirSync(tmp);
+  mkdirSync(tmp, { recursive: true }); // new or empty (checked above)
   for (const e of encoded) writeFileSync(join(tmp, e.file), e.buf);
-  const prevFile = join(outDir, 'manifest.json');
-  let previous: string[] = [];
-  if (existsSync(prevFile)) {
-    try {
-      previous = ((JSON.parse(readFileSync(prevFile, 'utf8')) as { images?: { file?: string }[] }).images ?? []).map((i) => i.file ?? '').filter((f) => FILE_RE.test(f));
-    } catch {
-      previous = [];
-    }
-  }
   for (const e of encoded) renameSync(join(tmp, e.file), join(outDir, e.file));
-  rmSync(tmp, { recursive: true, force: true });
+  rmdirSync(tmp); // empty again — never removed recursively
   const now = new Set(encoded.map((e) => e.file.toLowerCase()));
   const removed = previous.filter((f) => !now.has(f.toLowerCase()) && existsSync(join(outDir, f)));
   for (const f of removed) rmSync(join(outDir, f));
@@ -395,7 +428,7 @@ if (!dry) {
     prevFile,
     JSON.stringify(
       {
-        generatedBy: 'tools/capture/showcase.ts (pnpm showcase)',
+        generatedBy: GENERATED_BY,
         manifest: fwd(manifestPath),
         commit: git('rev-parse HEAD'),
         dirty: git('status --porcelain --untracked-files=no').length > 0,
