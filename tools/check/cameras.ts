@@ -14,6 +14,9 @@
  *   SHOT='{"id":"x","tod":12,"camera":{"orbit":{…}}}' …             probe one ad-hoc shot
  *   JSON=1 …                                                       machine-readable output
  *   LAKES=1 … · RINGS=1 … · SLAB=1 [SLABOVR='{…}'] …              lake / ring / overview-slab diagnostics
+ *   SLAB=1 ASPECT=2.4 [ONLY=overview-pano] …                       the slab framed at another aspect (default
+ *                                                                  16/9; `2.4`, `2.39:1`, `21/9`), px at height 900;
+ *                                                                  overview* shots of data/qa/shots.json + shots.d/
  * Reads MOME_WORLD_DIR (defaults to data/baked). Waits for free memory before loading the world.
  */
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
@@ -35,6 +38,16 @@ const landmarkIds = new Set(landmarks.map((d: any) => d.id));
 const subjectOfPlace = (place?: string) => (place ? landmarks.find((d: any) => d.placeId === place)?.id : undefined);
 
 const overrides: Record<string, any> = JSON.parse(process.env.OVR ?? '{}');
+/** data/qa/shots.json + data/qa/shots.d/*.json (the JSON shots, in load order) */
+const jsonShots = (): any[] => [
+  ...JSON.parse(readFileSync(join(ROOT, 'data/qa/shots.json'), 'utf8')).shots,
+  ...(existsSync(join(ROOT, 'data/qa/shots.d'))
+    ? readdirSync(join(ROOT, 'data/qa/shots.d'))
+        .filter((f) => f.endsWith('.json'))
+        .sort()
+        .flatMap((f) => JSON.parse(readFileSync(join(ROOT, 'data/qa/shots.d', f), 'utf8')).shots)
+    : []),
+];
 const only = process.env.ONLY?.split(',');
 const bms = bookmarkShots(landmarks);
 const modeShots = process.env.SHOTS || process.env.SHOT;
@@ -53,16 +66,7 @@ if (modeShots) {
   if (process.env.SHOT) list = [JSON.parse(process.env.SHOT)];
   else {
     const v = process.env.SHOTS!;
-    const all = [
-      ...JSON.parse(readFileSync(join(ROOT, 'data/qa/shots.json'), 'utf8')).shots,
-      ...(existsSync(join(ROOT, 'data/qa/shots.d'))
-        ? readdirSync(join(ROOT, 'data/qa/shots.d'))
-            .filter((f) => f.endsWith('.json'))
-            .sort()
-            .flatMap((f) => JSON.parse(readFileSync(join(ROOT, 'data/qa/shots.d', f), 'utf8')).shots)
-        : []),
-      ...bms.map((b) => b.shot),
-    ];
+    const all = [...jsonShots(), ...bms.map((b) => b.shot)];
     if (v.endsWith('.json')) list = JSON.parse(readFileSync(join(ROOT, v), 'utf8')).shots;
     else {
       const sets = JSON.parse(readFileSync(join(ROOT, 'data/qa/sets.json'), 'utf8')).sets;
@@ -191,12 +195,23 @@ if (process.env.RINGS) {
 
 // ------------------------------------------------------------------ slab: overview framing in px
 if (process.env.SLAB) {
-  const shots = JSON.parse(readFileSync(ROOT + '/data/qa/shots.json', 'utf8')).shots;
+  const shots = jsonShots();
   const ovr = JSON.parse(process.env.SLABOVR ?? '{}');
   const bottom = Number(process.env.SLABBOTTOM ?? -14);
+  // frame aspect (width / height): a number, `w/h` or `w:h`; px are reported at a 900 px frame height
+  const aspectStr = process.env.ASPECT ?? '16/9';
+  const am = /^\s*([\d.]+)\s*(?:[/:]\s*([\d.]+))?\s*$/.exec(aspectStr);
+  const aspect = am ? Number(am[1]) / Number(am[2] ?? 1) : NaN;
+  if (!(aspect > 0)) throw new Error(`ASPECT=${aspectStr}: expected a number, w/h or w:h`);
+  const FH = 900;
+  const FW = Math.round(FH * aspect);
+  if (process.env.ASPECT) console.log(`aspect ${aspect.toFixed(3)} → frame ${FW}×${FH} px`);
   const sp = world.spec;
+  const seenIds = new Set<string>();
   for (const s of shots) {
-    if (!s.id.startsWith('overview')) continue;
+    if (only ? !only.includes(s.id) : !s.id.startsWith('overview')) continue;
+    if (seenIds.has(s.id) || !s.camera?.orbit) continue;
+    seenIds.add(s.id);
     for (const [tag, o] of [['cur', s.camera.orbit], ...(ovr[s.id] ? [['new', { ...s.camera.orbit, ...ovr[s.id] }]] : [])] as any[]) {
       const cam = orbitCamera(world, o);
       const [px, py, pz] = cam.position,
@@ -217,7 +232,7 @@ if (process.env.SLAB) {
         uy = rz * fx - rx * fz,
         uz = rx * fy;
       const tanV = Math.tan((cam.fov * Math.PI) / 360),
-        tanH = (tanV * 16) / 9;
+        tanH = tanV * aspect;
       let x0 = 9,
         x1 = -9,
         y0 = 9,
@@ -237,7 +252,7 @@ if (process.env.SLAB) {
             y1 = Math.max(y1, Y);
           }
       const P = (v: number, n: number) => (((v + 1) / 2) * n).toFixed(0);
-      console.log(`${s.id.padEnd(18)} ${tag} ${JSON.stringify(o)}  slab px x[${P(x0, 1600)}..${P(x1, 1600)}] y(top-down)[${P(-y1, 900)}..${P(-y0, 900)}]`);
+      console.log(`${s.id.padEnd(18)} ${tag} ${JSON.stringify(o)}  slab px x[${P(x0, FW)}..${P(x1, FW)}] y(top-down)[${P(-y1, FH)}..${P(-y0, FH)}]`);
     }
   }
 }
