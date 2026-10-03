@@ -1,7 +1,7 @@
 {
   "version": 1,
   "title": "Journey Through Middle-earth — V1 static lock",
-  "notes": "The V1 static-lock review stills (tools/capture/review.ts composes review/v1/ from a qa run of the s4-review set): the same 24 stills and 4 day / night pairs as the S4 review (data/qa/review-s4.json), rendered on the locked V1 static world; the before/after sheets compare the S4 review stills (before, tag S4) with V1 (after, tag V1) for the shots the S4.5 fixes touch. Order follows the film: the map, the prologue (Erebor, Lake-town), then Frodo's road from the Shire to Mount Doom. `look` = what to look at; `s3Issue` = the S3 critic issue the still answered in S4. Time of day and camera distance are read from the shot data by the tool. Render: pnpm qa --set s4-review --quality final --w 1920 --h 1080 --spp 12 --batch 6 --label v1-review; compose: pnpm review --from renders/qa/<stamp> --manifest data/qa/review-v1.json --out review/v1. PLACEHOLDERS for the main agent: beforeAfter (trim to the shots that visibly changed) and knownIssues (copied from S4 — rewrite).",
+  "notes": "The V1 static-lock review stills (tools/capture/review.ts composes review/v1/ from a qa run of the s4-review set): the same 24 stills and 4 day / night pairs as the S4 review (data/qa/review-s4.json), rendered on the locked V1 static world; the before/after sheets compare the S4 review stills (before, tag S4) with V1 (after, tag V1) for the shots the S4.5 fixes touch. Order follows the film: the map, the prologue (Erebor, Lake-town), then Frodo's road from the Shire to Mount Doom. `look` = what to look at; `s3Issue` = the S3 critic issue the still answered in S4. Time of day and camera distance are read from the shot data by the tool. Render: pnpm qa --set s4-review --quality final --w 1920 --h 1080 --spp 12 --batch 6 --label v1-review; compose: pnpm review --from renders/qa/<stamp> --manifest data/qa/review-v1.json --out review/v1. V1 run: renders/qa/20261003-230100 (KEEP). 14 of the 24 stills are pixel-identical to the S4 stills; the before/after sheets show the four that visibly changed (the overviews, argonath-close and anduin-gondor change only by far Minas Tirith / Rauros pixels).",
   "set": "s4-review",
   "render": { "quality": "final", "w": 1920, "h": 1080, "spp": 12 },
   "before": { "run": "renders/qa/20261003-010300", "label": "S4 review stills (final, 1920×1080, spp 12)", "tag": "S4" },
@@ -39,23 +39,19 @@
     { "id": "lake-town", "day": "lake-town-close", "night": "lake-town-night" }
   ],
   "beforeAfter": [
-    { "id": "black-gate-close", "before": "black-gate-close" },
-    { "id": "anduin-gondor", "before": "anduin-gondor" },
     { "id": "moria-close", "before": "moria-close" },
     { "id": "minas-tirith-close", "before": "minas-tirith-close" },
     { "id": "minas-tirith-night", "before": "minas-tirith-night" },
-    { "id": "mordor", "before": "mordor" },
-    { "id": "mount-doom-close", "before": "mount-doom-close" },
-    { "id": "minas-morgul-beam", "before": "minas-morgul-beam" },
     { "id": "rauros-close", "before": "rauros-close" }
   ],
   "knownIssues": [
-    "Black Gate: Mount Doom's plume, far behind the gate, shows as a dark billow over the gate — high puffs get little haze (S5: distance fade for far plumes).",
-    "Rauros: the falls still read as a pale block with round boulders; Tol Brandir is a smoother pillar but still column-like.",
-    "Hobbiton: the fronts still show a thin bank shelf, the lanes are segmented, the hedges read as bars, and the pond does not mirror the Hill.",
+    "Accepted for V1 (S4.5 lock): these residuals stay unless the user asks for a look change (change control in docs/PROJECT_STATE.md).",
+    "Black Gate: Mount Doom's plume, far behind the gate, still shows as a dark billow. S4.5 tried sampling the haze nearer the ground for far puffs with no visible change: the darkness comes from the puffs' albedo and lighting under the ash deck, not the haze height.",
+    "Rauros: the falls read as a pale block; the plunge rocks are flatter and darker since S4.5; Tol Brandir is still column-like.",
+    "Hobbiton: the fronts show a thin bank shelf, the lanes are segmented, the hedges read as bars, and the pond does not mirror the Hill.",
     "Lake-town: the upper part of the close is a shaded hillside (no Erebor or horizon from this side of the lake).",
-    "Minas Tirith: the prow's shaded face reads as a flat dark slab; the apron is too foreshortened to see.",
-    "Mount Doom: the flows are thin at 50 km and the cone's flanks are still straight.",
+    "Minas Tirith: the prow's shaded face is lighter with visible blocks since S4.5 but stays on the dark side; the apron is too foreshortened to see.",
+    "Mount Doom: the flows are thin at 50 km (wider flow widths only added dark crust lanes; the hero lane cap is the lever) and the cone's flanks are straight.",
     "The S4 stills (before) are 1920×1080 final-tier renders at spp 12; these V1 stills are {size} {tier}-tier renders at spp {spp} — the before/after sheets rescale both to one height.",
     { "text": "Depth of field is only on the hero stills whose shot carries an f-stop (deep focus f/22 otherwise); it is deliberately very subtle (blur at infinity <= 0.3 % of the frame height).", "minSpp": 8 },
     { "text": "This run is below spp 8, so every still is a pinhole: no depth of field (the lens needs >= 8 aperture samples).", "maxSpp": 7 },

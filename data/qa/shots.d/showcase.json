@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "notes": "S4.5 README showcase: 2.4:1 golden-hour panorama candidates of the whole slab (render at 2.4:1, e.g. --w 3072 --h 1280; at 2.4:1 a vertical fov of 24 spans the same width as the overviews' 32 at 16:9). Framed on the CPU with SLAB=1 ASPECT=2.4 ONLY=<id> node --import tsx tools/check/cameras.ts. The chosen hero feeds data/qa/showcase.json (pnpm showcase).",
+  "shots": [
+    {"id":"pano-golden-map","tod":18.3,"camera":{"orbit":{"targetKm":[900,840],"distanceKm":2120,"elevationDeg":49,"azimuthDeg":180,"fov":24}},"note":"the overview-golden camera at 2.4:1"},
+    {"id":"pano-golden-oblique","tod":18.3,"camera":{"orbit":{"targetKm":[900,822],"distanceKm":2250,"elevationDeg":36,"azimuthDeg":185,"fov":23}},"note":"lower, a little east: more relief, the slab's south face"},
+    {"id":"pano-golden-sw","tod":18.3,"camera":{"orbit":{"targetKm":[905,785],"distanceKm":2180,"elevationDeg":30,"azimuthDeg":195,"fov":22}},"note":"low from the south-south-west"},
+    {"id":"pano-golden-sw34","tod":18.3,"camera":{"orbit":{"targetKm":[905,795],"distanceKm":2200,"elevationDeg":34,"azimuthDeg":193,"fov":22}},"note":"the south-west view a little higher"},
+    {"id":"pano-late-light","tod":18.6,"camera":{"orbit":{"targetKm":[900,822],"distanceKm":2250,"elevationDeg":36,"azimuthDeg":185,"fov":23}},"note":"the oblique camera in later, lower light"}
+  ]
+}

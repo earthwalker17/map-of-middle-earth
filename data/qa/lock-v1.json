@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "set": "lock-v1",
+  "createdAt": "2026-10-03T14:51:55.341Z",
+  "commit": "91993b3a1a4698c9480d6888e0c887ae276da777",
+  "dirty": true,
+  "run": "renders/qa/20261003-225000",
+  "settings": {
+    "w": 1600,
+    "h": 900,
+    "spp": 4,
+    "quality": "review",
+    "tod": null
+  },
+  "chrome": "154.0.8037.95",
+  "gpu": {
+    "backend": "webgpu",
+    "vendor": "intel",
+    "architecture": "gen-11",
+    "description": "Intel(R) UHD Graphics",
+    "isFallback": false,
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36"
+  },
+  "three": "186",
+  "driver": "31.0.101.2145",
+  "driverAdapter": "Intel(R) UHD Graphics",
+  "notes": "Pixel-hash lock of the static world: the pixel sha256 of every shot of set lock-v1 rendered at 1600×900 spp 4 review in Chrome 154.0.8037.95 on Intel(R) UHD Graphics (display driver 31.0.101.2145, queried when the lock was written). Rendering is deterministic for a fixed code + Chrome + driver + settings, so a shot whose hash changes was changed by the code. Verify: pnpm qa --set lock-v1 --w 1600 --h 900 --spp 4 --batch 13 --label lock-v1-verify, then pnpm lock --verify renders/qa/<stamp> (exit 0 identical, 1 changed / missing, 2 Chrome or driver differ — hashes advisory, 3 other settings — not comparable). After a Chrome or driver update, re-render the set on the locked code and re-write the lock (pnpm lock --write <run> --set lock-v1) before judging changes. Commit = the checkout the lock was written from (dirty = uncommitted tracked changes).",
+  "shots": {
+    "overview-day": "a6784aaa3585d533dedf88e09ebaf3e5dc1012324a349d93fb76004911d18569",
+    "overview-night": "a496d5cbe043f80f47b8a1f3a60b18fbbd2a1775b75957fc639e75aef08b027b",
+    "shire": "33526d06e5e9f76be9029162a35c9c0e2d8aefb3cd805b6e48ec1f26fb887cf3",
+    "mordor": "eaf69f9c2b90682e8199367d51f235076ec6cf70b10d977d08719978ab46cbd6",
+    "erebor-close": "8da5d97a218bc71e13a9415a2c7c530c5d2d845d28eea9a7cbdb0367772f2949",
+    "hobbiton-close": "44b1a1cb32daa285f59ea208acf96ebebf879160fab975342a5fc6bb85d6a75a",
+    "rivendell-close": "ba1342e8225b7a4d751d0930761c2fa46e5c48750d7968cacd6e31483d045e79",
+    "argonath-close": "73053910f8b193f84082c093f7c8ee40b243b9814a3158052728df3ae911c8c2",
+    "lake-town-close": "8c1858cfd3cb0c112262d6cfb5f5fc7f25eced978a5ba4eae5170aa6e935a1db",
+    "minas-tirith-night": "4943164365727fcec478de98460fdf7a3914acd4503dfc445ee60f3ea547f232",
+    "minas-morgul-beam": "37f9c6a4ffaf7e0d04c0f201566b38d571ae9c6ccf160965261925a8aee3fa28",
+    "s4e-doom-fx": "55a419c67f48146fd01b1a105f98840a018793f6fb90a35ca00c4f468958ce63"
+  }
+}
