@@ -25,6 +25,7 @@
 import { execSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -32,7 +33,7 @@ function arg(name: string): string | undefined {
 }
 const flag = (name: string) => process.argv.includes(`--${name}`);
 
-interface Settings {
+export interface Settings {
   w: number;
   h: number;
   spp: number;
@@ -40,7 +41,7 @@ interface Settings {
   /** a --tod override of the run (null = each shot's own time of day) */
   tod: number | null;
 }
-interface Shot {
+export interface Shot {
   id: string;
   sha256: string;
   settings: Settings;
@@ -49,7 +50,7 @@ interface Shot {
   three: string | null;
   driver: string | null;
 }
-interface Run {
+export interface Run {
   dir: string;
   shots: Map<string, Shot>;
 }
@@ -73,13 +74,13 @@ interface LockFile {
 const ROOT = process.cwd();
 const fwd = (p: string) => p.replace(/\\/g, '/');
 /** a path relative to the repo when inside it, else absolute (forward slashes) */
-const showPath = (p: string) => {
+export const showPath = (p: string) => {
   const r = relative(ROOT, resolve(p));
   return fwd(r && !r.startsWith('..') && !/^[a-zA-Z]:/.test(r) ? r : resolve(p));
 };
 
 // ------------------------------------------------------------------ run manifests
-function shotsFolder(run: string): string {
+export function shotsFolder(run: string): string {
   const has = (d: string) => existsSync(d) && readdirSync(d).some((f) => /^manifest(-\d+)?\.json$/.test(f) && hasResults(join(d, f)));
   if (has(join(run, 'shots'))) return join(run, 'shots');
   if (has(run)) return run;
@@ -92,7 +93,8 @@ function hasResults(file: string): boolean {
     return false;
   }
 }
-function readRun(run: string): Run {
+/** every rendered shot of a run (later batches win), with its settings and environment */
+export function readRun(run: string): Run {
   const dir = shotsFolder(run);
   const shots = new Map<string, Shot>();
   for (const f of readdirSync(dir).filter((x) => /^manifest(-\d+)?\.json$/.test(x)).sort()) {
@@ -318,9 +320,14 @@ function main(): number {
   console.error(usage);
   return 64;
 }
-try {
-  process.exitCode = main();
-} catch (e) {
-  console.error(`[lock] error: ${(e as Error).message}`);
-  process.exitCode = 64;
+// importable (showcase.ts reads run manifests through readRun): the CLI runs only as the entry script
+const entry = process.argv[1] ? resolve(process.argv[1]) : '';
+const self = fileURLToPath(import.meta.url);
+if (process.platform === 'win32' ? entry.toLowerCase() === self.toLowerCase() : entry === self) {
+  try {
+    process.exitCode = main();
+  } catch (e) {
+    console.error(`[lock] error: ${(e as Error).message}`);
+    process.exitCode = 64;
+  }
 }

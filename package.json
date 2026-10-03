@@ -20,6 +20,8 @@
     "check": "node --import tsx tools/check/run.ts",
     "perf": "node --import tsx tools/capture/perf.ts",
     "review": "node --import tsx tools/capture/review.ts",
+    "lock": "node --import tsx tools/capture/lock.ts",
+    "showcase": "node --import tsx tools/capture/showcase.ts",
     "host": "node --import tsx tools/host.ts",
     "models": "node --import tsx tools/blender/run.ts"
   },
