@@ -1,0 +1,363 @@
+{
+  "generatedBy": "tools/capture/showcase.ts (pnpm showcase)",
+  "manifest": "data/qa/showcase.json",
+  "commit": "a5a6e900587a3bdb6dc7b6c01d4bce16be1d9bea",
+  "dirty": true,
+  "sharp": "0.35.5",
+  "libvips": "8.18.7",
+  "runs": {
+    "review": "renders/qa/20261003-230100",
+    "hero": "renders/shots/20261003-231307"
+  },
+  "encoder": {
+    "quality": 88,
+    "chroma": "4:4:4",
+    "mozjpeg": true
+  },
+  "budgetMB": 6,
+  "totalBytes": 2308122,
+  "images": [
+    {
+      "file": "film-placeholder.jpg",
+      "kind": "banner",
+      "w": 1600,
+      "h": 500,
+      "bytes": 68915,
+      "sha256": "9c1a9eebc59bc81fc858dd74ce797ca9cfeecc005f789a0735fb7cde4d6513cd",
+      "alt": "Journey Through Middle-Earth: the film is in production",
+      "caption": "",
+      "sources": [
+        {
+          "run": "renders/shots/20261003-231307",
+          "id": "weathertop-close",
+          "renderSha256": "93a5e4a2979d4053c44e2e88475f1e0a954549e79dc239f3eb0fe2c58883ece4",
+          "width": 1920,
+          "height": 1080,
+          "spp": 12,
+          "tier": "final"
+        }
+      ]
+    },
+    {
+      "file": "hero-golden-hour.jpg",
+      "kind": "still",
+      "w": 2400,
+      "h": 1000,
+      "bytes": 402480,
+      "sha256": "97e1132dd60059dbd38aee42dbcea78f90d5e157d4b7d2183172b47f616a63d7",
+      "alt": "The floating map of Middle-earth at golden hour",
+      "caption": "The map at golden hour",
+      "sources": [
+        {
+          "run": "renders/shots/20261003-231307",
+          "id": "pano-golden-sw",
+          "renderSha256": "8c693eb047e63314b44b4f0ecb3391228c6cc48e706be304f3d0a6cca6a6189c",
+          "width": 3072,
+          "height": 1280,
+          "spp": 16,
+          "tier": "final"
+        }
+      ]
+    },
+    {
+      "file": "erebor.jpg",
+      "kind": "still",
+      "w": 1280,
+      "h": 720,
+      "bytes": 134492,
+      "sha256": "94457de1905f4b8231443b72661eda3bbfdf9adbb21f34010d3e86177b4fdec2",
+      "alt": "Erebor, the Lonely Mountain, in low evening sun",
+      "caption": "Erebor",
+      "sources": [
+        {
+          "run": "renders/qa/20261003-230100",
+          "id": "erebor-close",
+          "renderSha256": "920f822f47bd8032c70bb048f95f9c8992c56b877120477a30f588861c17ef71",
+          "width": 1920,
+          "height": 1080,
+          "spp": 12,
+          "tier": "final"
+        }
+      ]
+    },
+    {
+      "file": "lake-town.jpg",
+      "kind": "still",
+      "w": 1280,
+      "h": 720,
+      "bytes": 145760,
+      "sha256": "9732ef806c0e06a1e78abb97d8687bf7481aa1178db5ef6e3b095bb4b4d727bb",
+      "alt": "Lake-town on its piles in the Long Lake",
+      "caption": "Lake-town",
+      "sources": [
+        {
+          "run": "renders/qa/20261003-230100",
+          "id": "lake-town-close",
+          "renderSha256": "3194a0da435f3d9a5ab4683c6c49b8c34d000c206cee64943084d6f2e04c5cb7",
+          "width": 1920,
+          "height": 1080,
+          "spp": 12,
+          "tier": "final"
+        }
+      ]
+    },
+    {
+      "file": "hobbiton.jpg",
+      "kind": "still",
+      "w": 1280,
+      "h": 720,
+      "bytes": 210002,
+      "sha256": "f29f7f61ffa0a696fea8a9dc081e1bb0240ad9723779b7c2abf5ea0f58a05416",
+      "alt": "Hobbiton in late-afternoon light",
+      "caption": "Hobbiton",
+      "sources": [
+        {
+          "run": "renders/qa/20261003-230100",
+          "id": "hobbiton-close",
+          "renderSha256": "b0552ced78d49e7f6af75e518730435cfaa047891b3149bed666faf207b6577f",
+          "width": 1920,
+          "height": 1080,
+          "spp": 12,
+          "tier": "final"
+        }
+      ]
+    },
+    {
+      "file": "moria.jpg",
+      "kind": "still",
+      "w": 1280,
+      "h": 720,
+      "bytes": 124722,
+      "sha256": "b930854587de66e8f154ccd3f595d7955c34b022d851df14c506049a24867f8b",
+      "alt": "The Doors of Durin by night",
+      "caption": "The Doors of Durin",
+      "sources": [
+        {
+          "run": "renders/qa/20261003-230100",
+          "id": "moria-close",
+          "renderSha256": "f76b2dc55b52a4ff263cf78b0dfcf86724de1d7927584a9c4eb3faae503deff9",
+          "width": 1920,
+          "height": 1080,
+          "spp": 12,
+          "tier": "final"
+        }
+      ]
+    },
+    {
+      "file": "lothlorien.jpg",
+      "kind": "still",
+      "w": 1280,
+      "h": 720,
+      "bytes": 131343,
+      "sha256": "ed4abe6b86f59643322925db7fa85de616f5a4932aa38be6b746744ee21e5e9f",
+      "alt": "Lothlórien at dusk",
+      "caption": "Lothlórien",
+      "sources": [
+        {
+          "run": "renders/qa/20261003-230100",
+          "id": "lothlorien-close",
+          "renderSha256": "f9219edfb963da65abcf787a86fcf7446da5441c758cdb63470e730a9e2c0959",
+          "width": 1920,
+          "height": 1080,
+          "spp": 12,
+          "tier": "final"
+        }
+      ]
+    },
+    {
+      "file": "argonath.jpg",
+      "kind": "still",
+      "w": 1280,
+      "h": 720,
+      "bytes": 146763,
+      "sha256": "f902f71700bba7d7b4ae203dc98a5d3c07c02acf9a0341485158763448d26cd9",
+      "alt": "The Argonath",
+      "caption": "The Argonath",
+      "sources": [
+        {
+          "run": "renders/qa/20261003-230100",
+          "id": "argonath-close",
+          "renderSha256": "08daf462861088c928dd9610a33e32bec0f29f2424f2969bb93f7821d5b5a316",
+          "width": 1920,
+          "height": 1080,
+          "spp": 12,
+          "tier": "final"
+        }
+      ]
+    },
+    {
+      "file": "minas-morgul.jpg",
+      "kind": "still",
+      "w": 1280,
+      "h": 720,
+      "bytes": 89242,
+      "sha256": "463400e9871922b87091ffaaf26f07fe811380d609f8c78b1cfcb317af39d0e4",
+      "alt": "Minas Morgul and its beam",
+      "caption": "Minas Morgul",
+      "sources": [
+        {
+          "run": "renders/qa/20261003-230100",
+          "id": "minas-morgul-beam",
+          "renderSha256": "9fc4e51b401d8255a671d2500584e2b533c8e15de94a562636985945d006f0a6",
+          "width": 1920,
+          "height": 1080,
+          "spp": 12,
+          "tier": "final"
+        }
+      ]
+    },
+    {
+      "file": "black-gate.jpg",
+      "kind": "still",
+      "w": 1280,
+      "h": 720,
+      "bytes": 91078,
+      "sha256": "a04bb58dcad0715032925cd52f52536cd4c4975e83ee985e3bbcb0c5021f5307",
+      "alt": "The Black Gate between the Towers of the Teeth, Mount Doom's plume beyond",
+      "caption": "The Black Gate",
+      "sources": [
+        {
+          "run": "renders/shots/20261003-231307",
+          "id": "black-gate-wide",
+          "renderSha256": "0eb647cee3b16ed7a97cc3e52ce7992d3a90e1bb469493ba4801a0942f798aef",
+          "width": 1920,
+          "height": 1080,
+          "spp": 12,
+          "tier": "final"
+        }
+      ]
+    },
+    {
+      "file": "mount-doom.jpg",
+      "kind": "still",
+      "w": 1280,
+      "h": 720,
+      "bytes": 52250,
+      "sha256": "c4a392f4439d098140c4970b1c2404f9438c28b2f2a030da7289c97d96c897c6",
+      "alt": "Mount Doom with its plume and lava flows, Barad-dûr beyond",
+      "caption": "Mount Doom",
+      "sources": [
+        {
+          "run": "renders/qa/20261003-230100",
+          "id": "mount-doom-close",
+          "renderSha256": "3928d9b37f3f324a96cd2dd692043e6121f62390a989bc68cc67aa49875111f9",
+          "width": 1920,
+          "height": 1080,
+          "spp": 12,
+          "tier": "final"
+        }
+      ]
+    },
+    {
+      "file": "pair-map.jpg",
+      "kind": "pair",
+      "w": 1928,
+      "h": 540,
+      "bytes": 153049,
+      "sha256": "643843b596f0251d263c142b06bc17552755b66fbf411e565e6e5f23b54b0e34",
+      "alt": "The whole map by day and by moonlight",
+      "caption": "The map: 11:00 and 23:00",
+      "sources": [
+        {
+          "run": "renders/qa/20261003-230100",
+          "id": "overview-day",
+          "renderSha256": "f1f0b94a693706a998fc8fd68b2ddeebc8e3e362780d9add9d87ab6dc1e96d0e",
+          "width": 1920,
+          "height": 1080,
+          "spp": 12,
+          "tier": "final"
+        },
+        {
+          "run": "renders/qa/20261003-230100",
+          "id": "overview-night",
+          "renderSha256": "1f58beb9a90ed05720a4700c3d27c021455e5cae38d8722a73fe2aed24a92c9f",
+          "width": 1920,
+          "height": 1080,
+          "spp": 12,
+          "tier": "final"
+        }
+      ]
+    },
+    {
+      "file": "pair-minas-tirith.jpg",
+      "kind": "pair",
+      "w": 1928,
+      "h": 540,
+      "bytes": 232251,
+      "sha256": "7d3c263871a8634e3a391c8053ee40e63832b41bda60b026bde056912c0b907e",
+      "alt": "Minas Tirith in the early morning and with the beacon lit",
+      "caption": "Minas Tirith: early morning, and the beacon lit",
+      "sources": [
+        {
+          "run": "renders/qa/20261003-230100",
+          "id": "minas-tirith-close",
+          "renderSha256": "ea03c765a2682b6f5a30163e22107703e50adfd75e958a659f4b5e0b0bddfab6",
+          "width": 1920,
+          "height": 1080,
+          "spp": 12,
+          "tier": "final"
+        },
+        {
+          "run": "renders/qa/20261003-230100",
+          "id": "minas-tirith-night",
+          "renderSha256": "dba7037c78e2f37f4b03ab42071b6d980f3b6c6313a7ddcb15b563931413bbc7",
+          "width": 1920,
+          "height": 1080,
+          "spp": 12,
+          "tier": "final"
+        }
+      ]
+    },
+    {
+      "file": "pair-rivendell.jpg",
+      "kind": "pair",
+      "w": 1928,
+      "h": 540,
+      "bytes": 200740,
+      "sha256": "b88ba9d6f569a18d8b57ef8e212d69111dc1b0e8411abd4453af6511929edca0",
+      "alt": "Rivendell in October afternoon light and under a full moon",
+      "caption": "Rivendell: an October afternoon, and a full moon",
+      "sources": [
+        {
+          "run": "renders/qa/20261003-230100",
+          "id": "rivendell-close",
+          "renderSha256": "5aa6aba92ac767cf04acc45dec132fb8b9407528103bf0a1c87f067d639b8d52",
+          "width": 1920,
+          "height": 1080,
+          "spp": 12,
+          "tier": "final"
+        },
+        {
+          "run": "renders/qa/20261003-230100",
+          "id": "rivendell-night",
+          "renderSha256": "74fdcb90be95c229ac401a5b1690ab52f49ae3957fa84d713287a6977dd4b9d9",
+          "width": 1920,
+          "height": 1080,
+          "spp": 12,
+          "tier": "final"
+        }
+      ]
+    },
+    {
+      "file": "social-preview.jpg",
+      "kind": "social",
+      "w": 1280,
+      "h": 640,
+      "bytes": 125035,
+      "sha256": "906c1e1f374b8058e61e6c548b55b4673b660c8b8d459d35c3ba0eecda5f7430",
+      "alt": "Map of Middle-Earth: social preview",
+      "caption": "",
+      "sources": [
+        {
+          "run": "renders/shots/20261003-231307",
+          "id": "pano-golden-sw",
+          "renderSha256": "8c693eb047e63314b44b4f0ecb3391228c6cc48e706be304f3d0a6cca6a6189c",
+          "width": 3072,
+          "height": 1280,
+          "spp": 16,
+          "tier": "final"
+        }
+      ]
+    }
+  ]
+}

@@ -10,7 +10,7 @@
       "source": "google/fonts GitHub",
       "license": "OFL-1.1",
       "family": "Cinzel",
-      "reservedFontName": "Reserved Font Name 'Cinzel' (Natanael Gama)",
+      "reservedFontName": "none",
       "bytes": 4383,
       "sha256": "f2b3029aba64c378bf0963b62945eee15e564fe4330b934c8f2eb058282b5e83"
     },
@@ -153,7 +153,7 @@
       "source": "google/fonts GitHub",
       "license": "OFL-1.1",
       "family": "Cinzel",
-      "reservedFontName": "Reserved Font Name 'Cinzel' (Natanael Gama)",
+      "reservedFontName": "none",
       "bytes": 125468,
       "sha256": "f4d83d34d1f6c741193e4acf4b3dff9531e5a67b6aa65228d00a7db72a4e0f34"
     },

@@ -15,7 +15,7 @@
  *  - banner  { file, banner: true, src, w, h, crop?, darken: 0..1, title: { text, sub } } → a darkened strip
  *            with the centred title (the README's film placeholder)
  * Titles: sharp `text` (Pango) with the project's OFL fonts only — Cinzel for the title, Cormorant Garamond
- * for `sub`; white with a soft shadow. The fonts are verified against Pango's fallback first: if this sharp
+ * for `sub` (`subScale` × the title size, default 0.42); white with a soft shadow. The fonts are verified against Pango's fallback first: if this sharp
  * build cannot render text with them, the images are written without titles (warning; never system fonts).
  * JPEG: mozjpeg, the manifest's quality / chroma subsampling, sRGB, metadata stripped.
  *
@@ -45,6 +45,7 @@ type Crop = [number, number, number, number];
 interface Title {
   text: string;
   sub?: string;
+  subScale?: number;
 }
 interface Base {
   file: string;
@@ -321,7 +322,7 @@ async function titleOverlays(t: Title, W: number, H: number): Promise<OverlayOpt
     return { buf, w: m.width ?? 0, h: m.height ?? 0, px };
   };
   const title = await fit(t.text, FONT_TITLE, H * 0.15, 0.06);
-  const sub = t.sub ? await fit(t.sub, subFont, Math.max(14, title.px * 0.42), 0.02) : null;
+  const sub = t.sub ? await fit(t.sub, subFont, Math.max(14, title.px * (t.subScale ?? 0.42)), 0.02) : null;
   const gap = sub ? Math.round(title.px * 0.22) : 0;
   const total = title.h + (sub ? gap + sub.h : 0);
   let y = Math.round((H - total) / 2);

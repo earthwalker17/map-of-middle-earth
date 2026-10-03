@@ -12,15 +12,15 @@ family's `OFL.txt` sits next to its font files. Source: [google/fonts](https://g
 
 | Family | Designer | Licence | Reserved Font Name | Files |
 |---|---|---|---|---|
-| Cinzel | Natanael Gama (The Cinzel Project Authors) | OFL-1.1 | **"Cinzel"** | `cinzel/Cinzel-VariableFont_wght.ttf` |
+| Cinzel | Natanael Gama (The Cinzel Project Authors) | OFL-1.1 | none | `cinzel/Cinzel-VariableFont_wght.ttf` |
 | Cinzel Decorative | Natanael Gama | OFL-1.1 | **"Cinzel"** | `cinzeldecorative/CinzelDecorative-{Regular,Bold}.ttf` |
 | Cormorant Garamond | Christian Thalmann (Catharsis Fonts, The Cormorant Project Authors) | OFL-1.1 | none | `cormorantgaramond/CormorantGaramond{,-Italic}-VariableFont_wght.ttf` |
 | EB Garamond | Georg Duffner, Octavio Pardo (The EB Garamond Project Authors) | OFL-1.1 | none | `ebgaramond/EBGaramond{,-Italic}-VariableFont_wght.ttf` |
 | IM Fell English | Igino Marini (revival of the Fell Types) | OFL-1.1 | none | `imfellenglish/IMFeEN{rm,it}28P.ttf` |
 | IM Fell English SC | Igino Marini (revival of the Fell Types) | OFL-1.1 | none | `imfellenglishsc/IMFeENsc28P.ttf` |
 
-Cinzel and Cinzel Decorative carry the Reserved Font Name "Cinzel": we ship them unmodified under their
-original names. Any subset, conversion or other modified version must be renamed (OFL §3). Variable-font
+Cinzel Decorative carries the Reserved Font Name "Cinzel": we ship it unmodified under its original
+name. Any subset, conversion or other modified version must be renamed (OFL §3). Variable-font
 files are saved without the upstream `[wght]` brackets in the filename; content is byte-identical.
 
 ## Textures
@@ -30,7 +30,7 @@ files are saved without the upstream `[wght]` brackets in the filename; content 
 - **Sources** (not shipped): 2k JPG maps (`diffuse`, `nor_gl`, `rough`, `ao`, `disp`) in
   `data/textures-src/<asset_id>/`, **fetched by script, never committed**: `pnpm data:fetch`
   (`node tools/refs/fetch-data.mjs --only textures`), manifest `data/textures-src/manifest.json`.
-- **Shipped (derived)**: `public/textures/terrain/` — the terrain ground-detail layers
+- **Generated locally (derived, gitignored; served from `public/` by a local build)**: `public/textures/terrain/` — the terrain ground-detail layers
   (`detail-512.bin`, `detail-1024.bin`, `detail.json`), generated from six of the sources by
   `node tools/textures/prep.mjs` (run automatically after the fetch; gitignored). Modifications:
   resized to 512² / 1024², luminance high-passed and contrast-normalised, packed with the normal
@@ -60,8 +60,8 @@ files are saved without the upstream `[wght]` brackets in the filename; content 
 Shipped in `public/models/` (committed; manifest `public/models/manifest.json` with the sha256 of every
 file and of the script that built it). **Original work of this project**, generated headless in Blender 4.5
 by the scripts in this repository (`pnpm models` → `tools/blender/run.ts`, shared helpers
-`tools/blender/lib.py`); no third-party meshes, scans, textures or film assets are used. Same licence as the
-project's code.
+`tools/blender/lib.py`); no third-party meshes, scans, textures or film assets are used. MIT, like the
+project's code (see `LICENSE`).
 
 | File | Built by | Content |
 |---|---|---|
@@ -73,23 +73,40 @@ The terrain and map layers are derived from community Middle-earth GIS work. Sou
 `data/source/` (gitignored; manifest `data/source/manifest.json`, restore with `pnpm data:fetch`) and
 **derived data (`data/baked/`) is never committed**.
 
-- **ME-DEM** — the original 3D elevation model of Middle-earth by the Outerra Worlds Forum team:
-  **monks**, **SeerBlue** and **Redrobes**.
-- **ME-GIS** — Middle-earth GIS vector layers, maintained by **jvangeld**
-  ([andrewheiss/ME-GIS](https://github.com/andrewheiss/ME-GIS) mirror by **andrewheiss**; place-name
+- **ME-DEM** — the original 3D elevation model of Middle-earth from the Outerra Worlds Forum: DEM by
+  **monks** and **Redrobes**, place names by **monks**, **SeerBlue** and **Redrobes**; later maintained by
+  **jvangeld**.
+- **ME-GIS** — Middle-earth GIS vector layers created by **monks** and **SeerBlue** for ME-DEM and improved
+  by **jvangeld** ([andrewheiss/ME-GIS](https://github.com/andrewheiss/ME-GIS), **Andrew Heiss**; place-name
   anchors `Combined_Placenames.xyz`). Terms: ask before use; usually approved for personal/educational use.
 - **Arda** — packaging of the DEM (10k JPEG, 32k UInt16 GeoTIFF quadrants from release `dem-32k-v1`) and
-  vector layers (`vectors.gpkg`) by **bburns**: <https://github.com/bburns/Arda>. The code is MIT, but the
+  vector layers (`vectors.gpkg`, GeoPackage conversion by **tetrakai1**) by **bburns**: <https://github.com/bburns/Arda>. The code is MIT, but the
   **provenance/licence of the DEM and vector data is uncertain**.
 
-We use these privately for development. **Permission from the authors will be requested before any public
-release** of the project or of anything derived from their data.
+The source data and everything baked from it stay out of the repository. The project's own renders
+(below) show terrain derived from this data and are published, with this credit, as part of a
+non-commercial fan work. The authors are being asked for their blessing for these renders; they will be
+taken down at the authors' request, and **neither the film nor any derived data will be released without
+their permission**.
+
+A few factual coordinates are committed as authored data: `data/world/places.json` (canonical landmark
+positions read from ME-GIS points, label anchors, vectors and DEM peaks) and `data/qa/ct1980-points.json`
+(control points pairing Christopher Tolkien's 1980 map with ME-GIS km, used only by the overlay QA tool).
+
+## Project renders
+
+The images in `docs/images/` (README gallery, social preview) are renders made by this project's own
+renderer and composed by `pnpm showcase` (manifest `docs/images/manifest.json` records the source renders,
+the commit and a sha256 per image). They contain no film stills, artwork or reference images (the only
+third-party imagery in them is the CC0 Poly Haven terrain detail, see Textures), but they show terrain
+derived from ME-DEM / ME-GIS / Arda (above), so they are **not** covered by the code's MIT licence and no
+reuse licence is granted for them: they are here to illustrate the project (see also
+`docs/images/README.md`). Their titles are set in Cinzel and Cormorant Garamond (OFL, see Fonts).
 
 ## Reference material (dev-only, not redistributed)
 
-Visual references in `reference/` (gitignored; index `reference/README.md`, manifest
-`reference/manifest.json`, restore with `pnpm refs:fetch`) are used only to guide look-development and
-QA. They are never shipped, committed or redistributed, and no pixels from them appear in the project's
+Visual references in `reference/` (local only, never committed) are used only to guide look-development
+and QA. They are never shipped, committed or redistributed, and no pixels from them appear in the project's
 outputs. Rights remain with their owners:
 
 - Maps by **Christopher Tolkien** and **J.R.R. Tolkien** © The Tolkien Estate / HarperCollins;
@@ -100,7 +117,7 @@ outputs. Rights remain with their owners:
 - Concept art and illustration © **Alan Lee**, **John Howe**, **Ted Nasmith**; Tolkien's own drawings
   © The Tolkien Estate.
 - Bigature / miniature imagery © **Weta Workshop** / New Line Cinema.
-- LEGO Middle-earth MOC renders supplied by the user (builder unknown) — third-party, dev reference only.
+- LEGO Middle-earth MOC renders collected by the project author (builder unknown) — third-party, dev reference only.
 - Wikimedia Commons items, under their own licences:
 
 | Author | Licence | File (Commons page) | Shows |
@@ -154,8 +171,9 @@ Python bake (`tools/bake`, dev-only):
 ## Trademarks & IP
 
 *The Lord of the Rings*, *The Hobbit*, Middle-earth and the names of their characters, places and events
-are trademarks of **Middle-earth Enterprises**; the books are © **The Tolkien Estate**. The films are
-© New Line Cinema / Warner Bros. LEGO is a trademark of the LEGO Group. This project is a **non-commercial
+are trademarks of **Middle-earth Enterprises**; the books are © **The Tolkien Estate** and published by
+**HarperCollins**. The films are © New Line Cinema / Warner Bros., with designs and miniatures by
+**Wētā Workshop**. LEGO is a trademark of the LEGO Group. This project is a **non-commercial
 fan work**, not affiliated with or endorsed by any of them or by any artist credited above.
 
 The project deliberately contains **no Tengwar or Cirth**, **no film logos or film typography**, and **no

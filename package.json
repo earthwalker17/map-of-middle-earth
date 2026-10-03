@@ -1,12 +1,34 @@
 {
   "name": "map-of-middle-earth",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.5.0",
   "type": "module",
-  "description": "A cinematic miniature 3D diorama of Middle-earth (Three.js WebGPU) and the 'Journey Through Middle-Earth' virtual-tour film.",
+  "description": "A cinematic floating miniature diorama of Middle-earth (three.js WebGPU + TSL) and the world of the film Journey Through Middle-Earth. Non-commercial fan project.",
+  "license": "MIT",
+  "author": "earthwalker17",
+  "homepage": "https://github.com/earthwalker17/map-of-middle-earth#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/earthwalker17/map-of-middle-earth.git"
+  },
+  "bugs": {
+    "url": "https://github.com/earthwalker17/map-of-middle-earth/issues"
+  },
+  "keywords": [
+    "threejs",
+    "webgpu",
+    "tsl",
+    "terrain",
+    "diorama",
+    "middle-earth",
+    "tolkien",
+    "offline-rendering",
+    "procedural"
+  ],
   "engines": {
     "node": ">=22.12"
   },
+  "packageManager": "pnpm@11.1.3",
   "scripts": {
     "dev": "vite",
     "build": "node --import tsx tools/heavy.ts build -- vite build",
