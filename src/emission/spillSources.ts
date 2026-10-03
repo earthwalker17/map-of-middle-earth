@@ -54,8 +54,8 @@ export const SPILL_GAIN: Record<LightKind, number> = { lava: 150, eye: 20, magic
 /** smallest radius entering the power (km): tiny fire sprites still light their tower */
 const SPILL_R_MIN: Partial<Record<LightKind, number>> = { fire: 0.04, beacon: 0.08, lamp: 0.02 };
 
-/** halo gain by kind (spill.ts spillInScatter): lava, the Eye, magic and beacons glow in the air */
-export const HALO_GAIN: Record<LightKind, number> = { lava: 0.3, eye: 0.15, magic: 1, beacon: 1, fire: 0, ithildin: 0, window: 0, lamp: 0 };
+/** halo gain by kind (spill.ts spillInScatter): lava, the Eye, magic and beacons glow in the air; the ithildin faintly (S4.5) */
+export const HALO_GAIN: Record<LightKind, number> = { lava: 0.3, eye: 0.15, magic: 1, beacon: 1, fire: 0, ithildin: 0.3, window: 0, lamp: 0 };
 
 /** glint gain by kind (spill.ts spillGlint on water) */
 export const GLINT_GAIN: Record<LightKind, number> = { lava: 1, eye: 1, magic: 1.5, beacon: 1.5, fire: 3, ithildin: 1, window: 4, lamp: 4 };

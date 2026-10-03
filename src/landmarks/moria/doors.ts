@@ -45,9 +45,11 @@ const FACE_ROCK = 0x31363b;
  * ithildin: a cool blue-silver (daytime albedo ≈ the dark face); S4 W5 (C2 #12): fine lines at half the S3
  * width, a cooler, bluer and fainter glow — the S3 lines read as thick white neon clip-art
  */
-// (S4 W5: a more saturated blue at a lower strength — 0x7c97b0 × 5 clipped to white in the grade)
-const SILVER = 0x5c80c0;
-const GLOW = { gate: 'night' as const, strength: 2.4, flicker: 0.02 };
+// (S4 W5: a more saturated blue at a lower strength — 0x7c97b0 × 5 clipped to white in the grade; S4.5:
+// 0x5c80c0 × 2.4 still read near-white and hard in moria-close — bluer again at under half the energy, plus
+// a faint air halo, spillSources HALO_GAIN.ithildin)
+const SILVER = 0x4a72c8;
+const GLOW = { gate: 'night' as const, strength: 1.0, flicker: 0.02 };
 /** carved relief: the face's stone, a shade lighter, this proud of the face */
 const RELIEF = 0x3a4046;
 const RELIEF_T = 0.008;

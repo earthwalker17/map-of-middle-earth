@@ -148,10 +148,13 @@ export default defineLandmark({
       id: 'black-gate-wide',
       distanceKm: 90,
       elevationDeg: -0.5,
-      azimuthDeg: 346,
-      fov: 26,
+      // S4.5: the view turned 4° left about the same camera (az 346 → 342, aim [-2, -2] → [4, -0.3]) and
+      // tightened (fov 26 → 23): the pale strip of far land and the green foothill dome at the right edge are
+      // gone behind the west ridge, Doom's plume sits whole in the upper left (it was cut by the edge)
+      azimuthDeg: 342,
+      fov: 23,
       lift: 9,
-      aimKm: [-2, -2],
+      aimKm: [4, -0.3],
       tod: 16.0,
       compare: ['reference/film/black-gate/black-gate-towers-rotk.jpg'],
       note: 'the Morannon from the north-west over the Dagorlad, low (the plain foreshortened), the gate on the lower third: the wall closing the gap between the Ephel Dúath and the Ered Lithui; Barad-dûr beyond the left edge, Mount Doom offset far left of the crest axis',
