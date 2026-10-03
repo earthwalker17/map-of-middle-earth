@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "notes": "Shot list v0 (S3): the film draft (~3:24, 16:9, 24 fps) and, per landmark, its role on the route, hero framing (class, distance, time of day), context framing and the detail budget that follows from it. Realized by landmark bookmarks `<id>-close` (hero) and `<id>-wide` (context); probe expectations and budgets are gated by `pnpm check`. Timing becomes data/tour/timeline.json in S4. Distances are slant km from the landmark; px/km at the reference frame = refH / (2 tan(refFov/2)) / distance ≈ 1427 / distance.",
+  "notes": "Shot list v0 (S3): the film draft (~3:24, 16:9, 24 fps) and, per landmark, its role on the route, hero framing (class, distance, time of day), context framing and the detail budget that follows from it. Realized by landmark bookmarks `<id>-close` (hero) and `<id>-wide` (context); probe expectations and budgets are gated by `pnpm check`. Timing becomes data/tour/timeline.json in S5. Distances are slant km from the landmark; px/km at the reference frame = refH / (2 tan(refFov/2)) / distance ≈ 1427 / distance.",
   "film": { "seconds": 204, "fps": 24, "aspect": "16:9", "shutterDeg": 180 },
   "classes": { "wide": [300, 8000], "regional": [60, 300], "mid": [15, 60], "close": [2, 15] },
   "detail": {

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "notes": "Frodo's route as shown in the FILMS (spatial only; timing lives in timeline.json). Points are ME-GIS km [x, y]; 'place' links to places.json; 'hidden' = underground/unseen (rendered faded); 'mode' = foot|boat. S1 draft — S8 refines against roads/rivers.",
+  "notes": "Frodo's route as shown in the FILMS (spatial only; timing lives in timeline.json). Points are ME-GIS km [x, y]; 'place' links to places.json; 'hidden' = underground/unseen (rendered faded); 'mode' = foot|boat. S1 draft — S5 / S6 refine against roads/rivers.",
   "segments": [
     { "id": "shire", "film": "FOTR", "points": [
       { "place": "bag-end" }, { "at": [535, 1044] }, { "place": "bucklebury-ferry" } ] },

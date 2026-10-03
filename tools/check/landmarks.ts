@@ -4,7 +4,8 @@
  *    LOD1 ≤ 25 % of LOD0, coarsest LOD ≤ 4k tris
  *  - totals: LOD0 ≤ 1.2 M tris, geometry ≤ 48 MB, lights ≤ 4096, authored trees ≤ 2000
  *  - seating: every recorded contact sits on the ground — floating `baseY − groundY ≤ max(0.05, 0.1·h)`,
- *    buried `groundY − baseY ≤ 0.5·h` (tier A: error, tier B: warning)
+ *    buried `groundY − baseY ≤ max(0.5·h, SINK)` — the kit sinks every part SINK (20 m) into the ground, so a
+ *    thin ground decal sunk by that much is seated, not buried (tier A: error, tier B: warning)
  *  - structure: every geometry key is a shared material key ('structure' | 'glow')
  *  - determinism: building every landmark twice gives identical geometry hashes (error)
  *  - Blender GLB models (`ModelDecl`): the file exists in public/models/ with a matching entry and sha256 in
@@ -40,6 +41,7 @@ export async function checkLandmarks(world: World, landmarks: LandmarkDefinition
   const { buildLandmarks, buildStats } = await import('../../src/landmarks/build.ts');
   const { geometryHash } = await import('../../src/landmarks/kit/geom.ts');
   const { MATERIAL_KEYS } = await import('../../src/materials/families.ts');
+  const { SINK } = await import('../../src/landmarks/kit/ProxyKit.ts');
 
   const hashOf = (b: BuiltLandmark): number => {
     let h = 0x811c9dc5;
@@ -102,14 +104,14 @@ export async function checkLandmarks(world: World, landmarks: LandmarkDefinition
         floatN++;
         worstF = Math.max(worstF, fl);
       }
-      if (-fl > 0.5 * c.h) {
+      if (-fl > Math.max(0.5 * c.h, SINK + 1e-6)) {
         buryN++;
         worstB = Math.max(worstB, -fl / c.h);
       }
     }
     const seatSev = b.def.tier === 'A' ? out.errors : out.warnings;
     if (floatN) seatSev.push(`landmarks: ${b.id} ${floatN}/${b.contacts.length} contacts float (worst ${(worstF * 1000).toFixed(0)} m above the ground)`);
-    if (buryN) seatSev.push(`landmarks: ${b.id} ${buryN}/${b.contacts.length} contacts buried > 50 % (worst ${(worstB * 100).toFixed(0)} % of the part height)`);
+    if (buryN) seatSev.push(`landmarks: ${b.id} ${buryN}/${b.contacts.length} contacts buried > max(50 % of the part, SINK) (worst ${(worstB * 100).toFixed(0)} % of the part height)`);
     hashes.set(b.id, hashOf(b));
   }
   if (lod0 > LIMITS.lod0Total) out.errors.push(`landmarks: total LOD0 ${lod0} tris > ${LIMITS.lod0Total}`);

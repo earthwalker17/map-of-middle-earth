@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "notes": "README showcase images (pnpm showcase → docs/images/, tools/capture/showcase.ts). PLACEHOLDER selection on the S4 review stills (renders/qa/20261003-010300, final 1920×1080 spp 12) with review:overview-golden standing in for the hero: the main agent finalizes the runs (review = the V1 review stills, hero = a hero render), the ids, crops and captions. Every shipped image is a render of this project (no reference / film imagery); titles use the OFL Cinzel / Cormorant Garamond fonts (public/fonts). Kinds: still {src, w, h, crop?}, pair {pair: [day, night], h, seam}, social {social: true, 1280×640, < 1 MB}, banner {banner: true, darken, title}. Encode: pnpm showcase --dry (sizes), pnpm showcase --snippet (README HTML).",
+  "runs": { "review": "renders/qa/20261003-010300", "hero": "renders/qa/20261003-010300" },
+  "defaults": { "quality": 82, "chroma": "4:4:4", "budgetMB": 6 },
+  "images": [
+    { "file": "film-banner.jpg", "banner": true, "src": "hero:overview-golden", "w": 1600, "h": 480, "crop": [0, 0.16, 1, 0.62], "darken": 0.45, "title": { "text": "Journey Through Middle-Earth", "sub": "A floating miniature diorama of Middle-earth · the film is in production" }, "alt": "Journey Through Middle-Earth — title banner over the diorama at golden hour", "caption": "" },
+    { "file": "overview-day.jpg", "src": "review:overview-day", "w": 1280, "h": 720, "alt": "The floating diorama of Middle-earth by day", "caption": "The map — day" },
+    { "file": "hobbiton.jpg", "src": "review:hobbiton-close", "w": 1280, "h": 720, "alt": "Hobbiton in late-afternoon light, round doors in the Hill", "caption": "Hobbiton" },
+    { "file": "rivendell.jpg", "src": "review:rivendell-close", "w": 1280, "h": 720, "alt": "Rivendell's terraces and falls in late October", "caption": "Rivendell" },
+    { "file": "minas-tirith.jpg", "src": "review:minas-tirith-close", "w": 1280, "h": 720, "alt": "Minas Tirith at dawn, seven tiers against Mindolluin", "caption": "Minas Tirith — dawn" },
+    { "file": "minas-morgul.jpg", "src": "review:minas-morgul-beam", "w": 1280, "h": 720, "alt": "Minas Morgul at night with its green beam", "caption": "Minas Morgul — the beam" },
+    { "file": "mount-doom.jpg", "src": "review:mount-doom-close", "w": 1280, "h": 720, "alt": "Mount Doom with lava flows under the ash pall", "caption": "Mount Doom" },
+    { "file": "hobbiton-day-night.jpg", "pair": ["review:hobbiton-close", "review:hobbiton-night"], "h": 540, "seam": 8, "alt": "Hobbiton by day and by night", "caption": "Hobbiton — day / night" },
+    { "file": "minas-tirith-day-night.jpg", "pair": ["review:minas-tirith-close", "review:minas-tirith-night"], "h": 540, "seam": 8, "alt": "Minas Tirith at dawn and with the beacons lit", "caption": "Minas Tirith — dawn / the beacons lit" },
+    { "file": "social.jpg", "social": true, "src": "hero:overview-golden", "w": 1280, "h": 640, "darken": 0.3, "title": { "text": "Journey Through Middle-Earth", "sub": "A floating miniature diorama · Three.js WebGPU" }, "alt": "Journey Through Middle-Earth — social preview", "caption": "" }
+  ]
+}
