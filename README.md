@@ -6,6 +6,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/earthwalker17/map-of-middle-earth/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/earthwalker17/map-of-middle-earth/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: MIT (code)" src="https://img.shields.io/badge/license-MIT%20(code)-b08d57?style=flat-square"></a>
   <a href="https://threejs.org"><img alt="three.js r186" src="https://img.shields.io/badge/three.js-r186-049ef4?style=flat-square&logo=threedotjs"></a>
   <a href="https://www.w3.org/TR/webgpu/"><img alt="WebGPU + TSL" src="https://img.shields.io/badge/WebGPU-TSL-5b4a8a?style=flat-square"></a>
