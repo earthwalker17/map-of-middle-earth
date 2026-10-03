@@ -14,7 +14,7 @@ import { tsl, type TslNode } from '../materials/tsl.ts';
  *  - spillPos[i] = (x, y, z, R)       position (world km) and reach R (km): the light is windowed to 0 at R
  *  - spillCol[i] = (c.rgb, r0)        near-field irradiance c (linear, gate · flicker · selection weight
  *                                     applied) and the core radius r0 (km): E(d) = c / (1 + (d / r0)²)
- *  - spillAux[i] = (halo, glint, 0, 0) halo gain (lava, the Eye, magic, beacons; 0 = no halo) and glint gain
+ *  - spillAux[i] = (halo, glint, 0, 0) halo gain (lava, the Eye, magic, beacons, faintly the ithildin; 0 = no halo) and glint gain
  * Counts are uniforms (dynamic loops): `spillU.count` (≤ 4 preview, ≤ 8 review / final) and `spillU.haloOn`
  * (0 in preview).
  * Frames without lit sources near the focus run zero iterations.
