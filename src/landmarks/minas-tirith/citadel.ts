@@ -6,9 +6,10 @@ import { BEACON, C, CITADEL_Y, GATE_BEARING, PROW, PROW_YAW, RADII, TOWER, fromP
 
 /**
  * the prow's rock: weathered grey limestone, darker than the walls (S4 W5, C2 #10: in the wall colour it
- * read as a thin smooth slab — rock, not masonry)
+ * read as a thin smooth slab — rock, not masonry; S4.5: 0x9b9a92 → a shade lighter, so the shaded face takes
+ * the sky light and its blocks show instead of a flat dark slab)
  */
-const ROCK = 0x9b9a92;
+const ROCK = 0xa9a79e;
 /** the prow's stem rake: at its foot the keel edge stands this fraction of the prow's length further back */
 const PROW_RAKE = 0.13;
 const SLATE = 0x63676c;
@@ -42,8 +43,9 @@ export function buildProw(k: ProxyKit): void {
       if (f === 1) return [d, p];
       const side = Math.sign(p) || 1;
       // blocks: noise quantised to four levels on a coarse (along, up) grid — irregular fractured blocks
+      // (S4.5: amplitude 0.15 → 0.22 km, the blocks break the shaded face in minas-tirith-close / -wide)
       const q = valueNoise(d * 2.6 + side * 7.1, f * 4.2, 9105);
-      const block = 0.15 * (Math.floor(q * 4) / 3 - 0.5);
+      const block = 0.22 * (Math.floor(q * 4) / 3 - 0.5);
       // oblique bedding: a sawtooth of ledges dipping along the keel
       const ph = f * 9 + d * 0.8 + side * 0.3;
       const strata = 0.03 * (ph - Math.floor(ph) - 0.5);
@@ -54,8 +56,12 @@ export function buildProw(k: ProxyKit): void {
       // back along the axis by PROW_RAKE of its length, so the shaded face is a tapering wedge)
       const batter = PROW_BATTER * (1 - f);
       const edge = vi === tip ? 0.25 : 1;
+      // (S4.5 fix round: a block never pushes a face more than half way to the axis — by the narrow tip the
+      // 0.22 km blocks crossed the faces through each other and notched the keel edge)
+      const half = Math.abs(p) * (1 + batter);
+      const off = vi === tip ? bulge * edge : Math.max(bulge, -0.5 * half);
       const dr = PROW[0][0] + (d - PROW[0][0]) * (1 - PROW_RAKE * (1 - f) ** 1.3);
-      return [dr - 0.05 * (1 - f) + (vi === tip ? 0.05 * (1 - f) : 0), p * (1 + batter) + side * bulge * edge];
+      return [dr - 0.05 * (1 - f) + (vi === tip ? 0.05 * (1 - f) : 0), p * (1 + batter) + side * off];
     });
     return { outline, y: span * f };
   });

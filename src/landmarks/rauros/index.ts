@@ -295,12 +295,15 @@ export default defineLandmark({
     k.cliff('weathered', [[-3.3, 3.8], [-2.6, 3.72], [-1.95, 3.7]], [1.4, 1.9, 1.7], lip);
     k.cliff('weathered', [[3.45, 3.78], [4.1, 3.8], [4.8, 3.9]], [1.7, 1.9, 1.3], { ...lip, shade: 0.95 });
     // big rocks down both sides of the drop and in the plunge pool (the channel bed beside the sheet would
-    // show black there), and three low rocks standing in the lip, breaking its straight line
+    // show black there), and three low rocks standing in the lip, breaking its straight line (S4.5: the plunge
+    // rocks low-poly, flatter, lumpier and darker — squash 0.85 → 0.7, lump 0.32 → 0.45, shade 0.88 → 0.72,
+    // detail 1 → 0: they read as grey balls in rauros-close; fix round: radii × 1.2, the low-poly rocks sit inside
+    // their radius and had shrunk off the sheet's edge)
     const plunge: [number, number, number, number][] = [
       [-1.25, -0.45, 3.72, 0.4], [-1.05, -1.15, 3.98, 0.38], [-1.3, -1.65, 4.35, 0.34], [-1.7, -1.0, 4.05, 0.36],
       [3.05, -0.5, 3.72, 0.38], [2.85, -1.25, 4.0, 0.34], [3.05, -1.7, 4.38, 0.3], [3.45, -1.0, 4.05, 0.34],
     ];
-    for (const [x, y, z, r] of plunge) k.rock('weathered', r, { at: [x, y, z], squash: 0.85, lump: 0.32, color: ROCK, shade: 0.88, detail: 1, lod: 0 });
+    for (const [x, y, z, r] of plunge) k.rock('weathered', r * 1.2, { at: [x, y, z], squash: 0.7, lump: 0.45, color: ROCK, shade: 0.72, detail: 0, lod: 0 });
     const lipRocks: [number, number, number][] = [[-0.7, 3.66, 0.22], [0.95, 3.6, 0.3], [2.25, 3.7, 0.2]];
     for (const [x, z, r] of lipRocks)
       k.rock('weathered', r, { at: [x, LAKE_Y - 0.1, z], squash: 0.55, lump: 0.35, color: ROCK, shade: 0.85, detail: 1, lod: 0 });
