@@ -335,7 +335,7 @@ export default defineLandmark({
       lift: 3,
       // early afternoon: from ~15:00 the western valley wall (+12 within 10 km) throws the whole basin into
       // shade, and the landmark structure renders black there (no sky light in terrain shadow — contract
-      // request); the shot list keeps 17.5 until the main agent decides
+      // request). Decided in S4.5: the bookmark keeps 14.0; the film timeline (S5) chooses the segment's tod
       tod: 14.0,
       compare: ['reference/film/isengard/isengard-ring-orthanc-film.jpg', 'reference/bigatures/isengard/orthanc-weta-mini.jpg'],
       note: 'early afternoon from the south over Nan Curunír: the dark ring in its levelled basin, the gate facing us with the road leaving it, Orthanc in the centre against the shoulder of Methedras, the pits burning; the sun from the south-west rakes across the ring and the tower',

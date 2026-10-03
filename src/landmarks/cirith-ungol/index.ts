@@ -11,8 +11,8 @@ import { defineLandmark } from '../types.ts';
  * film's serrated silhouette), up to a cracked crown; it stands on a sheer rock pedestal on a pinnacle on
  * the Mordor side of the Cleft, with a lower walled bastion; a few narrow ember slits; the Stairs — a dark
  * zig-zag cut up the western cliff from the head of the Morgul vale to the Cleft; three red lights (night).
- * Silhouetted against the Mordor glow (the sky's glow is an S4 effect; until then a warm haze spot over
- * the pass, looks.json).
+ * Silhouetted against the Mordor glow (the S4 pall with Doom's underglow; over the pass, the warm
+ * cirith-ungol haze / grade spots of the mordor look, looks.json).
  *
  * Local frame: heading 0 (x east, z south). The display point is on the broad crest plateau of the Ephel
  * Dúath (≈ 26.5) where it breaks east into Mordor (falling ≈ 1 unit per km beyond x ≈ 2); the Morgulduin
@@ -291,7 +291,7 @@ export default defineLandmark({
       aimKm: [1.0, -0.5],
       tod: 21.0,
       dayOfYear: 78,
-      note: 'night (19 March, a week after Frodo and Sam climbed the Stairs: a waxing gibbous moon 55° up in the south-south-west rakes the western faces from the left), from high over the head of the Morgul vale (west): the ribbed tower on its pinnacle beyond the Cleft, the Stairs threading up the western flank, the Mordor plain behind in a warm haze (the real Mordor glow is S4); turned so Mount Doom and its plume stay out of the tower\'s backdrop; the horizon is kept out of frame: rays skimming Mordor leave the board',
+      note: 'night (19 March, a week after Frodo and Sam climbed the Stairs: a waxing gibbous moon 55° up in the south-south-west rakes the western faces from the left), from high over the head of the Morgul vale (west): the ribbed tower on its pinnacle beyond the Cleft, the Stairs threading up the western flank, the Mordor plain behind in a warm haze (the cirith-ungol haze spot under the S4 pall); turned so Mount Doom and its plume stay out of the tower\'s backdrop; the horizon is kept out of frame: rays skimming Mordor leave the board',
     },
   ],
 });
