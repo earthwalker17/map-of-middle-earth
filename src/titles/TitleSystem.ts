@@ -28,16 +28,28 @@ const DIAMOND_HALO = 1.6;
 /** the label fades out as its anchor leaves the frame (px beyond the edge, fraction of H) */
 const OFFSCREEN_FADE = 0.04;
 /**
- * reveal (film seconds: the caption's own fadeIn / fadeOut — the times its SceneState reveal uses — at most
- * IN_SHARE / OUT_SHARE of its window): fading in, the diamond pops in, the leader draws up from it, then the
- * text wipes in across the card from the leader side (fractions of the in-time); fading out, all go together
+ * reveal (film seconds: the caption's own fadeIn / fadeOut — the times its SceneState reveal uses — never
+ * shorter than MIN_IN_S / MIN_OUT_S, the choreography's own pace, and at most IN_SHARE / OUT_SHARE of its
+ * window): fading in, the diamond pops in, the leader draws up from it, then the text wipes in across the
+ * card from the leader side (fractions of the in-time); fading out, all go together. A caption can slow its
+ * reveal down (a longer fade), never rush it: the wipe over ~5 frames reads as a cut.
  */
+const MIN_IN_S = { place: 1.4, pass: 0.8 } as const;
+const MIN_OUT_S = { place: 1.0, pass: 0.6 } as const;
 const IN_SHARE = 0.4;
 const OUT_SHARE = 0.3;
 const CHOREO = { diamond: [0, 0.12], leader: [0.05, 0.45], wipe: [0.3, 1] } as const;
 const WIPE_SOFT = 0.35;
 /** a caption's subject: the landmark within this distance (km, XZ) of its anchor */
 const SUBJECT_KM = 1.5;
+/**
+ * the floating labels' cards are rasterised at LABEL_SS× the frame's pixel density and box-resampled (they
+ * glide by fractions of a pixel: a 1× card's sharpness would pulse with the sub-pixel offset); the title and
+ * end cards stand still (1×)
+ */
+const LABEL_SS = 2;
+/** cards of captions this far (film s) outside their window are released (rebuilt identically if needed) */
+const KEEP_S = 4;
 
 const smooth = (e0: number, e1: number, x: number): number => {
   const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
@@ -145,8 +157,8 @@ export interface TitleOptions {
   fps: number;
   /**
    * the film's shutter (fraction of the frame): with motion blur, labels are laid out at the shutter's
-   * centre (stateAt) — the blur's centroid — the same for every sub-sample of a frame. A capture announces
-   * its own shutter per frame (OverlayPass.frame), which wins; this is the fallback.
+   * centre (stateAt) — the blur's centroid — the same for every sub-sample of a frame. A capture's own
+   * centre (SceneState.shutterCentre, its actual shutter) wins; this is the fallback.
    */
   shutter?: number;
   /** the film's state at time t (pure): the layout at the shutter centre and each label's placement */
@@ -181,8 +193,6 @@ export class TitleSystem implements System, OverlayPass {
   private readonly subjectOf = new Map<string, TitleSubject | null>();
   private readonly quad = new PlaneGeometry(1, 1);
   private readonly headTmp: [number, number, number] = [0, 0, 0];
-  /** the frame the capture announced (time, shutter, fps), null outside captures */
-  private capture: { t: number; shutter: number; fps: number } | null = null;
   private W = 0;
   private H = 0;
 
@@ -206,6 +216,13 @@ export class TitleSystem implements System, OverlayPass {
     if (W !== this.W || H !== this.H) this.resize(W, H);
     for (const v of this.visuals.values()) this.hide(v);
     const tF = Math.floor(state.t * this.opts.fps + 1e-6) / this.opts.fps;
+    // release the cards of captions far from now (a card is a pure function of its caption and the frame
+    // size: one rebuilt later is the same — this only bounds the textures held at once)
+    for (const [id, v] of this.visuals)
+      if (tF < v.def.t0 - KEEP_S || tF > v.def.t1 + KEEP_S) {
+        this.disposeVisual(v);
+        this.visuals.delete(id);
+      }
     let n = 0;
     let ls: SceneState | null = null;
     for (const a of state.annotations) {
@@ -225,24 +242,18 @@ export class TitleSystem implements System, OverlayPass {
     renderer.render(this.scene, this.camera);
   }
 
-  /** OverlayPass: the frame being captured — its time, actual shutter and frame rate (capture.ts) */
-  frame(t: number, shutter: number, fps: number): void {
-    this.capture = { t, shutter, fps };
-  }
-
   /**
    * The state the labels are laid out from: the frame's own (no motion blur: every sub-sample is at the
    * frame time) or the film's state at the shutter's centre (a sub-sample inside an open shutter) — the
-   * same for all sub-samples of a frame, whatever their count or order. The shutter is the capture's own
-   * for the frame it announced (frame()), else the film's.
+   * same for all sub-samples of a frame, whatever their count or order. The centre is the capture's
+   * (SceneState.shutterCentre: its actual shutter) or, without one, the film's own shutter's.
    */
   private layoutState(state: SceneState, tF: number): SceneState {
-    const c = this.capture;
-    const own = c !== null && Math.abs(c.t - tF) < 1e-6;
-    const sh = own ? c.shutter : (this.opts.shutter ?? 0);
-    const fps = own ? c.fps : this.opts.fps;
-    if (!this.opts.stateAt || !(sh > 0) || Math.abs(state.t - tF) < 1e-6) return state;
-    return this.opts.stateAt(tF + (0.5 * sh) / fps);
+    const sh = this.opts.shutter ?? 0;
+    // (without a capture's centre: a sub-sample at the frame time itself is an unblurred frame)
+    const tc = state.shutterCentre ?? (sh > 0 && Math.abs(state.t - tF) >= 1e-6 ? tF + (0.5 * sh) / this.opts.fps : state.t);
+    if (!this.opts.stateAt || Math.abs(state.t - tc) < 1e-6) return state;
+    return this.opts.stateAt(tc);
   }
 
   // ---------------------------------------------------------------- per caption
@@ -308,10 +319,14 @@ export class TitleSystem implements System, OverlayPass {
     return Math.max(visibility(eye, top, hAt, skip), visibility(eye, mid, hAt, skip), visibility(eye, anchor, hAt, skip));
   }
 
-  /** the reveal windows of a label (s): in, out — the caption's fades, capped by the shares of its window */
+  /**
+   * the reveal windows of a label (s): in, out — the caption's fades (at least the choreography's minimum),
+   * capped by the shares of its window
+   */
   private times(def: CaptionDef): [number, number] {
+    const k = def.kind === 'pass' ? 'pass' : 'place';
     const span = Math.max(0, def.t1 - def.t0);
-    return [Math.min(Math.max(0, def.fadeIn), span * IN_SHARE), Math.min(Math.max(0, def.fadeOut), span * OUT_SHARE)];
+    return [Math.min(Math.max(MIN_IN_S[k], def.fadeIn), span * IN_SHARE), Math.min(Math.max(MIN_OUT_S[k], def.fadeOut), span * OUT_SHARE)];
   }
 
   /** a label's side and leader: off its subject at three moments of its window (film camera), else the default */
@@ -344,7 +359,7 @@ export class TitleSystem implements System, OverlayPass {
     } else {
       const label = def.kind === 'place' || def.kind === 'pass';
       if (label) v.placement = this.placementOf(def, W, H);
-      const card = rasterCard(def, W, H, v.placement ? alignOf(v.placement.side) : 'center');
+      const card = rasterCard(def, W, H, v.placement ? alignOf(v.placement.side) : 'center', label ? LABEL_SS : 1);
       const tex = new CanvasTexture(card.canvas);
       tex.colorSpace = NoColorSpace;
       tex.premultiplyAlpha = true;
@@ -352,7 +367,8 @@ export class TitleSystem implements System, OverlayPass {
       tex.minFilter = LinearFilter;
       tex.magFilter = LinearFilter;
       tex.needsUpdate = true;
-      const mat = createCardMaterial(tex);
+      const mat = createCardMaterial(tex, card.ss);
+      mat.px.value.set(1 / card.width, 1 / card.height);
       const mesh = this.mesh(mat.material, label ? ORDER.label : ORDER.card);
       v.card = { card, tex, mat, mesh };
       this.stats.cards++;

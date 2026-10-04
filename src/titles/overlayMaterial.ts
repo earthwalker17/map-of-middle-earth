@@ -41,24 +41,37 @@ export interface CardMaterial {
   material: NodeMaterial;
   /** overall opacity */
   opacity: { value: number };
+  /** one frame pixel in the card's uv (1 / card width, 1 / card height in frame px): the supersampling taps */
+  px: { value: Vector2 };
   /** wipe: x = direction (+1 left → right, −1 right → left, 0 none), y = progress 0..1, z = soft edge (card widths) */
   wipe: { value: Vector4 };
 }
 
-/** A caption card: its premultiplied canvas texture × opacity × the wipe mask. */
-export function createCardMaterial(map: Texture): CardMaterial {
+/**
+ * A caption card: its premultiplied canvas texture × opacity × the wipe mask. A supersampled card (`ss` > 1
+ * canvas px per frame px) is resampled with an ss × ss box over each frame pixel (bilinear taps at the
+ * sub-pixel centres): its sharpness hardly depends on where between pixels the card sits.
+ */
+export function createCardMaterial(map: Texture, ss = 1): CardMaterial {
   const opacity = uniform(1);
   const wipe = uniform(new Vector4(0, 1, 0.3, 0));
+  const px = uniform(new Vector2(0, 0));
   const m = new NodeMaterial();
   m.name = 'title-card';
   m.fragmentNode = Fn(() => {
-    const c = texture(map, uv());
+    let c = texture(map, uv());
+    if (ss > 1) {
+      c = vec4(0);
+      for (let j = 0; j < ss; j++)
+        for (let i = 0; i < ss; i++) c = c.add(texture(map, uv().add(px.mul(vec2((i + 0.5) / ss - 0.5, (j + 0.5) / ss - 0.5)))));
+      c = c.div(ss * ss);
+    }
     const x = select(wipe.x.lessThan(0), float(1).sub(uv().x), uv().x);
     const soft = max(wipe.z, 1e-3);
     const mask = select(abs(wipe.x).lessThan(0.5), float(1), clamp(wipe.y.mul(soft.add(1)).sub(x).div(soft), 0, 1));
     return c.mul(opacity.mul(mask));
   })();
-  return { material: over(m), opacity, wipe };
+  return { material: over(m), opacity, px, wipe };
 }
 
 export interface LineMaterial {

@@ -5,11 +5,14 @@ import type { World } from '../world/World.ts';
 import type { BuiltLandmark } from './records.ts';
 
 /**
- * S5 film LOD dissolve: half-width (octaves of projected size) of the band the sub-samples spread a landmark's
- * LOD thresholds over (SceneState.lodDither) — with 4 sub-samples the switch fades in four steps of 25 % across
- * thresholds × 0.77 … 1.30 (≈ 10 frames of a 5 %/frame zoom) instead of popping in one frame.
+ * S5 film LOD dissolve: width (octaves of projected size) of the band BELOW each landmark LOD threshold that
+ * the sub-samples spread it over (SceneState.lodDither): a sub-sample with phase d uses the threshold
+ * × 2^(−LOD_DITHER_OCT·d), so with 4 sub-samples the finer LOD fades in four steps of 25 % across thresholds
+ * × 0.55 … 0.92 (≈ 10 frames of a 5 %/frame zoom) instead of popping in one frame. One-sided: at or above a
+ * threshold every sub-sample draws the finer LOD (the LOD design's guarantee, as every still); below it a
+ * share of the sub-samples still draws the finer one — never a coarser LOD than the stills would.
  */
-export const LOD_DITHER_OCT = 0.5;
+export const LOD_DITHER_OCT = 1;
 
 /**
  * Realizes built landmarks (build.ts) as meshes with the shared family materials (two uber materials:
@@ -79,8 +82,9 @@ export class LandmarkSystem implements System {
   /**
    * LOD index for a landmark seen from `cam` (pure: camera position, vertical fov, viewport height). S5 film:
    * `bias` (SceneState.lodBias, < 1 keeps the finer LODs longer) and `dither` (SceneState.lodDither, the
-   * sub-sample's phase: the thresholds × 2^(LOD_DITHER_OCT·(2·dither − 1)), so across a frame's sub-samples
-   * the switch is a stratified dissolve over a band of ±LOD_DITHER_OCT octaves). Stills pass neither (exact).
+   * sub-sample's phase: the thresholds × 2^(−LOD_DITHER_OCT·dither), so across a frame's sub-samples the
+   * switch is a stratified dissolve over the band of LOD_DITHER_OCT octaves below each threshold). Stills pass
+   * neither (exact).
    */
   static selectLod(b: BuiltLandmark, cam: { x: number; y: number; z: number }, fovDeg: number, viewportH: number, levels: number, bias = 1, dither?: number): number {
     if (levels <= 1) return 0;
@@ -88,7 +92,7 @@ export class LandmarkSystem implements System {
     const d = Math.max(1, Math.hypot(cam.x - cx, cam.y - cy, cam.z - cz));
     const rad = Math.hypot(b.bounds.r, b.bounds.h / 2);
     const px = (rad * (viewportH / (2 * Math.tan((fovDeg * Math.PI) / 360)))) / d;
-    const k = dither === undefined ? bias : bias * 2 ** (LOD_DITHER_OCT * (2 * dither - 1));
+    const k = dither === undefined ? bias : bias * 2 ** (-LOD_DITHER_OCT * dither);
     const L = px >= b.lodPx[0] * k ? 0 : px >= b.lodPx[1] * k ? 1 : 2;
     return Math.min(L, levels - 1);
   }

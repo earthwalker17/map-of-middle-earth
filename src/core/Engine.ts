@@ -42,6 +42,11 @@ export class Engine {
   post!: PostPipeline;
   gpu!: GpuInfo;
   heightAt: HeightProvider | null = null;
+  /**
+   * S5 film: the slab's footprint (x, z inside the world frame) — the film's motion measurement treats rays
+   * that leave it as misses (the void is no ground). Null = everywhere (still pages never set it).
+   */
+  inFrame: ((x: number, z: number) => boolean) | null = null;
   /** boot milestones, ms since navigation start (diagnostics only — never feeds rendering) */
   readonly timings: Record<string, number> = {};
   width: number;

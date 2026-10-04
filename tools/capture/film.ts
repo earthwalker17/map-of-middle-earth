@@ -10,8 +10,8 @@
  *
  * Sequences (chunked, resumable, streamed to ffmpeg — no PNG frames on disk):
  *   pnpm film --render [--tier preview|review|final] [--w --h --spp --shutter] [--from s --to s]
- *                      [--spp-fast N [--fast-px 12]]
- *                      [--codec x264|prores|ffv1] [--crf 14 --preset medium] [--chunk 96] [--budget 520]
+ *                      [--spp-ladder 12:8,24:12,36:16 | --spp-fast N [--fast-px 12]] [--spp-dilate 2]
+ *                      [--codec x264|prores|ffv1] [--crf 14 --preset medium] [--gop N] [--chunk 96] [--budget 520]
  *                      [--run renders/film/<dir>] [--label x] [--force]
  *     Frame k shows t = k / fps. Chunk i holds frames [i·chunk, (i+1)·chunk) ∩ the range, as
  *     <run>/chunks/cNNNN.<ext> + cNNNN.json (per frame t, sha256, ms, luma); a chunk is encoded into
@@ -20,11 +20,14 @@
  *     boot included) ran out: run the same command again · 3 = low memory · 1 = error.
  *     --budget 0 = no budget (user-started overnight runs; Chrome is restarted every 25 min).
  *     A run refuses other settings, another film hash or another commit unless --force.
- *     Adaptive motion-blur sampling (S5): with --spp-fast N (needs --spp), a frame whose image moves more than
- *     --fast-px px (default 12, at the run's size; window.__mm.motionPx: 90th percentile of the ground's screen
- *     displacement while the shutter is open) gets N sub-samples instead of --spp — more time samples where 4
- *     strobe (copies d/spp px apart); the lens keeps deciding on the base spp. Per-frame spp / motion go into
- *     the chunk JSON. Stills mode takes the same two flags.
+ *     Adaptive motion-blur sampling (S5): with --spp-ladder px:spp,… (needs --spp), a frame whose image moves
+ *     more than px (at the run's size; window.__mm.motionPx: 90th percentile of the ground's screen
+ *     displacement while the shutter is open) gets that step's spp instead of --spp — more time samples where
+ *     4 strobe (copies d/spp px apart); --spp-fast N --fast-px P is the one-step ladder P:N. A frame takes the
+ *     largest spp of the frames within ±--spp-dilate (default 2) of it, so a level never flickers for a frame
+ *     or two (pure: from the timeline). The lens keeps deciding on the base spp. Per-frame spp / motion go
+ *     into the chunk JSON; the time budget plans each chunk's spp before rendering it. Stills mode takes the
+ *     same flags. x264: one keyframe per chunk unless --gop N (fewer of the encoder's keyframe "ticks").
  *   pnpm film --verify-resume --run <dir>           re-render the first frame of each finished chunk: same sha?
  *   pnpm film --assemble --run <dir> [--audio a.wav] [--mp4 name.mp4] [--reencode]
  *     → concat (stream copy) → <run>/<name>.mp4 (+ AAC 320k audio, exact film length).
@@ -56,9 +59,14 @@ interface Args {
   w: number;
   h: number;
   spp?: number;
-  /** adaptive sampling: spp of frames that move more than fastPx (px at the run's size) while the shutter is open */
+  /** adaptive sampling: [px, spp] steps — a frame moving more than px (at the run's size) while the shutter is open gets spp */
+  ladder?: Ladder;
+  /** adaptive sampling: a frame takes the largest spp within ±dilate frames */
+  dilate?: number;
   sppFast?: number;
   fastPx: number;
+  /** x264 keyframe interval (frames; default: the chunk length) */
+  gop?: number;
   shutter?: number;
   label?: string;
   out?: string;
@@ -97,6 +105,9 @@ function parseArgs(argv: string[]): Args {
     else if (k === '--spp') a.spp = Number(v());
     else if (k === '--spp-fast') a.sppFast = Number(v());
     else if (k === '--fast-px') a.fastPx = Number(v());
+    else if (k === '--spp-ladder') a.ladder = parseLadder(v());
+    else if (k === '--spp-dilate') a.dilate = Number(v());
+    else if (k === '--gop') a.gop = Number(v());
     else if (k === '--shutter') a.shutter = Number(v());
     else if (k === '--label') a.label = v();
     else if (k === '--out') a.out = v();
@@ -119,7 +130,13 @@ function parseArgs(argv: string[]): Args {
     else if (k === '--reencode') a.reencode = true;
     else throw new Error(`film: unknown argument ${k}`);
   }
-  if (a.sppFast !== undefined && !(a.spp && a.sppFast > a.spp)) throw new Error('film: --spp-fast needs an explicit --spp below it');
+  if (a.sppFast !== undefined) {
+    if (a.ladder) throw new Error('film: --spp-fast and --spp-ladder are exclusive');
+    a.ladder = [[a.fastPx, a.sppFast]];
+  }
+  if (a.ladder && !(a.spp && a.ladder.every(([, n]) => n > a.spp!))) throw new Error('film: --spp-ladder / --spp-fast need an explicit --spp below every step');
+  if (a.dilate !== undefined && !(Number.isInteger(a.dilate) && a.dilate >= 0)) throw new Error('film: --spp-dilate takes a whole number of frames');
+  if (a.gop !== undefined && !(Number.isInteger(a.gop) && a.gop >= 1)) throw new Error('film: --gop takes a whole number of frames');
   // sequence defaults per tier (animatic / review cut / final)
   if (a.mode === 'render' && !wSet && !hSet && a.tier === 'preview') [a.w, a.h] = [960, 540];
   if (a.mode === 'render' && !wSet && !hSet && a.tier === 'final') [a.w, a.h] = [1920, 1080];
@@ -167,13 +184,74 @@ async function bootFilm(session: CaptureSession, tier: string): Promise<{ info: 
   return { info, meta: tl.meta as FilmMeta };
 }
 
-/** adaptive motion-blur sampling: a frame's spp (and how far its image moves while the shutter is open, px) */
-async function frameSpp(page: CaptureSession['page'], o: { spp?: number | null; sppFast?: number; fastPx?: number; shutter: number; fps: number; w: number; h: number }, t: number): Promise<{ spp?: number; lensSpp?: number; motion?: number }> {
+/** adaptive motion-blur sampling: [px, spp] steps, ascending px (a frame moving more than px gets spp) */
+type Ladder = [number, number][];
+
+/** "12:8,24:12,36:16" → [[12, 8], [24, 12], [36, 16]] (validated: ascending px and spp) */
+function parseLadder(v: string): Ladder {
+  const steps = v
+    .split(',')
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .map((x) => x.split(':').map(Number) as [number, number]);
+  const ok = steps.length > 0 && steps.every(([p, n], i) => p > 0 && Number.isInteger(n) && n > 0 && (i === 0 || (p > steps[i - 1][0] && n > steps[i - 1][1])));
+  if (!ok) throw new Error(`film: --spp-ladder wants px:spp steps with ascending px and spp (got '${v}')`);
+  return steps;
+}
+
+/** the spp a frame moving `motion` px asks for */
+function sppFor(ladder: Ladder, base: number, motion: number): number {
+  let n = base;
+  for (const [px, spp] of ladder) if (motion > px) n = spp;
+  return n;
+}
+
+interface SppOpts {
+  /** the run's base spp (null / undefined = the tier's, no adaptive sampling) */
+  spp?: number | null;
+  ladder?: Ladder | null;
+  dilate: number;
+  shutter: number;
+  fps: number;
+  w: number;
+  h: number;
+  /** frames in the film (the dilation window is clipped to it) */
+  nFrames: number;
+}
+
+interface FramePlan {
+  spp?: number;
+  lensSpp?: number;
+  motion?: number;
+}
+
+/**
+ * Adaptive motion-blur sampling for frames `ks`: each frame's image motion while the shutter is open (px,
+ * window.__mm.motionPx — one page call for them and their ±dilate neighbours) and its spp: the largest the
+ * ladder gives within ±dilate frames (a pure function of the frame: resumable, verifiable).
+ */
+async function planSpp(page: CaptureSession['page'], o: SppOpts, ks: number[]): Promise<Map<number, FramePlan>> {
+  const out = new Map<number, FramePlan>();
   const base = o.spp ?? undefined;
-  if (!o.sppFast || !base) return { spp: base };
-  const m = await page.evaluate(([tt, sh, fps, w, h]) => window.__mm!.motionPx('film', tt, sh, fps, w, h), [t, o.shutter, o.fps, o.w, o.h] as const);
-  const motion = Math.round((m ?? 0) * 10) / 10;
-  return { spp: motion > (o.fastPx ?? 12) ? o.sppFast : base, lensSpp: base, motion };
+  if (!o.ladder?.length || !base) {
+    for (const k of ks) out.set(k, { spp: base });
+    return out;
+  }
+  const need = new Set<number>();
+  for (const k of ks) for (let j = Math.max(0, k - o.dilate); j <= Math.min(o.nFrames - 1, k + o.dilate); j++) need.add(j);
+  const js = [...need].sort((a, b) => a - b);
+  const ms = await page.evaluate(([ts, sh, fps, w, h]) => ts.map((t) => window.__mm!.motionPx('film', t, sh, fps, w, h)), [js.map((j) => j / o.fps), o.shutter, o.fps, o.w, o.h] as const);
+  const motion = new Map<number, number>();
+  js.forEach((j, i) => motion.set(j, Math.round((ms[i] ?? 0) * 10) / 10));
+  for (const k of ks) {
+    let spp = base;
+    for (let j = k - o.dilate; j <= k + o.dilate; j++) {
+      const m = motion.get(j);
+      if (m !== undefined) spp = Math.max(spp, sppFor(o.ladder, base, m));
+    }
+    out.set(k, { spp, lensSpp: base, motion: motion.get(k) ?? 0 });
+  }
+  return out;
 }
 
 // ───────────────────────────── stills ─────────────────────────────
@@ -203,12 +281,13 @@ async function stills(args: Args): Promise<number> {
     const last = Math.ceil(meta.duration * meta.fps) - 1;
     const frames = [...new Set(times.map((t) => Math.min(last, Math.max(0, Math.round(t * meta.fps)))))];
     const shutter = args.shutter ?? 0;
+    const plan = await planSpp(page, { spp: args.spp, ladder: args.ladder, dilate: args.dilate ?? 2, shutter, fps: meta.fps, w: args.w, h: args.h, nFrames: last + 1 }, frames);
 
     const results: (CaptureResult & { frame: number; t: number; beat: string; tod: number; file: string; motion?: number; lensSpp?: number })[] = [];
     for (const [k, frame] of frames.entries()) {
       const t = frame / meta.fps;
       const name = `f${String(frame).padStart(5, '0')}`;
-      const fs = await frameSpp(page, { spp: args.spp, sppFast: args.sppFast, fastPx: args.fastPx, shutter, fps: meta.fps, w: args.w, h: args.h }, t);
+      const fs = plan.get(frame)!;
       const req: CaptureRequest = { name, timelineId: 'film', t, width: args.w, height: args.h, spp: fs.spp, shutter, fps: meta.fps, ...(fs.lensSpp ? { lensSpp: fs.lensSpp } : {}) };
       const res = await withTimeout(page.evaluate((r) => window.__mm!.render(r), req), RENDER_TIMEOUT, `render ${name}`);
       const st = await page.evaluate(([tt]) => window.__mm!.timelineState('film', tt), [t] as const);
@@ -258,9 +337,14 @@ interface RunJson {
   width: number;
   height: number;
   spp: number | null;
-  /** adaptive sampling (S5): spp of frames moving more than fastPx px while the shutter is open */
+  /** adaptive sampling (S5): [px, spp] steps; a frame takes the largest spp within ±dilate frames (absent: 0) */
+  ladder?: Ladder;
+  dilate?: number;
+  /** adaptive sampling, first form (runs before the ladder): spp of frames moving more than fastPx px */
   sppFast?: number;
   fastPx?: number;
+  /** x264 keyframe interval, frames (absent: 2 s, the runs before it) */
+  gop?: number;
   shutter: number;
   fps: number;
   codec: Codec;
@@ -285,6 +369,11 @@ interface ChunkJson {
 }
 
 const pad = (i: number) => String(i).padStart(4, '0');
+
+/** a run's adaptive sampling ladder (the first form: one step sppFast above fastPx), null = fixed spp */
+function runLadder(run: RunJson): Ladder | null {
+  return run.ladder ?? (run.sppFast ? [[run.fastPx ?? 12, run.sppFast]] : null);
+}
 
 function chunkList(run: RunJson): { i: number; k0: number; k1: number }[] {
   const out: { i: number; k0: number; k1: number }[] = [];
@@ -314,7 +403,8 @@ async function render(args: Args): Promise<number> {
   let dir = args.run;
   const git = gitCommit();
   let exitCode = 0;
-  let measured: number[] = [];
+  /** recent frames' render time and spp: the time budget's ms per sub-sample */
+  let measured: { ms: number; spp: number }[] = [];
   let sessionStart = 0;
 
   // a resumed run keeps its own settings (tier, size, spp, shutter, codec, chunking, range)
@@ -362,13 +452,14 @@ async function render(args: Args): Promise<number> {
           width: args.w,
           height: args.h,
           spp: args.spp ?? null,
-          ...(args.sppFast ? { sppFast: args.sppFast, fastPx: args.fastPx } : {}),
+          ...(args.ladder ? { ladder: args.ladder, dilate: args.dilate ?? 2 } : {}),
           shutter: args.shutter ?? meta.shutter,
           fps: meta.fps,
           codec: args.codec ?? seq.codec,
           crf: args.crf ?? seq.crf,
           preset: args.preset ?? seq.preset,
           chunk: args.chunk ?? seq.chunk,
+          ...((args.codec ?? seq.codec) === 'x264' ? { gop: args.gop ?? args.chunk ?? seq.chunk } : {}),
           frames: [k0, k1],
           film: { hash: meta.hash, duration: meta.duration, status: meta.status },
           commit: git.commit,
@@ -377,18 +468,24 @@ async function render(args: Args): Promise<number> {
         };
         mkdirSync(join(dir, 'chunks'), { recursive: true });
         writeFileSync(join(dir, 'run.json'), JSON.stringify(run, null, 2));
-        console.log(`[film] new run ${dir}: frames ${k0}–${k1 - 1} (${((k1 - k0) / meta.fps).toFixed(1)} s) · ${run.tier} ${run.width}×${run.height} spp ${run.spp ?? 'tier'}${run.sppFast ? ` (${run.sppFast} above ${run.fastPx} px)` : ''} · shutter ${run.shutter} · ${run.codec} · chunks of ${run.chunk}`);
+        console.log(`[film] new run ${dir}: frames ${k0}–${k1 - 1} (${((k1 - k0) / meta.fps).toFixed(1)} s) · ${run.tier} ${run.width}×${run.height} spp ${run.spp ?? 'tier'}${runLadder(run) ? ` (${runLadder(run)!.map(([p, n]) => `${n} above ${p} px`).join(', ')}, ±${run.dilate ?? 0} frames)` : ''} · shutter ${run.shutter} · ${run.codec} · chunks of ${run.chunk}`);
       }
       mkdirSync(join(dir, 'partial'), { recursive: true });
       const chunks = chunkList(run);
       const todo = chunks.filter((c) => !chunkDone(dir!, run, c));
       console.log(`[film] ${info.gpu.vendor}/${info.gpu.architecture} · film ${meta.hash} · ${chunks.length - todo.length}/${chunks.length} chunks done · boot ${elapsed().toFixed(0)} s`);
-      const opts: EncodeOpts = { width: run.width, height: run.height, fps: run.fps, codec: run.codec, crf: run.crf, preset: run.preset };
+      const opts: EncodeOpts = { width: run.width, height: run.height, fps: run.fps, codec: run.codec, crf: run.crf, preset: run.preset, ...(run.gop ? { gop: run.gop } : {}) };
+      const sppOpts: SppOpts = { spp: run.spp, ladder: runLadder(run), dilate: run.dilate ?? 0, shutter: run.shutter, fps: run.fps, w: run.width, h: run.height, nFrames };
       const chrome = await browserVersion(ctx);
       for (const c of todo) {
         const n = c.k1 - c.k0;
-        const perFrame = measured.length ? measured.reduce((x, y) => x + y, 0) / measured.length / 1000 : DEFAULT_FRAME_S[run.tier];
-        const est = n * perFrame + 4;
+        // the chunk's planned spp (adaptive sampling) × the recent ms per sub-sample: a chunk that turns into a
+        // fast move costs what its spp-8 / 12 / 16 frames will, not what the slow frames before it did
+        const ks = Array.from({ length: n }, (_, i) => c.k0 + i);
+        const plan = await planSpp(page, sppOpts, ks);
+        const lastSpp = measured.length ? measured[measured.length - 1].spp : (run.spp ?? 1);
+        const msSub = measured.length ? measured.reduce((x, y) => x + y.ms, 0) / measured.reduce((x, y) => x + y.spp, 0) : (DEFAULT_FRAME_S[run.tier] * 1000) / (run.spp ?? lastSpp);
+        const est = ks.reduce((x, k) => x + (plan.get(k)!.spp ?? lastSpp) * msSub + 40, 0) / 1000 + 4;
         if (args.budget > 0 && elapsed() + est > args.budget) {
           more = true;
           console.log(`[film] budget: ${elapsed().toFixed(0)} s used, next chunk ≈ ${est.toFixed(0)} s > ${args.budget} s — run again to continue`);
@@ -410,11 +507,11 @@ async function render(args: Args): Promise<number> {
         try {
           for (let k = c.k0; k < c.k1; k++) {
             const t = k / run.fps;
-            const fs = await frameSpp(page, { spp: run.spp, sppFast: run.sppFast, fastPx: run.fastPx, shutter: run.shutter, fps: run.fps, w: run.width, h: run.height }, t);
+            const fs = plan.get(k)!;
             const req: CaptureRequest = { name: `k${k}`, timelineId: 'film', t, width: run.width, height: run.height, ...(fs.spp ? { spp: fs.spp } : {}), ...(fs.lensSpp ? { lensSpp: fs.lensSpp } : {}), shutter: run.shutter, fps: run.fps };
             const res = await withTimeout(page.evaluate((r) => window.__mm!.render(r), req), RENDER_TIMEOUT, `render frame ${k}`);
             if (sinkErr) throw sinkErr;
-            measured.push(res.renderMs + 40);
+            measured.push({ ms: res.renderMs, spp: res.spp });
             if (measured.length > 48) measured = measured.slice(-48);
             frames.push({ k, t, sha256: res.sha256, ms: Math.round(res.renderMs), luma: Math.round(res.meanLuma * 10) / 10, ...(fs.motion !== undefined ? { spp: res.spp, motion: fs.motion } : {}) });
             if (res.meanLuma < 2) console.warn(`[film] WARNING: frame ${k} (t ${t.toFixed(2)}) is (nearly) black`);
@@ -486,7 +583,7 @@ async function verifyResume(args: Args): Promise<number> {
       const j = JSON.parse(readFileSync(join(args.run, 'chunks', `c${pad(c.i)}.json`), 'utf8')) as ChunkJson;
       const f = j.frames[0];
       const spp = f.spp ?? run.spp;
-      const res = await session.page.evaluate((r) => window.__mm!.render(r), { name: 'verify', timelineId: 'film', t: f.t, width: run.width, height: run.height, ...(spp ? { spp } : {}), ...(run.sppFast && run.spp ? { lensSpp: run.spp } : {}), shutter: run.shutter, fps: run.fps } as CaptureRequest);
+      const res = await session.page.evaluate((r) => window.__mm!.render(r), { name: 'verify', timelineId: 'film', t: f.t, width: run.width, height: run.height, ...(spp ? { spp } : {}), ...(runLadder(run) && run.spp ? { lensSpp: run.spp } : {}), shutter: run.shutter, fps: run.fps } as CaptureRequest);
       const same = res.sha256 === f.sha256;
       if (!same) bad++;
       console.log(`[film] chunk ${c.i} frame ${f.k}: ${same ? 'IDENTICAL' : 'DIFFERENT'}`);

@@ -83,8 +83,9 @@ export interface CaptureApi {
   /**
    * S5: how far the image moves while the shutter is open at film time t — the 90th percentile over a 9 × 5
    * grid of view rays of the ground point's screen displacement between the shutter's open and close (px at
-   * width × height); 0 for an all-sky view. Pure function of the timeline and the HeightField (the film
-   * runner picks a frame's sample count from it: adaptive motion-blur sampling).
+   * width × height) — rays over the sky or the void around the board (outside Engine.inFrame) miss; 0 when
+   * all do. Pure function of the timeline and the HeightField (the film runner picks a frame's sample count
+   * from it: adaptive motion-blur sampling).
    */
   motionPx(id: string, t: number, shutter: number, fps: number, width: number, height: number): number | null;
 }
@@ -168,7 +169,8 @@ function groundHit(heightAt: (x: number, z: number) => number, o: Vector3, d: Ve
 
 /**
  * Screen displacement (px, 90th percentile over a 9 × 5 grid of view rays) of the ground point each ray hits
- * in `a` (shutter open) when seen from `b` (shutter close). Pure; the film's adaptive sampling reads it.
+ * in `a` (shutter open) when seen from `b` (shutter close); `heightAt` = −Infinity where there is no ground
+ * (rays that only find such points miss). Pure; the film's adaptive sampling reads it.
  */
 export function shutterMotionPx(a: SceneState, b: SceneState, heightAt: (x: number, z: number) => number, width: number, height: number): number {
   const ca = poseCamera(_camA, a, width / height);
@@ -224,8 +226,13 @@ export function installCaptureApi(
     },
     motionPx: (id, t, shutter, fps, width, height) => {
       const tl = timelines.get(id);
-      if (!tl || !engine.heightAt) return null;
-      return shutterMotionPx(tl.evaluate(t), tl.evaluate(t + shutter / fps), engine.heightAt, width, height);
+      const h = engine.heightAt;
+      if (!tl || !h) return null;
+      // the void around the floating board is no ground: a ray that leaves the slab's footprint misses (the
+      // HeightField clamps to its edge texels, which would extend the board's rim out to the horizon)
+      const inFrame = engine.inFrame;
+      const ground = inFrame ? (x: number, z: number) => (inFrame(x, z) ? h(x, z) : -Infinity) : h;
+      return shutterMotionPx(tl.evaluate(t), tl.evaluate(t + shutter / fps), ground, width, height);
     },
     async render(req) {
       await ready;
@@ -245,16 +252,16 @@ export function installCaptureApi(
       const frameDt = 1 / fps;
       const shutter = req.shutter ?? 0;
       const start = performance.now();
-      // S5 film: the overlay lays its labels out for this frame's actual shutter (still pages have none)
-      engine.post.overlay?.frame?.(t0, shutter, fps);
-      // a registered timeline (the film) gives each sub-sample a stratified LOD dither phase (LOD switches
-      // dissolve over the accumulation); still shots never carry one
-      const dither = !input && spp > 1;
+      // a registered timeline (the film): every sub-sample carries the frame's shutter centre (the overlay
+      // lays its labels out there, for this capture's actual shutter) and, with several sub-samples, a
+      // stratified LOD dither phase (LOD switches dissolve over the accumulation); still shots carry neither
+      const film = !input;
+      const shutterCentre = t0 + 0.5 * shutter * frameDt;
       // shutter 0 (every still) evaluates t0 for every sub-sample, exactly as before S5
       engine.renderAccumulated(
         (i, n) => {
           const s = timeline.evaluate(shutter > 0 ? t0 + shutterFraction(i, n) * shutter * frameDt : t0);
-          return dither ? { ...s, lodDither: lodDitherPhase(i, n) } : s;
+          return film ? { ...s, shutterCentre, ...(n > 1 ? { lodDither: lodDitherPhase(i, n) } : {}) } : s;
         },
         spp,
         Math.max(1, req.lensSpp ?? spp),
