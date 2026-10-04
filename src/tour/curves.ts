@@ -120,34 +120,67 @@ export function pchip(xs: readonly number[], ys: readonly number[]): Pchip {
 
 /**
  * A monotone cubic Hermite through (xs, ys) with prescribed knot slopes (null → the Fritsch–Carlson estimate),
- * limited interval by interval as Fritsch–Carlson does (α, β ≥ 0, α² + β² ≤ 9), so monotone data stays
- * monotone. An interval whose two slopes equal its secant is exactly linear (the film's holds).
+ * so monotone data stays monotone. Prescribed slopes are KEPT: the Fritsch–Carlson limiter (α = m0/d,
+ * β = m1/d ≥ 0, α² + β² ≤ 9) only rescales free slopes, and an interval whose prescribed slopes still lie
+ * outside that circle (a secant far below its neighbours' rates) gets two interior knots instead: it leaves
+ * its start at m0 over a short run (secant m0/2), rises across the middle with zero end slopes and arrives at
+ * m1 (secant m1/2) — every piece monotone, C1 throughout. So an interval whose two slopes equal its secant
+ * stays exactly linear (the film's holds) whatever its neighbours do. Only a slope that no monotone interval
+ * can meet — against its secant's sign, or non-zero beside a flat interval — is zeroed; its knot is listed
+ * in `bent` (prescribed knots only).
  */
-export function monotoneHermite(xs: readonly number[], ys: readonly number[], slopes: readonly (number | null)[]): Pchip {
-  const p = pchip(xs, ys);
-  const ms = p.ms;
-  for (let i = 0; i < ms.length; i++) if (slopes[i] !== null && slopes[i] !== undefined) ms[i] = slopes[i]!;
-  for (let i = 0; i + 1 < ms.length; i++) {
-    const d = (ys[i + 1] - ys[i]) / (xs[i + 1] - xs[i]);
-    if (d === 0) {
-      ms[i] = 0;
-      ms[i + 1] = 0;
-      continue;
-    }
-    let a = ms[i] / d;
-    let b = ms[i + 1] / d;
-    if (a < 0) a = 0;
-    if (b < 0) b = 0;
-    const r = a * a + b * b;
-    if (r > 9) {
-      const tau = 3 / Math.sqrt(r);
-      a *= tau;
-      b *= tau;
-    }
-    ms[i] = a * d;
-    ms[i + 1] = b * d;
+export function monotoneHermite(xs: readonly number[], ys: readonly number[], slopes: readonly (number | null)[]): Pchip & { bent: number[] } {
+  const n = xs.length;
+  const ms = Array.from(pchip(xs, ys).ms);
+  const fixed = xs.map((_, i) => slopes[i] !== null && slopes[i] !== undefined);
+  for (let i = 0; i < n; i++) if (fixed[i]) ms[i] = slopes[i]!;
+  const sec = (i: number) => (ys[i + 1] - ys[i]) / (xs[i + 1] - xs[i]);
+  // 1 · slopes no monotone interval can meet
+  const bent = new Set<number>();
+  for (let i = 0; i + 1 < n; i++) {
+    const d = sec(i);
+    for (const j of [i, i + 1])
+      if (ms[j] !== 0 && (d === 0 || Math.sign(ms[j]) !== Math.sign(d))) {
+        if (fixed[j]) bent.add(j);
+        ms[j] = 0;
+      }
   }
-  return p;
+  // 2 · Fritsch–Carlson on the free slopes (a prescribed one stays)
+  for (let i = 0; i + 1 < n; i++) {
+    const d = sec(i);
+    if (d === 0) continue;
+    const a = ms[i] / d;
+    const b = ms[i + 1] / d;
+    if (a * a + b * b <= 9) continue;
+    if (!fixed[i] && !fixed[i + 1]) {
+      const tau = 3 / Math.sqrt(a * a + b * b);
+      ms[i] = tau * a * d;
+      ms[i + 1] = tau * b * d;
+    } else if (!fixed[i]) ms[i] = Math.sqrt(Math.max(0, 9 - b * b)) * d;
+    else if (!fixed[i + 1]) ms[i + 1] = Math.sqrt(Math.max(0, 9 - a * a)) * d;
+  }
+  // 3 · intervals still outside the circle (prescribed slopes): two interior knots with zero slope
+  const X: number[] = [];
+  const Y: number[] = [];
+  const M: number[] = [];
+  for (let i = 0; i < n; i++) {
+    X.push(xs[i]);
+    Y.push(ys[i]);
+    M.push(ms[i]);
+    if (i + 1 >= n) break;
+    const d = sec(i);
+    if (d === 0) continue;
+    const a = ms[i] / d;
+    const b = ms[i + 1] / d;
+    if (a * a + b * b <= 9 + 1e-9) continue;
+    const h = xs[i + 1] - xs[i];
+    // the runs at the ends: ≤ h/4 each, and short enough that the middle keeps ≥ half the rise
+    const ha = Math.min(h / 4, (d * h) / (ms[i] + ms[i + 1]));
+    X.push(xs[i] + ha, xs[i + 1] - ha);
+    Y.push(ys[i] + (ms[i] * ha) / 2, ys[i + 1] - (ms[i + 1] * ha) / 2);
+    M.push(0, 0);
+  }
+  return { xs: Float64Array.from(X), ys: Float64Array.from(Y), ms: Float64Array.from(M), bent: [...bent].sort((a, b) => a - b) };
 }
 
 /** Evaluate a PCHIP track (held constant outside the knots). */

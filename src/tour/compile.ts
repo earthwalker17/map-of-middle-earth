@@ -6,9 +6,10 @@
  *  - captions.ts compiles the captions (anchors from the landmark build when `built` is given, side chosen
  *    from the anchor's projection);
  *  - slow channels are evaluated at the frame's own time t_q = ⌊t·fps⌋/fps (one value per frame, so the sky
- *    LUT is not rebuilt per motion-blur sub-sample): tod (a monotone Fritsch–Carlson cubic through the holds'
- *    start / end keys, linear inside each hold), events, look (ids switch only at weight 0), lens (aperture
- *    eased across moves), captions, route glow, weather. Camera, tFx and the route head use the exact t.
+ *    LUT is not rebuilt per motion-blur sub-sample): tod (a monotone cubic through the holds' start / end
+ *    keys with the holds' rates as knot slopes, exactly linear inside each hold), events, look (ids switch
+ *    only at weight 0), lens (aperture eased across moves), captions, route glow, weather. Camera, tFx and
+ *    the route head use the exact t.
  * Pure: no three.js render objects, no DOM — Node and the page compile identical films (same hash).
  */
 import type { ShotSpecInput } from '../camera/shots.ts';
@@ -86,9 +87,11 @@ export function compileFilm(inp: FilmInputs): FilmProgram {
     weathers.set(i, { ...tl.film.weather, ...h.weather, wind: [...(h.weather?.wind ?? tl.film.weather.wind)] as [number, number] });
   }
 
-  // ---- time of day: a monotone cubic (Fritsch–Carlson) through every hold's start and end keys whose knot
-  // slopes are the holds' own rates: a hold drifts linearly (the light steady while its text is read), a
-  // move eases from one hold's rate to the next one's (C1, no kinks at the hold boundaries)
+  // ---- time of day: a monotone cubic through every hold's start and end keys whose knot slopes are the
+  // holds' own rates (kept: a move too short in hours for them gets interior knots, see monotoneHermite): a
+  // hold drifts linearly (the light steady while its text is read), a move eases from one hold's rate to the
+  // next one's (C1, no kinks at the hold boundaries). Only a move with no tod change between two moving holds
+  // bends their ends (the film check flags any hold whose tod is not linear).
   const todX: number[] = [];
   const todY: number[] = [];
   const todM: number[] = [];

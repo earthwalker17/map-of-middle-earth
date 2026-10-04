@@ -9,14 +9,21 @@
  *    page compiles with data/qa/shots.json only), places (places.json), caption landmarks, head marks (the
  *    route's marks), look ids (looks.json); event channels ∈ EVENT_SLOT; tod non-decreasing; total length
  *    within film.lengthS (when no move is `auto`; else on the compiled film)
- * On the baked world (checkBakedWorld) — the compiled film:
- *  - errors: the compile throws (unknown rivers / lakes, …); compiling twice gives another hash; the compiled
- *    length leaves film.lengthS; a look id switches while its weight is not 0; data/tour/shotlist.json out of
- *    sync (film.seconds, segments = the beats in order, their seconds)
+ * On the baked world (checkBakedWorld) — the compiled film, both as the check intends it (with the Node
+ * landmark build: caption anchors at 0.6 × the built height) and as the page compiles it today (src/app/boot.ts
+ * passes no `built`: anchors at ground + 0.5 km); the hashes are printed, the label gates run on both:
+ *  - errors: the compile throws (unknown rivers / lakes, …); compiling twice (the second time with a fresh
+ *    water field) gives another hash; the compiled length leaves film.lengthS; a look id switches while its
+ *    weight is not 0; data/tour/shotlist.json out of sync (film.seconds, segments = the beats in order, their
+ *    seconds); a hero hold whose OWN framing needs the clearance lift (the rig's raw need > 0 inside it: the
+ *    framing is wrong, not the rig)
+ *  - the route: self-crossings, kinks, the drape's float above the surface under the line (> 0.3 km), height
+ *    steps > 1 km classified as cliffs under the line or drape lifts
  *  - sampled (24 Hz; 8 Hz for the heavier ones) — warnings while the timeline is `draft`, errors once it is
  *    `locked` (picture lock):
- *     · clearance: the camera ≥ 0.03 km above the water-aware surface (5 taps); no clearance lift inside a
- *       hero hold (the framing is wrong, not the rig)
+ *     · clearance: the camera ≥ 0.03 km above the water-aware surface (5 taps); clearance lift (> 1 m)
+ *       bleeding into a hero hold from a neighbouring move (that move or its other hold's framing dips)
+ *     · tod exactly linear inside every hold (the keys' rates; > 1e-6 h off = a bent hold)
  *     · perceived speed V = hypot(|dT_xz| / w, |d ln w|) (frame widths / s): ≤ 0.15 in holds; moves warn
  *       above 1.6 (an error above 2.6 when locked)
  *     · view rotation ≤ 2 °/s in holds, ≤ 30 °/s in moves; jerk spikes (|d³P/dt³| / w far above the beat's
@@ -30,10 +37,12 @@
  *       board)
  *     · under a covering ash deck the camera stays 6 km below it (crossDeck moves and overviews exempt)
  *     · tod rate ≤ 0.03 h/s in holds, ≤ 0.25 h/s in moves
- *     · light per hold: share of 49 ground points within 3 km of the subject that see the key light (sun
- *       above −4°, else the moon; raycast) — < 40 % warns unless `light: 'shade' | 'silhouette'` (skipped
- *       under the ash deck); backlight: the sun within 20° of the view direction warns unless `silhouette`
- *     · landmark LOD (LandmarkSystem.selectLod at 1080 px with the film's lodBias) changing inside a hold
+ *     · light per hold: share of 49 ground points within 3 km of the subject (the hold's label landmark,
+ *       else its bookmark's, else its place) that see the key light (sun above −4°, else the moon; raycast) —
+ *       < 40 % warns unless `light: 'shade' | 'silhouette'` (skipped under the ash deck); backlight: the sun
+ *       within 20° of the view direction warns unless `silhouette`
+ *     · landmark LOD (LandmarkSystem.selectLod at 1080 px with the film's lodBias and the landmark's real
+ *       level count) changing inside a hold
  *  - a per-beat table (CLI --table): t0, dur, path length S, peak V, peak rotation, max D, min clearance,
  *    tod, lit %, findings
  */
@@ -42,10 +51,11 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { ShotSpecInput } from '../../src/camera/shots.ts';
 import type { CameraState } from '../../src/core/types.ts';
+import type { BuiltLandmark } from '../../src/landmarks/records.ts';
 import type { LandmarkDefinition } from '../../src/landmarks/types.ts';
 import type { World } from '../../src/world/World.ts';
 import type { FilmProgram } from '../../src/tour/compile.ts';
-import type { BeatJson, CaptionJson, HoldJson, MoveJson, RouteJson, TimelineJson } from '../../src/tour/schema.ts';
+import type { BeatJson, CaptionDef, CaptionJson, HoldJson, MoveJson, RouteJson, TimelineJson } from '../../src/tour/schema.ts';
 import type { CheckResult } from './world.ts';
 import { loadShots } from '../capture/shotList.ts';
 import { bakedDir, hasBake, loadLandmarks, loadWorld, ROOT } from './baked.ts';
@@ -87,12 +97,17 @@ export const FILM_LIMITS = {
   holdTodRate: 0.03,
   moveTodRate: 0.25,
   minClearKm: 0.03,
+  /** clearance lift / raw need inside a hero hold above this counts (km; the filters' numeric floor) */
+  heroLiftKm: 1e-3,
+  /** tod inside a hold this far from the linear keys = a bent hold (hours) */
+  todLinearH: 1e-6,
   litShare: 0.4,
   backlightDeg: 20,
   deckTolKm: 0.05,
 };
 
 const fmt = (v: number, d = 1) => (Number.isFinite(v) ? v.toFixed(d) : '—');
+const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
 // ───────────────────────────── structural ─────────────────────────────
 
@@ -339,11 +354,13 @@ export async function checkFilm(world: World, landmarks: LandmarkDefinition[], o
   const route = readJson<RouteJson>('data/tour/route.json');
   const shots = readJson<{ shots: ShotSpecInput[] }>('data/qa/shots.json').shots;
   const { compileFilm } = (await import(mod('src/tour/compile.ts'))) as typeof import('../../src/tour/compile.ts');
-  const { routeAt, routeReport } = (await import(mod('src/tour/route.ts'))) as typeof import('../../src/tour/route.ts');
+  const { forgetWaterField, routeAt, routeReport, FLOAT_WARN_KM } = (await import(mod('src/tour/route.ts'))) as typeof import('../../src/tour/route.ts');
   const { projectToNdc, captionReveal } = (await import(mod('src/tour/captions.ts'))) as typeof import('../../src/tour/captions.ts');
   const { CLEAR, DECK_BELOW_KM, DECK_COVER } = (await import(mod('src/tour/rig.ts'))) as typeof import('../../src/tour/rig.ts');
   const { createProbeContext, probeCamera } = await import('./probe.ts');
   const { LandmarkSystem } = (await import(mod('src/landmarks/LandmarkSystem.ts'))) as typeof import('../../src/landmarks/LandmarkSystem.ts');
+  const { buildLandmarks } = (await import(mod('src/landmarks/build.ts'))) as typeof import('../../src/landmarks/build.ts');
+  const { MODEL_LODS } = (await import(mod('src/landmarks/model.ts'))) as typeof import('../../src/landmarks/model.ts');
   const TOD = (await import(mod('src/environment/timeOfDay.ts'))) as typeof import('../../src/environment/timeOfDay.ts');
   const { Vector3 } = await import('three/webgpu');
 
@@ -358,21 +375,30 @@ export async function checkFilm(world: World, landmarks: LandmarkDefinition[], o
   lap('probe context');
   const built = opts.built === false ? undefined : ctx.built;
 
-  // ---- compile twice: same hash
+  // ---- compile twice (the second time with a fresh water field): same hash — with the landmark build (the
+  // check's film) and without it (what src/app/boot.ts compiles today: no `built`, anchors at ground + 0.5 km)
   let program: FilmProgram;
+  let pageFilm: FilmProgram['film'];
   let ms: number;
   try {
     const c0 = performance.now();
     program = compileFilm({ world, landmarks, shots, route, timeline: tl, built });
     ms = performance.now() - c0;
+    forgetWaterField(world);
     const again = compileFilm({ world, landmarks, shots, route, timeline: tl, built });
     if (again.film.hash !== program.film.hash) E(`compiling twice gives different hashes (${program.film.hash} vs ${again.film.hash})`);
+    pageFilm = program.film;
+    if (built) {
+      pageFilm = compileFilm({ world, landmarks, shots, route, timeline: tl }).film;
+      const pageAgain = compileFilm({ world, landmarks, shots, route, timeline: tl }).film;
+      if (pageAgain.hash !== pageFilm.hash) E(`compiling twice without the landmark build gives different hashes (${pageFilm.hash} vs ${pageAgain.hash})`);
+    }
   } catch (e) {
     E(`the film does not compile: ${(e as Error).message}`);
     return out;
   }
   out.program = program;
-  lap('compile ×2');
+  lap('compile ×4');
   const { film, rig } = program;
   const beats = tl.beats;
   const isHold = (b: BeatJson): b is HoldJson => 'hold' in b;
@@ -380,16 +406,28 @@ export async function checkFilm(world: World, landmarks: LandmarkDefinition[], o
   if (film.duration < tl.film.lengthS[0] || film.duration > tl.film.lengthS[1]) E(`the compiled film runs ${fmt(film.duration)} s, outside film.lengthS [${tl.film.lengthS.join(', ')}]`);
 
   // ---- the route
-  const rr = routeReport(film.route);
   const R = film.route;
-  out.info.push(`film: route ${fmt(R.length)} km, ${R.count} samples, ${R.legs.length} legs; ${rr.crossings.length} self-crossings, ${rr.kinks.length} kinks > 120°, ${rr.jumps.length} height steps > 1 km (largest ${fmt(rr.maxStep, 2)} km${rr.jumps.length ? `: ${[...new Set(rr.jumps.map((j) => j.leg))].join(', ')} — cliffs` : ''})`);
+  const rr = routeReport(R, { surface: rig.water.surface, liftKm: route.defaults.liftKm });
+  const jumpLegs = (cliff: boolean) => [...new Set(rr.jumps.filter((j) => !!j.cliff === cliff).map((j) => j.leg))].join(', ');
+  const nCliff = rr.jumps.filter((j) => j.cliff).length;
+  const fl = rr.float!;
+  out.info.push(
+    `film: route ${fmt(R.length)} km, ${R.count} samples, ${R.legs.length} legs, hash ${R.hash}; ${rr.crossings.length} self-crossings, ${rr.kinks.length} kinks > 120°; float above the surface under the line max ${fmt(fl.max, 3)} km (${fl.leg}, s ${fmt(fl.s)}), ${fl.over} samples > ${FLOAT_WARN_KM} km; ${rr.jumps.length} height steps > 1 km (largest ${fmt(rr.maxStep, 2)} km${nCliff ? `; ${nCliff} cliffs under the line: ${jumpLegs(true)}` : ''}${rr.jumps.length - nCliff ? `; ${rr.jumps.length - nCliff} drape lifts: ${jumpLegs(false)}` : ''})`,
+  );
+  const routeFinding = (msg: string) => (locked ? out.errors : out.warnings).push(`film: ${msg}`);
+  if (fl.over)
+    routeFinding(
+      `the route line floats > ${FLOAT_WARN_KM} km above the ground under it at ${fl.over} samples (max ${fmt(fl.max, 2)} km at s ${fmt(fl.s)}; ${Object.entries(fl.overByLeg)
+        .map(([l, c]) => `${l} ${c}`)
+        .join(', ')})`,
+    );
   const sampledFinding = (i: number, msg: string, hard = false) => {
     stats[i].findings.push(msg);
     (locked || hard ? out.errors : out.warnings).push(`film: ${beatId(i)}: ${msg}`);
   };
   const stats: BeatStats[] = beats.map(() => ({ S: NaN, peakV: 0, peakRot: 0, maxD: 0, minClear: Infinity, lit: null, key: '', findings: [] }));
-  for (const c of rr.crossings) out.warnings.push(`film: the route crosses itself at s ${fmt(c[0])} / ${fmt(c[1])} km`);
-  for (const k of rr.kinks) out.warnings.push(`film: the route kinks ${fmt(k.deg, 0)}° at s ${fmt(k.s)} km (${k.leg})`);
+  for (const c of rr.crossings) routeFinding(`the route crosses itself at s ${fmt(c[0])} / ${fmt(c[1])} km`);
+  for (const k of rr.kinks) routeFinding(`the route kinks ${fmt(k.deg, 0)}° at s ${fmt(k.s)} km (${k.leg})`);
 
   // ---- 24 Hz samples of the rig
   const HZ = 24;
@@ -411,7 +449,7 @@ export async function checkFilm(world: World, landmarks: LandmarkDefinition[], o
   // speed, rotation, distance, clearance, deck, tod rate
   const V = new Float64Array(K + 1);
   const J = new Float64Array(K + 1);
-  const counts = beats.map(() => ({ vHold: 0, vWarn: 0, vErr: 0, rot: 0, clear: 0, dcHero: 0, dcMax: 0, deck: 0, deckMax: 0, tod: 0, todMax: 0 }));
+  const counts = beats.map(() => ({ vHold: 0, vWarn: 0, vErr: 0, rot: 0, clear: 0, dcHero: 0, dcMax: 0, dcAt: 0, deck: 0, deckMax: 0, tod: 0, todMax: 0, todDev: 0 }));
   for (let k = 0; k <= K; k++) {
     const i = beatOf[k];
     const p = poses[k];
@@ -425,9 +463,12 @@ export async function checkFilm(world: World, landmarks: LandmarkDefinition[], o
     const clear = P[1] - top;
     st.minClear = Math.min(st.minClear, clear);
     if (clear < FILM_LIMITS.minClearKm) c.clear++;
-    if (style(i) === 'hero' && p.dC > 0.005) {
+    if (style(i) === 'hero' && p.dC > FILM_LIMITS.heroLiftKm) {
       c.dcHero++;
-      c.dcMax = Math.max(c.dcMax, p.dC);
+      if (p.dC > c.dcMax) {
+        c.dcMax = p.dC;
+        c.dcAt = k * h;
+      }
     }
     // the deck
     if (!rig.deckExempt(i)) {
@@ -462,6 +503,13 @@ export async function checkFilm(world: World, landmarks: LandmarkDefinition[], o
       let j2 = 0;
       for (let a = 0; a < 3; a++) j2 += (q[3][a] - 3 * q[2][a] + 3 * q[1][a] - q[0][a]) ** 2;
       J[k] = Math.sqrt(j2) / h ** 3 / p.w;
+    }
+    // tod exactly linear inside a hold (at the frame time the slow channels use)
+    if (isHold(beats[i])) {
+      const hj = beats[i] as HoldJson;
+      const tq = Math.min(film.duration, Math.floor(k * h * film.fps + 1e-6) / film.fps);
+      const u = clamp01((tq - rig.t0s[i]) / rig.durs[i]);
+      c.todDev = Math.max(c.todDev, Math.abs(states[k].tod - (hj.tod[0] + (hj.tod[1] - hj.tod[0]) * u)));
     }
     if (k < K) {
       const rate = Math.abs(states[k + 1].tod - states[k].tod) * HZ;
@@ -499,7 +547,18 @@ export async function checkFilm(world: World, landmarks: LandmarkDefinition[], o
     }
     if (c.rot) sampledFinding(i, `view rotation ${fmt(stats[i].peakRot, 1)} > ${hold ? FILM_LIMITS.holdRotDeg : FILM_LIMITS.moveRotDeg} °/s (${c.rot} samples)`);
     if (c.clear) sampledFinding(i, `camera within ${FILM_LIMITS.minClearKm} km of the ground / water (${c.clear} samples, min ${fmt(stats[i].minClear, 3)} km)`);
-    if (c.dcHero) sampledFinding(i, `clearance lift ${fmt(c.dcMax, 2)} km inside a hero hold (${c.dcHero} samples) — the framing or the next move dips under the ground`);
+    if (style(i) === 'hero') {
+      // the hold's own framing (the rig's raw need inside it) vs lift bleeding in from a neighbouring move
+      const tr = rig.tracks.need;
+      let need = 0;
+      for (let j = Math.ceil(rig.t0s[i] * tr.hz); j <= Math.floor((rig.t0s[i] + rig.durs[i]) * tr.hz) && j < tr.v.length; j++) need = Math.max(need, tr.v[j]);
+      if (need > FILM_LIMITS.heroLiftKm) E(`${beatId(i)}: the hero hold's own framing needs a clearance lift of ${fmt(need, 2)} km (the camera dips under the ground + margin) — the framing is wrong, not the rig`);
+      else if (c.dcHero) {
+        const from = c.dcAt > rig.t0s[i] + rig.durs[i] / 2 ? beatId(i + 1) : beatId(i - 1);
+        sampledFinding(i, `clearance lift ${fmt(c.dcMax, 2)} km bleeds into the hero hold from ${from} (${c.dcHero} samples; the hold's own framing clears) — re-aim the far hold or reshape the move`);
+      }
+    }
+    if (c.todDev > FILM_LIMITS.todLinearH) sampledFinding(i, `tod not linear inside the hold (${fmt(c.todDev * 3600, 1)} s of clock off the keys' line) — the neighbouring move keeps no tod change`);
     if (c.deck) sampledFinding(i, `camera up to ${fmt(c.deckMax, 2)} km above the ash deck − ${DECK_BELOW_KM} km (${c.deck} samples)`);
     if (c.tod) sampledFinding(i, `tod rate ${fmt(c.todMax, 3)} h/s > ${hold ? FILM_LIMITS.holdTodRate : FILM_LIMITS.moveTodRate} (${c.tod} samples)`);
   });
@@ -524,38 +583,70 @@ export async function checkFilm(world: World, landmarks: LandmarkDefinition[], o
     for (let s = 0.02; s < 0.985; s += 0.005) worst = Math.max(worst, ctx.H(a[0] + (b[0] - a[0]) * s, a[2] + (b[2] - a[2]) * s) - (a[1] + (b[1] - a[1]) * s));
     return worst;
   };
-  for (const c of film.captions) {
-    if (!c.anchor) continue;
-    let n = 0;
-    let bad = 0;
-    let blocked = 0;
-    let worst = '';
-    for (let k = Math.ceil(c.t0 * HZ); k <= Math.floor(c.t1 * HZ) && k <= K; k += 3) {
-      if (captionReveal(c, k * h) < 0.05) continue;
-      n++;
-      const cam = camOf(k);
-      const [x, y, d] = projectToNdc(cam, c.anchor, ASPECT);
-      if (!(d > 0 && Math.abs(x) <= FILM_LIMITS.safeX && y >= FILM_LIMITS.safeY[0] && y <= FILM_LIMITS.safeY[1])) {
-        bad++;
-        worst = `(${fmt(x, 2)}, ${fmt(y, 2)})`;
-      } else if (occluded(cam.position, c.anchor) > 0) blocked++;
+  // label anchors: on the check's film and on the page's (today without the build); a finding both share is
+  // reported once, the others say which compile they belong to
+  const anchorFindings = (caps: CaptionDef[]): Map<string, { beat: number; msgs: string[] }> => {
+    const res = new Map<string, { beat: number; msgs: string[] }>();
+    for (const c of caps) {
+      if (!c.anchor) continue;
+      let n = 0;
+      let bad = 0;
+      let blocked = 0;
+      let worst = '';
+      for (let k = Math.ceil(c.t0 * HZ); k <= Math.floor(c.t1 * HZ) && k <= K; k += 3) {
+        if (captionReveal(c, k * h) < 0.05) continue;
+        n++;
+        const cam = camOf(k);
+        const [x, y, d] = projectToNdc(cam, c.anchor, ASPECT);
+        if (!(d > 0 && Math.abs(x) <= FILM_LIMITS.safeX && y >= FILM_LIMITS.safeY[0] && y <= FILM_LIMITS.safeY[1])) {
+          bad++;
+          worst = `(${fmt(x, 2)}, ${fmt(y, 2)})`;
+        } else if (occluded(cam.position, c.anchor) > 0) blocked++;
+      }
+      const msgs: string[] = [];
+      if (bad) msgs.push(`label anchor of ${c.id} outside the safe zone in ${bad}/${n} samples (e.g. NDC ${worst})`);
+      if (blocked) msgs.push(`label anchor of ${c.id} hidden behind terrain in ${blocked}/${n} samples`);
+      res.set(c.id, { beat: beats.findIndex((b) => (isHold(b) ? b.hold : (b as MoveJson).move) === c.id.split(':')[0]), msgs });
     }
-    const i = beats.findIndex((b) => (isHold(b) ? b.hold : (b as MoveJson).move) === c.id.split(':')[0]);
-    if (bad) sampledFinding(i, `label anchor of ${c.id} outside the safe zone in ${bad}/${n} samples (e.g. NDC ${worst})`);
-    if (blocked) sampledFinding(i, `label anchor of ${c.id} hidden behind terrain in ${blocked}/${n} samples`);
+    return res;
+  };
+  const checkAnchors = anchorFindings(film.captions);
+  const pageAnchors = pageFilm.hash === film.hash ? checkAnchors : anchorFindings(pageFilm.captions);
+  for (const id of new Set([...checkAnchors.keys(), ...pageAnchors.keys()])) {
+    const a = checkAnchors.get(id);
+    const b = pageAnchors.get(id);
+    const beat = (a ?? b)!.beat;
+    for (const m of a?.msgs ?? []) sampledFinding(beat, b?.msgs.includes(m) ? m : `${m} [with the landmark build]`);
+    for (const m of b?.msgs ?? []) if (!a?.msgs.includes(m)) sampledFinding(beat, `${m} [the page today: no build, anchor at ground + 0.5 km]`);
   }
   const lodBias = tl.film.lodBias ?? 1;
+  // the landmark's real LOD count (the page passes levels.length to selectLod): the Node build keeps no
+  // geometry (lods: []), so a landmark that switches under the 3-level assumption is rebuilt with geometry
+  // (lazily — usually never) and a GLB landmark has at least MODEL_LODS levels
+  const lodLevels = new Map<string, number>();
+  const levelsOf = async (b: BuiltLandmark): Promise<number> => {
+    const known = lodLevels.get(b.id);
+    if (known !== undefined) return known;
+    const [full] = await buildLandmarks(world, [b.def], { ao: false });
+    const n = Math.max(full.lods.length, b.def.model ? MODEL_LODS : 0);
+    for (const lod of full.lods) for (const g of lod.values()) g.dispose();
+    lodLevels.set(b.id, n);
+    return n;
+  };
   for (const key of rig.keys) {
     const changed: string[] = [];
     for (const b of ctx.built) {
-      const seen = new Set<number>();
+      const seen: number[] = [];
       for (let k = Math.ceil(key.t0 * HZ); k <= Math.floor(key.t1 * HZ) && k <= K; k += 3) {
         const cam = camOf(k);
         const [x, y, d] = projectToNdc(cam, b.bounds.center, ASPECT);
         if (!(d > 0 && Math.abs(x) <= 1.2 && Math.abs(y) <= 1.2)) continue;
-        seen.add(LandmarkSystem.selectLod(b, { x: cam.position[0], y: cam.position[1], z: cam.position[2] }, cam.fov, 1080, 3, lodBias));
+        seen.push(LandmarkSystem.selectLod(b, { x: cam.position[0], y: cam.position[1], z: cam.position[2] }, cam.fov, 1080, 3, lodBias));
       }
-      if (seen.size > 1) changed.push(`${b.id} ${[...seen].sort().join('/')}`);
+      if (new Set(seen).size < 2) continue;
+      const top = (await levelsOf(b)) - 1;
+      const real = new Set(seen.map((L) => Math.min(L, top)));
+      if (real.size > 1) changed.push(`${b.id} ${[...real].sort().join('/')}`);
     }
     if (changed.length) sampledFinding(key.beat, `landmark LOD switches inside the hold: ${changed.join(', ')}`);
   }
@@ -596,10 +687,14 @@ export async function checkFilm(world: World, landmarks: LandmarkDefinition[], o
   const disk = vogel(49, 3);
   const o = new Vector3();
   const dir = new Vector3();
+  const lmById = new Map(landmarks.map((d) => [d.id, d]));
   for (const key of rig.keys) {
     const hj = beats[key.beat] as HoldJson;
-    if (!hj.place) continue;
-    const p = world.place(hj.place);
+    // the subject's ground, as the probe's subject: the label's landmark, else the bookmark's, else the place
+    const subject = hj.captions?.find((c) => c.landmark)?.landmark ?? key.landmark;
+    const placeId = (subject ? lmById.get(subject)?.placeId : undefined) ?? hj.place;
+    if (!placeId) continue;
+    const p = world.place(placeId);
     const k = Math.round(key.tMid * HZ);
     const tod = states[k].tod;
     const sun = TOD.sunDirection(tod, tl.film.dayOfYear, new Vector3());
@@ -643,16 +738,16 @@ export async function checkFilm(world: World, landmarks: LandmarkDefinition[], o
 
   // ---- summary + table
   const nFind = stats.reduce((a, s) => a + s.findings.length, 0);
-  out.info.push(`film: ${beats.length} beats, ${fmt(film.duration, 2)} s (${tl.status}), hash ${film.hash} (compiled twice, identical), compile ${fmt(ms, 0)} ms; ${rig.moves.filter((m) => m.auto).length} auto moves; ${film.captions.length} captions; ${nFind} sampled finding(s) (${locked ? 'errors' : 'warnings while draft'}); check ${phase.map(([n, v]) => `${n} ${fmt(v / 1000, 1)} s`).join(', ')}`);
+  out.info.push(`film: ${beats.length} beats, ${fmt(film.duration, 2)} s (${tl.status}), hash ${film.hash}${built ? ' with the landmark build' : ''} (compiled twice, the second time with a fresh water field: identical)${pageFilm.hash !== film.hash ? `, ${pageFilm.hash} without it — what src/app/boot.ts compiles today (twice: identical)` : ''}, compile ${fmt(ms, 0)} ms; ${rig.moves.filter((m) => m.auto).length} auto moves; ${film.captions.length} captions; ${nFind} sampled finding(s) (${locked ? 'errors' : 'warnings while draft'}); check ${phase.map(([n, v]) => `${n} ${fmt(v / 1000, 1)} s`).join(', ')}`);
   if (opts.table) {
     const pad = (s: string, n: number) => s.padEnd(n);
     const lp = (s: string, n: number) => s.padStart(n);
-    out.table.push(`${pad('beat', 18)}${pad('kind', 6)}${lp('t0', 7)}${lp('dur', 6)}${lp('S', 6)}${lp('peakV', 7)}${lp('rot°/s', 8)}${lp('maxD', 7)}${lp('minClr', 8)}  ${pad('tod', 12)}${lp('lit', 5)} ${pad('key', 11)}findings`);
+    out.table.push(`${pad('beat', 18)}${pad('kind', 6)}${lp('t0', 7)}${lp('dur', 6)}${lp('S', 6)}${lp('peakV', 7)}${lp('rot°/s', 8)}${lp('maxD', 7)}${lp('minClr', 8)}  ${pad('tod', 12)}${lp('lit', 5)} ${pad('key', 12)}findings`);
     beats.forEach((b, i) => {
       const s = stats[i];
       const tod = isHold(b) ? `${fmt(b.tod[0], 2)}→${fmt(b.tod[1], 2)}` : `${fmt(states[Math.min(K, Math.round(rig.t0s[i] * HZ))].tod, 2)}→${fmt(states[Math.min(K, Math.round((rig.t0s[i] + rig.durs[i]) * HZ))].tod, 2)}`;
       out.table.push(
-        `${pad(beatId(i), 18)}${pad(isHold(b) ? b.style : 'move', 6)}${lp(fmt(rig.t0s[i], 2), 7)}${lp(fmt(rig.durs[i], 2), 6)}${lp(Number.isNaN(s.S) ? '' : fmt(s.S, 2), 6)}${lp(fmt(s.peakV, 2), 7)}${lp(fmt(s.peakRot, 1), 8)}${lp(fmt(s.maxD, 0), 7)}${lp(fmt(s.minClear, 2), 8)}  ${pad(tod, 12)}${lp(s.lit === null ? '' : `${fmt(100 * s.lit, 0)}%`, 5)} ${pad(s.key, 11)}${s.findings.join('; ')}`,
+        `${pad(beatId(i), 18)}${pad(isHold(b) ? b.style : 'move', 6)}${lp(fmt(rig.t0s[i], 2), 7)}${lp(fmt(rig.durs[i], 2), 6)}${lp(Number.isNaN(s.S) ? '' : fmt(s.S, 2), 6)}${lp(fmt(s.peakV, 2), 7)}${lp(fmt(s.peakRot, 1), 8)}${lp(fmt(s.maxD, 0), 7)}${lp(fmt(s.minClear, 2), 8)}  ${pad(tod, 12)}${lp(s.lit === null ? '' : `${fmt(100 * s.lit, 0)}%`, 5)} ${pad(s.key, 12)}${s.findings.join('; ')}`,
       );
     });
   }

@@ -24,8 +24,10 @@
  *  - target height G: holds keep the key's ground; moves G = lerp(G_A, G_B, E) + W(x)·(Ḡ − lerp(Ḡ_A, Ḡ_B, E)),
  *    W = (4x(1 − x))², Ḡ = mean water-aware surface over a 13-tap disk of radius 0.05·D (baked, then smoothed
  *    with a Gaussian of σ 0.3 s: 13 taps alias the relief when a fast pan slides the disk a valley per frame);
- *  - deck cap: under an ash deck (looks.json `deck`: cover ≥ 0.5 → height − 6 km) and under a move's
- *    `maxAltKm` the camera comes down by shrinking D (ln-scale, ±0.6 s running min, Gaussian σ 0.3 s);
+ *  - deck cap: under an ash deck (looks.json `deck`: height − 6 km) and under a move's `maxAltKm` the camera
+ *    comes down by shrinking D (ln-scale, ±0.6 s running min, Gaussian σ 0.3 s). The EFFECT is weighted, not
+ *    the cap: the deck's ln k by the cover (0 at 0.2 → 1 at 0.5, smootherstep), maxAltKm's by a smootherstep
+ *    over the move's first / last 20 %, applied after the filter so it never leaks into the holds.
  *    `crossDeck` moves and overview holds are exempt (the final pull-out rises through the pall once);
  *  - clearance: need = max over 5 taps around the camera (radius 0.02·D + 0.2) of the surface + 0.12 + 0.015·D
  *    − P_y; Δc = Gaussian (σ 0.3 s) of the ±0.6 s running max of max(0, need); P_y += Δc.
@@ -37,7 +39,7 @@ import type { OrbitSpec, ShotSpecInput } from '../camera/shots.ts';
 import type { LandmarkDefinition } from '../landmarks/types.ts';
 import type { World } from '../world/World.ts';
 import { deckLook } from '../materials/looks.ts';
-import { clamp, gaussianSmooth, hermite5Blend, lerp, runningMax, smootherstep, smoothstep, trackAt, unwrapNear, zoomPanPath, SMOOTHERSTEP_PEAK, type Track, type ZoomPanPath } from './curves.ts';
+import { clamp, gaussianSmooth, hermite5Blend, lerp, runningMax, smootherstep, trackAt, unwrapNear, zoomPanPath, SMOOTHERSTEP_PEAK, type Track, type ZoomPanPath } from './curves.ts';
 import { projectToRail, railAt, type Rails } from './rail.ts';
 import { waterField, type WaterField } from './route.ts';
 import { isHold, type CameraRefJson, type CompiledRoute, type HoldJson, type HoldStyle, type MoveJson, type TimelineJson } from './schema.ts';
@@ -206,8 +208,12 @@ export interface CameraRig {
   t0s: number[];
   durs: number[];
   duration: number;
-  /** baked tracks (BAKE_HZ): the smoothed disk-mean ground Ḡ, ln of the deck-cap distance factor, clearance lift */
-  tracks: { gBar: Track; lnK: Track; dC: Track };
+  /**
+   * baked tracks (BAKE_HZ): the smoothed disk-mean ground Ḡ, ln of the deck-cap distance factor, clearance
+   * lift Δc, and the raw clearance need before the filters (> 0 inside a hold = that hold's own framing sits
+   * under the clearance margin; Δc > 0 with need 0 = lift bleeding in from a neighbouring move)
+   */
+  tracks: { gBar: Track; lnK: Track; dC: Track; need: Track };
   beatAt(t: number): number;
   pose(t: number): RigPose;
   camera(t: number): CameraState;
@@ -215,8 +221,8 @@ export interface CameraRig {
   head(t: number): number;
   /** a move's pan progress 0..1 at fraction x */
   panProgress(m: RigMove, x: number): number;
-  /** the deck cap height over (x, z) (NO_CAP-ish large where no deck), and the deck cover there */
-  deckAt(x: number, z: number): { cap: number; cover: number; height: number };
+  /** the ash deck over (x, z): its full-strength cap, the rule's weight there, the cover and the deck height */
+  deckAt(x: number, z: number): DeckAt;
   /** is beat i exempt from the deck rule (overview holds, crossDeck moves) */
   deckExempt(i: number): boolean;
   water: WaterField;
@@ -230,6 +236,16 @@ export interface RigInputs extends CameraRefSources {
 }
 
 const isOverview = (style: HoldStyle) => style === 'open' || style === 'end';
+
+/** The ash deck over a point (CameraRig.deckAt). */
+export interface DeckAt {
+  /** the cap at full strength: deck height − DECK_BELOW_KM (NO_CAP where the cover is ≤ DECK_COVER[0]) */
+  cap: number;
+  /** the rule's weight: 0 at cover DECK_COVER[0] → 1 at DECK_COVER[1] (smootherstep); it scales ln k, not the cap */
+  on: number;
+  cover: number;
+  height: number;
+}
 
 /** A drift channel across a move: quintic Hermite from A's end (r_A·dur_A/2, r_A) to B's start (−r_B·dur_B/2, r_B). */
 function driftBlend(ra: number, rb: number, durA: number, durB: number, dur: number, x: number): number {
@@ -545,13 +561,12 @@ export function buildRig(inp: RigInputs): CameraRig {
     deckField.height.push(d.height);
   });
   const ds: [number, number] = [0, 0];
-  const deckAt = (x: number, z: number): { cap: number; cover: number; height: number } => {
-    if (!deckField.layers.length || !world.spec.inFrame(x, z)) return { cap: NO_CAP, cover: 0, height: 0 };
+  const deckAt = (x: number, z: number): DeckAt => {
+    if (!deckField.layers.length || !world.spec.inFrame(x, z)) return { cap: NO_CAP, on: 0, cover: 0, height: 0 };
     const [cover, hsum] = deckSample(world, deckField, x, z, ds);
-    if (cover <= DECK_COVER[0]) return { cap: NO_CAP, cover, height: 0 };
+    if (cover <= DECK_COVER[0]) return { cap: NO_CAP, on: 0, cover, height: 0 };
     const height = hsum / cover;
-    const on = smoothstep((cover - DECK_COVER[0]) / (DECK_COVER[1] - DECK_COVER[0]));
-    return { cap: height - DECK_BELOW_KM + (1 - on) * NO_CAP, cover, height };
+    return { cap: height - DECK_BELOW_KM, on: smootherstep((cover - DECK_COVER[0]) / (DECK_COVER[1] - DECK_COVER[0])), cover, height };
   };
   const deckExempt = (i: number): boolean => {
     const kIdx = keyOfBeat[i];
@@ -600,35 +615,52 @@ export function buildRig(inp: RigInputs): CameraRig {
     const hd = dist * Math.cos(el);
     return [b.tx + Math.sin(az) * hd, ty + dist * Math.sin(el), b.tz - Math.cos(az) * hd];
   };
-  const maxAltCap = (b: Base): number => {
+  /** the weight of a move's maxAltKm at its fraction x: 0 at both ends, smootherstep (C2) over the first / last 20 % */
+  const altWeight = (b: Base): number => {
     const mi = moveOfBeat[b.beat];
-    if (mi < 0) return NO_CAP;
-    const m = moves[mi];
-    if (m.maxAlt === null) return NO_CAP;
-    // the cap eases in over the move's first / last 20 % (the holds' own heights stay theirs)
-    const wgt = smoothstep(b.x / 0.2) * smoothstep((1 - b.x) / 0.2);
-    return m.maxAlt + (1 - wgt) * NO_CAP;
+    if (mi < 0 || moves[mi].maxAlt === null) return 0;
+    return smootherstep(b.x / 0.2) * smootherstep((1 - b.x) / 0.2);
   };
+  /** ln of the distance factor that brings the camera (target height ty, rise per km of D sy) down to `cap` */
+  const lnToCap = (b: Base, ty: number, sy: number, cap: number): number => {
+    if (!(cap < NO_CAP && cap > ty) || ty + b.dist * sy <= cap) return 0;
+    return Math.log(clamp((cap - ty) / (b.dist * sy), 0.02, 1));
+  };
+  // Each cap's EFFECT is blended (ln k scaled by its weight), never the cap height: a cap pushed up by
+  // (1 − w)·NO_CAP would bite only once w ≈ 1, i.e. switch on hard. Two raw tracks: the deck alone
+  // (cover-weighted, everywhere but the exempt beats) and min(deck, maxAltKm at full strength). Both are
+  // filtered (±0.6 s running min, Gaussian σ 0.3 s); the maxAltKm part is weighted AFTER the filter, so it is
+  // exactly zero outside its move (it never leaks into the holds): lnK = F_deck + w_alt·(F_both − F_deck).
+  const lnDeckRaw = new Float64Array(N);
+  const altW = new Float64Array(N);
   for (let j = 0; j < N; j++) {
     const b = bases[j];
     const ty = G[j] + b.lift;
-    let k = 1;
     const sy = dirY(b);
-    if (sy > 1e-3) {
-      // two passes: the deck under the shrunk camera may differ from the deck under the first one
+    altW[j] = altWeight(b);
+    if (sy <= 1e-3) continue;
+    const mi = moveOfBeat[b.beat];
+    const lnAlt = mi >= 0 && moves[mi].maxAlt !== null ? lnToCap(b, ty, sy, moves[mi].maxAlt!) : 0;
+    let lnDeck = 0;
+    if (!deckExempt(b.beat))
+      // two passes: the deck under the lowered camera may differ from the deck under the first one
       for (let pass = 0; pass < 2; pass++) {
-        const P = posOf(b, ty, b.dist * k);
-        const cap = Math.min(maxAltCap(b), deckExempt(b.beat) ? NO_CAP : deckAt(P[0], P[2]).cap);
-        if (P[1] > cap && cap > ty) k = Math.min(k, (cap - ty) / (b.dist * sy));
+        const P = posOf(b, ty, b.dist * Math.exp(Math.min(lnDeck, altW[j] * lnAlt)));
+        const d = deckAt(P[0], P[2]);
+        lnDeck = d.on * lnToCap(b, ty, sy, d.cap);
       }
-    }
-    lnKraw[j] = Math.log(clamp(k, 0.02, 1));
+    lnDeckRaw[j] = lnDeck;
+    lnKraw[j] = Math.min(lnDeck, lnAlt);
   }
   const smoothMin = (a: Float64Array) => {
+    if (!a.some((v) => v < 0)) return a;
     const neg = a.map((v) => -v);
     return gaussianSmooth(runningMax(neg, win), sig).map((v) => -v);
   };
-  const lnK = lnKraw.some((v) => v < 0) ? smoothMin(lnKraw) : lnKraw;
+  const fDeck = smoothMin(lnDeckRaw);
+  const fBoth = smoothMin(lnKraw);
+  const lnK = new Float64Array(N);
+  for (let j = 0; j < N; j++) lnK[j] = altW[j] > 0 ? fDeck[j] + altW[j] * (fBoth[j] - fDeck[j]) : fDeck[j];
   for (let j = 0; j < N; j++) {
     const b = bases[j];
     const dist = b.dist * Math.exp(lnK[j]);
@@ -639,7 +671,7 @@ export function buildRig(inp: RigInputs): CameraRig {
     need[j] = Math.max(0, top + CLEAR.base + CLEAR.perD * dist - P[1]);
   }
   const dC = need.some((v) => v > 0) ? gaussianSmooth(runningMax(need, win), sig) : need;
-  const tracks = { gBar, lnK: { hz: BAKE_HZ, v: lnK }, dC: { hz: BAKE_HZ, v: dC } };
+  const tracks = { gBar, lnK: { hz: BAKE_HZ, v: lnK }, dC: { hz: BAKE_HZ, v: dC }, need: { hz: BAKE_HZ, v: need } };
 
   // ---- evaluation
   const scratch = {} as Base;

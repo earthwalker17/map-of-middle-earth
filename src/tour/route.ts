@@ -6,10 +6,15 @@
  *  - boat legs on a river: the leg's ends are projected onto the river's SEGMENTS; the path runs start →
  *    projection → the river centreline → projection → end at the interpolated baked water level (`level[]`);
  *  - boat legs on a lake: the chord between the points at the lake level;
- *  - heights: foot / underground samples take the upper envelope of the water-aware surface (ground, sea at
- *    0, river ribbons at their level, lakes at theirs) over ±0.2 km across and ±half a sample along the line;
- *    boat samples ride max(water level, ground); everything + liftKm. The line never dips under water at a
- *    river crossing nor sinks into a steep bank.
+ *  - heights: foot / underground samples stand on the water-aware surface (ground, sea at 0, river ribbons at
+ *    their level, lakes at theirs) under their own centre, raised by a slope-limited across envelope: taps at
+ *    ±0.05 / ±0.1 / ±0.2 km count only where the bank rises faster than 1 km/km (H(o) − |o|), and the raise
+ *    is capped at 0.1 km — the exaggerated relief puts 1–2 km cliffs within 0.2 km of the path, and the line
+ *    must hug the ground under it, not float at the cliff top (the film's ribbon is screen-space wide and
+ *    pulled toward the camera, so its edges need no geometric margin). Boat samples ride max(water level,
+ *    ground). Then a chord pass lifts both ends of any segment whose straight chord dips under the surface
+ *    between the samples (probes at 1/8 steps) by exactly that deficit — crests between samples never cut
+ *    the line. Everything + liftKm. The line never dips under water at a river crossing nor sinks into a bank.
  * Marks stay at the place points (place ids, explicit `mark`s, `<leg>:start` / `<leg>:end`).
  * Pure (no three.js render objects, no DOM): Node and the page compile identical routes.
  */
@@ -17,10 +22,16 @@ import type { World } from '../world/World.ts';
 import { fnv1a } from './hash.ts';
 import { ROUTE_MODE, type CompiledRoute, type RouteJson, type RouteLegJson, type RouteMode, type RoutePointJson } from './schema.ts';
 
-export const ROUTE_COMPILER = 'route-v1';
+export const ROUTE_COMPILER = 'route-v2';
 
-/** half width of the drape envelope across the line, km */
-export const DRAPE_ACROSS_KM = 0.2;
+/**
+ * The drape (foot / underground samples): across-envelope tap offsets (km), the bank slope below which a tap
+ * never raises the line (km/km), the cap on the raise above the centre's own surface (km), and the chord
+ * probes per segment (the straight chord between two samples never dips under the surface).
+ */
+export const DRAPE = { acrossKm: [0.05, 0.1, 0.2], slope: 1, capKm: 0.1, chordProbes: 8 } as const;
+/** a sample floating more than this above its own centre's surface is reported (routeReport), km */
+export const FLOAT_WARN_KM = 0.3;
 
 interface PolyPt {
   x: number;
@@ -77,6 +88,11 @@ const RIVER_CELL = 2;
 /** floats per river segment record */
 const SEG = 8;
 const fields = new WeakMap<World, WaterField>();
+
+/** Drop a World's cached water field (the film check's second compile then builds a fresh one). */
+export function forgetWaterField(world: World): void {
+  fields.delete(world);
+}
 
 /** The world's water field (built once per World and shared by the route compiler and the rig). */
 export function waterField(world: World): WaterField {
@@ -403,24 +419,41 @@ export function compileRoute(world: World, json: RouteJson): CompiledRoute {
     tan[k * 2] = dx / l;
     tan[k * 2 + 1] = dz / l;
   }
-  // heights: boat samples ride their water level (never under the ground), the rest the surface envelope
-  const half = step / 2;
+  // heights: boat samples ride their water level (never under the ground); lake samples the surface under
+  // them; foot / underground samples their centre's surface + the slope-limited, capped across envelope
+  const hs = new Float64Array(count);
   for (let k = 0; k < count; k++) {
     const x = pts[k * 4];
     const z = pts[k * 4 + 2];
-    const tx = tan[k * 2];
-    const tz = tan[k * 2 + 1];
     const yw = pts[k * 4 + 1];
-    let h: number;
-    if (surf[k]) h = water.surface(x, z);
-    else if (!Number.isNaN(yw)) h = Math.max(yw, world.heights.sample(x, z), 0);
+    if (surf[k]) hs[k] = water.surface(x, z);
+    else if (!Number.isNaN(yw)) hs[k] = Math.max(yw, world.heights.sample(x, z), 0);
     else {
-      h = -Infinity;
-      for (const a of [-half, 0, half])
-        for (const o of [-DRAPE_ACROSS_KM, -DRAPE_ACROSS_KM / 2, 0, DRAPE_ACROSS_KM / 2, DRAPE_ACROSS_KM]) h = Math.max(h, water.surface(x + tx * a - tz * o, z + tz * a + tx * o));
+      const c = water.surface(x, z);
+      const tx = tan[k * 2];
+      const tz = tan[k * 2 + 1];
+      let raise = 0;
+      for (const o of DRAPE.acrossKm)
+        for (const side of [-1, 1]) raise = Math.max(raise, water.surface(x - tz * o * side, z + tx * o * side) - DRAPE.slope * o - c);
+      hs[k] = c + Math.min(DRAPE.capKm, raise);
     }
-    pts[k * 4 + 1] = h + lift;
   }
+  // the chord pass: a segment whose straight chord dips under the surface between its samples lifts both
+  // ends by the deficit (raising an end only raises the neighbouring chord, so one pass suffices)
+  const deficit = new Float64Array(count);
+  for (let k = 0; k + 1 < count; k++) {
+    const x0 = pts[k * 4];
+    const z0 = pts[k * 4 + 2];
+    const dx = pts[(k + 1) * 4] - x0;
+    const dz = pts[(k + 1) * 4 + 2] - z0;
+    let d = 0;
+    for (let q = 1; q < DRAPE.chordProbes; q++) {
+      const u = q / DRAPE.chordProbes;
+      d = Math.max(d, water.surface(x0 + dx * u, z0 + dz * u) - (hs[k] + (hs[k + 1] - hs[k]) * u));
+    }
+    deficit[k] = d;
+  }
+  for (let k = 0; k < count; k++) pts[k * 4 + 1] = hs[k] + Math.max(k > 0 ? deficit[k - 1] : 0, deficit[k]) + lift;
   const hash = hashFloats(hashFloats(Number.parseInt(fnv1a(`${ROUTE_COMPILER}|${JSON.stringify(json)}|${count}`), 16), pts), [length, ...Object.values(marks)]);
   return { pts, tan, mode, leg, count, length, marks, legs, hash: hash.toString(16).padStart(8, '0') };
 }
@@ -441,18 +474,40 @@ export interface RouteReport {
   crossings: [number, number][];
   /** sharp turns: arc length and the turn angle (degrees) between the incoming and outgoing 0.5 km chords */
   kinks: { s: number; deg: number; leg: string }[];
-  /** consecutive samples more than 1 km apart in height */
-  jumps: { s: number; dy: number; leg: string }[];
+  /**
+   * consecutive samples more than 1 km apart in height; `cliff` (with a surface): the surface under the two
+   * centres steps by ≥ 75 % of it (a real cliff under the line), else the drape lifted one of them
+   */
+  jumps: { s: number; dy: number; leg: string; cliff?: boolean }[];
   /** largest height step between consecutive samples, km */
   maxStep: number;
+  /**
+   * with a surface: the line's float above the surface under each sample's own centre (y − liftKm − surface):
+   * the largest, where, and the samples above FLOAT_WARN_KM per leg
+   */
+  float?: { max: number; s: number; leg: string; over: number; overByLeg: Record<string, number> };
 }
 
-/** Suspicious geometry of a compiled route (self-crossings, kinks > 120° within 1 km, height jumps > 1 km). */
-export function routeReport(r: CompiledRoute, kinkDeg = 120, jumpKm = 1): RouteReport {
+export interface RouteReportOptions {
+  kinkDeg?: number;
+  jumpKm?: number;
+  /** the water-aware surface (waterField(world).surface) — enables `float` and the cliff classification */
+  surface?: (x: number, z: number) => number;
+  /** route.json defaults.liftKm (subtracted from the float) */
+  liftKm?: number;
+}
+
+/**
+ * Suspicious geometry of a compiled route (self-crossings, kinks > 120° within 1 km, height jumps > 1 km;
+ * with a surface: the float above the ground under the line and which jumps are cliffs).
+ */
+export function routeReport(r: CompiledRoute, opts: RouteReportOptions = {}): RouteReport {
+  const { kinkDeg = 120, jumpKm = 1, surface, liftKm = 0 } = opts;
   const n = r.count;
   const P = r.pts;
   const step = r.length / Math.max(1, n - 1);
   const legOf = (k: number) => r.legs[r.leg[k]]?.id ?? '?';
+  const ground = surface ? Float64Array.from({ length: n }, (_, k) => surface(P[k * 4], P[k * 4 + 2])) : null;
   // kinks: chords of 0.5 km either side (a 1 km window), local maxima only
   const w = Math.max(1, Math.round(0.5 / step));
   const kinks: RouteReport['kinks'] = [];
@@ -477,7 +532,20 @@ export function routeReport(r: CompiledRoute, kinkDeg = 120, jumpKm = 1): RouteR
   for (let k = 0; k + 1 < n; k++) {
     const dy = P[(k + 1) * 4 + 1] - P[k * 4 + 1];
     maxStep = Math.max(maxStep, Math.abs(dy));
-    if (Math.abs(dy) > jumpKm) jumps.push({ s: P[k * 4 + 3], dy, leg: legOf(k) });
+    if (Math.abs(dy) > jumpKm) jumps.push({ s: P[k * 4 + 3], dy, leg: legOf(k), ...(ground ? { cliff: Math.abs(ground[k + 1] - ground[k]) >= 0.75 * Math.abs(dy) } : {}) });
+  }
+  // the float above the surface under each centre
+  let float: RouteReport['float'];
+  if (ground) {
+    float = { max: 0, s: 0, leg: '', over: 0, overByLeg: {} };
+    for (let k = 0; k < n; k++) {
+      const f = P[k * 4 + 1] - liftKm - ground[k];
+      if (f > float.max) Object.assign(float, { max: f, s: P[k * 4 + 3], leg: legOf(k) });
+      if (f > FLOAT_WARN_KM) {
+        float.over++;
+        float.overByLeg[legOf(k)] = (float.overByLeg[legOf(k)] ?? 0) + 1;
+      }
+    }
   }
   // self-crossings: segments hashed into a 2 km grid, non-adjacent pairs tested (each pair once)
   const cell = 2;
@@ -518,5 +586,5 @@ export function routeReport(r: CompiledRoute, kinkDeg = 120, jumpKm = 1): RouteR
         if (cross(i, j)) crossings.push([P[i * 4 + 3], P[j * 4 + 3]]);
       }
   crossings.sort((a, b) => a[0] - b[0]);
-  return { crossings, kinks, jumps, maxStep };
+  return { crossings, kinks, jumps, maxStep, ...(float ? { float } : {}) };
 }
