@@ -9,9 +9,8 @@
  *    page compiles with data/qa/shots.json only), places (places.json), caption landmarks, head marks (the
  *    route's marks), look ids (looks.json); event channels ∈ EVENT_SLOT; tod non-decreasing; total length
  *    within film.lengthS (when no move is `auto`; else on the compiled film)
- * On the baked world (checkBakedWorld) — the compiled film, both as the check intends it (with the Node
- * landmark build: caption anchors at 0.6 × the built height) and as the page compiles it today (src/app/boot.ts
- * passes no `built`: anchors at ground + 0.5 km); the hashes are printed, the label gates run on both:
+ * On the baked world (checkBakedWorld) — the compiled film as the page compiles it (with the landmark build:
+ * caption anchors at 0.6 × the built height; src/app/boot.ts passes `built` too, so the hashes agree):
  *  - errors: the compile throws (unknown rivers / lakes, …); compiling twice (the second time with a fresh
  *    water field) gives another hash; the compiled length leaves film.lengthS; a look id switches while its
  *    weight is not 0; data/tour/shotlist.json out of sync (film.seconds, segments = the beats in order, their
@@ -375,10 +374,8 @@ export async function checkFilm(world: World, landmarks: LandmarkDefinition[], o
   lap('probe context');
   const built = opts.built === false ? undefined : ctx.built;
 
-  // ---- compile twice (the second time with a fresh water field): same hash — with the landmark build (the
-  // check's film) and without it (what src/app/boot.ts compiles today: no `built`, anchors at ground + 0.5 km)
+  // ---- compile twice (the second time with a fresh water field): same hash
   let program: FilmProgram;
-  let pageFilm: FilmProgram['film'];
   let ms: number;
   try {
     const c0 = performance.now();
@@ -387,18 +384,12 @@ export async function checkFilm(world: World, landmarks: LandmarkDefinition[], o
     forgetWaterField(world);
     const again = compileFilm({ world, landmarks, shots, route, timeline: tl, built });
     if (again.film.hash !== program.film.hash) E(`compiling twice gives different hashes (${program.film.hash} vs ${again.film.hash})`);
-    pageFilm = program.film;
-    if (built) {
-      pageFilm = compileFilm({ world, landmarks, shots, route, timeline: tl }).film;
-      const pageAgain = compileFilm({ world, landmarks, shots, route, timeline: tl }).film;
-      if (pageAgain.hash !== pageFilm.hash) E(`compiling twice without the landmark build gives different hashes (${pageFilm.hash} vs ${pageAgain.hash})`);
-    }
   } catch (e) {
     E(`the film does not compile: ${(e as Error).message}`);
     return out;
   }
   out.program = program;
-  lap('compile ×4');
+  lap('compile ×2');
   const { film, rig } = program;
   const beats = tl.beats;
   const isHold = (b: BeatJson): b is HoldJson => 'hold' in b;
@@ -610,15 +601,7 @@ export async function checkFilm(world: World, landmarks: LandmarkDefinition[], o
     }
     return res;
   };
-  const checkAnchors = anchorFindings(film.captions);
-  const pageAnchors = pageFilm.hash === film.hash ? checkAnchors : anchorFindings(pageFilm.captions);
-  for (const id of new Set([...checkAnchors.keys(), ...pageAnchors.keys()])) {
-    const a = checkAnchors.get(id);
-    const b = pageAnchors.get(id);
-    const beat = (a ?? b)!.beat;
-    for (const m of a?.msgs ?? []) sampledFinding(beat, b?.msgs.includes(m) ? m : `${m} [with the landmark build]`);
-    for (const m of b?.msgs ?? []) if (!a?.msgs.includes(m)) sampledFinding(beat, `${m} [the page today: no build, anchor at ground + 0.5 km]`);
-  }
+  for (const { beat, msgs } of anchorFindings(film.captions).values()) for (const m of msgs) sampledFinding(beat, m);
   const lodBias = tl.film.lodBias ?? 1;
   // the landmark's real LOD count (the page passes levels.length to selectLod): the Node build keeps no
   // geometry (lods: []), so a landmark that switches under the 3-level assumption is rebuilt with geometry
@@ -738,7 +721,7 @@ export async function checkFilm(world: World, landmarks: LandmarkDefinition[], o
 
   // ---- summary + table
   const nFind = stats.reduce((a, s) => a + s.findings.length, 0);
-  out.info.push(`film: ${beats.length} beats, ${fmt(film.duration, 2)} s (${tl.status}), hash ${film.hash}${built ? ' with the landmark build' : ''} (compiled twice, the second time with a fresh water field: identical)${pageFilm.hash !== film.hash ? `, ${pageFilm.hash} without it — what src/app/boot.ts compiles today (twice: identical)` : ''}, compile ${fmt(ms, 0)} ms; ${rig.moves.filter((m) => m.auto).length} auto moves; ${film.captions.length} captions; ${nFind} sampled finding(s) (${locked ? 'errors' : 'warnings while draft'}); check ${phase.map(([n, v]) => `${n} ${fmt(v / 1000, 1)} s`).join(', ')}`);
+  out.info.push(`film: ${beats.length} beats, ${fmt(film.duration, 2)} s (${tl.status}), hash ${film.hash}${built ? ' with the landmark build' : ''} (compiled twice, the second time with a fresh water field: identical), compile ${fmt(ms, 0)} ms; ${rig.moves.filter((m) => m.auto).length} auto moves; ${film.captions.length} captions; ${nFind} sampled finding(s) (${locked ? 'errors' : 'warnings while draft'}); check ${phase.map(([n, v]) => `${n} ${fmt(v / 1000, 1)} s`).join(', ')}`);
   if (opts.table) {
     const pad = (s: string, n: number) => s.padEnd(n);
     const lp = (s: string, n: number) => s.padStart(n);

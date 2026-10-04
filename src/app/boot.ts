@@ -64,7 +64,7 @@ async function buildWorld(engine: Engine, quality: QualityTierId, shots: ShotSpe
   const effects = new EffectsSystem(world, { emitters: landmarkEmitters(world, LANDMARKS), falls: landmarkFalls(world, LANDMARKS), lights: emission.records, pools: landmarkPools(world, LANDMARKS) });
   // S5: the journey film (`?film=1` only — still pages never compile it, so their frames are untouched)
   const film = filmMode
-    ? compileFilm({ world, landmarks: LANDMARKS, shots: shotsJson.shots as unknown as ShotSpecInput[], route: routeJson as unknown as RouteJson, timeline: timelineJson as unknown as TimelineJson })
+    ? compileFilm({ world, landmarks: LANDMARKS, shots: shotsJson.shots as unknown as ShotSpecInput[], route: routeJson as unknown as RouteJson, timeline: timelineJson as unknown as TimelineJson, built })
     : null;
   let route: RouteSystem | null = null;
   let titles: TitleSystem | null = null;
