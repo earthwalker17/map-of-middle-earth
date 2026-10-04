@@ -10,6 +10,7 @@
  *
  * Sequences (chunked, resumable, streamed to ffmpeg — no PNG frames on disk):
  *   pnpm film --render [--tier preview|review|final] [--w --h --spp --shutter] [--from s --to s]
+ *                      [--spp-fast N [--fast-px 12]]
  *                      [--codec x264|prores|ffv1] [--crf 14 --preset medium] [--chunk 96] [--budget 520]
  *                      [--run renders/film/<dir>] [--label x] [--force]
  *     Frame k shows t = k / fps. Chunk i holds frames [i·chunk, (i+1)·chunk) ∩ the range, as
@@ -19,6 +20,11 @@
  *     boot included) ran out: run the same command again · 3 = low memory · 1 = error.
  *     --budget 0 = no budget (user-started overnight runs; Chrome is restarted every 25 min).
  *     A run refuses other settings, another film hash or another commit unless --force.
+ *     Adaptive motion-blur sampling (S5): with --spp-fast N (needs --spp), a frame whose image moves more than
+ *     --fast-px px (default 12, at the run's size; window.__mm.motionPx: 90th percentile of the ground's screen
+ *     displacement while the shutter is open) gets N sub-samples instead of --spp — more time samples where 4
+ *     strobe (copies d/spp px apart); the lens keeps deciding on the base spp. Per-frame spp / motion go into
+ *     the chunk JSON. Stills mode takes the same two flags.
  *   pnpm film --verify-resume --run <dir>           re-render the first frame of each finished chunk: same sha?
  *   pnpm film --assemble --run <dir> [--audio a.wav] [--mp4 name.mp4] [--reencode]
  *     → concat (stream copy) → <run>/<name>.mp4 (+ AAC 320k audio, exact film length).
@@ -50,6 +56,9 @@ interface Args {
   w: number;
   h: number;
   spp?: number;
+  /** adaptive sampling: spp of frames that move more than fastPx (px at the run's size) while the shutter is open */
+  sppFast?: number;
+  fastPx: number;
   shutter?: number;
   label?: string;
   out?: string;
@@ -70,7 +79,7 @@ interface Args {
 }
 
 function parseArgs(argv: string[]): Args {
-  const a: Args = { mode: 'stills', at: [], beats: [], tier: 'review', w: 1280, h: 720, determinism: false, headed: false, port: 5199, sheetCols: 4, budget: 520, force: false, reencode: false };
+  const a: Args = { mode: 'stills', at: [], beats: [], tier: 'review', w: 1280, h: 720, fastPx: 12, determinism: false, headed: false, port: 5199, sheetCols: 4, budget: 520, force: false, reencode: false };
   const list = (v: string) => v.split(',').map((x) => x.trim()).filter(Boolean);
   let wSet = false;
   let hSet = false;
@@ -86,6 +95,8 @@ function parseArgs(argv: string[]): Args {
     else if (k === '--w') (a.w = Number(v())), (wSet = true);
     else if (k === '--h') (a.h = Number(v())), (hSet = true);
     else if (k === '--spp') a.spp = Number(v());
+    else if (k === '--spp-fast') a.sppFast = Number(v());
+    else if (k === '--fast-px') a.fastPx = Number(v());
     else if (k === '--shutter') a.shutter = Number(v());
     else if (k === '--label') a.label = v();
     else if (k === '--out') a.out = v();
@@ -108,6 +119,7 @@ function parseArgs(argv: string[]): Args {
     else if (k === '--reencode') a.reencode = true;
     else throw new Error(`film: unknown argument ${k}`);
   }
+  if (a.sppFast !== undefined && !(a.spp && a.sppFast > a.spp)) throw new Error('film: --spp-fast needs an explicit --spp below it');
   // sequence defaults per tier (animatic / review cut / final)
   if (a.mode === 'render' && !wSet && !hSet && a.tier === 'preview') [a.w, a.h] = [960, 540];
   if (a.mode === 'render' && !wSet && !hSet && a.tier === 'final') [a.w, a.h] = [1920, 1080];
@@ -155,6 +167,15 @@ async function bootFilm(session: CaptureSession, tier: string): Promise<{ info: 
   return { info, meta: tl.meta as FilmMeta };
 }
 
+/** adaptive motion-blur sampling: a frame's spp (and how far its image moves while the shutter is open, px) */
+async function frameSpp(page: CaptureSession['page'], o: { spp?: number | null; sppFast?: number; fastPx?: number; shutter: number; fps: number; w: number; h: number }, t: number): Promise<{ spp?: number; lensSpp?: number; motion?: number }> {
+  const base = o.spp ?? undefined;
+  if (!o.sppFast || !base) return { spp: base };
+  const m = await page.evaluate(([tt, sh, fps, w, h]) => window.__mm!.motionPx('film', tt, sh, fps, w, h), [t, o.shutter, o.fps, o.w, o.h] as const);
+  const motion = Math.round((m ?? 0) * 10) / 10;
+  return { spp: motion > (o.fastPx ?? 12) ? o.sppFast : base, lensSpp: base, motion };
+}
+
 // ───────────────────────────── stills ─────────────────────────────
 
 async function stills(args: Args): Promise<number> {
@@ -183,18 +204,19 @@ async function stills(args: Args): Promise<number> {
     const frames = [...new Set(times.map((t) => Math.min(last, Math.max(0, Math.round(t * meta.fps)))))];
     const shutter = args.shutter ?? 0;
 
-    const results: (CaptureResult & { frame: number; t: number; beat: string; tod: number; file: string })[] = [];
+    const results: (CaptureResult & { frame: number; t: number; beat: string; tod: number; file: string; motion?: number; lensSpp?: number })[] = [];
     for (const [k, frame] of frames.entries()) {
       const t = frame / meta.fps;
       const name = `f${String(frame).padStart(5, '0')}`;
-      const req: CaptureRequest = { name, timelineId: 'film', t, width: args.w, height: args.h, spp: args.spp, shutter, fps: meta.fps };
+      const fs = await frameSpp(page, { spp: args.spp, sppFast: args.sppFast, fastPx: args.fastPx, shutter, fps: meta.fps, w: args.w, h: args.h }, t);
+      const req: CaptureRequest = { name, timelineId: 'film', t, width: args.w, height: args.h, spp: fs.spp, shutter, fps: meta.fps, ...(fs.lensSpp ? { lensSpp: fs.lensSpp } : {}) };
       const res = await withTimeout(page.evaluate((r) => window.__mm!.render(r), req), RENDER_TIMEOUT, `render ${name}`);
       const st = await page.evaluate(([tt]) => window.__mm!.timelineState('film', tt), [t] as const);
       await collectGarbage(ctx, page);
       const beat = beatAt(meta, t).id;
-      results.push({ ...res, frame, t, beat, tod: st?.tod ?? NaN, file: `${name}.png` });
+      results.push({ ...res, frame, t, beat, tod: st?.tod ?? NaN, file: `${name}.png`, ...(fs.motion !== undefined ? { motion: fs.motion, lensSpp: fs.lensSpp } : {}) });
       const freeMB = Math.round(freemem() / MB);
-      console.log(`[film] ${name} t ${t.toFixed(2)} ${beat} tod ${st?.tod.toFixed(2)}: ${Math.round(res.renderMs)} ms, luma ${res.meanLuma.toFixed(1)} · ${freeMB} MB free`);
+      console.log(`[film] ${name} t ${t.toFixed(2)} ${beat} tod ${st?.tod.toFixed(2)}: ${Math.round(res.renderMs)} ms, luma ${res.meanLuma.toFixed(1)}${fs.motion !== undefined ? ` · motion ${fs.motion} px → spp ${res.spp}` : ''} · ${freeMB} MB free`);
       if (res.meanLuma < 3) console.warn(`[film] WARNING: ${name} is (nearly) black`);
       if (freeMB < ABORT_FREE_MB && k < frames.length - 1) {
         console.error(`[film] host memory low (${freeMB} MB): stopping after ${k + 1}/${frames.length}`);
@@ -204,7 +226,7 @@ async function stills(args: Args): Promise<number> {
     }
     if (args.determinism && results.length) {
       const f = results[0];
-      const again = await page.evaluate((r) => window.__mm!.render(r), { name: `${f.file.replace('.png', '')}__repeat`, timelineId: 'film', t: f.t, width: args.w, height: args.h, spp: args.spp, shutter, fps: meta.fps } as CaptureRequest);
+      const again = await page.evaluate((r) => window.__mm!.render(r), { name: `${f.file.replace('.png', '')}__repeat`, timelineId: 'film', t: f.t, width: args.w, height: args.h, spp: f.spp, shutter, fps: meta.fps, ...(f.lensSpp ? { lensSpp: f.lensSpp } : {}) } as CaptureRequest);
       const same = again.sha256 === f.sha256;
       console.log(`[film] determinism (${f.file} after ${results.length} frames): ${same ? 'IDENTICAL' : 'DIFFERENT'}`);
       if (!same) exitCode = 1;
@@ -236,6 +258,9 @@ interface RunJson {
   width: number;
   height: number;
   spp: number | null;
+  /** adaptive sampling (S5): spp of frames moving more than fastPx px while the shutter is open */
+  sppFast?: number;
+  fastPx?: number;
   shutter: number;
   fps: number;
   codec: Codec;
@@ -252,7 +277,7 @@ interface RunJson {
 
 interface ChunkJson {
   chunk: number;
-  frames: { k: number; t: number; sha256: string; ms: number; luma: number }[];
+  frames: { k: number; t: number; sha256: string; ms: number; luma: number; spp?: number; motion?: number }[];
   file: string;
   bytes: number;
   renderedAt: string;
@@ -337,6 +362,7 @@ async function render(args: Args): Promise<number> {
           width: args.w,
           height: args.h,
           spp: args.spp ?? null,
+          ...(args.sppFast ? { sppFast: args.sppFast, fastPx: args.fastPx } : {}),
           shutter: args.shutter ?? meta.shutter,
           fps: meta.fps,
           codec: args.codec ?? seq.codec,
@@ -351,7 +377,7 @@ async function render(args: Args): Promise<number> {
         };
         mkdirSync(join(dir, 'chunks'), { recursive: true });
         writeFileSync(join(dir, 'run.json'), JSON.stringify(run, null, 2));
-        console.log(`[film] new run ${dir}: frames ${k0}–${k1 - 1} (${((k1 - k0) / meta.fps).toFixed(1)} s) · ${run.tier} ${run.width}×${run.height} spp ${run.spp ?? 'tier'} · shutter ${run.shutter} · ${run.codec} · chunks of ${run.chunk}`);
+        console.log(`[film] new run ${dir}: frames ${k0}–${k1 - 1} (${((k1 - k0) / meta.fps).toFixed(1)} s) · ${run.tier} ${run.width}×${run.height} spp ${run.spp ?? 'tier'}${run.sppFast ? ` (${run.sppFast} above ${run.fastPx} px)` : ''} · shutter ${run.shutter} · ${run.codec} · chunks of ${run.chunk}`);
       }
       mkdirSync(join(dir, 'partial'), { recursive: true });
       const chunks = chunkList(run);
@@ -384,12 +410,13 @@ async function render(args: Args): Promise<number> {
         try {
           for (let k = c.k0; k < c.k1; k++) {
             const t = k / run.fps;
-            const req: CaptureRequest = { name: `k${k}`, timelineId: 'film', t, width: run.width, height: run.height, ...(run.spp ? { spp: run.spp } : {}), shutter: run.shutter, fps: run.fps };
+            const fs = await frameSpp(page, { spp: run.spp, sppFast: run.sppFast, fastPx: run.fastPx, shutter: run.shutter, fps: run.fps, w: run.width, h: run.height }, t);
+            const req: CaptureRequest = { name: `k${k}`, timelineId: 'film', t, width: run.width, height: run.height, ...(fs.spp ? { spp: fs.spp } : {}), ...(fs.lensSpp ? { lensSpp: fs.lensSpp } : {}), shutter: run.shutter, fps: run.fps };
             const res = await withTimeout(page.evaluate((r) => window.__mm!.render(r), req), RENDER_TIMEOUT, `render frame ${k}`);
             if (sinkErr) throw sinkErr;
             measured.push(res.renderMs + 40);
             if (measured.length > 48) measured = measured.slice(-48);
-            frames.push({ k, t, sha256: res.sha256, ms: Math.round(res.renderMs), luma: Math.round(res.meanLuma * 10) / 10 });
+            frames.push({ k, t, sha256: res.sha256, ms: Math.round(res.renderMs), luma: Math.round(res.meanLuma * 10) / 10, ...(fs.motion !== undefined ? { spp: res.spp, motion: fs.motion } : {}) });
             if (res.meanLuma < 2) console.warn(`[film] WARNING: frame ${k} (t ${t.toFixed(2)}) is (nearly) black`);
             if ((k - c.k0) % 24 === 23) {
               await collectGarbage(ctx, page);
@@ -458,7 +485,8 @@ async function verifyResume(args: Args): Promise<number> {
     for (const c of done.slice(0, 12)) {
       const j = JSON.parse(readFileSync(join(args.run, 'chunks', `c${pad(c.i)}.json`), 'utf8')) as ChunkJson;
       const f = j.frames[0];
-      const res = await session.page.evaluate((r) => window.__mm!.render(r), { name: 'verify', timelineId: 'film', t: f.t, width: run.width, height: run.height, ...(run.spp ? { spp: run.spp } : {}), shutter: run.shutter, fps: run.fps } as CaptureRequest);
+      const spp = f.spp ?? run.spp;
+      const res = await session.page.evaluate((r) => window.__mm!.render(r), { name: 'verify', timelineId: 'film', t: f.t, width: run.width, height: run.height, ...(spp ? { spp } : {}), ...(run.sppFast && run.spp ? { lensSpp: run.spp } : {}), shutter: run.shutter, fps: run.fps } as CaptureRequest);
       const same = res.sha256 === f.sha256;
       if (!same) bad++;
       console.log(`[film] chunk ${c.i} frame ${f.k}: ${same ? 'IDENTICAL' : 'DIFFERENT'}`);

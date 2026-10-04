@@ -84,10 +84,12 @@ export function lensActive(state: SceneState, spp: number): boolean {
 
 /**
  * The aperture sub-sample `i` of `spp` for a state, or null for a pinhole (deep focus, too few samples).
- * `heightPx` is the frame height in pixels (the view offset's unit).
+ * `heightPx` is the frame height in pixels (the view offset's unit). `lensSpp` is the sample count the
+ * on / off decision uses (S5 adaptive film sampling passes the run's base spp, so the extra time samples of
+ * a fast frame never switch the depth of field on for that frame alone); it defaults to `spp`.
  */
-export function lensSample(state: SceneState, i: number, spp: number, heightPx: number): LensSample | null {
-  if (!lensActive(state, spp)) return null;
+export function lensSample(state: SceneState, i: number, spp: number, heightPx: number, lensSpp = spp): LensSample | null {
+  if (!lensActive(state, lensSpp)) return null;
   const F = focusDistance(state);
   const fov = state.camera.fov;
   const t = Math.tan((fov * Math.PI) / 360);

@@ -164,9 +164,10 @@ export class Engine {
 
   /**
    * Offline render: `spp` jittered sub-samples; each sub-sample may evaluate a different state
-   * (sub-frame time for motion blur). Result goes to the readback target.
+   * (sub-frame time for motion blur). Result goes to the readback target. `lensSpp` (default `spp`) is the
+   * sample count the lens' on / off decision uses (S5 adaptive film sampling: the run's base spp).
    */
-  renderAccumulated(stateAt: (sub: number, spp: number) => SceneState, spp: number): void {
+  renderAccumulated(stateAt: (sub: number, spp: number) => SceneState, spp: number, lensSpp = spp): void {
     const cam = this.camera;
     const w = this.post.width;
     const h = this.post.height;
@@ -184,7 +185,7 @@ export class Engine {
         // lens (S4): after applyState — systems, LOD and light selection keep seeing the pinhole camera —
         // the pinhole moves over the aperture and the view window shifts to hold the focus plane
         // (pinhole for deep focus, f/22 default, and below LENS_MIN_SPP: wides and QA stay bit-identical)
-        lens = lensSample(state, i, spp, h);
+        lens = lensSample(state, i, spp, h, lensSpp);
         if (lens) {
           _pinhole.copy(cam.position);
           _right.setFromMatrixColumn(cam.matrixWorld, 0);
