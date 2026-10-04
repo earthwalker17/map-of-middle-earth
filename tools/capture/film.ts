@@ -24,8 +24,8 @@
  *     more than px (at the run's size; window.__mm.motionPx: 90th percentile of the ground's screen
  *     displacement while the shutter is open) gets that step's spp instead of --spp — more time samples where
  *     4 strobe (copies d/spp px apart); --spp-fast N --fast-px P is the one-step ladder P:N. A frame takes the
- *     largest spp of the frames within ±--spp-dilate (default 2) of it, so a level never flickers for a frame
- *     or two (pure: from the timeline). The lens keeps deciding on the base spp. Per-frame spp / motion go
+ *     largest spp of the frames within ±--spp-dilate (default 2) of it, and short dips inside a move are
+ *     filled (a closing), so a level never flickers for a frame or two (pure: from the timeline). The lens keeps deciding on the base spp. Per-frame spp / motion go
  *     into the chunk JSON; the time budget plans each chunk's spp before rendering it. Stills mode takes the
  *     same flags. x264: one keyframe per chunk unless --gop N (fewer of the encoder's keyframe "ticks").
  *   pnpm film --verify-resume --run <dir>           re-render the first frame of each finished chunk: same sha?
@@ -227,8 +227,10 @@ interface FramePlan {
 
 /**
  * Adaptive motion-blur sampling for frames `ks`: each frame's image motion while the shutter is open (px,
- * window.__mm.motionPx — one page call for them and their ±dilate neighbours) and its spp: the largest the
- * ladder gives within ±dilate frames (a pure function of the frame: resumable, verifiable).
+ * window.__mm.motionPx — one page call for them and their neighbours) and its spp: the largest the ladder
+ * gives within ±dilate frames, then a closing over ±(dilate + 1) — a dip below the level on both sides
+ * shorter than 2·dilate + 3 frames is filled, so the level never drops for a frame or two inside a move. A
+ * pure function of the frame (resumable, verifiable); dilate 0 = each frame's own step (the first runs).
  */
 async function planSpp(page: CaptureSession['page'], o: SppOpts, ks: number[]): Promise<Map<number, FramePlan>> {
   const out = new Map<number, FramePlan>();
@@ -237,19 +239,36 @@ async function planSpp(page: CaptureSession['page'], o: SppOpts, ks: number[]): 
     for (const k of ks) out.set(k, { spp: base });
     return out;
   }
+  const D = o.dilate;
+  const G = D > 0 ? D + 1 : 0;
+  const R = D + 2 * G;
+  const valid = (j: number) => j >= 0 && j < o.nFrames;
   const need = new Set<number>();
-  for (const k of ks) for (let j = Math.max(0, k - o.dilate); j <= Math.min(o.nFrames - 1, k + o.dilate); j++) need.add(j);
+  for (const k of ks) for (let j = Math.max(0, k - R); j <= Math.min(o.nFrames - 1, k + R); j++) need.add(j);
   const js = [...need].sort((a, b) => a - b);
   const ms = await page.evaluate(([ts, sh, fps, w, h]) => ts.map((t) => window.__mm!.motionPx('film', t, sh, fps, w, h)), [js.map((j) => j / o.fps), o.shutter, o.fps, o.w, o.h] as const);
   const motion = new Map<number, number>();
   js.forEach((j, i) => motion.set(j, Math.round((ms[i] ?? 0) * 10) / 10));
-  for (const k of ks) {
-    let spp = base;
-    for (let j = k - o.dilate; j <= k + o.dilate; j++) {
-      const m = motion.get(j);
-      if (m !== undefined) spp = Math.max(spp, sppFor(o.ladder, base, m));
+  // dilation (±D), then closing (max then min over ±G) of the ladder's level
+  const dil = new Map<number, number>();
+  const dilAt = (i: number): number => {
+    let n = dil.get(i);
+    if (n === undefined) {
+      n = base;
+      for (let j = i - D; j <= i + D; j++) if (valid(j)) n = Math.max(n, sppFor(o.ladder!, base, motion.get(j)!));
+      dil.set(i, n);
     }
-    out.set(k, { spp, lensSpp: base, motion: motion.get(k) ?? 0 });
+    return n;
+  };
+  const maxAt = (i: number): number => {
+    let n = base;
+    for (let j = i - G; j <= i + G; j++) if (valid(j)) n = Math.max(n, dilAt(j));
+    return n;
+  };
+  for (const k of ks) {
+    let spp = Infinity;
+    for (let i = k - G; i <= k + G; i++) if (valid(i)) spp = Math.min(spp, maxAt(i));
+    out.set(k, { spp: Number.isFinite(spp) ? spp : base, lensSpp: base, motion: motion.get(k) ?? 0 });
   }
   return out;
 }
