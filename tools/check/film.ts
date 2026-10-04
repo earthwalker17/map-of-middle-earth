@@ -9,7 +9,9 @@
  *
  * Structural (always, even without a bake / in CI) — errors:
  *  - data/tour/timeline.json v1 and route.json v2 shapes (unknown keys warn); beats alternate, start and end
- *    with a hold, unique ids; references resolve: bookmarks (landmark definitions), shots (loadShots(); the
+ *    with a hold, unique ids; route legs / points (kebab ids and marks, offsetKm [east, north] numbers, a
+ *    place or `at`); caption fades (as the compiler fills them: captionFades) fit their window; shot-list
+ *    segment routes name route legs; references resolve: bookmarks (landmark definitions), shots (loadShots(); the
  *    page compiles with data/qa/shots.json only), places (places.json), caption landmarks, head marks (the
  *    route's marks), look ids (looks.json); event channels ∈ EVENT_SLOT; tod non-decreasing; total length
  *    within film.lengthS (when no move is `auto`; else on the compiled film)
@@ -31,11 +33,17 @@
  *       above 1.6 (an error above 2.6 when locked)
  *     · view rotation ≤ 2 °/s in holds, ≤ 30 °/s in moves; jerk spikes (|d³P/dt³| / w far above the beat's
  *       own level: a C2 break)
- *     · the route head on screen (|NDC| ≤ 0.9) for ≥ 90 % of a move's samples after its first 0.5 s
- *     · place / pass labels as the page draws them (src/titles/layout.ts projectToScreen / onScreen /
- *       visibility, the TitleSystem's subject test): the anchor inside the frame (else the page fades the
- *       label out) and inside the label-safe zone (|x| ≤ 0.75, −0.7 ≤ y ≤ 0.55), the subject not hidden
- *       behind terrain (visibility ≥ 0.5)
+ *     · the route head as the RouteSystem draws it (headPoint) on screen (|NDC| ≤ 0.9) for ≥ 90 % of a
+ *       move's samples after its first 0.5 s, and also not behind terrain (layout.ts visibility ≥ 0.5; the
+ *       x-ray Moria leg exempt) for ≥ 80 %
+ *     · place / pass labels as the page draws them — the TitleSystem's own anchorPoint (the diamond moves
+ *       onto the route head while it rests on the subject) and subjectVisible, with the page's inputs, laid
+ *       out at the shutter's centre: opacity onScreen × subjectVisible ≥ 0.5 (else the page fades the label
+ *       out: off frame / hidden), the diamond inside the label-safe zone (|x| ≤ 0.75, −0.7 ≤ y ≤ 0.55; a
+ *       diamond on the route head down to −0.85: its label sits above it)
+ *     · the board's edge in the top 15 % of a move's frame (visibleTopVoid > 5 %: void rays weighted by the
+ *       sky's void darkness, 4 Hz) while the view is narrower than the board; moves to / from an overview
+ *       hold exempt
  *     · the camera probe (tools/check/probe.ts) at hold middles: top void ≤ 1 %, void ≤ 3 % (overview holds
  *       exempt), the subject (the hold's label landmark) in frame, ≥ 40 px tall at 1600×900, ≥ 60 % visible,
  *       line of sight to the target ground; moves every 1 s: void ≤ 15 % (while the view is narrower than the
@@ -55,12 +63,12 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { ShotSpecInput } from '../../src/camera/shots.ts';
-import type { CameraState } from '../../src/core/types.ts';
+import type { CameraState, SceneState } from '../../src/core/types.ts';
 import type { BuiltLandmark } from '../../src/landmarks/records.ts';
 import type { LandmarkDefinition } from '../../src/landmarks/types.ts';
 import type { World } from '../../src/world/World.ts';
 import type { FilmProgram } from '../../src/tour/compile.ts';
-import type { BeatJson, CaptionJson, HoldJson, MoveJson, RouteJson, TimelineJson } from '../../src/tour/schema.ts';
+import type { BeatJson, CaptionDef, CaptionJson, HoldJson, MoveJson, RouteJson, TimelineJson } from '../../src/tour/schema.ts';
 import type { V3 } from '../../src/titles/layout.ts';
 import type { CheckResult } from './world.ts';
 import { loadShots } from '../capture/shotList.ts';
@@ -75,7 +83,9 @@ const HOLD_KEYS = ['hold', 'style', 'dur', 'place', 'camera', 'drift', 'tod', 'h
 const MOVE_KEYS = ['move', 'dur', 'maxAltKm', 'rho', 'apexEl', 'crossDeck', 'captions', 'events', 'music', 'note'];
 const SET_KEYS = ['distanceKm', 'elevationDeg', 'azimuthDeg', 'fov', 'lift', 'aimKm', 'roll'];
 const DRIFT_KEYS = ['azDegPerS', 'pushPerS', 'alongKmPerS', 'elDegPerS'];
-const CAPTION_KEYS = ['kind', 'landmark', 'text', 'sub', 'lines', 'in', 'out', 'fadeIn', 'fadeOut', 'side', 'anchorLiftKm'];
+const CAPTION_KEYS = ['kind', 'landmark', 'text', 'sub', 'lines', 'in', 'out', 'fadeIn', 'fadeOut', 'side', 'anchorLiftKm', 'anchorOffsetKm'];
+const LEG_KEYS = ['id', 'mode', 'river', 'lake', 'points', 'note'];
+const POINT_KEYS = ['place', 'at', 'offsetKm', 'mark'];
 const KEBAB = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 /** Sampled-check limits (see the header). */
@@ -90,9 +100,29 @@ export const FILM_LIMITS = {
   jerkFloor: 4,
   headOnScreen: 0.9,
   headShare: 0.9,
+  /**
+   * the head on screen AND not behind terrain: the route runs through valleys and behind ridges — a head
+   * hidden for under a fifth of a move reads as the line passing behind a hill and coming out again; the
+   * Minas Tirith approach the critic flagged (1.5 s of 6 s behind the foothills) is over it
+   */
+  headVisibleShare: 0.8,
   safeX: 0.75,
   safeY: [-0.7, 0.55] as [number, number],
+  /**
+   * the bottom of the safe zone for a diamond that marks the route head (the TitleSystem moves it there while
+   * the head rests on the subject): the head belongs on the ground at the subject's foot and its label block
+   * sits above or beside it (layout.ts keeps the block inside the 90 % title-safe area), so the diamond may
+   * go down to the 90 % action-safe line rather than the anchor zone's −0.7 (e.g. the Argonath: the head on
+   * the river between the kings at −0.79)
+   */
+  headSafeYMin: -0.85,
   topVoid: 0.01,
+  /**
+   * moves: the visible void in the top 15 % of the frame (visibleTopVoid: void rays weighted by how dark the
+   * sky draws them) — calibrated on stills: 15 % (to-argonath) and 31 % (to-black-gate) read as a dark band
+   * over a straight board edge, ≤ 3 % as horizon haze
+   */
+  moveTopVoid: 0.05,
   holdVoid: 0.03,
   /** a hold's subject (its label's landmark) at the hold's middle: ≥ this many px tall at 1600×900, in frame */
   subjectPx: 40,
@@ -113,11 +143,20 @@ export const FILM_LIMITS = {
 };
 
 /**
- * The TitleSystem's label constants (src/titles/TitleSystem.ts, not exported): a caption's subject is the
- * landmark within SUBJECT_KM (XZ) of its anchor; a label fades out over OFFSCREEN_FADE × H beyond the frame edge.
+ * The TitleSystem's off-frame fade (src/titles/TitleSystem.ts OFFSCREEN_FADE, not exported): a label fades out
+ * over this × H beyond the frame edge.
  */
-const LABEL_SUBJECT_KM = 1.5;
 const LABEL_OFFSCREEN_FADE = 0.04;
+
+/**
+ * The TitleSystem's per-state label helpers (private, pure functions of the caption and the state): the
+ * diamond's world point and its subject's visibility. The check calls the page's own code rather than a
+ * copy (contract request: export them from src/titles/layout.ts as pure functions).
+ */
+interface TitleInternals {
+  anchorPoint(def: CaptionDef, st: SceneState): V3;
+  subjectVisible(def: CaptionDef, st: SceneState, anchor: V3): number;
+}
 
 const fmt = (v: number, d = 1) => (Number.isFinite(v) ? v.toFixed(d) : '—');
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
@@ -141,7 +180,7 @@ export async function checkFilmStructure(): Promise<CheckResult> {
   const places = new Set(readJson<{ places: { id: string }[] }>('data/world/places.json').places.map((p) => p.id));
   const looks = new Set(Object.keys(readJson<{ regions: Record<string, unknown> }>('data/world/looks.json').regions));
   const { EVENT_SLOT } = (await import(mod('src/materials/gates.ts'))) as typeof import('../../src/materials/gates.ts');
-  const { CAPTION_DEFAULTS } = (await import(mod('src/tour/captions.ts'))) as typeof import('../../src/tour/captions.ts');
+  const { CAPTION_DEFAULTS, captionFades } = (await import(mod('src/tour/captions.ts'))) as typeof import('../../src/tour/captions.ts');
   const landmarks = await loadLandmarks();
   const lmIds = new Set(landmarks.map((d) => d.id));
   const bookmarks = new Map<string, { def: LandmarkDefinition; fStop?: number }>();
@@ -159,6 +198,8 @@ export async function checkFilmStructure(): Promise<CheckResult> {
   const marks = new Set<string>();
   const legIds = new Set<string>();
   for (const leg of route.legs ?? []) {
+    unknownKeys(leg, LEG_KEYS, `route leg ${leg.id}`);
+    if (typeof leg.id !== 'string' || !KEBAB.test(leg.id)) E(`route leg id '${leg.id}': ids are kebab-case`);
     if (legIds.has(leg.id)) E(`route leg id '${leg.id}' repeats`);
     legIds.add(leg.id);
     marks.add(`${leg.id}:start`).add(`${leg.id}:end`);
@@ -168,10 +209,16 @@ export async function checkFilmStructure(): Promise<CheckResult> {
     if (mode !== 'boat' && (leg.river || leg.lake)) E(`route leg ${leg.id}: river / lake only on boat legs`);
     if (!Array.isArray(leg.points) || leg.points.length < 2) E(`route leg ${leg.id}: needs ≥ 2 points`);
     for (const p of leg.points ?? []) {
+      unknownKeys(p, POINT_KEYS, `route leg ${leg.id} point`);
+      if (p.mark !== undefined && !(typeof p.mark === 'string' && KEBAB.test(p.mark))) E(`route leg ${leg.id}: mark '${p.mark}' is not a kebab-case name`);
+      if (p.place && p.at) E(`route leg ${leg.id}: a point has a place or at [x, y], not both`);
       if (p.place) {
         if (!places.has(p.place)) E(`route leg ${leg.id}: unknown place '${p.place}'`);
+        // offsetKm [east, north] km: NaN would slip through the leg-chain test (a NaN distance is not > 1e-6)
+        if (p.offsetKm !== undefined && !(Array.isArray(p.offsetKm) && p.offsetKm.length === 2 && p.offsetKm.every(num))) E(`route leg ${leg.id}: point ${p.place} offsetKm ${JSON.stringify(p.offsetKm)} is not [east, north] km`);
         marks.add(p.mark ?? p.place);
       } else if (Array.isArray(p.at) && p.at.length === 2 && p.at.every(num)) {
+        if (p.offsetKm !== undefined) E(`route leg ${leg.id}: offsetKm only on place points`);
         if (p.mark) marks.add(p.mark);
       } else E(`route leg ${leg.id}: a point needs a place or at [x, y]`);
     }
@@ -221,6 +268,7 @@ export async function checkFilmStructure(): Promise<CheckResult> {
     for (const k of ['in', 'out', 'fadeIn', 'fadeOut', 'anchorLiftKm'] as const) if (c[k] !== undefined && !num(c[k])) E(`${where}: caption ${k} is not a number`);
     if ((c.fadeIn ?? 0) < 0 || (c.fadeOut ?? 0) < 0) E(`${where}: negative caption fade`);
     if (c.side && !['left', 'right', 'above', 'below'].includes(c.side)) E(`${where}: caption side '${c.side}'`);
+    if (c.anchorOffsetKm !== undefined && !(Array.isArray(c.anchorOffsetKm) && c.anchorOffsetKm.length === 2 && c.anchorOffsetKm.every(num) && Math.hypot(c.anchorOffsetKm[0], c.anchorOffsetKm[1]) <= 5)) E(`${where}: caption anchorOffsetKm ${JSON.stringify(c.anchorOffsetKm)} is not [east, north] km within 5 km of the landmark`);
     if (dur !== null) {
       const rel = (v: number | undefined, dflt: number, isOut: boolean) => {
         const x = v ?? dflt;
@@ -230,8 +278,12 @@ export async function checkFilmStructure(): Promise<CheckResult> {
       const a = rel(c.in, D[0], false);
       const b = rel(c.out, D[1], true);
       if (!(a >= -1e-9 && b <= dur + 1e-9 && b > a)) E(`${where}: caption window [${fmt(a, 2)}, ${fmt(b, 2)}] s outside its ${fmt(dur, 2)} s beat`);
-      // authored fades must fit their window (defaults shrink to LABEL_FADE_SHARE of it by themselves)
-      else if ((c.fadeIn ?? 0) + (c.fadeOut ?? 0) > b - a + 1e-9) E(`${where}: caption fades ${fmt(c.fadeIn ?? 0, 2)} + ${fmt(c.fadeOut ?? 0, 2)} s exceed its ${fmt(b - a, 2)} s window`);
+      else if (CAPTION_KINDS.includes(c.kind)) {
+        // the fades the compiler gives it (authored, else the kind's default shrunk to its window) must fit
+        // the window together: otherwise the reveal never reaches 1 and the in / out ramps overlap
+        const [fi, fo] = captionFades(c.kind, b - a, c);
+        if (fi + fo > b - a + 1e-9) E(`${where}: caption fades ${fmt(fi, 2)} + ${fmt(fo, 2)} s (${c.fadeIn === undefined ? 'default' : 'authored'} in, ${c.fadeOut === undefined ? 'default' : 'authored'} out) exceed its ${fmt(b - a, 2)} s window`);
+      }
     }
   };
   const checkEvents = (ev: BeatJson['events'], where: string, dur: number | null) => {
@@ -321,6 +373,13 @@ export async function checkFilmStructure(): Promise<CheckResult> {
     }
   });
   if (!autoMoves && Array.isArray(f.lengthS) && (total < f.lengthS[0] || total > f.lengthS[1])) E(`the film runs ${fmt(total)} s, outside film.lengthS [${f.lengthS.join(', ')}]`);
+  // ---- shotlist.json: a segment's route names a route leg (its beats are checked on the compiled film)
+  try {
+    const sl = readJson<{ segments: { id: string; route?: string | null }[] }>('data/tour/shotlist.json');
+    for (const s of sl.segments ?? []) if (s.route !== null && s.route !== undefined && !legIds.has(s.route)) E(`data/tour/shotlist.json segment ${s.id}: route '${s.route}' is not a leg of route.json (${[...legIds].join(', ')})`);
+  } catch (e) {
+    E(`data/tour/shotlist.json does not parse: ${(e as Error).message}`);
+  }
   out.info.push(`film: timeline v1 ${tl.status}, ${beats.length} beats, ${autoMoves ? `${autoMoves} auto move(s) (length on the compiled film)` : `${fmt(total)} s`}; route ${route.legs?.length ?? 0} legs, ${marks.size} marks`);
   return out;
 }
@@ -351,6 +410,76 @@ export interface FilmCheckResult extends CheckResult {
   timeline: TimelineJson;
 }
 
+/** the sky's studio void: its blend from the horizon haze into the dark backdrop (src/environment/sky.ts voidFalloff) */
+const VOID_FALLOFF = 0.3;
+
+/**
+ * The board's edge as the frame shows it: rays through the top 15 % of the frame (a cols × rows grid, the
+ * top rows of it) that look down past the floating board into the studio void, each weighted by how dark
+ * the sky shader draws that void — 1 − (1 − min(1, depression / VOID_FALLOFF))³ (sin of the depression):
+ * a void just under the horizon is still the bright horizon haze (the far board edge melts into it), one
+ * 10° down is the dark backdrop. Returns the weighted share of the top rows (0 = land or sky up there).
+ */
+export function visibleTopVoid(
+  ctx: { world: World; H(x: number, z: number): number; WL(x: number, z: number): number },
+  cam: CameraState,
+  cols = 32,
+  rows = 18,
+): number {
+  const spec = ctx.world.spec;
+  const [px, py, pz] = cam.position;
+  let fx = cam.target[0] - px;
+  let fy = cam.target[1] - py;
+  let fz = cam.target[2] - pz;
+  const fl = Math.hypot(fx, fy, fz) || 1;
+  fx /= fl;
+  fy /= fl;
+  fz /= fl;
+  let rx = -fz;
+  let rz = fx;
+  const rl = Math.hypot(rx, rz) || 1;
+  rx /= rl;
+  rz /= rl;
+  const ux = -rz * fy;
+  const uy = rz * fx - rx * fz;
+  const uz = rx * fy;
+  const tanV = Math.tan((cam.fov * Math.PI) / 360);
+  const tanH = tanV * (16 / 9);
+  const inside = (x: number, z: number) => x >= spec.xMin && x <= spec.xMax && z >= spec.zMin && z <= spec.zMax;
+  let sum = 0;
+  let n = 0;
+  for (let j = 0; j < rows * 0.15; j++)
+    for (let i = 0; i < cols; i++) {
+      n++;
+      const sx = ((i + 0.5) / cols) * 2 - 1;
+      const sy = 1 - ((j + 0.5) / rows) * 2;
+      let dx = fx + rx * sx * tanH + ux * sy * tanV;
+      let dy = fy + uy * sy * tanV;
+      let dz = fz + rz * sx * tanH + uz * sy * tanV;
+      const dl = Math.hypot(dx, dy, dz);
+      dx /= dl;
+      dy /= dl;
+      dz /= dl;
+      if (dy >= 0) continue; // sky
+      // march down to the ground (or out of the board): the probe's step rule
+      let hit = false;
+      for (let t = 0.05; ; t += Math.max(0.05, t * 0.008)) {
+        const x = px + dx * t;
+        const y = py + dy * t;
+        const z = pz + dz * t;
+        if (!inside(x, z) || y < -44.6) break;
+        if (y < Math.max(ctx.H(x, z), ctx.WL(x, z))) {
+          hit = true;
+          break;
+        }
+      }
+      if (hit) continue;
+      const u = Math.min(1, -dy / VOID_FALLOFF);
+      sum += 1 - (1 - u) ** 3;
+    }
+  return n ? sum / n : 0;
+}
+
 /** Vogel-spiral disk of n points of radius r around (0, 0). */
 function vogel(n: number, r: number): [number, number][] {
   const out: [number, number][] = [];
@@ -370,9 +499,13 @@ export async function checkFilm(world: World, landmarks: LandmarkDefinition[], o
   const route = readJson<RouteJson>('data/tour/route.json');
   const shots = readJson<{ shots: ShotSpecInput[] }>('data/qa/shots.json').shots;
   const { compileFilm } = (await import(mod('src/tour/compile.ts'))) as typeof import('../../src/tour/compile.ts');
-  const { forgetWaterField, routeAt, routeReport, FLOAT_WARN_KM } = (await import(mod('src/tour/route.ts'))) as typeof import('../../src/tour/route.ts');
+  const { forgetWaterField, routeReport, FLOAT_WARN_KM } = (await import(mod('src/tour/route.ts'))) as typeof import('../../src/tour/route.ts');
   const { projectToNdc, captionReveal } = (await import(mod('src/tour/captions.ts'))) as typeof import('../../src/tour/captions.ts');
   const { projectToScreen, visibility, onScreen } = (await import(mod('src/titles/layout.ts'))) as typeof import('../../src/titles/layout.ts');
+  const { TitleSystem, titleSubjects } = (await import(mod('src/titles/TitleSystem.ts'))) as typeof import('../../src/titles/TitleSystem.ts');
+  const { RouteSystem } = (await import(mod('src/route/RouteSystem.ts'))) as typeof import('../../src/route/RouteSystem.ts');
+  const { pathModeAt } = (await import(mod('src/route/path.ts'))) as typeof import('../../src/route/path.ts');
+  const { ROUTE_MODE } = (await import(mod('src/tour/schema.ts'))) as typeof import('../../src/tour/schema.ts');
   const { CLEAR, DECK_BELOW_KM, DECK_COVER } = (await import(mod('src/tour/rig.ts'))) as typeof import('../../src/tour/rig.ts');
   const { createProbeContext, probeCamera } = await import('./probe.ts');
   const { LandmarkSystem } = (await import(mod('src/landmarks/LandmarkSystem.ts'))) as typeof import('../../src/landmarks/LandmarkSystem.ts');
@@ -573,52 +706,54 @@ export async function checkFilm(world: World, landmarks: LandmarkDefinition[], o
   });
 
   lap('24 Hz samples');
-  // ---- 8 Hz: route head on screen (moves), label anchors, LOD stability (holds)
+  // ---- 8 Hz: route head on screen (moves), labels, LOD stability (holds) — judged with the page's own code:
+  // the head as the RouteSystem draws it (headPoint: the near / far path at the head's depth), the labels
+  // as the TitleSystem places them (anchorPoint: the diamond moves onto the route head while the head rests
+  // on its subject; subjectVisible over the HeightField), laid out at the shutter's centre as in the film
   const ASPECT = 16 / 9;
-  const head3 = (t: number) => routeAt(R, rig.head(t));
-  for (const m of rig.moves) {
-    let n = 0;
-    let on = 0;
-    for (let k = Math.ceil((m.t0 + 0.5) * HZ); k <= Math.floor(m.t1 * HZ) && k <= K; k += 3) {
-      if ((states[k].routeGlow ?? 1) <= 0.01) continue;
-      n++;
-      const [x, y, d] = projectToNdc(camOf(k), head3(k * h), ASPECT);
-      if (d > 0 && Math.abs(x) <= FILM_LIMITS.headOnScreen && Math.abs(y) <= FILM_LIMITS.headOnScreen) on++;
-    }
-    if (n && on / n < FILM_LIMITS.headShare) sampledFinding(m.beat, `route head on screen ${fmt((100 * on) / n, 0)} % of the move (< ${100 * FILM_LIMITS.headShare} %)`);
-  }
-  // label anchors, judged as the page draws them (src/titles/layout.ts — the TitleSystem's own projection and
-  // HeightField visibility): the anchor's screen point inside the label-safe zone, the label not faded out by
-  // its anchor leaving the frame (onScreen) and its subject not hidden behind terrain (the TitleSystem's
-  // subjectVisible: the best of the subject's top, middle and the anchor, each tested up to the subject's own
-  // footprint; the anchor alone without a subject)
   const LW = 1600;
   const LH = 900;
   const heightAt = (x: number, z: number) => world.heights.sample(x, z);
-  const subjectOfAnchor = (a: readonly number[]): BuiltLandmark | null => {
-    let best: BuiltLandmark | null = null;
-    let bd = LABEL_SUBJECT_KM;
-    for (const b of ctx.built) {
-      const d = Math.hypot(b.origin[0] - a[0], b.origin[2] - a[2]);
-      if (d < bd) {
-        bd = d;
-        best = b;
-      }
+  const routeSys = new RouteSystem(world, R);
+  const headOf = (st: SceneState): V3 | null => routeSys.headPoint(st, [0, 0, 0]);
+  for (const m of rig.moves) {
+    let n = 0;
+    let on = 0;
+    let hid = 0;
+    for (let k = Math.ceil((m.t0 + 0.5) * HZ); k <= Math.floor(m.t1 * HZ) && k <= K; k += 3) {
+      if ((states[k].routeGlow ?? 1) <= 0.01) continue;
+      const hp = headOf(states[k]);
+      if (!hp) continue;
+      n++;
+      const cam = camOf(k);
+      const [x, y, d] = projectToNdc(cam, hp, ASPECT);
+      if (!(d > 0 && Math.abs(x) <= FILM_LIMITS.headOnScreen && Math.abs(y) <= FILM_LIMITS.headOnScreen)) continue;
+      // in frame AND not behind terrain (the head's last 0.6 km — its own ground — untested); under the
+      // mountains (Moria) the line is drawn as x-ray dots through the rock: visible by design
+      const under = pathModeAt(routeSys.path, clamp01(states[k].routeProgress) * R.length) === ROUTE_MODE.underground;
+      if (under || visibility(cam.position as V3, hp, heightAt) >= 0.5) on++;
+      else hid++;
     }
-    return best;
-  };
-  const labelVisible = (eye: V3, anchor: V3, subj: BuiltLandmark | null): number => {
-    if (!subj) return visibility(eye, anchor, heightAt);
-    const skip = Math.max(0.6, subj.bounds.r);
-    const c = subj.bounds.center;
-    const top: V3 = [c[0], subj.origin[1] + 0.9 * subj.bounds.h, c[2]];
-    const mid: V3 = [c[0], subj.origin[1] + 0.5 * subj.bounds.h, c[2]];
-    return Math.max(visibility(eye, top, heightAt, skip), visibility(eye, mid, heightAt, skip), visibility(eye, anchor, heightAt, skip));
-  };
+    // on screen (in frame) ≥ headShare; visible (in frame and not behind terrain) ≥ headVisibleShare
+    if (n && (on + hid) / n < FILM_LIMITS.headShare) sampledFinding(m.beat, `route head on screen ${fmt((100 * (on + hid)) / n, 0)} % of the move (< ${100 * FILM_LIMITS.headShare} %)`);
+    if (n && on / n < FILM_LIMITS.headVisibleShare) sampledFinding(m.beat, `route head visible ${fmt((100 * on) / n, 0)} % of the move (< ${100 * FILM_LIMITS.headVisibleShare} %; ${hid} samples in frame but behind terrain)`);
+  }
+  // labels: the TitleSystem itself (its pure per-state helpers) with the page's inputs (boot.ts): subjects
+  // from the build (titleSubjects; no silhouette triangles in Node — they only steer the side choice), the
+  // HeightField, the route head as drawn. Each sample = one film frame tF, laid out at the shutter's centre.
+  const titles = new TitleSystem(film.captions, {
+    fps: film.fps,
+    shutter: film.shutter,
+    stateAt: (t) => program.evaluate(t),
+    heightAt,
+    subjects: titleSubjects(ctx.built, heightAt),
+    headAt: (st, o) => routeSys.headPoint(st, o),
+  }) as unknown as TitleInternals;
+  for (const fn of ['anchorPoint', 'subjectVisible'] as const)
+    if (typeof titles[fn] !== 'function') throw new Error(`film check: TitleSystem.${fn} is gone — mirror the TitleSystem's label point / visibility here again`);
+  const layoutAt = (tF: number): SceneState => program.evaluate(film.shutter > 0 ? tF + (0.5 * film.shutter) / film.fps : tF);
   for (const c of film.captions) {
     if (!c.anchor) continue;
-    const anchor = c.anchor as V3;
-    const subj = subjectOfAnchor(anchor);
     let n = 0;
     let bad = 0;
     let off = 0;
@@ -628,26 +763,58 @@ export async function checkFilm(world: World, landmarks: LandmarkDefinition[], o
     for (let k = Math.ceil(c.t0 * HZ); k <= Math.floor(c.t1 * HZ) && k <= K; k += 3) {
       if (captionReveal(c, k * h) < 0.05) continue;
       n++;
-      const cam = camOf(k);
-      const A = projectToScreen(cam, anchor, LW, LH);
-      if (!A || onScreen(A, LW, LH, LABEL_OFFSCREEN_FADE * LH) < 0.5) {
-        off++;
+      const ls = layoutAt(k * h);
+      const P = titles.anchorPoint(c, ls);
+      const A = projectToScreen(ls.camera, P, LW, LH);
+      const os = A ? onScreen(A, LW, LH, LABEL_OFFSCREEN_FADE * LH) : 0;
+      const sv = titles.subjectVisible(c, ls, P);
+      // the page draws the label at opacity onScreen × subjectVisible (× reveal): below 0.5 it has faded
+      if (!A || os * sv < 0.5) {
+        if (!A || os < 0.5) off++;
+        else {
+          hidden++;
+          minVis = Math.min(minVis, sv);
+        }
         continue;
       }
       const x = (2 * A.x) / LW - 1;
       const y = 1 - (2 * A.y) / LH;
-      if (!(Math.abs(x) <= FILM_LIMITS.safeX && y >= FILM_LIMITS.safeY[0] && y <= FILM_LIMITS.safeY[1])) {
+      // the diamond on the route head (blended more than half way toward it) may sit lower
+      const hp = headOf(ls);
+      const onHead = !!hp && Math.hypot(P[0] - hp[0], P[1] - hp[1], P[2] - hp[2]) < Math.hypot(P[0] - c.anchor[0], P[1] - c.anchor[1], P[2] - c.anchor[2]);
+      const yMin = onHead ? FILM_LIMITS.headSafeYMin : FILM_LIMITS.safeY[0];
+      if (!(Math.abs(x) <= FILM_LIMITS.safeX && y >= yMin && y <= FILM_LIMITS.safeY[1])) {
         bad++;
         worst = `(${fmt(x, 2)}, ${fmt(y, 2)})`;
       }
-      const v = labelVisible(cam.position as V3, anchor, subj);
-      minVis = Math.min(minVis, v);
-      if (v < 0.5) hidden++;
     }
     const beat = beats.findIndex((b) => (isHold(b) ? b.hold : (b as MoveJson).move) === c.id.split(':')[0]);
-    if (off) sampledFinding(beat, `label ${c.id} off frame (its anchor outside the frame: the page fades it out) in ${off}/${n} samples`);
-    if (bad) sampledFinding(beat, `label anchor of ${c.id} outside the safe zone in ${bad}/${n} samples (e.g. NDC ${worst})`);
-    if (hidden) sampledFinding(beat, `label ${c.id} hidden (its ${subj ? `subject ${subj.id}` : 'anchor'} behind terrain, visibility ${fmt(minVis, 2)}: the page fades it out) in ${hidden}/${n} samples`);
+    if (off) sampledFinding(beat, `label ${c.id} off frame (its diamond outside the frame: the page fades it out) in ${off}/${n} samples`);
+    if (bad) sampledFinding(beat, `label ${c.id}: its diamond (the anchor, or the route head resting on the subject) outside the safe zone in ${bad}/${n} samples (e.g. NDC ${worst})`);
+    if (hidden) sampledFinding(beat, `label ${c.id} hidden (its subject behind terrain, visibility ${fmt(minVis, 2)}: the page fades it out) in ${hidden}/${n} samples`);
+  }
+  // the board's edge at the top of a move's frame (the dark studio void beyond the floating board where the
+  // land should run to the horizon): visibleTopVoid at 4 Hz while the view is narrower than the board. Moves
+  // to or from an overview hold (the opening descent, the closing pull-out) are exempt: they travel between
+  // the land and the whole floating board, whose edge and the void round it are that shot's subject.
+  const overviewMove = (m: (typeof rig.moves)[number]) => [m.a, m.b].some((j) => ['open', 'end'].includes(style(j)));
+  for (const m of rig.moves) {
+    if (overviewMove(m)) continue;
+    let bad = 0;
+    let worst = 0;
+    let first = -1;
+    let last = -1;
+    for (let k = Math.ceil(m.t0 * HZ); k <= Math.floor(m.t1 * HZ) && k <= K; k += 6) {
+      if (poses[k].w > FILM_LIMITS.moveVoidMaxW) continue;
+      const v = visibleTopVoid(ctx, camOf(k));
+      if (v > FILM_LIMITS.moveTopVoid) {
+        bad++;
+        worst = Math.max(worst, v);
+        if (first < 0) first = k * h;
+        last = k * h;
+      }
+    }
+    if (bad) sampledFinding(m.beat, `the board's edge in the top of the frame (visible void up to ${fmt(100 * worst, 0)} % of the top rows > ${100 * FILM_LIMITS.moveTopVoid} %) at ${fmt(first, 2)}–${fmt(last, 2)} s (${bad} samples at 4 Hz)`);
   }
   const lodBias = tl.film.lodBias ?? 1;
   // the landmark's real LOD count (the page passes levels.length to selectLod): the Node build keeps no
@@ -858,6 +1025,20 @@ export function syncShotlist(text: string, program: FilmProgram, tl: TimelineJso
     if (!lm || !L) continue;
     L.tod = r2((b.tod[0] + b.tod[1]) / 2);
     L.screenSeconds = r2(rig.durs[i]);
+    note(`landmark ${lm}.tod`, doc.landmarks[lm].tod, L.tod);
+    note(`landmark ${lm}.screenSeconds`, doc.landmarks[lm].screenSeconds, L.screenSeconds);
+  }
+  // landmarks passed inside a move (a pass caption while the head goes by): tod at the caption's middle,
+  // screenSeconds = its visible window
+  for (const c of film.captions) {
+    const [beatId, kind, idx] = c.id.split(':');
+    const bi = ids.indexOf(beatId);
+    if (bi < 0 || isHold(beats[bi]) || (kind !== 'pass' && kind !== 'place')) continue;
+    const lm = (beats[bi] as MoveJson).captions?.[Number(idx)]?.landmark;
+    const L = lm ? want.landmarks[lm] : undefined;
+    if (!lm || !L) continue;
+    L.tod = r2(program.evaluate((c.t0 + c.t1) / 2).tod);
+    L.screenSeconds = r2(c.t1 - c.t0);
     note(`landmark ${lm}.tod`, doc.landmarks[lm].tod, L.tod);
     note(`landmark ${lm}.screenSeconds`, doc.landmarks[lm].screenSeconds, L.screenSeconds);
   }

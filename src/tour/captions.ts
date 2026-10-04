@@ -4,9 +4,8 @@
  *
  * Anchors: a place / pass label hangs over its landmark's display position at ground + 0.6 × the landmark's
  * built bounds height (BuiltLandmark, when the compiler is given the build), else ground + 0.5 km;
- * `anchorLiftKm` overrides the height above the ground. The label's side is picked at compile time from the
- * anchor's projection at the middle of its window: an anchor in the upper third of the frame takes the
- * label below it, otherwise above (the free sky / land above the subject).
+ * `anchorLiftKm` overrides the height above the ground. An authored `side` pins the label to that side;
+ * without one the TitleSystem picks the side off the subject's silhouette (src/titles/layout.ts).
  */
 import type { CameraState } from '../core/types.ts';
 import type { BuiltLandmark } from '../landmarks/records.ts';
@@ -34,6 +33,18 @@ export const CAPTION_DEFAULTS: Record<CaptionJson['kind'], [number, number, numb
  * film check rejects fades longer than their window).
  */
 export const LABEL_FADE_SHARE = { in: 0.4, out: 0.3 } as const;
+
+/**
+ * A caption's fades (s) for its visible window `span` (s): the authored `fadeIn` / `fadeOut`, else the kind's
+ * default — for place / pass labels shrunk to LABEL_FADE_SHARE of the window. The one rule compileCaptions
+ * and the film check (fades must fit their window) share.
+ */
+export function captionFades(kind: CaptionJson['kind'], span: number, c: Pick<CaptionJson, 'fadeIn' | 'fadeOut'>): [number, number] {
+  const [, , dfi, dfo] = CAPTION_DEFAULTS[kind];
+  const label = kind === 'place' || kind === 'pass';
+  const s = Math.max(0, span);
+  return [c.fadeIn ?? (label ? Math.min(dfi, LABEL_FADE_SHARE.in * s) : dfi), c.fadeOut ?? (label ? Math.min(dfo, LABEL_FADE_SHARE.out * s) : dfo)];
+}
 
 /** anchor height above the ground without a landmark build, km */
 export const ANCHOR_LIFT_KM = 0.5;
@@ -99,28 +110,29 @@ export interface CaptionInputs {
   beats: BeatJson[];
   t0s: number[];
   durs: number[];
-  /** the film camera at t (side selection) */
-  cameraAt(t: number): CameraState;
-  aspect?: number;
 }
 
-/** Anchor of a landmark label in world units. */
-export function captionAnchor(world: World, def: LandmarkDefinition, built: BuiltLandmark[] | undefined, liftKm?: number): [number, number, number] {
+/**
+ * Anchor of a landmark label in world units: over its display position (+ `offsetKm` [east, north]) at
+ * `liftKm` above the ground there, else at 0.6 × its built height (no offset), else ground + 0.5 km.
+ */
+export function captionAnchor(world: World, def: LandmarkDefinition, built: BuiltLandmark[] | undefined, liftKm?: number, offsetKm?: readonly [number, number]): [number, number, number] {
   const p = world.place(def.placeId);
-  const ground = Math.max(0, world.heights.sample(p.x, p.z));
-  if (liftKm !== undefined) return [p.x, ground + liftKm, p.z];
-  const b = built?.find((x) => x.id === def.id);
-  if (b) return [p.x, b.origin[1] + ANCHOR_HEIGHT_SHARE * b.bounds.h, p.z];
-  return [p.x, ground + ANCHOR_LIFT_KM, p.z];
+  const x = p.x + (offsetKm?.[0] ?? 0);
+  const z = p.z - (offsetKm?.[1] ?? 0);
+  const ground = Math.max(0, world.heights.sample(x, z));
+  if (liftKm !== undefined) return [x, ground + liftKm, z];
+  const b = offsetKm ? undefined : built?.find((q) => q.id === def.id);
+  if (b) return [x, b.origin[1] + ANCHOR_HEIGHT_SHARE * b.bounds.h, z];
+  return [x, ground + ANCHOR_LIFT_KM, z];
 }
 
 export function compileCaptions(inp: CaptionInputs): CaptionDef[] {
   const { world, beats, t0s, durs } = inp;
-  const aspect = inp.aspect ?? 16 / 9;
   const out: CaptionDef[] = [];
   beats.forEach((b, i) => {
     (b.captions ?? []).forEach((c, ci) => {
-      const [din, dout, dfi, dfo] = CAPTION_DEFAULTS[c.kind];
+      const [din, dout] = CAPTION_DEFAULTS[c.kind];
       const bt0 = t0s[i];
       const bt1 = bt0 + durs[i];
       // beat-relative seconds; negative = from the beat's end (an `out` default of −0 = the beat's end)
@@ -132,9 +144,7 @@ export function compileCaptions(inp: CaptionInputs): CaptionDef[] {
       const t0 = rel(c.in, din, false);
       const t1 = rel(c.out, dout, true);
       const label = c.kind === 'place' || c.kind === 'pass';
-      const span = Math.max(0, t1 - t0);
-      const fadeIn = c.fadeIn ?? (label ? Math.min(dfi, LABEL_FADE_SHARE.in * span) : dfi);
-      const fadeOut = c.fadeOut ?? (label ? Math.min(dfo, LABEL_FADE_SHARE.out * span) : dfo);
+      const [fadeIn, fadeOut] = captionFades(c.kind, t1 - t0, c);
       const def: CaptionDef = { id, kind: c.kind, t0, t1, fadeIn, fadeOut };
       if (label) {
         const lm = inp.landmarks.find((l) => l.id === c.landmark);
@@ -142,12 +152,10 @@ export function compileCaptions(inp: CaptionInputs): CaptionDef[] {
         def.title = c.text ?? lm.annotation.title;
         if (c.kind === 'place' && c.sub !== false) def.sub = c.sub ?? lm.annotation.subtitle;
         if (c.kind === 'pass' && typeof c.sub === 'string') def.sub = c.sub;
-        def.anchor = captionAnchor(world, lm, inp.built, c.anchorLiftKm);
+        def.anchor = captionAnchor(world, lm, inp.built, c.anchorLiftKm, c.anchorOffsetKm);
+        // an authored side pins the label; otherwise the TitleSystem places it off its subject's silhouette
+        // (layout.ts choosePlacement over the film camera at three moments of the window)
         if (c.side) def.side = c.side;
-        else {
-          const [, ny, depth] = projectToNdc(inp.cameraAt((def.t0 + def.t1) / 2), def.anchor, aspect);
-          def.side = depth > 0 && ny > 1 / 3 ? 'below' : 'above';
-        }
       } else {
         if (c.text) def.title = c.text;
         if (typeof c.sub === 'string') def.sub = c.sub;
