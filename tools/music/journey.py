@@ -59,15 +59,23 @@ class Cues:
             self.by = {b["id"]: b for b in self.beats}
             tl = json.loads((Path(__file__).resolve().parents[2] / "data" / "tour" / "timeline.json").read_text(encoding="utf-8"))
             self.events = {}
+            self.passes = {}
             for b in tl["beats"]:
+                bid = b.get("hold") or b.get("move")
+                t0, t1 = self.t0(bid), self.t1(bid)
                 for ch, keys in (b.get("events") or {}).items():
-                    t0 = self.t0(b["hold"])
                     self.events.setdefault(ch, []).extend([t0 + t, v] for t, v in keys)
+                # pass captions inside moves (e.g. Rauros on the way to the Black Gate): absolute (in, out)
+                for cap in b.get("captions") or []:
+                    if cap.get("kind") == "pass" and "landmark" in cap and "in" in cap:
+                        at = lambda v: t0 + v if v >= 0 else t1 + v
+                        self.passes[cap["landmark"]] = (at(cap["in"]), at(cap.get("out", 0.0)) if cap.get("out", 0.0) != 0 else t1)
             return
         self.duration = float(data["duration"])
         self.beats = data["beats"]
         self.by = {b["id"]: b for b in self.beats}
         self.events = data.get("events", {})
+        self.passes = {}
 
     def t0(self, beat: str) -> float:
         return float(self.by[beat]["t0"])
@@ -361,11 +369,19 @@ def river(S: Score, c: Cues) -> None:
     swell(S, a, 112)
 
 
+def rauros_span(c: Cues) -> tuple[float, float]:
+    """Rauros: its own hold (older cuts) or the pass caption on the way to the Black Gate (picture lock)"""
+    if "rauros" in c.by:
+        return c.t0("rauros"), c.t0("to-black-gate")
+    if "rauros" in c.passes:
+        return c.passes["rauros"]
+    return c.t1("argonath"), c.t1("argonath") + 2.0
+
+
 def kings(S: Score, c: Cues) -> None:
     """the Argonath reveal: tutti D major, the theme (phrase B) broad in horns and violins; Rauros quieter."""
     a = c.t0("argonath")
-    r = c.t0("rauros")
-    t1 = c.t0("to-black-gate")
+    r, t1 = rauros_span(c)
     S.mark(a, "argonath")
     hit(S, a, gong=F, bd=FF, crash=F, timp="D2", tv=FF)
     pad(S, a, r, {"cb": "D1", "tba": "D1", "tbn": "D2 A2", "vc": "D2 A2", "vla": "F#3 A3"}, F)
@@ -382,8 +398,8 @@ def kings(S: Score, c: Cues) -> None:
 
 
 def approach(S: Score, c: Cues) -> None:
-    """Emyn Muil → Dead Marshes → the Black Gate: E Phrygian, low brass E–F, drum on every beat."""
-    t0 = c.t0("to-black-gate")
+    """Emyn Muil → Dead Marshes → the Black Gate: E Phrygian, low brass E–F, drum on every beat (after Rauros)."""
+    t0 = rauros_span(c)[1] - 0.5
     bg = c.t0("black-gate")
     t1 = c.t0("to-henneth-annun")
     S.mark(t0, "black gate")
