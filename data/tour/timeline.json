@@ -1,7 +1,7 @@
 {
   "version": 1,
   "status": "draft",
-  "notes": "Journey Through Middle-Earth (S5 draft). One day on dayOfYear 78 (sunrise 6.09, sunset 17.91, key → moon at 18.32, full night 19.37; waxing moon ≈ 70 % lit, 57–62° up from 18:00). Beats alternate hold / move; durations are cumulative. Camera keys reference landmark bookmarks or QA shots (+ `set` overrides) and never edit them (five bookmarks are lock-v1 sentinels). Azimuths keep the camera mostly south of the route so the low sun side-lights the land (right in the morning, left in the afternoon); Minas Tirith is at blue hour (Mindolluin shades it all afternoon). Compiled by src/tour/compile.ts; checked by tools/check/film.ts (pnpm check).",
+  "notes": "Journey Through Middle-Earth (S5 draft). One day on dayOfYear 78 (sunrise 6.09, sunset 17.91, the sun key fades out by 18.32 and the moon key comes in from 18.3 to 18.85, full night 19.37; waxing moon ≈ 70 % lit, 57–62° up from 18:00). Beats alternate hold / move; durations are cumulative. Camera keys reference landmark bookmarks or QA shots (+ `set` overrides) and never edit them (five bookmarks are lock-v1 sentinels). The hold azimuths run as one journey heading (consecutive holds ≤ ~110° apart, moves turn < 30°/s): south of the road through Eriador (the morning sun from the right), west of the Misty Mountains for Rivendell and Moria, then swinging back through south to the north-east over Rohan and the Anduin (Lórien 200, Isengard 130, Helm's Deep 70, Edoras 40, the Argonath 33, Rauros 20, the Black Gate 342) and on clockwise round Gondor (Henneth Annûn from the north-north-east, Minas Tirith from the south-east with Osgiliath and the route head in frame, Minas Morgul from the south, Mount Doom 166). Moves: apexEl 26 (a higher apex swung the view up and down faster than 30°/s), per-move rho / apexEl where a move dips under the clearance margin or jerks. Minas Tirith is at blue hour (Mindolluin shades it all afternoon); Minas Morgul at 18.7–18.8 under the rising moon (the moon key only comes in between sun −4° and −11°, 18.3 → 18.85: at 18.35 the vale was unlit, luma ≈ 15). Compiled by src/tour/compile.ts; checked by tools/check/film.ts (pnpm check).",
   "film": {
     "fps": 24,
     "shutter": 0.5,
@@ -41,7 +41,7 @@
       "tod": [7.4, 7.45], "captions": [{ "kind": "pass", "landmark": "weathertop" }], "music": { "mood": "road", "intensity": 0.5 } },
 
     { "move": "to-rivendell", "dur": 7.25, "music": { "mood": "road", "intensity": 0.45 } },
-    { "hold": "rivendell", "style": "hero", "dur": 8.5, "place": "rivendell", "camera": { "bookmark": "rivendell-close", "set": { "distanceKm": 12, "elevationDeg": 12, "aimKm": [2.0, 1.0] } },
+    { "hold": "rivendell", "style": "hero", "dur": 8.5, "place": "rivendell", "camera": { "bookmark": "rivendell-close", "set": { "distanceKm": 12.5, "elevationDeg": 12, "aimKm": [1.8, 0.9], "fov": 22.5 } },
       "tod": [8.4, 8.6], "light": "shade", "lens": { "fStop": "bookmark" },
       "captions": [{ "kind": "place", "landmark": "rivendell", "sub": "The hidden valley · morning" }],
       "music": { "mood": "elven", "intensity": 0.4, "hit": "arrive" } },
@@ -80,24 +80,24 @@
     { "hold": "rauros", "style": "stop", "dur": 3.5, "place": "rauros", "camera": { "bookmark": "rauros-close", "set": { "azimuthDeg": 20 } },
       "tod": [15.05, 15.15], "captions": [{ "kind": "pass", "landmark": "rauros" }], "music": { "mood": "kings", "intensity": 0.5 } },
 
-    { "move": "to-black-gate", "dur": 5.5, "rho": 1.7, "note": "east over the Emyn Muil and the Dead Marshes", "music": { "mood": "approach", "intensity": 0.5 } },
+    { "move": "to-black-gate", "dur": 6, "rho": 1.5, "apexEl": 24, "note": "east over the Emyn Muil and the Dead Marshes", "music": { "mood": "approach", "intensity": 0.5 } },
     { "hold": "black-gate", "style": "stop", "dur": 4.5, "place": "black-gate", "camera": { "bookmark": "black-gate-wide" },
       "tod": [16.05, 16.15], "light": "shade", "captions": [{ "kind": "pass", "landmark": "black-gate" }], "music": { "mood": "approach", "intensity": 0.65, "hit": "arrive" } },
 
     { "move": "to-henneth-annun", "dur": 5, "apexEl": 20, "music": { "mood": "ithilien", "intensity": 0.45 } },
-    { "hold": "henneth-annun", "style": "stop", "dur": 4, "place": "henneth-annun", "camera": { "bookmark": "henneth-annun-close", "set": { "azimuthDeg": 30, "elevationDeg": 20, "aimKm": [-2.5, -1] } },
+    { "hold": "henneth-annun", "style": "stop", "dur": 4, "place": "henneth-annun", "camera": { "bookmark": "henneth-annun-close", "set": { "azimuthDeg": 20, "elevationDeg": 18, "aimKm": [-2.5, -0.5] } },
       "tod": [16.75, 16.85], "light": "shade", "captions": [{ "kind": "pass", "landmark": "henneth-annun" }], "music": { "mood": "ithilien", "intensity": 0.45 } },
 
     { "move": "to-minas-tirith", "dur": 7.5, "music": { "mood": "gondor", "intensity": 0.5 } },
     { "hold": "minas-tirith", "style": "hero", "dur": 10, "place": "osgiliath", "head": "osgiliath",
-      "camera": { "orbit": { "place": "minas-tirith", "distanceKm": 52, "elevationDeg": 12, "azimuthDeg": 135, "fov": 34, "lift": 5, "aimKm": [7, 2] } },
+      "camera": { "orbit": { "place": "minas-tirith", "distanceKm": 46, "elevationDeg": 16, "azimuthDeg": 128, "fov": 38, "lift": 5, "aimKm": [8, 2.5] } },
       "tod": [17.9, 18.15], "events": { "beacons": [[2, 0], [5, 1]] }, "light": "silhouette", "note": "blue hour from the east: the city against the afterglow, windows lighting, the beacon kindled",
       "captions": [{ "kind": "place", "landmark": "minas-tirith", "sub": "Gondor · nightfall" }],
       "music": { "mood": "gondor", "intensity": 0.7, "hit": "beacon" } },
 
     { "move": "to-minas-morgul", "dur": 6.5, "music": { "mood": "morgul", "intensity": 0.55 } },
-    { "hold": "minas-morgul", "style": "hero", "dur": 9, "place": "minas-morgul", "camera": { "bookmark": "minas-morgul-wide", "set": { "distanceKm": 36, "elevationDeg": 6, "lift": 2, "azimuthDeg": 208 } },
-      "tod": [18.3, 18.4], "events": { "morgul-beam": [[1.5, 0], [4.5, 1]] }, "look": { "id": "mordor", "weight": 0.7 },
+    { "hold": "minas-morgul", "style": "hero", "dur": 9, "place": "minas-morgul", "camera": { "bookmark": "minas-morgul-close", "set": { "azimuthDeg": 195, "distanceKm": 22, "elevationDeg": 9, "fov": 42 } },
+      "tod": [18.7, 18.8], "events": { "morgul-beam": [[1.5, 0], [4.5, 1]] }, "look": { "id": "mordor", "weight": 0.7 },
       "captions": [{ "kind": "place", "landmark": "minas-morgul", "sub": "The tower in the dead vale" }],
       "music": { "mood": "morgul", "intensity": 0.8, "hit": "beam" } },
 
