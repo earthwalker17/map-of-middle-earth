@@ -17,7 +17,7 @@
     { "id": "shire", "route": "shire", "seconds": 16.5, "tod": 6.5, "mix": { "wide": 0.18, "regional": 0.07, "mid": 0.08, "close": 0.67 }, "landmarks": ["hobbiton"], "beats": ["to-hobbiton", "hobbiton"] },
     { "id": "bree-weathertop", "route": "east-road", "seconds": 17, "tod": 7.43, "mix": { "regional": 0.13, "mid": 0.79, "close": 0.09 }, "landmarks": ["bree", "weathertop"], "beats": ["to-bree", "bree", "to-weathertop", "weathertop"] },
     { "id": "rivendell", "route": "to-rivendell", "seconds": 15.75, "tod": 8.5, "mix": { "regional": 0.16, "mid": 0.24, "close": 0.61 }, "landmarks": ["rivendell"], "beats": ["to-rivendell", "rivendell"] },
-    { "id": "moria", "route": "hollin-caradhras", "seconds": 14.5, "tod": 9.7, "mix": { "regional": 0.15, "mid": 0.76, "close": 0.09 }, "landmarks": ["moria"], "beats": ["to-moria", "moria"] },
+    { "id": "moria", "route": "hollin", "seconds": 14.5, "tod": 9.7, "mix": { "regional": 0.15, "mid": 0.76, "close": 0.09 }, "landmarks": ["moria"], "beats": ["to-moria", "moria"] },
     { "id": "lorien", "route": "to-lorien", "seconds": 14, "tod": 10.9, "mix": { "regional": 0.14, "mid": 0.86 }, "landmarks": ["lothlorien"], "beats": ["to-lothlorien", "lothlorien"] },
     { "id": "rohan", "route": "to-isengard", "seconds": 25.25, "tod": 13.35, "mix": { "regional": 0.17, "mid": 0.83 }, "landmarks": ["isengard", "helms-deep", "edoras"], "beats": ["to-isengard", "isengard", "to-helms-deep", "helms-deep", "to-edoras", "edoras"] },
     { "id": "anduin", "route": "anduin", "seconds": 21, "tod": 15.1, "mix": { "regional": 0.12, "mid": 0.43, "close": 0.45 }, "landmarks": ["argonath", "rauros"], "beats": ["to-argonath", "argonath", "to-rauros", "rauros"] },
