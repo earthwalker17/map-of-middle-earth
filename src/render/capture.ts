@@ -1,6 +1,7 @@
 import { REVISION } from 'three/webgpu';
 import type { Engine, GpuInfo } from '../core/Engine.ts';
 import { StaticTimeline, type ShotSpec, type Timeline } from '../core/Timeline.ts';
+import type { SceneState } from '../core/types.ts';
 import type { ShotSpecInput } from '../camera/shots.ts';
 import { terrainDetailError } from '../terrain/terrainTextures.ts';
 
@@ -70,6 +71,10 @@ export interface CaptureApi {
    */
   benchmark(req: BenchRequest): Promise<BenchResult>;
   registerTimeline(t: Timeline): void;
+  /** S5: a registered timeline's duration and metadata (the film: fps, beats, hash) */
+  timelineInfo(id: string): { id: string; duration: number; meta: unknown } | null;
+  /** S5: a registered timeline's SceneState at t (diagnostics, labels; JSON-serializable) */
+  timelineState(id: string, t: number): SceneState | null;
 }
 
 declare global {
@@ -86,6 +91,17 @@ declare global {
 function assertTerrainDetail(): void {
   const err = terrainDetailError();
   if (err) throw new Error(`capture: ${err}`);
+}
+
+/**
+ * Shutter time of accumulation sub-sample i of n, as a fraction of the open shutter (S5). Stratified
+ * (cell centres) and permuted by a stride coprime with n, so the time order does not follow the Halton
+ * pixel-jitter / aperture order that shares the index i (correlated blur and AA patterns otherwise).
+ */
+export function shutterFraction(i: number, n: number): number {
+  if (n <= 1) return 0;
+  const stride = [7, 5, 11, 13, 17].find((p) => n % p !== 0) ?? 1;
+  return (((i * stride) % n) + 0.5) / n;
 }
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
@@ -113,6 +129,11 @@ export function installCaptureApi(
       jsHeapMB: (performance as any).memory ? Math.round((performance as any).memory.usedJSHeapSize / 2 ** 20) : null,
     }),
     registerTimeline: (t) => timelines.set(t.id, t),
+    timelineState: (id, t) => timelines.get(id)?.evaluate(t) ?? null,
+    timelineInfo: (id) => {
+      const t = timelines.get(id);
+      return t ? { id: t.id, duration: t.duration, meta: t.meta?.() ?? null } : null;
+    },
     async render(req) {
       await ready;
       assertTerrainDetail();
@@ -130,7 +151,8 @@ export function installCaptureApi(
       const frameDt = 1 / (req.fps ?? 24);
       const shutter = req.shutter ?? 0;
       const start = performance.now();
-      engine.renderAccumulated((i, n) => timeline.evaluate(t0 + (n > 1 ? (i / n) * shutter * frameDt : 0)), spp);
+      // shutter 0 (every still) evaluates t0 for every sub-sample, exactly as before S5
+      engine.renderAccumulated((i, n) => timeline.evaluate(shutter > 0 ? t0 + shutterFraction(i, n) * shutter * frameDt : t0), spp);
       const pixels = await engine.post.readPixels();
       const renderMs = performance.now() - start;
       let sum = 0;

@@ -75,8 +75,8 @@ export async function withTimeout<T>(p: Promise<T>, ms: number, what: string): P
 }
 
 /** Load the app in capture mode and wait for the world to be ready (fail fast: never hold the lock on a broken page). */
-export async function bootCapturePage(s: CaptureSession, quality: string): Promise<void> {
-  await s.page.goto(`${s.srv.url}/?capture=1&quality=${quality}`);
+export async function bootCapturePage(s: CaptureSession, quality: string, extraQuery = ''): Promise<void> {
+  await s.page.goto(`${s.srv.url}/?capture=1&quality=${quality}${extraQuery}`);
   await s.page.waitForFunction(() => Boolean(window.__mm), undefined, { timeout: 120_000 });
   await withTimeout(s.page.evaluate(() => window.__mm!.ready), 240_000, 'app boot (window.__mm.ready)');
 }

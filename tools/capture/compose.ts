@@ -48,6 +48,19 @@ export async function sideBySide(parts: { img: Buffer; w: number }[], h: number,
   await sideBySideImage(parts, h, o).png({ compressionLevel: 6 }).toFile(file);
 }
 
+/**
+ * A contact-sheet grid: equally sized tiles (already w × h, e.g. from `labelled`) in rows of `cols`, as an
+ * un-encoded sharp pipeline (S5 film stills / storyboards).
+ */
+export function grid(tiles: Buffer[], w: number, h: number, cols: number, o: SideBySideOpts = {}): Sharp {
+  const gap = o.gap ?? Math.max(4, Math.round(h * 0.02));
+  const rows = Math.max(1, Math.ceil(tiles.length / cols));
+  const c = Math.min(cols, Math.max(1, tiles.length));
+  return sharp({ create: { width: c * w + (c - 1) * gap, height: rows * h + (rows - 1) * gap, channels: 3, background: o.background ?? '#101214' } }).composite(
+    tiles.map((input, i) => ({ input, left: (i % cols) * (w + gap), top: Math.floor(i / cols) * (h + gap) })),
+  );
+}
+
 /** pixel size of an image file or buffer */
 export async function size(file: string | Buffer): Promise<{ w: number; h: number }> {
   const m = await sharp(file).metadata();

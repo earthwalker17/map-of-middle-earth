@@ -134,7 +134,9 @@ export class RegionLook {
     if (tot > 0) for (let k = 0; k < n; k++) acc[k] /= tot;
     // ---- look override
     const ov = isLookRegion(state.lookOverride) ? this.world.lookRegions.indexOf(state.lookOverride) : -1;
-    if (ov >= 0) for (let k = 0; k < n; k++) acc[k] = acc[k] * (1 - OVERRIDE) + (k === ov ? OVERRIDE : 0);
+    // S5: the film fades an override in / out through lookOverrideWeight (absent = 1 → OVERRIDE exactly)
+    const pull = OVERRIDE * Math.min(1, Math.max(0, state.lookOverrideWeight ?? 1));
+    if (ov >= 0) for (let k = 0; k < n; k++) acc[k] = acc[k] * (1 - pull) + (k === ov ? pull : 0);
     // ---- wide views fade to the neutral world grade
     const regional = 1 - smooth(650, 1600, dist);
     let sum = 0;

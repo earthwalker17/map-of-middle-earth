@@ -60,6 +60,13 @@ export interface SceneState {
    */
   events: Record<string, number>;
   quality: QualityTierId;
+  // ---- S5 film channels (optional: absent in every still, which must stay bit-identical) ----
+  /** 0..1 scale of the lookOverride pull (absent = 1, RegionLook's still pull); fades a look in / out */
+  lookOverrideWeight?: number;
+  /** scales the landmark LOD pixel thresholds (absent = 1; < 1 keeps the finer LODs longer) */
+  lodBias?: number;
+  /** 0..1 overall strength of the route line (absent = 1 while routeProgress > 0) */
+  routeGlow?: number;
 }
 
 export interface FrameContext {

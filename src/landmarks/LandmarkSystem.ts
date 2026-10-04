@@ -70,13 +70,14 @@ export class LandmarkSystem implements System {
   }
 
   /** LOD index for a landmark seen from `cam` (pure: camera position, vertical fov, viewport height). */
-  static selectLod(b: BuiltLandmark, cam: { x: number; y: number; z: number }, fovDeg: number, viewportH: number, levels: number): number {
+  static selectLod(b: BuiltLandmark, cam: { x: number; y: number; z: number }, fovDeg: number, viewportH: number, levels: number, bias = 1): number {
     if (levels <= 1) return 0;
     const [cx, cy, cz] = b.bounds.center;
     const d = Math.max(1, Math.hypot(cam.x - cx, cam.y - cy, cam.z - cz));
     const rad = Math.hypot(b.bounds.r, b.bounds.h / 2);
     const px = (rad * (viewportH / (2 * Math.tan((fovDeg * Math.PI) / 360)))) / d;
-    const L = px >= b.lodPx[0] ? 0 : px >= b.lodPx[1] ? 1 : 2;
+    // S5: the film's lodBias (< 1) keeps the finer LODs longer; stills pass 1 (exact thresholds)
+    const L = px >= b.lodPx[0] * bias ? 0 : px >= b.lodPx[1] * bias ? 1 : 2;
     return Math.min(L, levels - 1);
   }
 
@@ -86,7 +87,7 @@ export class LandmarkSystem implements System {
     for (const b of this.built) {
       const levels = this.lodGroups.get(b.id);
       if (!levels?.length) continue;
-      const L = LandmarkSystem.selectLod(b, cam.position, cam.fov, frame.viewport.height, levels.length);
+      const L = LandmarkSystem.selectLod(b, cam.position, cam.fov, frame.viewport.height, levels.length, frame.state.lodBias ?? 1);
       for (let k = 0; k < levels.length; k++) levels[k].visible = k === L;
       this.stats.lod[b.id] = L;
       tris += this.lodTris.get(b.id)![L];

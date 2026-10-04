@@ -141,8 +141,20 @@ const GLOW_KNEE = 1.5;
 const GLOW_LIMIT = 3;
 
 /**
+ * S5 film overlay (titles, captions, fades): drawn into the readback target AFTER the post graph, in
+ * display (sRGB-encoded) space with premultiplied blending — never graded, tone-mapped or fogged.
+ * Still pages never set one, so their frames are untouched. `render` must not clear the target.
+ */
+export interface OverlayPass {
+  /** false = nothing to draw this frame (the pass is skipped entirely) */
+  readonly active: boolean;
+  render(renderer: WebGPURenderer, width: number, height: number): void;
+}
+
+/**
  * HDR scene target → (optional) jittered accumulation → one post pass
- * (bloom, grade, vignette, AgX tone map, sRGB, dither) → canvas or RGBA8 target for readback.
+ * (bloom, grade, vignette, AgX tone map, sRGB, dither) → canvas or RGBA8 target for readback
+ * (→ the optional S5 overlay pass on the readback target).
  */
 export class PostPipeline {
   readonly hdr: RenderTarget;
@@ -159,6 +171,8 @@ export class PostPipeline {
   private accumCount = 0;
   width: number;
   height: number;
+  /** S5 film titles / captions (src/titles): drawn on the readback target after the post graph */
+  overlay: OverlayPass | null = null;
 
   constructor(
     private readonly renderer: WebGPURenderer,
@@ -329,6 +343,13 @@ export class PostPipeline {
     const r = this.renderer;
     r.setRenderTarget(toReadback ? this.out : null);
     this.pipeline.render();
+    // S5: captured film frames only (the explorer canvas path has its own output transform)
+    if (toReadback && this.overlay?.active) {
+      const autoClear = r.autoClear;
+      r.autoClear = false;
+      this.overlay.render(r, this.width, this.height);
+      r.autoClear = autoClear;
+    }
     r.setRenderTarget(null);
   }
 

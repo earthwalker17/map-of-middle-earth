@@ -20,6 +20,11 @@ import { landmarkEmitters, landmarkExclusions, landmarkFalls, landmarkPools, lan
 import { buildLandmarks } from '../landmarks/build.ts';
 import { EmissionSystem } from '../emission/EmissionSystem.ts';
 import { EffectsSystem } from '../effects/EffectsSystem.ts';
+import routeJson from '../../data/tour/route.json';
+import timelineJson from '../../data/tour/timeline.json';
+import { compileFilm, type FilmProgram } from '../tour/compile.ts';
+import { FilmTimeline } from '../tour/FilmTimeline.ts';
+import type { RouteJson, TimelineJson } from '../tour/schema.ts';
 
 /**
  * Load the world and register every system. Order matters: environment first (writes the shared
@@ -27,7 +32,7 @@ import { EffectsSystem } from '../effects/EffectsSystem.ts';
  * HeightField before any system samples heights; the one landmark build run (geometry, lights,
  * trees) follows, before vegetation and water init consume its records.
  */
-async function buildWorld(engine: Engine, quality: QualityTierId, shots: ShotSpecInput[], status: HTMLElement): Promise<World> {
+async function buildWorld(engine: Engine, quality: QualityTierId, shots: ShotSpecInput[], status: HTMLElement, filmMode: boolean): Promise<{ world: World; film: FilmProgram | null }> {
   status.textContent = 'loading world…';
   const mark = (k: string) => (engine.timings[k] = Math.round(performance.now()));
   const world = await World.load((m) => (status.textContent = `loading ${m}…`));
@@ -55,6 +60,11 @@ async function buildWorld(engine: Engine, quality: QualityTierId, shots: ShotSpe
   // S4 W3-E: plumes, falls, mist, the beam; crater sparks and beacon flames ride on the emission sprites
   const effects = new EffectsSystem(world, { emitters: landmarkEmitters(world, LANDMARKS), falls: landmarkFalls(world, LANDMARKS), lights: emission.records, pools: landmarkPools(world, LANDMARKS) });
   emission.setDynamic((s) => effects.lights(s));
+  // S5: the journey film (`?film=1` only — still pages never compile it, so their frames are untouched)
+  const film = filmMode
+    ? compileFilm({ world, landmarks: LANDMARKS, shots: shotsJson.shots as unknown as ShotSpecInput[], route: routeJson as unknown as RouteJson, timeline: timelineJson as unknown as TimelineJson })
+    : null;
+  if (film) mark('filmCompiled');
   for (const s of [environment, terrain, water, vegetation, diorama, landmarks, emission, effects]) {
     await engine.register(s);
     mark(`init:${s.id}`);
@@ -73,8 +83,8 @@ async function buildWorld(engine: Engine, quality: QualityTierId, shots: ShotSpe
   mark('warm');
 
   // dev handle for diagnostics scripts (tools/capture/probe.ts)
-  (window as unknown as { __app: unknown }).__app = { engine, world, terrain, environment, water, vegetation, diorama, landmarks, emission, effects };
-  return world;
+  (window as unknown as { __app: unknown }).__app = { engine, world, terrain, environment, water, vegetation, diorama, landmarks, emission, effects, film };
+  return { world, film };
 }
 
 /** Landmark bookmarks (`<id>-close` hero, `<id>-wide` context) as shots, orbiting the display position. */
@@ -115,10 +125,13 @@ export async function boot(canvas: HTMLCanvasElement, status: HTMLElement, param
     if (!world) throw new Error('world not loaded');
     return resolveShot(world, s);
   };
-  installCaptureApi(engine, ready, resolveInWorld, (id) => shots.find((s) => s.id === id));
+  const api = installCaptureApi(engine, ready, resolveInWorld, (id) => shots.find((s) => s.id === id));
+  const filmMode = params.has('film');
 
   try {
-    world = await buildWorld(engine, quality, shots, status);
+    const built = await buildWorld(engine, quality, shots, status, filmMode);
+    world = built.world;
+    if (built.film) api.registerTimeline(new FilmTimeline(built.film));
     settle.resolve();
   } catch (e) {
     settle.reject(e);

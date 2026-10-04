@@ -4,12 +4,15 @@ import { DEEP_FOCUS_FSTOP } from '../render/lens.ts';
 
 /**
  * A timeline maps time t (seconds) to a complete SceneState. Bookmarks and QA shots are
- * constant timelines; the journey film (S8) is a keyframed timeline authored in data/tour.
+ * constant timelines; the journey film (S5) is a keyframed timeline authored in data/tour
+ * (src/tour/FilmTimeline.ts).
  */
 export interface Timeline {
   readonly id: string;
   readonly duration: number;
   evaluate(t: number): SceneState;
+  /** optional metadata for the capture harness (the film: fps, beats, hash) */
+  meta?(): unknown;
 }
 
 /** A shot description as stored in data/qa/shots.json or produced from a bookmark. */
