@@ -133,7 +133,7 @@ def main() -> None:
         "items": libs,
     }
     if not dry:
-        (DEST / "manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        (DEST / "manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
     for l in libs:
         mb = f"{l.get('bytes', 0) / 2**20:.0f} MB" if "bytes" in l else ""
         print(f"[music] {l['id']}: {l.get('status', 'ok')} {mb} {l.get('exe', '')}")
