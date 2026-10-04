@@ -47,6 +47,8 @@ export const ASPECT = 16 / 9;
 export const BAKE_HZ = 96;
 /** tan of the half fov a zoomed-out move relaxes toward (fov 32°) */
 const TAN_APEX = Math.tan((16 * Math.PI) / 180);
+/** softness of the apex-elevation boost's max(0, ·), degrees */
+const APEX_SOFT_DEG = 3;
 /** zoom-out (ln of the vWN width over the log-linear one) at which Z = 1 */
 const LN_ZOOM_FULL = Math.log(6);
 /** search window around a hold's route mark when projecting its target onto the rail, km */
@@ -515,7 +517,10 @@ export function buildRig(inp: RigInputs): CameraRig {
     out.tx = lerp(rf[0], rc[0], Z) + A.ox + m.dox * p;
     out.tz = lerp(rf[1], rc[1], Z) + A.oz + m.doz * p;
     let el = lerp(A.el, B.el, E) + driftBlend(A.drift.el, B.drift.el, A.dur, B.dur, m.dur, x);
-    el += Math.max(0, m.apexEl - el) * Z;
+    // the boost toward the apex: a smooth max(0, apexEl − el) — a hard max kinks the tilt rate where a
+    // descending move's elevation crosses apexEl while zoomed out
+    const gap = m.apexEl - el;
+    el += 0.5 * (gap + Math.sqrt(gap * gap + APEX_SOFT_DEG * APEX_SOFT_DEG)) * Z;
     out.el = el;
     out.az = A.az + (B.az - A.az) * E + driftBlend(A.drift.az, B.drift.az, A.dur, B.dur, m.dur, x);
     const lnT = lerp(Math.log(A.tanHalf), Math.log(B.tanHalf), E);

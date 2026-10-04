@@ -1,7 +1,7 @@
 {
   "version": 1,
   "notes": "Shot list (S3 → S5): the film and, per landmark, its role in it, hero framing (class, distance), context framing and the detail budget that follows from it. The film block and the segments mirror the compiled film (data/tour/timeline.json via src/tour/compile.ts; `pnpm check` keeps them in sync): segments group the timeline beats in order, `seconds` = their compiled durations, `tod` = the segment's last hold (middle), `mix` = screen-time shares by camera distance class. Landmark `role`: pause (hero hold), pass (stop, or seen inside another hold: osgiliath, barad-dur), overview (only in the opening / closing overviews); `tod` / `screenSeconds` = the landmark's film hold. Realized by landmark bookmarks `<id>-close` (hero) and `<id>-wide` (context); probe expectations and budgets are gated by `pnpm check`. Distances are slant km from the landmark; px/km at the reference frame = refH / (2 tan(refFov/2)) / distance ≈ 1427 / distance.",
-  "film": { "seconds": 216.5, "fps": 24, "aspect": "16:9", "shutterDeg": 180, "beats": 37, "timeline": "data/tour/timeline.json" },
+  "film": { "seconds": 223, "fps": 24, "aspect": "16:9", "shutterDeg": 180, "beats": 37, "timeline": "data/tour/timeline.json" },
   "classes": { "wide": [300, 8000], "regional": [60, 300], "mid": [15, 60], "close": [2, 15] },
   "detail": {
     "refW": 1600,
@@ -14,12 +14,12 @@
   },
   "segments": [
     { "id": "title", "route": null, "seconds": 11, "tod": 5.93, "mix": { "wide": 1 }, "landmarks": ["erebor", "lake-town", "dale", "dol-guldur", "grey-havens"], "beats": ["open"] },
-    { "id": "shire", "route": "shire", "seconds": 16, "tod": 6.5, "mix": { "wide": 0.17, "regional": 0.07, "mid": 0.08, "close": 0.68 }, "landmarks": ["hobbiton"], "beats": ["to-hobbiton", "hobbiton"] },
-    { "id": "bree-weathertop", "route": "east-road", "seconds": 15.5, "tod": 7.43, "mix": { "regional": 0.12, "mid": 0.81, "close": 0.07 }, "landmarks": ["bree", "weathertop"], "beats": ["to-bree", "bree", "to-weathertop", "weathertop"] },
-    { "id": "rivendell", "route": "to-rivendell", "seconds": 14, "tod": 8.48, "mix": { "regional": 0.13, "mid": 0.2, "close": 0.66 }, "landmarks": ["rivendell"], "beats": ["to-rivendell", "rivendell"] },
-    { "id": "moria", "route": "hollin-caradhras", "seconds": 13, "tod": 9.55, "mix": { "regional": 0.13, "mid": 0.79, "close": 0.08 }, "landmarks": ["moria"], "beats": ["to-moria", "moria"] },
+    { "id": "shire", "route": "shire", "seconds": 16.5, "tod": 6.5, "mix": { "wide": 0.18, "regional": 0.07, "mid": 0.08, "close": 0.67 }, "landmarks": ["hobbiton"], "beats": ["to-hobbiton", "hobbiton"] },
+    { "id": "bree-weathertop", "route": "east-road", "seconds": 17, "tod": 7.43, "mix": { "regional": 0.12, "mid": 0.79, "close": 0.09 }, "landmarks": ["bree", "weathertop"], "beats": ["to-bree", "bree", "to-weathertop", "weathertop"] },
+    { "id": "rivendell", "route": "to-rivendell", "seconds": 15.75, "tod": 8.48, "mix": { "regional": 0.16, "mid": 0.23, "close": 0.61 }, "landmarks": ["rivendell"], "beats": ["to-rivendell", "rivendell"] },
+    { "id": "moria", "route": "hollin-caradhras", "seconds": 14.5, "tod": 9.55, "mix": { "regional": 0.15, "mid": 0.76, "close": 0.09 }, "landmarks": ["moria"], "beats": ["to-moria", "moria"] },
     { "id": "lorien", "route": "to-lorien", "seconds": 13, "tod": 11.27, "mix": { "regional": 0.13, "mid": 0.87 }, "landmarks": ["lothlorien"], "beats": ["to-lothlorien", "lothlorien"] },
-    { "id": "rohan", "route": "to-isengard", "seconds": 24, "tod": 13.53, "mix": { "regional": 0.17, "mid": 0.83 }, "landmarks": ["isengard", "helms-deep", "edoras"], "beats": ["to-isengard", "isengard", "to-helms-deep", "helms-deep", "to-edoras", "edoras"] },
+    { "id": "rohan", "route": "to-isengard", "seconds": 25.25, "tod": 13.53, "mix": { "regional": 0.17, "mid": 0.83 }, "landmarks": ["isengard", "helms-deep", "edoras"], "beats": ["to-isengard", "isengard", "to-helms-deep", "helms-deep", "to-edoras", "edoras"] },
     { "id": "anduin", "route": "anduin", "seconds": 21, "tod": 15.33, "mix": { "regional": 0.12, "mid": 0.43, "close": 0.45 }, "landmarks": ["argonath", "rauros"], "beats": ["to-argonath", "argonath", "to-rauros", "rauros"] },
     { "id": "black-gate", "route": "emyn-muil", "seconds": 10, "tod": 16.6, "mix": { "regional": 0.85, "mid": 0.15 }, "landmarks": ["black-gate"], "beats": ["to-black-gate", "black-gate"] },
     { "id": "ithilien-gondor", "route": "ithilien", "seconds": 22, "tod": 18.08, "mix": { "regional": 0.15, "mid": 0.85 }, "landmarks": ["henneth-annun", "osgiliath", "minas-tirith"], "beats": ["to-henneth-annun", "henneth-annun", "to-minas-tirith", "minas-tirith"] },

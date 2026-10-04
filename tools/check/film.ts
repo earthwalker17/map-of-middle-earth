@@ -342,7 +342,15 @@ export async function checkFilm(world: World, landmarks: LandmarkDefinition[], o
   const TOD = (await import(mod('src/environment/timeOfDay.ts'))) as typeof import('../../src/environment/timeOfDay.ts');
   const { Vector3 } = await import('three/webgpu');
 
+  const phase: [string, number][] = [];
+  let tPhase = performance.now();
+  const lap = (name: string) => {
+    const now = performance.now();
+    phase.push([name, now - tPhase]);
+    tPhase = now;
+  };
   const ctx = await createProbeContext(undefined, { world, landmarks, stamps: [] });
+  lap('probe context');
   const built = opts.built === false ? undefined : ctx.built;
 
   // ---- compile twice: same hash
@@ -359,6 +367,7 @@ export async function checkFilm(world: World, landmarks: LandmarkDefinition[], o
     return out;
   }
   out.program = program;
+  lap('compile ×2');
   const { film, rig } = program;
   const beats = tl.beats;
   const isHold = (b: BeatJson): b is HoldJson => 'hold' in b;
@@ -490,6 +499,7 @@ export async function checkFilm(world: World, landmarks: LandmarkDefinition[], o
     if (c.tod) sampledFinding(i, `tod rate ${fmt(c.todMax, 3)} h/s > ${hold ? FILM_LIMITS.holdTodRate : FILM_LIMITS.moveTodRate} (${c.tod} samples)`);
   });
 
+  lap('24 Hz samples');
   // ---- 8 Hz: route head on screen (moves), label anchors, LOD stability (holds)
   const ASPECT = 16 / 9;
   const head3 = (t: number) => routeAt(R, rig.head(t));
@@ -545,6 +555,7 @@ export async function checkFilm(world: World, landmarks: LandmarkDefinition[], o
     if (changed.length) sampledFinding(key.beat, `landmark LOD switches inside the hold: ${changed.join(', ')}`);
   }
 
+  lap('head / anchors / LOD');
   // ---- the camera probe: hold middles; moves every 1 s
   for (const key of rig.keys) {
     if (key.style === 'open' || key.style === 'end') continue;
@@ -568,6 +579,7 @@ export async function checkFilm(world: World, landmarks: LandmarkDefinition[], o
     if (worst > FILM_LIMITS.moveVoid) sampledFinding(m.beat, `probe: void ${fmt(100 * worst, 0)} % at ${fmt(at, 0)} s`);
   }
 
+  lap('probes');
   // ---- light per hold: the key light on the subject's ground, backlight
   const disk = vogel(49, 3);
   const o = new Vector3();
@@ -604,6 +616,7 @@ export async function checkFilm(world: World, landmarks: LandmarkDefinition[], o
     }
   }
 
+  lap('light');
   // ---- shot-list sync (data/tour/shotlist.json mirrors the compiled film)
   const sl = readJson<{ film: { seconds: number }; segments: { id: string; seconds: number; beats?: string[] }[] }>('data/tour/shotlist.json');
   if (Math.abs(sl.film.seconds - film.duration) > 0.05) E(`data/tour/shotlist.json film.seconds ${sl.film.seconds} ≠ the compiled ${fmt(film.duration, 2)} s`);
@@ -618,7 +631,7 @@ export async function checkFilm(world: World, landmarks: LandmarkDefinition[], o
 
   // ---- summary + table
   const nFind = stats.reduce((a, s) => a + s.findings.length, 0);
-  out.info.push(`film: ${beats.length} beats, ${fmt(film.duration, 2)} s (${tl.status}), hash ${film.hash} (compiled twice, identical), compile ${fmt(ms, 0)} ms; ${rig.moves.filter((m) => m.auto).length} auto moves; ${film.captions.length} captions; ${nFind} sampled finding(s) (${locked ? 'errors' : 'warnings while draft'})`);
+  out.info.push(`film: ${beats.length} beats, ${fmt(film.duration, 2)} s (${tl.status}), hash ${film.hash} (compiled twice, identical), compile ${fmt(ms, 0)} ms; ${rig.moves.filter((m) => m.auto).length} auto moves; ${film.captions.length} captions; ${nFind} sampled finding(s) (${locked ? 'errors' : 'warnings while draft'}); check ${phase.map(([n, v]) => `${n} ${fmt(v / 1000, 1)} s`).join(', ')}`);
   if (opts.table) {
     const pad = (s: string, n: number) => s.padEnd(n);
     const lp = (s: string, n: number) => s.padStart(n);
