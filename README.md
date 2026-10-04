@@ -24,7 +24,7 @@
 
 <p align="center">
   <a href="docs/images/hero-golden-hour.jpg"><img src="docs/images/hero-golden-hour.jpg" width="100%" alt="The floating map of Middle-earth at golden hour"></a>
-  <br><sub>The map at golden hour: 1,600 × 960 km of Middle-earth on a floating slab, rendered in the browser.</sub>
+  <br><sub>The map at golden hour: 1,600 × 960 km of Middle-earth on a floating slab, rendered in the browser (the same view as the day / night pair below).</sub>
 </p>
 
 A miniature Middle-earth that you can fly over, from the Grey Havens to Mount Doom. The terrain is built from

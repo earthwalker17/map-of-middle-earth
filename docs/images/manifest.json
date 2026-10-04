@@ -1,7 +1,7 @@
 {
   "generatedBy": "tools/capture/showcase.ts (pnpm showcase)",
   "manifest": "data/qa/showcase.json",
-  "commit": "a5a6e900587a3bdb6dc7b6c01d4bce16be1d9bea",
+  "commit": "66efaa0685210f9c4f9ad9f4b7a6b347bfb3620f",
   "dirty": true,
   "sharp": "0.35.5",
   "libvips": "8.18.7",
@@ -15,7 +15,7 @@
     "mozjpeg": true
   },
   "budgetMB": 6,
-  "totalBytes": 2308122,
+  "totalBytes": 2340103,
   "images": [
     {
       "file": "film-placeholder.jpg",
@@ -41,20 +41,20 @@
     {
       "file": "hero-golden-hour.jpg",
       "kind": "still",
-      "w": 2400,
-      "h": 1000,
-      "bytes": 402480,
-      "sha256": "97e1132dd60059dbd38aee42dbcea78f90d5e157d4b7d2183172b47f616a63d7",
+      "w": 1920,
+      "h": 1080,
+      "bytes": 434461,
+      "sha256": "f4026819acaaa24a2e516105bd702a7f057c84227597184696457717fb8a292e",
       "alt": "The floating map of Middle-earth at golden hour",
-      "caption": "The map at golden hour",
+      "caption": "The map at golden hour (18:20), the overview camera of the day / night pair",
       "sources": [
         {
-          "run": "renders/shots/20261003-231307",
-          "id": "pano-golden-sw",
-          "renderSha256": "8c693eb047e63314b44b4f0ecb3391228c6cc48e706be304f3d0a6cca6a6189c",
-          "width": 3072,
-          "height": 1280,
-          "spp": 16,
+          "run": "renders/qa/20261003-230100",
+          "id": "overview-golden",
+          "renderSha256": "e3f175e4799c5b7ebb1e3a779934efdb984ffeec2cfa70b7233440fc5690c8be",
+          "width": 1920,
+          "height": 1080,
+          "spp": 12,
           "tier": "final"
         }
       ]
