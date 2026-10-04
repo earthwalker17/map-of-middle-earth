@@ -22,9 +22,9 @@
     { "id": "rohan", "route": "to-isengard", "seconds": 30.5, "tod": 13.35, "mix": { "regional": 0.18, "mid": 0.75, "close": 0.07 }, "landmarks": ["isengard", "helms-deep", "edoras"], "beats": ["to-isengard", "isengard", "to-helms-deep", "helms-deep", "to-edoras", "edoras"] },
     { "id": "anduin", "route": "anduin", "seconds": 16.5, "tod": 14.63, "mix": { "regional": 0.15, "mid": 0.26, "close": 0.6 }, "landmarks": ["argonath"], "beats": ["to-argonath", "argonath"] },
     { "id": "black-gate", "route": "emyn-muil", "seconds": 13.5, "tod": 16.1, "mix": { "regional": 0.73, "mid": 0.17, "close": 0.1 }, "landmarks": ["rauros", "black-gate"], "beats": ["to-black-gate", "black-gate"] },
-    { "id": "ithilien-gondor", "route": "ithilien", "seconds": 26, "tod": 18.02, "mix": { "regional": 0.2, "mid": 0.8 }, "landmarks": ["henneth-annun", "osgiliath", "minas-tirith"], "beats": ["to-henneth-annun", "henneth-annun", "to-minas-tirith", "minas-tirith"] },
+    { "id": "ithilien-gondor", "route": "ithilien", "seconds": 26, "tod": 18.02, "mix": { "regional": 0.22, "mid": 0.78 }, "landmarks": ["henneth-annun", "osgiliath", "minas-tirith"], "beats": ["to-henneth-annun", "henneth-annun", "to-minas-tirith", "minas-tirith"] },
     { "id": "morgul", "route": "morgul", "seconds": 14, "tod": 18.9, "mix": { "mid": 1 }, "landmarks": ["minas-morgul"], "beats": ["to-minas-morgul", "minas-morgul"] },
-    { "id": "doom", "route": "gorgoroth", "seconds": 17.5, "tod": 19.15, "mix": { "regional": 0.05, "mid": 0.95 }, "landmarks": ["cirith-ungol", "mount-doom", "barad-dur"], "beats": ["to-mount-doom", "mount-doom"] },
+    { "id": "doom", "route": "gorgoroth", "seconds": 17.5, "tod": 19.15, "mix": { "regional": 0.09, "mid": 0.91 }, "landmarks": ["cirith-ungol", "mount-doom", "barad-dur"], "beats": ["to-mount-doom", "mount-doom"] },
     { "id": "end", "route": null, "seconds": 22, "tod": 19.55, "mix": { "wide": 0.8, "regional": 0.13, "mid": 0.07 }, "landmarks": [], "beats": ["pull-out", "end"] }
   ],
   "landmarks": {

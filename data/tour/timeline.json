@@ -87,7 +87,7 @@
       "tod": [16.75, 16.85], "light": "shade", "captions": [{ "kind": "pass", "landmark": "henneth-annun" }], "note": "from the west-north-west over the Anduin (the bookmark side): the wet wall round the alcove, the falls and the woods lit by the low sun behind the camera (the light check's ground disk is mostly the alcove floor, shaded by its own walls)",
       "music": { "mood": "ithilien", "intensity": 0.45 } },
 
-    { "move": "to-minas-tirith", "dur": 7, "note": "south through golden Ithilien to Osgiliath, the camera west of the line over the Anduin (the slopes face the low sun)", "music": { "mood": "gondor", "intensity": 0.5 } },
+    { "move": "to-minas-tirith", "dur": 7, "rho": 1.8, "apexEl": 36, "note": "south through golden Ithilien to Osgiliath, the camera west of the line over the Anduin (the slopes face the low sun)", "music": { "mood": "gondor", "intensity": 0.5 } },
     { "hold": "minas-tirith", "style": "hero", "dur": 10, "place": "osgiliath", "head": "osgiliath",
       "camera": { "orbit": { "place": "minas-tirith", "distanceKm": 46, "elevationDeg": 17, "azimuthDeg": 185, "fov": 38, "lift": 5, "aimKm": [8, 2.5] } },
       "tod": [17.9, 18.15], "events": { "beacons": [[2, 0], [5, 1]] }, "light": "silhouette", "note": "blue hour from the east-south-east over Osgiliath and the Anduin: the city against the afterglow, windows lighting, the beacon kindled",
