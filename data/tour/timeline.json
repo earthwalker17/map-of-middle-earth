@@ -25,14 +25,14 @@
       ],
       "music": { "mood": "prologue", "intensity": 0.25 } },
 
-    { "move": "to-hobbiton", "dur": 6.5, "music": { "mood": "prologue", "intensity": 0.35 } },
+    { "move": "to-hobbiton", "dur": 7, "music": { "mood": "prologue", "intensity": 0.35 } },
 
     { "hold": "hobbiton", "style": "hero", "dur": 9.5, "place": "hobbiton", "camera": { "bookmark": "hobbiton-close", "set": { "distanceKm": 9, "fov": 22 } },
       "tod": [6.45, 6.55], "lens": { "fStop": "bookmark" }, "routeGlow": 1,
       "captions": [{ "kind": "place", "landmark": "hobbiton", "sub": "The Shire · first light" }],
       "music": { "mood": "pastoral", "intensity": 0.35, "hit": "arrive" } },
 
-    { "move": "to-bree", "dur": 4, "music": { "mood": "pastoral", "intensity": 0.4 } },
+    { "move": "to-bree", "dur": 5.5, "music": { "mood": "pastoral", "intensity": 0.4 } },
     { "hold": "bree", "style": "stop", "dur": 4, "place": "bree", "camera": { "bookmark": "bree-close", "set": { "distanceKm": 30, "elevationDeg": 16, "azimuthDeg": 190, "fov": 30 } },
       "tod": [7.0, 7.05], "captions": [{ "kind": "pass", "landmark": "bree" }], "music": { "mood": "road", "intensity": 0.4 } },
 
@@ -40,13 +40,13 @@
     { "hold": "weathertop", "style": "stop", "dur": 4, "place": "weathertop", "camera": { "bookmark": "weathertop-close", "set": { "distanceKm": 32, "elevationDeg": 8, "azimuthDeg": 165, "fov": 22 } },
       "tod": [7.4, 7.45], "captions": [{ "kind": "pass", "landmark": "weathertop" }], "music": { "mood": "road", "intensity": 0.5 } },
 
-    { "move": "to-rivendell", "dur": 5.5, "music": { "mood": "road", "intensity": 0.45 } },
+    { "move": "to-rivendell", "dur": 7.25, "music": { "mood": "road", "intensity": 0.45 } },
     { "hold": "rivendell", "style": "hero", "dur": 8.5, "place": "rivendell", "camera": { "bookmark": "rivendell-close", "set": { "distanceKm": 12, "azimuthDeg": 205 } },
       "tod": [8.4, 8.55], "lens": { "fStop": "bookmark" },
       "captions": [{ "kind": "place", "landmark": "rivendell", "sub": "The hidden valley · morning" }],
       "music": { "mood": "elven", "intensity": 0.4, "hit": "arrive" } },
 
-    { "move": "to-moria", "dur": 5.5, "note": "south over Hollin and the snows of Caradhras", "music": { "mood": "mountain", "intensity": 0.5 } },
+    { "move": "to-moria", "dur": 7, "note": "south over Hollin and the snows of Caradhras", "music": { "mood": "mountain", "intensity": 0.5 } },
     { "hold": "moria", "style": "hero", "dur": 7.5, "place": "moria", "camera": { "bookmark": "moria-wide", "set": { "distanceKm": 22, "elevationDeg": 9 } },
       "tod": [9.5, 9.6], "light": "shade", "note": "the West-gate faces west: in shade all morning",
       "captions": [{ "kind": "place", "landmark": "moria", "sub": "The West-gate under the mountains" }],
@@ -62,11 +62,11 @@
     { "hold": "isengard", "style": "stop", "dur": 4, "place": "isengard", "camera": { "bookmark": "isengard-close", "set": { "azimuthDeg": 130 } },
       "tod": [12.4, 12.45], "captions": [{ "kind": "pass", "landmark": "isengard" }], "music": { "mood": "isengard", "intensity": 0.6 } },
 
-    { "move": "to-helms-deep", "dur": 3, "music": { "mood": "rohan", "intensity": 0.55 } },
+    { "move": "to-helms-deep", "dur": 3.5, "music": { "mood": "rohan", "intensity": 0.55 } },
     { "hold": "helms-deep", "style": "stop", "dur": 4, "place": "helms-deep", "camera": { "bookmark": "helms-deep-close", "set": { "distanceKm": 24, "elevationDeg": 14, "azimuthDeg": 80 } },
       "tod": [13.0, 13.05], "captions": [{ "kind": "pass", "landmark": "helms-deep" }], "music": { "mood": "rohan", "intensity": 0.6 } },
 
-    { "move": "to-edoras", "dur": 3, "music": { "mood": "rohan", "intensity": 0.6 } },
+    { "move": "to-edoras", "dur": 3.75, "music": { "mood": "rohan", "intensity": 0.6 } },
     { "hold": "edoras", "style": "stop", "dur": 4, "place": "edoras", "camera": { "bookmark": "edoras-close", "set": { "distanceKm": 18, "elevationDeg": 8, "azimuthDeg": 120 } },
       "tod": [13.5, 13.55], "captions": [{ "kind": "pass", "landmark": "edoras" }], "music": { "mood": "rohan", "intensity": 0.7, "hit": "horn" } },
 
@@ -111,7 +111,7 @@
       "captions": [{ "kind": "place", "landmark": "mount-doom", "sub": "The end of the road" }],
       "music": { "mood": "doom", "intensity": 1.0, "hit": "climax" } },
 
-    { "move": "pull-out", "dur": 9, "note": "rise out of Mordor through the ash deck to the whole map", "music": { "mood": "finale", "intensity": 0.8 } },
+    { "move": "pull-out", "dur": 9, "crossDeck": true, "note": "rise out of Mordor through the ash deck to the whole map", "music": { "mood": "finale", "intensity": 0.8 } },
     { "hold": "end", "style": "end", "dur": 13, "camera": { "shot": "overview-day" }, "tod": [19.4, 19.5],
       "captions": [
         { "kind": "end", "text": "From first light in the Shire to the fires of Mount Doom", "in": 1.0, "out": 6.0 },

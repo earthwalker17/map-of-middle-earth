@@ -7,6 +7,8 @@
  *  - baked world (when a bake exists; MOME_WORLD_DIR overrides data/baked): monotone baked river levels,
  *    no stamp moves a river channel / lake ("rivers win", onRiver allowlist), per-landmark stamp loss to
  *    the river guard, the bake's hydro geometry gates (report.json) — see world.ts
+ *  - the film (S5, tools/check/film.ts): timeline / route structure always; the compiled film (determinism,
+ *    length, shot-list sync, sampled camera / light / label gates) on the baked world
  * Exit code 1 on any error.
  */
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
@@ -124,6 +126,7 @@ if (hasBake(baked)) {
 } else warnings.push(`baked world: no bake at ${baked} — river / stamp checks skipped`);
 for (const [list, add] of Object.entries(await (await import('./gates.ts')).checkGates())) ({ errors, warnings, info: bakedInfo })[list as 'errors' | 'warnings' | 'info'].push(...add); // S4 W2-D light gates
 for (const [list, add] of Object.entries(await (await import('./effects.ts')).checkEffects())) ({ errors, warnings, info: bakedInfo })[list as 'errors' | 'warnings' | 'info'].push(...add); // S4 W3-E effects
+for (const [list, add] of Object.entries(await (await import('./film.ts')).checkFilmStructure())) ({ errors, warnings, info: bakedInfo })[list as 'errors' | 'warnings' | 'info'].push(...add); // S5 film (structure; the compiled film in world.ts)
 
 // ------------------------------------------------------------------ report
 console.log(`[check] places: ${places.length} (${landmarks.length} landmarks), overlaps: ${overlaps}`);
