@@ -163,8 +163,8 @@ wait in vain (e.g. on macOS, where Node under-reports free memory), set `MOME_ME
 | 3 | All 24 landmarks: kit, stamps, emission, Blender pipeline | ✅ |
 | 4 | Look and still effects: sky, night, water, effects, lens and grade, hero polish | ✅ |
 | 4.5 | Static world locked (`v0.5.0`), README, repository polish | ✅ |
-| 5 | The journey: timeline and animatic, route line, title cards, original score | next |
-| 6 | Final render (1080p24), release | |
+| 5 | The journey: camera rig and timeline, gold route line, titles, picture lock, original score, 720p review cut | ✅ |
+| 6 | Final render (1080p24), release | next |
 
 ## Credits
 

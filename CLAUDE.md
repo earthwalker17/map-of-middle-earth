@@ -2,8 +2,8 @@
 
 A cinematic **floating miniature diorama of Middle-earth** (Three.js r186 WebGPU + TSL) with a realistic
 fantasy look inspired by Peter Jackson's films — *not* a LEGO look. The final deliverable is an
-offline-rendered ~3–4 min 16:9 film, **"Journey Through Middle-Earth"** (Frodo's route, luminous route line,
-title cards, original score).
+offline-rendered ~3–4 min 16:9 film, **"Journey Through Middle-Earth"** (a west → east grand tour loosely on
+Frodo's road, one day of light, luminous gold route line, floating labels, title cards, original score).
 
 **Start every session with `pnpm host --fix`** (frees RAM: stops windowless approved background apps,
 re-disables their autostart, sweeps orphans), **then read `docs/PROJECT_STATE.md`** (where we are, what's next), then
@@ -48,6 +48,9 @@ re-disables their autostart, sweeps orphans), **then read `docs/PROJECT_STATE.md
   compare code only by rested, interleaved A/B runs against a frozen worktree, never across days.
 - **The static world is locked for V1** (S4.5, `data/qa/lock-v1.json`): film work keeps `pnpm lock --verify` at exit 0;
   a look change needs the user's request, before / after renders and a re-lock (change control in PROJECT_STATE).
+- **Film-only behaviour** comes from optional SceneState fields (absent in stills) or the `?film=1` boot block —
+  never from changing what a still page runs. The picture is locked (`data/tour/timeline.json` `status: locked`):
+  a timing change means re-exporting the cue sheet and re-rendering the score.
 - Commit at meaningful milestones; update `docs/PROJECT_STATE.md` at each milestone.
   **Push only at session end, after explicit user approval.**
 - `CLAUDE.md` changes only when stable rules change; session logs go to `PROJECT_STATE.md`.
@@ -78,4 +81,8 @@ re-disables their autostart, sweeps orphans), **then read `docs/PROJECT_STATE.md
 `pnpm check` · `pnpm models [--only id] [--verify]` · `node --import tsx tools/check/cameras.ts` (camera probe) ·
 `pnpm review --from <qa run> [--before <run>]` (review stills folder) · `pnpm perf --save-baseline <label>` ·
 `pnpm lock --write|--verify <run> [--set lock-v1]` · `pnpm lock --compare <runA> <runB>` (pixel-hash lock) ·
-`pnpm showcase [--dry|--snippet]` (README images from `data/qa/showcase.json` → `docs/images/`)
+`pnpm showcase [--dry|--snippet]` (README images from `data/qa/showcase.json` → `docs/images/`) ·
+`pnpm film --at|--every|--beats …` (film stills) · `pnpm film --render [--run <dir>] …` (chunked, resumable film
+sequence; exit 75 = call again) · `pnpm film --assemble --run <dir> --audio <wav>` ·
+`node --import tsx tools/check/film.ts [--table] [--cues f] [--sync-shotlist]` (film gates; errors once the timeline is
+`locked`) · `pnpm music --cues <cue sheet> [--label x]` (the score: tools/music, uv)

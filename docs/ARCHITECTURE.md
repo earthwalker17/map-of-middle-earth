@@ -322,7 +322,46 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
    wall-wash is a static `sprite: false` spill source gated by its event). Emitter LOD by projected size, counts × quality density; all effect
    pipelines are compiled at warm-up. `tools/check/effects.ts` builds the same records (shared `buildEffects`)
    and checks random access determinism.
-9. (later) `RouteSystem`, `AnnotationSystem`.
+9. `RouteSystem` (route/, S5, film only) — the journey's gold line from the compiled route: one ribbon
+   (3 vertices across per 0.25 km sample), width expanded in screen space (core half-width ≈ 0.05 km in px,
+   clamped 1.6–3.5 px × H/1080), a far / near path morph, a depth pull toward the camera (beats the CDLOD /
+   HeightField mismatch) plus a canopy pull (`VegetationSystem.canopyAlong` at boot → per-sample canopy height;
+   the vertex slides toward the camera over tree crowns, limited by an 8-step terrain march so ridges still
+   hide it), per-vertex atmosphere transmittance. Three draws: dark umber under-stroke (order 20), additive gold
+   core + glow with the head comet and a travelling shimmer (21), underground legs as an x-ray of dots (depth
+   test off). Revealed by arc length to `SceneState.routeProgress`, × `routeGlow`; the head light is a dynamic
+   emission sprite. **Grade keep:** the core / x-ray write `min(alpha, 1 − coverage)` into the HDR alpha and
+   the film's `PostPipeline.enableRouteKeep()` (accumulation carries alpha; the grade holds covered pixels at
+   saturation 1) — the line stays gold under grades that grey out warm hues (Mordor at night).
+10. `TitleSystem` (titles/, S5, film only) — the post overlay (`PostPipeline.overlay`, drawn on the readback
+   target after the grade: never tone-mapped, never in still pages). OFL fonts (`fonts.ts`, `FontFace`, awaited
+   before `ready`; a missing font fails loudly), CPU-rastered `OffscreenCanvas` cards sized as fractions of the
+   frame height (`raster.ts`; place / pass labels at 2× and box-resampled, no sub-pixel sharpness pulse; cards
+   released 4 s outside their window and rebuilt identically). Kinds: `title`, `place` (name + subtitle,
+   hairline leader + diamond), `pass` (name), `end`, `fade`. `layout.ts` (pure, Node-safe — the film check
+   uses it): projection, title-safe clamp, HeightField visibility, mask-based side choice off the subject
+   (no compile-time side unless authored); the diamond slides onto the route head while it rests on the
+   subject. Reveal = max(the caption's fade, 1.4 / 1.0 s place · 0.8 / 0.6 s pass), capped at 40 / 30 % of
+   the window; layout at `SceneState.shutterCentre` (set by film captures on every sub-sample).
+
+**Tour (src/tour, S5 — pure, no render dependencies; Node and the page run the same code).**
+`compileFilm({world, landmarks, shots, route, timeline, built}) → CompiledFilm` (stable `hash`; the page passes
+the landmark build, so `pnpm check` gates exactly the page's film). `route.ts`: `data/tour/route.json` legs
+(place refs with `offsetKm`, `at` points, river / lake boat legs projected onto the centreline / lake level,
+underground legs) → centripetal Catmull-Rom, draped on the HeightField's upper envelope, arc length, head marks;
+`routeReport` (self-crossings, kinks, float, height steps). `rail.ts`: Gaussian-smoothed camera rails along s
+(fine / coarse). `rig.ts` + `curves.ts`: hold keys (bookmark / shot / orbit + `set` overrides, film framings
+never edit bookmarks — five are lock sentinels), moves on a van Wijk–Nuij zoom/pan path (per-move `rho`,
+`apexEl`, `maxAltKm`), hold drift with C2 blends, baked ground clearance and ash-deck caps, the route head easing
+mark to mark with a lead. Slow channels (tod: monotone cubic with linear holds; events; look weight; lens;
+captions) are evaluated at the frame time, camera / `tFx` / head at the sub-sample time (motion blur).
+`captions.ts` (`captionFades`, anchors at 0.6 × built height or `anchorLiftKm` / `anchorOffsetKm`), `cues.ts`
+(the music `CueSheet`), `FilmTimeline.ts` (`Timeline`, registered as `'film'`). **Film-only SceneState
+fields** (absent in stills, so still pages stay bit-identical): `lookOverrideWeight`, `lodBias`, `routeGlow`,
+`lodDither` (one-sided LOD dissolve across the shutter sub-samples: thresholds × 2^−d), `shutterCentre`.
+**Film boot block** (`?film=1`): compile, RouteSystem + TitleSystem, `post.overlay`, `enableRouteKeep`,
+`engine.inFrame` (motion sampling ignores the void), `environment.shadow.setMode('smooth')` (continuous key
+shadow fit, no texel snap, radial far fade).
 
 ## Landmarks (src/landmarks)
 `defineLandmark({ id, placeId, tier, headingDeg, scale, anchor, stamps[], proxy(kit), model, lodPx,
@@ -428,7 +467,12 @@ realize their declarations.
     `--force`. Per-call time budget (default 520 s, boot included) → exit 75 = run again with `--run`;
     `--budget 0` (user-started overnight runs) restarts Chrome every 25 min; free disk ≥ 2 GB per chunk.
     Tiers: preview 960×540 (x264 crf 20 veryfast, 240-frame chunks) · review 1280×720 (x264 crf 14 medium,
-    96) · final 1920×1080 (ProRes 422 HQ 10-bit, 48).
+    96) · final 1920×1080 (ProRes 422 HQ 10-bit, 48). Adaptive motion-blur sampling: `--spp-ladder px:spp,…`
+    (e.g. `12:8,24:12,36:16`) gives a frame more time samples when the ground moves more than px on screen
+    while the shutter is open (`window.__mm.motionPx`, p90 of a 9×5 ray grid); levels are dilated ±2 frames
+    and short dips filled (pure: from the timeline); the lens keeps deciding on the base spp. Each chunk's spp
+    is planned before it renders (budget from wall time per sub-sample × 1.25; a chunk 50 s past the budget is
+    discarded). x264: one keyframe per chunk (`--gop`).
   - `--verify-resume --run dir` re-renders each finished chunk's first frame (same sha256?);
     `--assemble --run dir [--audio master.wav] [--mp4 name] [--reencode]` concatenates the chunks (stream copy)
     and muxes AAC 320k (`+faststart`, exact film length) → `<run>/<name>.mp4`.
@@ -472,6 +516,17 @@ heavy-job lock (`tools/heavy.ts music --min-free-mb 1500`), so it never overlaps
   ≥ 60 % visible, top-of-frame void ≤ 1 %, void ≤ 3 %, sky ≤ 45 %, clear line of sight; `<id>-wide` when
   contextKm is set (extent ≥ places.json wideShotPxTarget). Both gate files are ERRORS for landmarks at
   shot-list `"status": "s3"` (or declaring `lodPx`), warnings otherwise.
+- **Film gates** (tools/check/film.ts, part of `pnpm check`; `node --import tsx tools/check/film.ts [--table]
+  [--cues file] [--sync-shotlist]`) — structural errors (schema, beats alternate, refs resolve, legs chain,
+  route points / offsets / shot-list segment routes valid, event channels in the gate table, length in range,
+  look ids switch at weight 0, tod monotone, caption fades fit their window, compile twice = same hash) and the
+  route report (0 self-crossings, 0 kinks > 120°, float ≤ 0.3 km). Sampled at 8 / 24 Hz — warnings while the
+  timeline is `draft`, ERRORS once `locked` (picture lock): clearance, speed, view rotation, jerk, zoom rate,
+  route head visible in moves (on screen and not behind terrain), the board edge in moves (`visibleTopVoid`),
+  labels judged by the TitleSystem's own placement (`anchorPoint`, `subjectVisible`, title-safe; a head diamond
+  may sit down to −0.85), probe voids, deck height, tod rate, sunlit share of each hold's subject, LOD changes
+  inside holds. `--sync-shotlist` writes the film length, segment seconds / tod / distance mix and hold subjects
+  into `data/tour/shotlist.json` (formatting kept); `--cues` exports the music cue sheet.
 - **Camera probe v2** (tools/check/probe.ts + the cameras.ts CLI) — ray classes terrain / water / sky /
   void (studio backdrop) / edge (strata cut face), top-of-frame void, near foreground, line of sight, and
   the subject's projected px (build bounds ∪ the landmark's raising stamps) with visibility. CLI modes:

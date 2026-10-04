@@ -3,15 +3,16 @@
 _Rolling document: roadmap, current state, decisions, next steps. Keep it compact; replace stale detail
 instead of appending logs._
 
-**Last updated:** 2026-10-03 · end of Session 4.5 (static finalization + repo polish) — pushed (user-approved);
-tag `v0.5.0` = 98f70ce, GitHub release published, description + 20 topics set, CI green (actions on Node 24)
+**Last updated:** 2026-10-05 · end of Session 5 (cinematic journey + music) — 720p review cut with music
+rendered; not pushed yet (asks the user)
 
 ## Where we are
-**S1–S4.5 are complete; the static world is locked for V1 (`v0.5.0`, see below).** The world renders
-deterministically on the Intel UHD iGPU with the S4 look: ash pall over Mordor, strata / crust / snow
-terrain, vegetation archetypes, emission that lights its surroundings, water reflections, still effects
-(plumes, falls, mist, beam, beacons), a filmic lens and grade, and all 24 landmarks at status s3. The repo
-presents as an open-source project (README with showcase stills, MIT licence, CI). **S5 is the film.**
+**S1–S5 are complete.** The static world is locked for V1 (`v0.5.0`, below) and the film exists end to end:
+**"Journey Through Middle-Earth"**, 227.75 s at 24 fps, picture-locked (`data/tour/timeline.json` `status:
+locked`, film hash 1c3edf71), a west → east grand tour via Rohan with a gold route line, floating labels, title /
+end cards, one day of light (dawn in the Shire → moonlit Mordor) and an original orchestral score. The S5
+deliverable is the **720p review cut with music** (`renders/film/review-1280x720-20261005-042737-review-cut/
+journey-review-720p.mp4`, gitignored). **S6 is the final 1080p render and release.**
 
 ## Static world locked for V1 (S4.5)
 - **Lock:** `data/qa/lock-v1.json` = pixel sha256 of the 12 `lock-v1` sentinels (overviews day / night, shire,
@@ -131,24 +132,62 @@ verify) · `20261003-230100` (V1 review stills) · `renders/shots/20261003-23130
 | 3 | Landmarks (all 24) | shot list v0, kit v2 + families v2, stamps v2, emission, landmark trees / forests, Blender spike (GO: Argonath), all 24 rebuilt and gated | ✅ |
 | 4 | Look + still effects | ash deck / atmosphere / night / mist, terrain material, vegetation archetypes + canopy shell, emission spill / gates / halos, water + reflection proxies, EffectsSystem, lens + grade, weathering, one hero-polish wave, review stills | ✅ (film-look gate open: 2.35 / 3.0) |
 | 4.5 | Static finalization + repo polish | driver re-baseline, small fixes, V1 lock (`lock-v1.json`, `review/v1`), showcase stills, README / LICENSE / CI, cleanup | ✅ (`v0.5.0`) |
-| 5 | Cinematic journey + music | tour timeline v0 + animatic from the shot list, route line, title cards, transitions; music spike → original score | **next** |
-| 6 | Performance, final polish, render & release | Landmark build / AO in a worker, vegetation placement worker, compile time; final 1080p24 render (resumable, overnight, user-started); encode; film embed in the README; ME-GIS/Arda permission for the film | — |
+| 5 | Cinematic journey + music | tour compiler + rig, route v2 + route line, titles, `pnpm film` (stills, chunked sequences, adaptive motion blur), motion fixes, picture lock, original score (`pnpm music`), 720p review cut | ✅ |
+| 6 | Performance, final polish, render & release (**next**) | Landmark build / AO in a worker, vegetation placement worker, compile time; final 1080p24 render (resumable, overnight, user-started); encode; film embed in the README; ME-GIS/Arda permission for the film | — |
 
-## S5 priorities
-1. **Perf re-baseline on mains power** (S4.5 ran on battery: the cold pass was 1.2–1.6× the S4 baseline,
-   compile 3.6 s cold, so no baseline was saved): rested `pnpm perf` cold, then `--save-baseline v1-static`
-   on the six S4 views; keep `s4` until then.
-2. **Timeline v0 + animatic:** `Timeline.evaluate(t)` over the shot list's 16 segments (`data/tour/`), camera
-   moves between bookmarks, events (beacons, beam) keyed in time, `tFx` from film time, low-res animatic.
-3. **Route line + title cards** (canvas-2D textures on quads, OFL fonts), transitions; **music spike** →
-   original score (no imitation of Howard Shore).
-4. **Lock discipline:** film modules plug into the existing systems; `pnpm lock --verify` stays exit 0 after
-   every merge (change control above).
+## S5 log (2026-10-04 → 05) — cinematic journey + music
+- **Start:** perf baseline `v1-static` on mains (six S4 views, 0.94–1.01× of `s4`; `s4` kept as history).
+  README hero = `overview-golden` (the day / night pair's camera at 18:20).
+- **Wave 0 (main):** contracts (tour schema, route.json v2, timeline.json v1, film-only SceneState fields, the
+  PostPipeline overlay pass, decorrelated shutter time, capture API `timelineInfo` / `timelineState`),
+  `pnpm film --at`; then `pnpm film --render` (chunked, resumable, streamed to ffmpeg) and `--assemble`.
+- **Wave 1:** A — the tour compiler + camera rig + film checks; B — RouteSystem + TitleSystem. One compile path
+  (the page passes the landmark build, so `pnpm check` gates the page's film). Animatic + storyboard reviewed.
+- **Music:** `tools/music` (uv; VSCO 2 CE CC0 samples + sfizz 1.2.3 render-time only, never shipped), the score as
+  code (`journey.py`, original motifs; no imitation of Howard Shore), the conductor's dynamic arc, a GPL-free
+  master (own high-pass, glue compressor, limiter; pedalboard removed). Score v4 fits the locked cues.
+- **Wave 2:** C — picture-lock timing: one journey heading of hold azimuths, per-move `rho` / `apexEl`, Gondor
+  west of the Anduin, Rauros a pass caption, Helm's Deep on the Hornburg, Minas Morgul under the rising moon
+  (18.85), route legs along valleys / passes / mountain feet (Mount Doom switchback, Black Gate butte, Rivendell
+  loop), labels judged by the TitleSystem's own code, `--sync-shotlist`. D — film-only motion fixes: smooth key
+  shadow fit, one-sided LOD dissolve across the sub-samples (`lodBias` stays unset), adaptive spp ladder,
+  route canopy pull, 2× supersampled labels, `shutterCentre`. Each branch code-reviewed + critiqued + one fix round.
+- **Main after the merge:** the route line keeps its gold through the grade (HDR-alpha coverage +
+  `enableRouteKeep`; it went cream-white under Mordor at night); picture lock (`status: locked`, 0 errors);
+  review cut 1280×720 review tier spp 4 + ladder `12:8,24:12,36:16`, 180° shutter, x264 crf 14, 57 chunks.
+- **Lock:** lock-v1 12/12 identical after every shared-code change (last `renders/qa/20261005-042230`).
+- **Review cut:** `renders/film/review-1280x720-20261005-042737-review-cut/journey-review-720p.mp4` (157 MB,
+  H.264 BT.709 + AAC 320k, 5466 frames = 227.75 s, score v4 `renders/music/20261005-042554-v4-lock`); 18 calls
+  of ≤ 9 min (≈ 2.4 h); 17 frames rendered as isolated stills match the cut's frames bit for bit.
+- **Perf at the end (mains):** frame times OK (56.8 / 47.4 / 52.5 ms vs 56.1 / 45.8 / 52.7); compile 10–11 s
+  is OVER the 1.15 s baseline — but the frozen baseline commit (7567962) measured 9.7 s in the same state
+  (after ~2.5 h of GPU renders: slow power regime + the shared Chrome profile's shader cache churned by film /
+  review pipelines), so it is the host, not S5 code. Re-check rested in S6.
+- **Film at picture lock:** 33 beats, 227.75 s, route 1730.9 km; holds Hobbiton · Bree · Weathertop ·
+  Rivendell · Moria · Lothlórien · Isengard · Helm's Deep · Edoras · Argonath · Black Gate · Henneth Annûn ·
+  Minas Tirith · Minas Morgul · Mount Doom; tod 5.85 → 19.6 on dayOfYear 78.
+
+## S6 priorities
+1. **User review of the 720p cut** (picture, copy, score palette) → one bounded polish wave on what the user
+   flags; candidate items from the S5 critics (not done): fade the travelled route with distance behind the
+   head (far stripes at Minas Tirith / to-minas-morgul), cap the near-path width (~10–12 px), midday line
+   legibility, the Minas Tirith hold darker than the old az-128 keeper, the Helm's Deep / Rivendell hairpins
+   and the overview zig-zag, the first ~1.5 s of to-minas-tirith nearly static, Mount Doom dark (luma 19),
+   the brightness drop entering Mordor, the 0.5 s cliff rush before the Argonath (accepted), a smoothed shadow
+   reach (`shadowFocus`) for the descent's far-hill fade, the Argonath water edge flicker (also in stills),
+   LOD dissolve steps in a few holds (Bree), export TitleSystem `anchorPoint` / `subjectVisible` as pure
+   layout functions (the check reaches the private methods through a cast).
+2. **Final render:** 1920×1080 final tier, ProRes 422 HQ, `--budget 0` overnight, user-started (≈ 4–6 h);
+   re-check the film hash / commit first; `--assemble --audio` with the final score.
+3. **Perf:** a rested `pnpm perf --gate` (the S5-end compile 10 s was host state: the baseline commit measured the same).
+4. **Release:** film embed in the README (needs the ME-GIS / Arda / ME-DEM authors' permission first), perf
+   (landmark build / AO and vegetation placement in workers), `pnpm perf --gate`.
 
 ## Decisions (stable)
-- **Presentation and film:** floating diorama slab; film 3–4 min (shot-list draft 204 s), 16:9, 1080p24 with
-  a 180° shutter; hero pauses Hobbiton, Rivendell, Moria, Argonath, Black Gate, Minas Morgul, Mount Doom;
-  prologue Erebor / Lake-town / Dale; epilogue Grey Havens.
+- **Presentation and film:** floating diorama slab; film 3–4 min (picture lock 227.75 s), 16:9, 1080p24 with a
+  180° shutter; a west → east grand tour via Rohan loosely on Frodo's road (user, S5), one day of light
+  (dawn in the Shire → moonlit Mordor), gold route line, floating labels, title / end cards; review cut 720p
+  in S5, final 1080p in S6. Score: orchestral samples (CC0), original, rendered by `pnpm music`.
 - **Rendering:** WebGPU + TSL (three 0.186.1), reversed-Z, deterministic `SceneState` (incl. `weather`,
   `events`, `tFx`); quality tiers preview / review / final — preview drops the review / final graph parts
   (`atmosphere.full`, terrain `preview`, `structureTier.full`, cumulus, halos, reflection proxies).
@@ -212,6 +251,13 @@ pools; marsh fills ≈ 271 km² > 0.5. A re-bake needs the user's explicit OK.
 ## Learned gotchas (r186 / this machine)
 - **TSL:** `vec3(new Color())` silently yields black — use `color(c)`; an `int(x)` uniformArray index must be
   `.toVar()`; `meta` / `time` are reserved WGSL words; assign inside `If` blocks to `.toVar()` nodes only.
+- **TSL (S5):** `select()` in a vertex graph builds shared sub-expressions inside its first branch only — use
+  step / mix in vertex stages. Additive blending in three's WebGPU backend ADDS alpha (One, One); opaque node
+  materials force alpha 1 — a film-only mask in the HDR alpha needs a `min` alpha blend (route keep).
+- **Film (S5):** the grade is non-linear in hue (warm / red / glow masks): no pre-compensation keeps a graphic
+  colour through every region look — keep it out of the grade instead. `pnpm film` budgets over-plan high-spp
+  chunks (per-frame overhead counted per sub-sample): expect 2–3 chunks per 9-min call at 720p. The music
+  cue loader reads moves too (`hold` or `move` ids) and pass captions inside moves.
 - **WebGPU:** at most 8 vertex buffers per draw (vegetation 7, emission 5, landmarks 4); the terrain samples
   15 of 16 textures (frozen).
 - **No environment map:** metals and glossy dark stone go black in shade without the families' specular
