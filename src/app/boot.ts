@@ -25,6 +25,9 @@ import timelineJson from '../../data/tour/timeline.json';
 import { compileFilm, type FilmProgram } from '../tour/compile.ts';
 import { FilmTimeline } from '../tour/FilmTimeline.ts';
 import type { RouteJson, TimelineJson } from '../tour/schema.ts';
+import { RouteSystem } from '../route/RouteSystem.ts';
+import { TitleSystem } from '../titles/TitleSystem.ts';
+import { loadFilmFonts } from '../titles/fonts.ts';
 
 /**
  * Load the world and register every system. Order matters: environment first (writes the shared
@@ -59,16 +62,27 @@ async function buildWorld(engine: Engine, quality: QualityTierId, shots: ShotSpe
   const emission = new EmissionSystem(world, built.flatMap((b) => b.lights));
   // S4 W3-E: plumes, falls, mist, the beam; crater sparks and beacon flames ride on the emission sprites
   const effects = new EffectsSystem(world, { emitters: landmarkEmitters(world, LANDMARKS), falls: landmarkFalls(world, LANDMARKS), lights: emission.records, pools: landmarkPools(world, LANDMARKS) });
-  emission.setDynamic((s) => effects.lights(s));
   // S5: the journey film (`?film=1` only — still pages never compile it, so their frames are untouched)
   const film = filmMode
     ? compileFilm({ world, landmarks: LANDMARKS, shots: shotsJson.shots as unknown as ShotSpecInput[], route: routeJson as unknown as RouteJson, timeline: timelineJson as unknown as TimelineJson })
     : null;
-  if (film) mark('filmCompiled');
-  for (const s of [environment, terrain, water, vegetation, diorama, landmarks, emission, effects]) {
+  let route: RouteSystem | null = null;
+  let titles: TitleSystem | null = null;
+  if (film) {
+    mark('filmCompiled');
+    // the route line + its head light, and the titles / captions overlay (fonts loaded before `ready`)
+    await loadFilmFonts();
+    mark('filmFonts');
+    route = new RouteSystem(world, film.film.route);
+    titles = new TitleSystem(film.film.captions, { fps: film.film.fps });
+    const r = route;
+    emission.setDynamic((s) => [...effects.lights(s), ...r.lights(s)]);
+  } else emission.setDynamic((s) => effects.lights(s));
+  for (const s of [environment, terrain, water, vegetation, diorama, landmarks, emission, effects, ...(route ? [route] : []), ...(titles ? [titles] : [])]) {
     await engine.register(s);
     mark(`init:${s.id}`);
   }
+  if (titles) engine.post.overlay = titles;
 
   // warm up: compile pipelines, then one throwaway frame realizes lazily-created GPU resources
   // (texture uploads, shadow maps, post targets) so the first captured frame is bit-identical to
@@ -80,11 +94,35 @@ async function buildWorld(engine: Engine, quality: QualityTierId, shots: ShotSpe
   mark('compiled');
   engine.renderAccumulated(() => warmState, 1);
   await engine.post.readPixels();
+  if (film) {
+    // film: one more throwaway frame with the route line, its head light and a caption card on screen, so
+    // their pipelines and the first card texture exist before the first captured frame (bit-identical to
+    // any later render of the same t)
+    const filmState = film.evaluate(filmWarmTime(film));
+    engine.applyState(filmState);
+    await engine.renderer.compileAsync(engine.scene, engine.camera);
+    engine.renderAccumulated(() => filmState, 1);
+    await engine.post.readPixels();
+  }
   mark('warm');
 
   // dev handle for diagnostics scripts (tools/capture/probe.ts)
-  (window as unknown as { __app: unknown }).__app = { engine, world, terrain, environment, water, vegetation, diorama, landmarks, emission, effects, film };
+  (window as unknown as { __app: unknown }).__app = { engine, world, terrain, environment, water, vegetation, diorama, landmarks, emission, effects, film, route, titles };
   return { world, film };
+}
+
+/**
+ * A film time for the warm-up frame: the middle of the first place caption whose frame shows the route
+ * (routeGlow and progress > 0), else of the first place caption, else the film's middle.
+ */
+function filmWarmTime(film: FilmProgram): number {
+  const places = film.film.captions.filter((c) => c.kind === 'place');
+  for (const c of places) {
+    const t = (c.t0 + c.t1) / 2;
+    const s = film.evaluate(t);
+    if ((s.routeGlow ?? 0) > 0 && s.routeProgress > 0) return t;
+  }
+  return places.length ? (places[0].t0 + places[0].t1) / 2 : film.film.duration / 2;
 }
 
 /** Landmark bookmarks (`<id>-close` hero, `<id>-wide` context) as shots, orbiting the display position. */
