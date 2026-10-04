@@ -559,7 +559,7 @@ async function render(args: Args): Promise<number> {
         writeFileSync(join(dir, 'chunks', `c${pad(c.i)}.json`), JSON.stringify(cj));
         const secs = (Date.now() - ct0) / 1000;
         const done = chunks.length - todo.length + todo.indexOf(c) + 1;
-        console.log(`[film] chunk ${c.i} (frames ${c.k0}–${c.k1 - 1}, t ${(c.k0 / run.fps).toFixed(1)}–${(c.k1 / run.fps).toFixed(1)} s): ${secs.toFixed(0)} s, ${(secs / n).toFixed(2)} s/frame, ${(bytes / MB).toFixed(1)} MB · ${done}/${chunks.length} · ${Math.round(freemem() / MB)} MB free · ${freeDiskMB(dir)} MB disk`);
+        console.log(`[film] chunk ${c.i} (frames ${c.k0}–${c.k1 - 1}, t ${(c.k0 / run.fps).toFixed(1)}–${(c.k1 / run.fps).toFixed(1)} s): ${secs.toFixed(0)} s (planned ≈ ${est.toFixed(0)} s), ${(secs / n).toFixed(2)} s/frame, ${(bytes / MB).toFixed(1)} MB · ${done}/${chunks.length} · ${Math.round(freemem() / MB)} MB free · ${freeDiskMB(dir)} MB disk`);
       }
       if (!more) {
         const left = chunks.filter((c) => !chunkDone(dir!, run, c)).length;
