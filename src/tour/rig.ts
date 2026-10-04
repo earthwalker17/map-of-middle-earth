@@ -13,9 +13,10 @@
  *
  * Moves A → B over [t0, t1] (Δ, x = (t − t0)/Δ, E = smootherstep(x)) — the van Wijk–Nuij zoom / pan path
  * along the rail: pan length L = |s_B − s_A| + |o_B − o_A|, σ = S·E, pan progress p = u(σ)/L; s and o move with
- * p; while the path is zoomed out beyond the log-linear width (Z: smootherstep of the ln ratio / ln 6) the target leans from the fine
- * to the coarse rail, the elevation rises toward apexEl and tan(fov/2) relaxes toward tan 16°. Azimuth, lift,
- * roll and tan(fov/2) (log) follow E. `dur: "auto"` ⇒ Δ = clamp(1.875·S / vTarget, minS, maxS).
+ * p. While the path is zoomed out beyond the log-linear width (Z = smootherstep(ln(w(σ)/w_lin) / ln 6), C2 at
+ * both clamps) the target leans from the fine to the coarse rail, the elevation rises toward apexEl (a soft
+ * max) and tan(fov/2) relaxes toward tan 16°. Azimuth, lift, roll and tan(fov/2) (log) follow E.
+ * `dur: "auto"` ⇒ Δ = clamp(1.875·S / vTarget, minS, maxS).
  * Drift continuity: each drift channel crosses the move as a quintic Hermite from (r_A·dur_A/2, r_A) to
  * (−r_B·dur_B/2, r_B) with zero end curvature, so the camera is C2 and never stops dead.
  *
@@ -452,8 +453,8 @@ export function buildRig(inp: RigInputs): CameraRig {
   const panProgress = (m: RigMove, x: number): number => {
     const E = smootherstep(x);
     const P = m.path;
-    if (!P.degenerate) return x >= 1 ? 1 : clamp(P.u(P.S * E) / P.L, 0, 1);
-    return P.S > 1e-9 ? E : E; // pure zoom: the (negligible) pan follows the eased progress
+    if (P.degenerate) return E; // pure zoom: the (negligible) pan follows the eased progress
+    return x >= 1 ? 1 : clamp(P.u(P.S * E) / P.L, 0, 1);
   };
 
   // ---- the analytic pose (no height, no safety tracks)
