@@ -1,4 +1,4 @@
-import { AdditiveBlending, AddEquation, CustomBlending, DoubleSide, NodeMaterial, OneFactor, OneMinusSrcAlphaFactor } from 'three/webgpu';
+import { AdditiveBlending, AddEquation, CustomBlending, DoubleSide, NodeMaterial, OneFactor, OneMinusSrcAlphaFactor, type Texture } from 'three/webgpu';
 import { uniform } from 'three/tsl';
 import { tsl, type TslNode } from '../materials/tsl.ts';
 import { env } from '../materials/environment.ts';
@@ -6,7 +6,7 @@ import { atmosphere } from '../materials/atmosphere.ts';
 import { gradeUniforms } from '../render/PostPipeline.ts';
 
 type N = TslNode;
-const { Fn, abs, attribute, cameraProjectionMatrix, cameraViewMatrix, clamp, dot, exp, float, floor, fract, length, max, min, mix, pow, sin, smoothstep, sqrt, step, varying, vec2, vec3, vec4 } = tsl;
+const { Fn, abs, attribute, cameraProjectionMatrix, cameraViewMatrix, clamp, dot, exp, float, floor, fract, length, max, min, mix, pow, sin, smoothstep, sqrt, step, texture, varying, vec2, vec3, vec4 } = tsl;
 
 /**
  * The journey's route line (S5 film): one ribbon (three vertices across per route sample: the centre and the
@@ -33,6 +33,12 @@ const { Fn, abs, attribute, cameraProjectionMatrix, cameraViewMatrix, clamp, dot
  *    the HeightField far away) never swallows the line — and PULL_EDGE ribbon reaches more at the edges, so
  *    on a skyline (a crest seen at a grazing angle) the glow's lower half is not lost behind the slope just
  *    below the line, while a ridge well in front still hides it.
+ *  - canopy pull (S5 motion): where crowns rise over the line (routeC: their height above the sample, km —
+ *    VegetationSystem.canopyAlong at boot) the vertex slides further toward the camera, by the canopy height
+ *    over the sine of the view ray's elevation (≥ CANOPY_SIN_MIN), so the forest no longer cuts dark notches
+ *    and a crawling hatch into the line — but never past the terrain: the pull stops at the first of
+ *    CANOPY_STEPS points along the ray (from the line toward the camera) under the HeightField, so a ridge in
+ *    front still hides the line. Trees are not in the HeightField: the line reads through them like a map.
  *  - per vertex: the atmosphere's transmittance (extinction only, like the emission sprites).
  *
  * Fragment (screen px): round caps (radial profile beyond the head and before the start; the window is
@@ -43,7 +49,7 @@ const { Fn, abs, attribute, cameraProjectionMatrix, cameraViewMatrix, clamp, dot
  *
  * Vertex buffers (2): position (near centre) and one interleaved buffer — routeAn / routeBn (near
  * neighbours), routePf / routeAf / routeBf (far centre and neighbours), routeS (s, side −1 / 0 / +1, mode
- * + 4 / + 8 on the extension triples before the start / after the end, s_B − s_A).
+ * + 4 / + 8 on the extension triples before the start / after the end, s_B − s_A), routeC (canopy, km).
  */
 
 /**
@@ -108,6 +114,23 @@ export const PULL_PX = 6;
 export const PULL_CORE = 2;
 export const PULL_EDGE = 3;
 export const PULL_REL = 0.003;
+/**
+ * canopy pull: the view ray's elevation sine is floored here (a grazing ray would pull without bound); the
+ * terrain test's sample count along the pull, and its tolerance (km: the path rides ≈ on the HeightField)
+ */
+export const CANOPY_SIN_MIN = 0.35;
+export const CANOPY_STEPS = 8;
+export const CANOPY_TOL_KM = 0.03;
+
+/** The HeightField the canopy pull is tested against (world.heights.texture over the world frame). */
+export interface RouteGround {
+  texture: Texture;
+  xMin: number;
+  zMin: number;
+  width: number;
+  depth: number;
+}
+
 /** shimmer: wavelength (1080p px), speed (waves per effect-second), depth on core / glow, reach behind the head */
 const SHIMMER_PX = 70;
 const SHIMMER_HZ = 0.3;
@@ -155,8 +178,31 @@ export type RouteUniforms = ReturnType<typeof createRouteUniforms>;
 
 const view = (p: N): N => cameraViewMatrix.mul(vec4(p, 1)).xyz;
 
+/**
+ * The canopy pull at the line's centre C (world): canopy / max(sin elevation, CANOPY_SIN_MIN), at most half
+ * the way to the camera, cut short at the first of CANOPY_STEPS points along the ray toward the camera that
+ * lies under the HeightField (+ CANOPY_TOL_KM; outside the world frame nothing blocks). Unrolled, step / mix
+ * only (vertex stage).
+ */
+function canopyPull(C: N, canopy: N, g: RouteGround): N {
+  const toCam = env.cameraPos.sub(C);
+  const dCam = max(length(toCam), 1e-3);
+  const dir = toCam.div(dCam);
+  const want = min(canopy.div(max(dir.y, CANOPY_SIN_MIN)), dCam.mul(0.5));
+  let allowed: N = want;
+  for (let j = 1; j <= CANOPY_STEPS; j++) {
+    const q = C.add(dir.mul(want.mul(j / CANOPY_STEPS)));
+    const uv = vec2(q.x.sub(g.xMin).div(g.width), q.z.sub(g.zMin).div(g.depth));
+    const inside = step(0, uv.x).mul(step(uv.x, 1)).mul(step(0, uv.y)).mul(step(uv.y, 1));
+    const h = texture(g.texture, uv).level(0).r;
+    const under = step(q.y.add(CANOPY_TOL_KM), h).mul(inside);
+    allowed = min(allowed, mix(want, want.mul((j - 1) / CANOPY_STEPS), under));
+  }
+  return allowed.mul(step(1e-4, canopy));
+}
+
 /** The ribbon's vertex stage (clip position) + the varyings every pass reads. */
-function ribbon(): { clip: N; vA: N; vB: N; vC: N } {
+function ribbon(ground?: RouteGround): { clip: N; vA: N; vB: N; vC: N } {
   const Pn = attribute('position', 'vec3');
   const An = attribute('routeAn', 'vec3');
   const Bn = attribute('routeBn', 'vec3');
@@ -164,6 +210,7 @@ function ribbon(): { clip: N; vA: N; vB: N; vC: N } {
   const Af = attribute('routeAf', 'vec3');
   const Bf = attribute('routeBf', 'vec3');
   const S = attribute('routeS', 'vec4');
+  const canopy = attribute('routeC', 'float');
   const pxPerKm = env.pxPerKm;
   const scale = env.viewportH.div(1080);
   const side = S.y;
@@ -225,7 +272,8 @@ function ribbon(): { clip: N; vA: N; vB: N; vC: N } {
   const Zc = max(Z, 1e-3);
   const dist = max(length(pV), 1e-3);
   // depth pull (keeps the projected centre: the vertex slides along its view ray)
-  const pull = Zc.div(pxPerKm).mul(scale.mul(PULL_PX).add(h.mul(PULL_CORE)).add(abs(side).mul(reach).mul(PULL_EDGE))).add(dist.mul(PULL_REL));
+  const pull0 = Zc.div(pxPerKm).mul(scale.mul(PULL_PX).add(h.mul(PULL_CORE)).add(abs(side).mul(reach).mul(PULL_EDGE))).add(dist.mul(PULL_REL));
+  const pull = ground ? pull0.add(canopyPull(C, canopy, ground)) : pull0;
   const pN = pV.mul(float(1).sub(clamp(pull.div(dist), 0, 0.9)));
   const ZN = max(pN.z.negate(), 1e-4);
   const off = nrm.mul(side.mul(reach)).mul(ZN.div(pxPerKm));
@@ -272,8 +320,8 @@ function additive(m: NodeMaterial, depthTest: boolean): NodeMaterial {
 }
 
 /** The gold core + glow (additive; the underground legs are left to the x-ray). */
-export function createRouteCoreMaterial(u: RouteUniforms): NodeMaterial {
-  const { clip, vA, vB, vC } = ribbon();
+export function createRouteCoreMaterial(u: RouteUniforms, ground?: RouteGround): NodeMaterial {
+  const { clip, vA, vB, vC } = ribbon(ground);
   const m = new NodeMaterial();
   m.name = 'route-core';
   m.vertexNode = clip;
@@ -302,8 +350,8 @@ export function createRouteCoreMaterial(u: RouteUniforms): NodeMaterial {
  * the portals): round dots at a world period (octaves crossfaded), radius ≤ h and ≤ a quarter period,
  * dimmer than the ground line, brighter toward the head, fading to a faint solid when the dots get small.
  */
-export function createRouteXrayMaterial(u: RouteUniforms): NodeMaterial {
-  const { clip, vA, vB, vC } = ribbon();
+export function createRouteXrayMaterial(u: RouteUniforms, ground?: RouteGround): NodeMaterial {
+  const { clip, vA, vB, vC } = ribbon(ground);
   const m = new NodeMaterial();
   m.name = 'route-xray';
   m.vertexNode = clip;
@@ -334,8 +382,8 @@ export function createRouteXrayMaterial(u: RouteUniforms): NodeMaterial {
 }
 
 /** The soft dark umber under-stroke (premultiplied over): legibility on bright noon ground, fading at night. */
-export function createRouteUnderMaterial(u: RouteUniforms): NodeMaterial {
-  const { clip, vA, vB, vC } = ribbon();
+export function createRouteUnderMaterial(u: RouteUniforms, ground?: RouteGround): NodeMaterial {
+  const { clip, vA, vB, vC } = ribbon(ground);
   const m = new NodeMaterial();
   m.name = 'route-under';
   m.vertexNode = clip;

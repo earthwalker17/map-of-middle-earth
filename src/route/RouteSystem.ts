@@ -5,7 +5,7 @@ import type { World } from '../world/World.ts';
 import type { CompiledRoute } from '../tour/schema.ts';
 import { pathAt, ribbonPath, type RibbonPath } from './path.ts';
 import { cameraBasis, projectWith } from '../titles/layout.ts';
-import { createRouteCoreMaterial, createRouteUnderMaterial, createRouteUniforms, createRouteXrayMaterial, DASH_PX, HALF_KM, HALF_MAX, HALF_MIN, MORPH, PULL_CORE, PULL_PX, PULL_REL, QUAD_K, ROUTE_GOLD } from './routeMaterial.ts';
+import { CANOPY_SIN_MIN, CANOPY_STEPS, CANOPY_TOL_KM, createRouteCoreMaterial, createRouteUnderMaterial, createRouteUniforms, createRouteXrayMaterial, DASH_PX, HALF_KM, HALF_MAX, HALF_MIN, MORPH, PULL_CORE, PULL_PX, PULL_REL, QUAD_K, ROUTE_GOLD, type RouteGround } from './routeMaterial.ts';
 
 /** render orders: after the water (1–3), before the ash deck (30), mist (34), falls (35), sprites (50) */
 const ORDER_UNDER = 20;
@@ -29,6 +29,13 @@ const HEAD_INTENSITY_CAP = 8;
 const HEAD_COLOR: V3 = [ROUTE_GOLD[0], ROUTE_GOLD[1] * 1.15, 0.12];
 /** the head light's seed (rand: flicker phase) */
 const HEAD_SEED = 0x5f0a7e;
+/**
+ * canopy over the line (the shader's canopy pull): crowns reaching within CANOPY_REACH_KM of a sample count
+ * (the ribbon's glow and the crowns just beside it), and each sample takes the highest canopy within
+ * ±CANOPY_SPREAD_KM along the route (no pull gaps between crowns, a ramp at the forest edge)
+ */
+const CANOPY_REACH_KM = 0.5;
+const CANOPY_SPREAD_KM = 0.5;
 
 const _p: [number, number, number] = [0, 0, 0];
 const _q: [number, number, number] = [0, 0, 0];
@@ -71,10 +78,17 @@ export class RouteSystem implements System {
   private meshes: Mesh[] = [];
   private readonly spacing: number;
   private readonly head: LightRecord = { landmark: 'route', p: [0, 0, 0], color: HEAD_COLOR, intensity: HEAD_INTENSITY, radiusKm: 0.05, kind: 'magic', gate: 'always', flicker: 0.04, seed: HEAD_SEED };
+  /** per path sample: the canopy's height over the line, km (0 without a canopy provider) */
+  private canopy: Float32Array = new Float32Array(0);
 
   constructor(
     private readonly world: World,
     readonly route: CompiledRoute,
+    /**
+     * the crowns over the line (VegetationSystem.canopyAlong — called in init, after the vegetation's init:
+     * register the route after it); absent = no canopy pull
+     */
+    private readonly canopyAt?: (xyz: Float64Array, reachKm: number) => Float32Array,
   ) {
     this.spacing = route.count > 1 ? route.length / (route.count - 1) : 1;
     this.stats.samples = route.count;
@@ -82,15 +96,23 @@ export class RouteSystem implements System {
   }
 
   init(ctx: InitContext): void {
-    void this.world;
     const P = this.path;
     const n = P.count;
+    // the canopy over each sample (its highest within ±CANOPY_SPREAD_KM along the route)
+    const raw = this.canopyAt ? this.canopyAt(P.p, CANOPY_REACH_KM) : new Float32Array(n);
+    const spread = Math.max(0, Math.round(CANOPY_SPREAD_KM / this.spacing));
+    this.canopy = new Float32Array(n);
+    for (let k = 0; k < n; k++) {
+      let m = 0;
+      for (let j = Math.max(0, k - spread); j <= Math.min(n - 1, k + spread); j++) m = Math.max(m, raw[j]);
+      this.canopy[k] = m;
+    }
     // vertex triples across (edge −1, centre, edge +1): the start's extension (slid out by the shader), the n
     // samples, the end's extension
     const rows = n + 2;
     const pos = new Float32Array(rows * 3 * 3);
-    // interleaved: An(3) Bn(3) Pf(3) Af(3) Bf(3) S(4)
-    const STRIDE = 19;
+    // interleaved: An(3) Bn(3) Pf(3) Af(3) Bf(3) S(4) C(1)
+    const STRIDE = 20;
     const il = new Float32Array(rows * 3 * STRIDE);
     const put = (o: number, src: Float64Array, k: number) => {
       il[o] = src[k * 3];
@@ -130,6 +152,7 @@ export class RouteSystem implements System {
         il[o + 16] = side - 1;
         il[o + 17] = P.mode[k] + ext;
         il[o + 18] = dsN;
+        il[o + 19] = this.canopy[k];
       }
     }
     const segs = rows - 1;
@@ -157,6 +180,7 @@ export class RouteSystem implements System {
       ['routeAf', 3, 9],
       ['routeBf', 3, 12],
       ['routeS', 4, 15],
+      ['routeC', 1, 19],
     ];
     const position = new Float32BufferAttribute(pos, 3);
     const make = (index: Uint16Array | Uint32Array): BufferGeometry => {
@@ -170,9 +194,11 @@ export class RouteSystem implements System {
     this.geometry = make(idx);
     this.xray = make(xidx);
     this.stats.vertices = rows * 3;
-    const under = createRouteUnderMaterial(this.u);
-    const core = createRouteCoreMaterial(this.u);
-    const xray = createRouteXrayMaterial(this.u);
+    const sp = this.world.spec;
+    const ground: RouteGround = { texture: this.world.heights.texture, xMin: sp.xMin, zMin: sp.zMin, width: sp.width, depth: sp.depth };
+    const under = createRouteUnderMaterial(this.u, ground);
+    const core = createRouteCoreMaterial(this.u, ground);
+    const xray = createRouteXrayMaterial(this.u, ground);
     this.materials = [under, core, xray];
     for (const [g, m, order, name] of [
       [this.geometry, under, ORDER_UNDER, 'route-under'],
@@ -289,7 +315,8 @@ export class RouteSystem implements System {
     // km per 1080p px at the head depth; the line centre's pull there (PULL_PX + PULL_CORE core half-widths)
     const kmPerPx = z / (1080 * k);
     const h = Math.min(HALF_MAX, Math.max(HALF_MIN, HALF_KM / kmPerPx));
-    const pull = Math.min(0.9, ((PULL_PX + PULL_CORE * h) * kmPerPx + PULL_REL * dist) / dist);
+    const head = Math.min(1, Math.max(0, state.routeProgress)) * this.route.length;
+    const pull = Math.min(0.9, ((PULL_PX + PULL_CORE * h) * kmPerPx + PULL_REL * dist + this.canopyPull(head, _p, pos)) / dist);
     const rWant = HEAD_PX * kmPerPx;
     const r = Math.min(rWant, HEAD_RADIUS_CAP);
     const rec = this.head;
@@ -297,6 +324,34 @@ export class RouteSystem implements System {
     rec.radiusKm = r;
     rec.intensity = Math.min(HEAD_INTENSITY_CAP, HEAD_INTENSITY * (rWant / r) ** 2) * glow;
     return [rec];
+  }
+
+  /**
+   * The shader's canopy pull at arc length s (CPU mirror for the head light): the canopy (interpolated between
+   * samples) over the sine of the ray's elevation, at most half way to the camera, cut short where the ray
+   * toward the camera first dips under the HeightField.
+   */
+  private canopyPull(s: number, c: readonly number[], eye: readonly number[]): number {
+    const n = this.canopy.length;
+    if (!n) return 0;
+    const f = Math.min(n - 1, Math.max(0, s / this.spacing));
+    const k = Math.min(n - 2, Math.floor(f));
+    const canopy = n > 1 ? this.canopy[k] + (this.canopy[k + 1] - this.canopy[k]) * (f - k) : this.canopy[0];
+    if (!(canopy > 1e-4)) return 0;
+    const dx = eye[0] - c[0];
+    const dy = eye[1] - c[1];
+    const dz = eye[2] - c[2];
+    const d = Math.max(1e-3, Math.hypot(dx, dy, dz));
+    const want = Math.min(canopy / Math.max(dy / d, CANOPY_SIN_MIN), d * 0.5);
+    const spec = this.world.spec;
+    for (let j = 1; j <= CANOPY_STEPS; j++) {
+      const u = (want * j) / CANOPY_STEPS / d;
+      const qx = c[0] + dx * u;
+      const qy = c[1] + dy * u;
+      const qz = c[2] + dz * u;
+      if (spec.inFrame(qx, qz) && qy + CANOPY_TOL_KM <= this.world.heights.sample(qx, qz)) return (want * (j - 1)) / CANOPY_STEPS;
+    }
+    return want;
   }
 
   dispose(): void {

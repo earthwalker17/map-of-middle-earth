@@ -233,6 +233,62 @@ export class VegetationSystem implements System {
     return this.exclusions;
   }
 
+  /**
+   * S5 film (the route line's canopy pull): for each point (x, y, z triples, world km) how far the crowns
+   * that reach within `reachKm` of it (horizontally, beyond their own crown radius) rise above its height
+   * — 0 where none do. Every placed list (coarse, canopy, fine) and the authored heroes, at full size. Pure
+   * function of the placement (quality density, exclusions, forests, caps); call after init.
+   */
+  canopyAlong(xyz: ArrayLike<number>, reachKm: number): Float32Array {
+    const n = Math.floor(xyz.length / 3);
+    const out = new Float32Array(n);
+    const spec = this.world.spec;
+    const CELL = 1;
+    const ncx = Math.max(1, Math.ceil(spec.width / CELL));
+    const ncz = Math.max(1, Math.ceil(spec.depth / CELL));
+    const ci = (x: number) => Math.min(ncx - 1, Math.max(0, Math.floor((x - spec.xMin) / CELL)));
+    const cj = (z: number) => Math.min(ncz - 1, Math.max(0, Math.floor((z - spec.zMin) / CELL)));
+    // the points in a 1 km hash grid
+    const grid = new Map<number, number[]>();
+    for (let p = 0; p < n; p++) {
+      const key = cj(xyz[p * 3 + 2]) * ncx + ci(xyz[p * 3]);
+      const cell = grid.get(key);
+      if (cell) cell.push(p);
+      else grid.set(key, [p]);
+    }
+    const F = FLOATS_PER_INSTANCE;
+    for (const [list, ys] of [
+      [this.coarse, this.coarseY],
+      [this.canopy, this.canopyY],
+      [this.fine, this.fineY],
+      [this.hero, this.heroY],
+    ] as const) {
+      const count = list.length / F;
+      for (let k = 0; k < count; k++) {
+        const o = k * F;
+        const x = list[o];
+        const z = list[o + 1];
+        const shape = list[o + 8];
+        const spread = spreadOf(shape);
+        const r = list[o + 2] * (2 - spread) + reachKm;
+        const top = ys[k] + list[o + 4] + crownMaxReach(spread, archOf(shape)) * list[o + 3];
+        for (let j = cj(z - r); j <= cj(z + r); j++)
+          for (let i = ci(x - r); i <= ci(x + r); i++) {
+            const cell = grid.get(j * ncx + i);
+            if (!cell) continue;
+            for (const p of cell) {
+              const dx = xyz[p * 3] - x;
+              const dz = xyz[p * 3 + 2] - z;
+              if (dx * dx + dz * dz > r * r) continue;
+              const rise = top - xyz[p * 3 + 1];
+              if (rise > out[p]) out[p] = rise;
+            }
+          }
+      }
+    }
+    return out;
+  }
+
   /** Select (building once) the foliage material of a quality tier: preview samples one foam scale, review/final two. */
   private useMaterial(tier: string): void {
     if (tier === this.materialTier) return;
@@ -407,7 +463,9 @@ export class VegetationSystem implements System {
     const shellFar = _band.far;
 
     const e = cam.matrixWorld.elements;
-    const key = [cam.fov, cam.aspect, vh, density, this.exclusionsVersion, this.debug.forceLod ?? -1, +this.debug.noFine, ...e].map((v) => v.toFixed(5)).join(',');
+    // every input of the selection below (the fine band's radius reads the camera target's distance; the
+    // tier's LOD bias rides on its density): a cache hit is exactly what a fresh evaluation would give
+    const key = [cam.fov, cam.aspect, vh, density, this.exclusionsVersion, this.debug.forceLod ?? -1, +this.debug.noFine, ...frame.state.camera.target, ...e].map((v) => v.toFixed(5)).join(',');
     if (key === this.lastKey) return;
     this.lastKey = key;
 

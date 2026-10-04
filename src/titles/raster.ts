@@ -9,8 +9,11 @@ import { FONT } from './fonts.ts';
  *
  * Style (the README banner): Cinzel caps with generous tracking + Cormorant Garamond italic, ivory-gold on a
  * soft shadow, a fine hairline rule with a small diamond for the title and end cards — no boxes or plates.
- * A card is a pure function of (caption, frame size, alignment): however a frame is reached, its card is
- * the same.
+ * A card is a pure function of (caption, frame size, alignment, supersampling): however a frame is reached,
+ * its card is the same. Supersampled cards (`ss` > 1: the floating labels) are drawn at ss× the frame's pixel
+ * density — the TitleSystem resamples them with an ss × ss box per frame pixel, so a label gliding by
+ * fractions of a pixel keeps its sharpness (a 1× card under bilinear sampling breathes between crisp at
+ * whole-pixel and soft at half-pixel offsets).
  */
 
 /** ivory-gold of the names, the paler ivory of the subtitles, the credits' muted parchment */
@@ -64,9 +67,11 @@ export type CardAlign = 'left' | 'right' | 'center';
 export interface Card {
   key: string;
   canvas: OffscreenCanvas;
-  /** canvas size, px */
+  /** card size in frame px (the canvas is ss× this) */
   width: number;
   height: number;
+  /** supersampling: canvas px per frame px */
+  ss: number;
   /**
    * the text block inside the canvas (px): x, y = its top-left (y = the first line's cap top), w, h. Layout
    * places the block; the shadow padding around it is free.
@@ -271,17 +276,20 @@ function compose(ctx: Ctx, def0: CaptionDef, W: number, H: number): { lines: Pla
 
 const RULE_ALPHA = 0.8;
 
-/** Draw a line's shadows only (the glyphs off-canvas, their shadows offset back in), never the glyphs. */
-function shadowText(ctx: Ctx, p: Placed, x: number, y: number, H: number, off: number): void {
+/**
+ * Draw a line's shadows only (the glyphs off-canvas, their shadows offset back in), never the glyphs. Shadow
+ * offsets and blur are in canvas pixels (the transform does not scale them): × ss.
+ */
+function shadowText(ctx: Ctx, p: Placed, x: number, y: number, H: number, off: number, ss: number): void {
   setFont(ctx, p.spec);
   ctx.fillStyle = '#000';
   ctx.strokeStyle = '#000';
   ctx.lineJoin = 'round';
   for (const s of SHADOWS) {
     ctx.shadowColor = s.color;
-    ctx.shadowBlur = s.blur * H;
-    ctx.shadowOffsetX = off;
-    ctx.shadowOffsetY = s.dy * H;
+    ctx.shadowBlur = s.blur * H * ss;
+    ctx.shadowOffsetX = off * ss;
+    ctx.shadowOffsetY = s.dy * H * ss;
     if (s.spread > 0) {
       ctx.lineWidth = 2 * s.spread * p.spec.size;
       ctx.strokeText(p.spec.text, x - off, y);
@@ -314,9 +322,12 @@ export function cardBlock(def: CaptionDef, W: number, H: number): { w: number; h
   return { w: Math.max(1, ...lines.map((l) => l.inkL + l.inkR), ...rules.map((r) => r.half * 2)), h: Math.max(1, height) };
 }
 
-/** Rasterise a caption's card for a W × H frame (`align`: the text's alignment against the block edges). */
-export function rasterCard(def: CaptionDef, W: number, H: number, align: CardAlign): Card {
-  const key = `${def.id}|${W}x${H}|${align}`;
+/**
+ * Rasterise a caption's card for a W × H frame (`align`: the text's alignment against the block edges; `ss`:
+ * canvas px per frame px — the layout stays in frame px).
+ */
+export function rasterCard(def: CaptionDef, W: number, H: number, align: CardAlign, ss = 1): Card {
+  const key = `${def.id}|${W}x${H}|${align}|${ss}`;
   const ctx0 = scratchCtx();
   const { lines, rules, height } = compose(ctx0, def, W, H);
   const blockW = Math.max(1, ...lines.map((l) => l.inkL + l.inkR), ...rules.map((r) => r.half * 2));
@@ -329,9 +340,10 @@ export function rasterCard(def: CaptionDef, W: number, H: number, align: CardAli
   const pad = Math.ceil(Math.max(shadowPad, scrimPad) + 3);
   const cw = Math.ceil(blockW + pad * 2);
   const ch = Math.ceil(blockH + pad * 2);
-  const canvas = new OffscreenCanvas(cw, ch);
+  const canvas = new OffscreenCanvas(cw * ss, ch * ss);
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) throw new Error('titles: no 2D context');
+  ctx.scale(ss, ss);
   const bx = pad;
   const by = pad;
   // x of a line's drawing origin for its ink to sit at the block's left / right edge or centre
@@ -361,16 +373,16 @@ export function rasterCard(def: CaptionDef, W: number, H: number, align: CardAli
     ctx.restore();
   }
   // shadows (all lines and rules) under every glyph
-  for (const l of lines) shadowText(ctx, l, xOf(l), by + l.baseline, H, off);
+  for (const l of lines) shadowText(ctx, l, xOf(l), by + l.baseline, H, off, ss);
   for (const r of rules) {
     ctx.save();
     ctx.translate(-off, 0);
     ctx.fillStyle = '#000';
     for (const s of SHADOWS) {
       ctx.shadowColor = s.color;
-      ctx.shadowBlur = s.blur * H * 0.6;
-      ctx.shadowOffsetX = off;
-      ctx.shadowOffsetY = s.dy * H;
+      ctx.shadowBlur = s.blur * H * 0.6 * ss;
+      ctx.shadowOffsetX = off * ss;
+      ctx.shadowOffsetY = s.dy * H * ss;
       rulePath(ctx, bx + blockW / 2, by + r.y, r, t);
       ctx.fill();
     }
@@ -392,5 +404,5 @@ export function rasterCard(def: CaptionDef, W: number, H: number, align: CardAli
     ctx.fill();
     ctx.globalAlpha = 1;
   }
-  return { key, canvas, width: cw, height: ch, block: { x: bx, y: by, w: blockW, h: blockH } };
+  return { key, canvas, width: cw, height: ch, ss, block: { x: bx, y: by, w: blockW, h: blockH } };
 }

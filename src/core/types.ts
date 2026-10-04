@@ -67,6 +67,18 @@ export interface SceneState {
   lodBias?: number;
   /** 0..1 overall strength of the route line (absent = 1 while routeProgress > 0) */
   routeGlow?: number;
+  /**
+   * 0..1 phase of this accumulation sub-sample for LOD cross-fades (film captures: stratified over a frame's
+   * sub-samples, (i + 0.5) / spp — each sub-sample shifts the landmark LOD thresholds within a band, so a
+   * switch dissolves over several frames instead of popping; absent = the exact thresholds, every still)
+   */
+  lodDither?: number;
+  /**
+   * film time at the centre of the capture's open shutter for this frame (film captures set it on every
+   * sub-sample: the frame time + ½ shutter interval — the motion blur's centroid, where the title overlay
+   * lays its labels out); absent = the overlay assumes the film's own shutter
+   */
+  shutterCentre?: number;
 }
 
 export interface FrameContext {

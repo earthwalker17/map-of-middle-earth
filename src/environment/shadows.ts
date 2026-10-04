@@ -1,8 +1,24 @@
-import { Matrix4, Vector3, type DirectionalLight, type PerspectiveCamera } from 'three/webgpu';
+import { Matrix4, Vector2, Vector3, type DirectionalLight, type PerspectiveCamera } from 'three/webgpu';
 import { tsl, type TslNode } from '../materials/tsl.ts';
 
 type N = TslNode;
-const { Fn, cameraProjectionMatrix, float, fract, interleavedGradientNoise, min, mix, screenCoordinate, smoothstep, texture, uniform, vogelDiskSample } = tsl;
+const { Fn, cameraPosition, cameraProjectionMatrix, float, fract, interleavedGradientNoise, length, min, mix, positionWorld, screenCoordinate, smoothstep, texture, uniform, vogelDiskSample } = tsl;
+
+/**
+ * Fit modes. 'snap' (every still): the extent is quantized to 2^(1/8) steps and the centre texel-snapped, so
+ * a static camera's shadow edges never shimmer — but a moving camera sees the frustum jump a step at a time
+ * (its border, the texel size and the texel-scaled penumbra / bias all pop together). 'smooth' (S5 film, set
+ * by the film boot): a continuous extent and centre (edges may swim by a fraction of a texel, softened by the
+ * rotated PCF and the accumulation), and the far end of the shadowed range fades out radially just beyond the
+ * fit's reach (FAR_FADE) instead of at the frustum border — so the far terrain leaves the shadow map gradually
+ * while the reach shrinks with the camera (a descent), not as a moving hard edge.
+ */
+export type ShadowFitMode = 'snap' | 'smooth';
+/**
+ * 'smooth': the radial fade band beyond the fit's reach (a share of dMax): full shadows out to dMax (as every
+ * snap fit guarantees), fading to none at dMax·(1 + FAR_FADE); the frustum is fitted out to the band's end
+ */
+export const FAR_FADE = 0.2;
 
 /** World-space box that contains every shadow caster/receiver (the slab incl. plinth + landmarks). */
 export interface ShadowBounds {
@@ -35,14 +51,18 @@ function quantizeUp(v: number): number {
 /**
  * The key light's shadow: an orthographic frustum fitted to the part of the slab the camera sees
  * (rays through a 9×9 grid of the view clipped to the slab box, limited to a few focus distances),
- * texel-snapped and size-quantized for stability, with texel-scaled normal/depth bias and a soft
- * rotated-Vogel PCF whose rotation also changes per accumulation sub-sample (smooth penumbrae).
+ * texel-snapped and size-quantized for stability ('snap'; the film fits continuously: 'smooth', see
+ * ShadowFitMode), with texel-scaled normal/depth bias and a soft rotated-Vogel PCF whose rotation also
+ * changes per accumulation sub-sample (smooth penumbrae).
  */
 export class KeyShadow {
   /** PCF radius in shadow texels */
   readonly radius = uniform(2);
   private readonly invMapSize = uniform(1 / 2048);
+  /** 'smooth' only: the radial far fade [start, end] (km from the camera) */
+  private readonly farFade = uniform(new Vector2(1e6, 2e6));
   texel = 1;
+  private mode: ShadowFitMode = 'snap';
 
   constructor(
     private readonly light: DirectionalLight,
@@ -50,13 +70,29 @@ export class KeyShadow {
   ) {
     this.invMapSize.value = 1 / light.shadow.mapSize.x;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (light.shadow as any).filterNode = this.filter();
+    (light.shadow as any).filterNode = this.filter(false);
   }
 
-  private filter() {
+  get fitMode(): ShadowFitMode {
+    return this.mode;
+  }
+
+  /**
+   * Switch the fit mode (S5: the film boot sets 'smooth' before the first compile; still pages never call
+   * this, so their filter graph and fit stay exactly as before). The filter is rebuilt for the mode.
+   */
+  setMode(mode: ShadowFitMode): void {
+    if (mode === this.mode) return;
+    this.mode = mode;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (this.light.shadow as any).filterNode = this.filter(mode === 'smooth');
+  }
+
+  private filter(radialFade: boolean) {
     const taps = this.taps;
     const radius = this.radius;
     const size = this.invMapSize;
+    const far = this.farFade;
     return Fn(({ depthTexture, shadowCoord }: { depthTexture: N; shadowCoord: N }) => {
       // per-pixel rotation (IGN) + per-sub-sample offset from the projection jitter terms, so the
       // accumulation averages different tap patterns instead of freezing one noise pattern
@@ -72,7 +108,10 @@ export class KeyShadow {
       const s = sum.div(taps);
       // fade out towards the frustum border instead of a hard cut
       const edge = min(min(shadowCoord.x, float(1).sub(shadowCoord.x)), min(shadowCoord.y, float(1).sub(shadowCoord.y)));
-      return mix(float(1), s, smoothstep(0.0, 0.035, edge));
+      if (!radialFade) return mix(float(1), s, smoothstep(0.0, 0.035, edge));
+      // 'smooth' (film): and radially towards the end of the fit's reach
+      const reach = float(1).sub(smoothstep(far.x, far.y, length(positionWorld.sub(cameraPosition))));
+      return mix(float(1), s, smoothstep(0.0, 0.035, edge).mul(reach));
     });
   }
 
@@ -102,6 +141,8 @@ export class KeyShadow {
       if (y > y1) y1 = y;
     };
     const dMax = Math.max(focusDist * 3.5, 60);
+    // 'smooth' fits out to the end of its radial fade band (full shadows to dMax, fading beyond)
+    const reach = this.mode === 'snap' ? dMax : dMax * (1 + FAR_FADE);
     _o.copy(camera.position);
     _inv.copy(camera.projectionMatrixInverse);
     camera.getWorldDirection(_fwd);
@@ -111,7 +152,7 @@ export class KeyShadow {
         _d.set((i / G) * 2 - 1, (j / G) * 2 - 1, 0.5).applyMatrix4(_inv).transformDirection(camera.matrixWorld);
         // ray / box slab test
         let tIn = 0;
-        let tOut = dMax;
+        let tOut = reach;
         const axes: [number, number, number, number][] = [
           [_o.x, _d.x, box.xMin, box.xMax],
           [_o.y, _d.y, box.yMin, box.yMax],
@@ -142,7 +183,7 @@ export class KeyShadow {
       zTop = Math.max(zTop, z);
       zBot = Math.min(zBot, z);
       const dist = _p.distanceTo(camera.position);
-      if (dist > dMax) continue;
+      if (dist > reach) continue;
       if (_d.copy(_p).sub(camera.position).dot(_fwd) <= 0) continue;
       const q = _q.copy(_p).project(camera);
       if (q.z >= -1 && q.z <= 1 && Math.abs(q.x) <= 1 && Math.abs(q.y) <= 1) addPoint(_p);
@@ -159,13 +200,16 @@ export class KeyShadow {
     x1 += padX;
     y0 -= padY;
     y1 += padY;
-    const w = quantizeUp(x1 - x0);
-    const h = quantizeUp(y1 - y0);
+    // 'snap': quantized extent, texel-snapped centre (stills) · 'smooth': continuous (film)
+    const snap = this.mode === 'snap';
+    const w = snap ? quantizeUp(x1 - x0) : x1 - x0;
+    const h = snap ? quantizeUp(y1 - y0) : y1 - y0;
     const tx = w / mapSize;
     const ty = h / mapSize;
-    const cx = Math.round((x0 + x1) / 2 / tx) * tx;
-    const cy = Math.round((y0 + y1) / 2 / ty) * ty;
+    const cx = snap ? Math.round((x0 + x1) / 2 / tx) * tx : (x0 + x1) / 2;
+    const cy = snap ? Math.round((y0 + y1) / 2 / ty) * ty : (y0 + y1) / 2;
     this.texel = Math.max(tx, ty);
+    if (!snap) this.farFade.value.set(dMax, reach);
 
     cam.left = -w / 2;
     cam.right = w / 2;

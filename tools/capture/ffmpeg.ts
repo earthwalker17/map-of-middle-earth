@@ -24,6 +24,8 @@ export interface EncodeOpts {
   crf?: number;
   /** x264 preset (default medium) */
   preset?: string;
+  /** x264 keyframe interval, frames (default 2 s) */
+  gop?: number;
 }
 
 export const CODEC_EXT: Record<Codec, string> = { x264: 'mkv', prores: 'mov', ffv1: 'mkv' };
@@ -36,7 +38,7 @@ const TO_YUV = (fmt: string) => ['-vf', `scale=out_color_matrix=bt709:out_range=
 export function encodeArgs(o: EncodeOpts, out: string): string[] {
   const input = ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', `${o.width}x${o.height}`, '-framerate', String(o.fps), '-i', 'pipe:0'];
   if (o.codec === 'x264')
-    return [...input, ...TO_YUV('yuv420p'), '-c:v', 'libx264', '-preset', o.preset ?? 'medium', '-crf', String(o.crf ?? 14), '-profile:v', 'high', '-g', String(o.fps * 2), '-bf', '2', ...BT709, out];
+    return [...input, ...TO_YUV('yuv420p'), '-c:v', 'libx264', '-preset', o.preset ?? 'medium', '-crf', String(o.crf ?? 14), '-profile:v', 'high', '-g', String(o.gop ?? o.fps * 2), '-bf', '2', ...BT709, out];
   if (o.codec === 'prores') return [...input, ...TO_YUV('yuv422p10le'), '-c:v', 'prores_ks', '-profile:v', '3', '-vendor', 'apl0', ...BT709, out];
   return [...input, '-c:v', 'ffv1', '-level', '3', '-g', '1', '-slices', '16', '-slicecrc', '1', '-pix_fmt', 'bgr0', '-color_primaries', 'bt709', '-color_trc', 'iec61966-2-1', '-colorspace', 'rgb', out];
 }

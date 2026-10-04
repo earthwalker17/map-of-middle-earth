@@ -73,7 +73,8 @@ async function buildWorld(engine: Engine, quality: QualityTierId, shots: ShotSpe
     // the route line + its head light, and the titles / captions overlay (fonts loaded before `ready`)
     await loadFilmFonts();
     mark('filmFonts');
-    route = new RouteSystem(world, film.film.route);
+    // (the crowns over the line come from the vegetation's placement: the route registers after it)
+    route = new RouteSystem(world, film.film.route, (xyz, reachKm) => vegetation.canopyAlong(xyz, reachKm));
     const r = route;
     const f = film;
     // labels: laid out at the shutter's centre, placed off their landmark's silhouette, faded while it is
@@ -92,7 +93,14 @@ async function buildWorld(engine: Engine, quality: QualityTierId, shots: ShotSpe
     await engine.register(s);
     mark(`init:${s.id}`);
   }
-  if (titles) engine.post.overlay = titles;
+  if (film) {
+    if (titles) engine.post.overlay = titles;
+    // the film's adaptive motion-blur sampling measures ground motion on the slab only (not the void)
+    engine.inFrame = (x, z) => world.spec.inFrame(x, z);
+    // motion: the key shadow is fitted continuously (no extent steps, no texel snap) and fades out radially
+    // at the end of its reach — a moving camera never sees the frustum jump (before the first compile)
+    environment.shadow.setMode('smooth');
+  }
 
   // warm up: compile pipelines, then one throwaway frame realizes lazily-created GPU resources
   // (texture uploads, shadow maps, post targets) so the first captured frame is bit-identical to
