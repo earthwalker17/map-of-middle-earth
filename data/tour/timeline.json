@@ -11,7 +11,7 @@
     "weather": { "cloudCoverage": 0.3, "wind": [0.6, 0.2] }
   },
   "defaults": {
-    "move": { "rho": 1.4, "vTarget": 1.2, "minS": 2.5, "maxS": 10, "apexEl": 26, "headLeadS": 0.6 },
+    "move": { "rho": 1.4, "vTarget": 1.2, "minS": 2.5, "maxS": 9, "apexEl": 26, "headLeadS": 0.6 },
     "hero": { "drift": { "azDegPerS": 0.35, "pushPerS": -0.01 } },
     "stop": { "drift": { "azDegPerS": 0.5, "pushPerS": -0.012 } },
     "open": { "drift": { "pushPerS": -0.004 } },
