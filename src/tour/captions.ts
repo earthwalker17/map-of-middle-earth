@@ -15,14 +15,25 @@ import type { World } from '../world/World.ts';
 import { smoothstep } from './curves.ts';
 import type { BeatJson, CaptionDef, CaptionJson, HoldJson, MoveJson } from './schema.ts';
 
-/** Caption defaults per kind: [in, out, fadeIn, fadeOut] (beat-relative; negative out = from the end). */
+/**
+ * Caption defaults per kind: [in, out, fadeIn, fadeOut] (beat-relative; negative out = from the end). The
+ * label fades are the TitleSystem's reveal: a place label's diamond / leader / text wipe in over 1.4 s and out
+ * over 1.0 s, a pass label's over 0.8 / 0.6 s — one source of truth: CaptionDef.fadeIn / fadeOut carry them.
+ */
 export const CAPTION_DEFAULTS: Record<CaptionJson['kind'], [number, number, number, number]> = {
   title: [1.5, -1.5, 1.5, 1.2],
-  place: [0.8, -0.6, 0.7, 0.6],
-  pass: [0.4, -0.4, 0.5, 0.4],
+  place: [0.8, -0.6, 1.4, 1.0],
+  pass: [0.4, -0.4, 0.8, 0.6],
   end: [1, -1, 1.2, 1.2],
   fade: [0, -0, 0, 0],
 };
+
+/**
+ * A label's DEFAULT fades take at most these shares of its visible window (in, out) — a short window
+ * shortens its reveal rather than overlapping it; authored `fadeIn` / `fadeOut` are kept as written (the
+ * film check rejects fades longer than their window).
+ */
+export const LABEL_FADE_SHARE = { in: 0.4, out: 0.3 } as const;
 
 /** anchor height above the ground without a landmark build, km */
 export const ANCHOR_LIFT_KM = 0.5;
@@ -118,8 +129,14 @@ export function compileCaptions(inp: CaptionInputs): CaptionDef[] {
         return x < 0 || (isOut && Object.is(x, -0)) ? bt1 + x : bt0 + x;
       };
       const id = `${(b as HoldJson).hold ?? (b as MoveJson).move}:${c.kind}:${ci}`;
-      const def: CaptionDef = { id, kind: c.kind, t0: rel(c.in, din, false), t1: rel(c.out, dout, true), fadeIn: c.fadeIn ?? dfi, fadeOut: c.fadeOut ?? dfo };
-      if (c.kind === 'place' || c.kind === 'pass') {
+      const t0 = rel(c.in, din, false);
+      const t1 = rel(c.out, dout, true);
+      const label = c.kind === 'place' || c.kind === 'pass';
+      const span = Math.max(0, t1 - t0);
+      const fadeIn = c.fadeIn ?? (label ? Math.min(dfi, LABEL_FADE_SHARE.in * span) : dfi);
+      const fadeOut = c.fadeOut ?? (label ? Math.min(dfo, LABEL_FADE_SHARE.out * span) : dfo);
+      const def: CaptionDef = { id, kind: c.kind, t0, t1, fadeIn, fadeOut };
+      if (label) {
         const lm = inp.landmarks.find((l) => l.id === c.landmark);
         if (!lm) throw new Error(`film: caption landmark '${c.landmark}' unknown`);
         def.title = c.text ?? lm.annotation.title;
