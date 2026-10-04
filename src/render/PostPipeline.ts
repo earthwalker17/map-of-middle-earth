@@ -37,6 +37,7 @@ import {
   If,
   log2,
   exp2,
+  clamp,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 
@@ -174,13 +175,15 @@ export class PostPipeline {
   height: number;
   /** S5 film titles / captions (src/titles): drawn on the readback target after the post graph */
   overlay: OverlayPass | null = null;
+  /** S5 film only (enableRouteKeep): the grade leaves the route line's pixels at saturation 1 */
+  private routeKeep = false;
 
   constructor(
     private readonly renderer: WebGPURenderer,
     width: number,
     height: number,
     msaa: number,
-    useBloom: boolean,
+    private readonly useBloom: boolean,
   ) {
     this.width = width;
     this.height = height;
@@ -210,6 +213,26 @@ export class PostPipeline {
     this.pipeline = new RenderPipeline(renderer);
     this.pipeline.outputColorTransform = false;
     this.pipeline.outputNode = this.buildOutput(useBloom);
+  }
+
+  /**
+   * S5 film only: the route line (src/route) writes its coverage into the HDR alpha (min(a, 1 − coverage):
+   * the scene leaves alpha ≥ 1, veils drawn over the line raise it back), the accumulation carries alpha, and
+   * the grade sets the saturation of covered pixels to 1 — the luminous line keeps its gold through grades
+   * that grey out warm hues (Mordor's warms 0.4 under the moonlit layer turned it cream-white). Still pages never
+   * call this: their accumulation and post graphs stay exactly as before.
+   */
+  enableRouteKeep(): void {
+    if (this.routeKeep) return;
+    this.routeKeep = true;
+    const first = this.accumWeight.greaterThanEqual(0.999);
+    this.accumMaterial.fragmentNode = vec4(
+      select(first, this.accumCur.rgb, mix(this.accumPrev.rgb, this.accumCur.rgb, this.accumWeight)),
+      select(first, this.accumCur.a, mix(this.accumPrev.a, this.accumCur.a, this.accumWeight)),
+    );
+    this.accumMaterial.needsUpdate = true;
+    this.pipeline.outputNode = this.buildOutput(this.useBloom);
+    this.pipeline.needsUpdate = true;
   }
 
   private buildOutput(useBloom: boolean) {
@@ -245,7 +268,9 @@ export class PostPipeline {
       const warm = smoothstep(0.08, 0.3, c.r.sub(c.b).mul(rInv)).mul(smoothstep(-0.02, 0.04, c.r.sub(c.g).mul(rInv))).mul(float(1).sub(redness));
       const satBase = g.saturation.mul(mix(float(1), g.greens, yellowGreen)).mul(mix(float(1), g.warms, warm));
       const satRed = mix(satBase, max(satBase, 1.15), redness.mul(g.redKeep));
-      const sat = mix(satRed, max(satRed, 1.1), glow);
+      const satGlow = mix(satRed, max(satRed, 1.1), glow);
+      // film route line (enableRouteKeep): its coverage rides in the alpha; covered pixels keep saturation 1
+      const sat = this.routeKeep ? mix(satGlow, float(1), clamp(float(1).sub(input.a), 0, 1)) : satGlow;
       c.assign(max(mix(vec3(luma), c, sat), vec3(0))); // saturation > 1 extrapolates: clamp (pow of negatives = NaN)
       // the same yellow-greens lean towards green (`greensHue`: red pulled towards blue) — lush, not lime
       c.r.assign(c.r.sub(c.r.sub(c.b).max(0).mul(g.greensHue.mul(yellowGreen))));

@@ -1,4 +1,4 @@
-import { AdditiveBlending, AddEquation, CustomBlending, DoubleSide, NodeMaterial, OneFactor, OneMinusSrcAlphaFactor, type Texture } from 'three/webgpu';
+import { AddEquation, CustomBlending, DoubleSide, MinEquation, NodeMaterial, OneFactor, OneMinusSrcAlphaFactor, type Texture } from 'three/webgpu';
 import { uniform } from 'three/tsl';
 import { tsl, type TslNode } from '../materials/tsl.ts';
 import { env } from '../materials/environment.ts';
@@ -74,15 +74,16 @@ const GAIN_NIGHT = 0.75;
 /**
  * Grade compensation: the line is a luminous graphic element, so the region / night grade must not wash its
  * gold out (the moonlit layer's saturation 0.42 and blue tint turned it white-grey; Mordor's 0.55 × warms 0.4
- * beige). The grade is linear up to its saturation step, so the additive line is pre-divided by TINT_COMP of
- * the grade's normalised tint (a power) and pre-saturated by SAT_REF / (saturation × warms^WARMS_SHARE) (≥ 1,
- * ≤ SAT_COMP_MAX: the charcoal regions keep a duskier gold); its brightness follows only EXPO_COMP of the
- * exposure bias. Tuned on the V1 grade (a grade change shifts the displayed gold).
+ * cream-white). The film grade keeps the line's pixels at saturation 1 (its coverage rides in the HDR alpha:
+ * PostPipeline.enableRouteKeep — a pre-saturation cannot do it: past ~2.5× the grade's red-keep catches the
+ * line and turns it orange), the colour is pre-saturated by SAT_REF and pre-divided by TINT_COMP of the
+ * grade's normalised tint (a power); its brightness follows only EXPO_COMP of the exposure bias. Tuned on the
+ * V1 grade (a grade change shifts the displayed gold).
  */
 const SAT_REF = 1.1;
-const SAT_COMP_MAX = 1.6;
-const WARMS_SHARE = 0.6;
 const EXPO_COMP = 0.5;
+/** coverage gain of the line's profile (core peak 1, glow 0.4) for the grade's saturation keep */
+const KEEP_K = 2.5;
 /** share of the grade's white balance (tint) the line undoes (the moonlit blue would push it to salmon) */
 const TINT_COMP = 0.6;
 const LUM: [number, number, number] = [0.2126, 0.7152, 0.0722];
@@ -151,15 +152,25 @@ const UMBER: [number, number, number] = [0.045, 0.028, 0.014];
 const UNDER_ALPHA = 0.2;
 const UNDER_NIGHT = 0.25;
 
-/** A linear colour for the HDR target such that the grade (tint, saturation, exposure) leaves it ≈ itself. */
+/**
+ * A linear colour for the HDR target such that the grade (tint, exposure) leaves it ≈ itself. The film grade
+ * keeps the line's pixels at saturation 1 (the coverage it writes into the alpha: PostPipeline.enableRouteKeep),
+ * so the colour is pre-saturated by SAT_REF only, whatever the region / night saturation.
+ */
 function ungraded(day: [number, number, number], night: [number, number, number]): N {
   const g = gradeUniforms;
   const tl = max(dot(g.tint, vec3(...LUM)), 1e-3);
   const c = mix(vec3(...day), vec3(...night), env.night).div(pow(max(g.tint.div(tl), vec3(0.2)), vec3(TINT_COMP)));
   const l = dot(c, vec3(...LUM));
-  const sat = max(g.saturation.mul(mix(float(1), g.warms, WARMS_SHARE)), 0.05);
-  const k = clamp(float(SAT_REF).div(sat), 1, SAT_COMP_MAX);
-  return vec3(l).add(c.sub(l).mul(k)).mul(pow(max(g.exposureBias, 1e-3), -EXPO_COMP));
+  return vec3(l).add(c.sub(l).mul(SAT_REF)).mul(pow(max(g.exposureBias, 1e-3), -EXPO_COMP));
+}
+
+/**
+ * The line's coverage for the grade's keep (HDR alpha ← min(alpha, 1 − coverage)): the core and the inner
+ * glow (KEEP_K × the profile, clamped), dimmed by the atmosphere's transmittance at the vertex.
+ */
+function keepAlpha(profile: N, trans: N): N {
+  return float(1).sub(clamp(profile.mul(KEEP_K).mul(dot(trans, vec3(...LUM))), 0, 1));
 }
 
 /** Per-frame uniforms (RouteSystem.evaluate writes them; pure functions of the state). */
@@ -308,9 +319,16 @@ function terms(u: RouteUniforms, vA: N, vC: N) {
 
 const gauss = (r2: N, sigma: N): N => exp(r2.div(sigma.mul(sigma)).mul(-0.5));
 
+/** additive colour; the alpha takes min(dst, src) — the fragment's alpha is 1 − coverage (keepAlpha) */
 function additive(m: NodeMaterial, depthTest: boolean): NodeMaterial {
   m.transparent = true;
-  m.blending = AdditiveBlending;
+  m.blending = CustomBlending;
+  m.blendSrc = OneFactor;
+  m.blendDst = OneFactor;
+  m.blendEquation = AddEquation;
+  m.blendSrcAlpha = OneFactor;
+  m.blendDstAlpha = OneFactor;
+  m.blendEquationAlpha = MinEquation;
   m.depthTest = depthTest;
   m.depthWrite = false;
   m.fog = false;
@@ -340,7 +358,8 @@ export function createRouteCoreMaterial(u: RouteUniforms, ground?: RouteGround):
     const ground = float(1).sub(step(1.5, vB.w));
     const gain = mix(float(GAIN_DAY), float(GAIN_NIGHT), env.night).mul(u.glow);
     const rgb = ungraded(ROUTE_GOLD, ROUTE_GOLD_NIGHT).mul(core).add(ungraded(GLOW_GOLD, GLOW_GOLD_NIGHT).mul(glow));
-    return vec4(rgb.mul(vB.xyz).mul(ground.mul(win).mul(gain)), 1);
+    const on = ground.mul(win).mul(gain);
+    return vec4(rgb.mul(vB.xyz).mul(on), keepAlpha(core.add(glow).mul(on), vB.xyz));
   })();
   return additive(m, true);
 }
@@ -376,7 +395,8 @@ export function createRouteXrayMaterial(u: RouteUniforms, ground?: RouteGround):
     const underground = step(1.5, vB.w);
     const gain = mix(float(GAIN_DAY), float(GAIN_NIGHT), env.night).mul(u.glow).mul(XRAY);
     const rgb = ungraded(ROUTE_GOLD, ROUTE_GOLD_NIGHT).mul(v.mul(comet.mul(0.8).add(1)));
-    return vec4(rgb.mul(vB.xyz).mul(underground.mul(win).mul(gain)), 1);
+    const on = underground.mul(win).mul(gain);
+    return vec4(rgb.mul(vB.xyz).mul(on), keepAlpha(v.mul(on), vB.xyz));
   })();
   return additive(m, false);
 }

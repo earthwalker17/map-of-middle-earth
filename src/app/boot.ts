@@ -95,6 +95,8 @@ async function buildWorld(engine: Engine, quality: QualityTierId, shots: ShotSpe
   }
   if (film) {
     if (titles) engine.post.overlay = titles;
+    // the route line keeps its gold through the grade (its coverage rides in the HDR alpha)
+    if (route) engine.post.enableRouteKeep();
     // the film's adaptive motion-blur sampling measures ground motion on the slab only (not the void)
     engine.inFrame = (x, z) => world.spec.inFrame(x, z);
     // motion: the key shadow is fitted continuously (no extent steps, no texel snap) and fades out radially
