@@ -317,8 +317,9 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
    in isolation, no pre-roll. Strong plumes rise to and spread under the ash deck (Doom's column lit by a CPU
    copy of the spill on its lower third — keep it in step with spillSources' falloff / flicker); smoke below
    `WISP_SCALE` becomes a thin wisp (chimneys, Isengard's pits); falls ≥ 2 km wide raise a mist column (Rauros);
-   event emitters (`morgul-beam`, beacons) follow `SceneState.events`; the beam and beacon fires add spill
-   lights through `emission.setDynamic`. Emitter LOD by projected size, counts × quality density; all effect
+   event emitters (`morgul-beam`, beacons) follow `SceneState.events`; the beam and beacon fires add sprite
+   lights through `emission.setDynamic` (dynamic lights are sprites only — they do NOT spill; the beam's
+   wall-wash is a static `sprite: false` spill source gated by its event). Emitter LOD by projected size, counts × quality density; all effect
    pipelines are compiled at warm-up. `tools/check/effects.ts` builds the same records (shared `buildEffects`)
    and checks random access determinism.
 9. (later) `RouteSystem`, `AnnotationSystem`.
@@ -368,7 +369,9 @@ realize their declarations.
 - The readback target stores bytes as-is (NoColorSpace): the post pass already encodes sRGB.
 - `window.__mm` (capture mode `?capture=1`): `ready`, `info()`, `render({name, shot|timelineId, t, width,
   height, spp, shutter, fps})` → RGBA readback POSTed to `/__capture/frame`; `benchmark({shotId, frames,
-  orbitDeg})` → interactive-path frame latency (diagnostics only).
+  orbitDeg})` → interactive-path frame latency (diagnostics only); `timelineInfo(id)` → `{id, duration, meta}`
+  and `timelineState(id, t)` → the SceneState (S5). With `shutter > 0` the sub-sample times are stratified and
+  permuted (`shutterFraction(i, n)`), so motion blur decorrelates from the pixel jitter; stills use shutter 0.
 - `pnpm shots --shot <id> | --all | --smoke [--spp n --w --h --tod --quality --determinism --batch k --no-latest]` →
   `renders/shots/<stamp>/` + `latest/`. Shots live in `data/qa/shots.json` + `shots.d/` (explicit camera or
   `orbit`); named sets in `data/qa/sets.json`.
@@ -410,6 +413,48 @@ realize their declarations.
   sha256 / alt / caption / source renders). Titles use only the OFL Cinzel / Cormorant files (checked
   against Pango's fallback; without them the title is dropped). Byte-reproducible; writes only listed files,
   deletes only files its own previous manifest listed, refuses foreign folders; `--dry`, `--snippet`.
+
+- **`pnpm film` (S5, tools/capture/film.ts + ffmpeg.ts)** — frames of the compiled film (`?capture=1&film=1`,
+  timeline `'film'`; frame k shows t = k / fps). One invocation = one bounded capture session.
+  - Stills: `--at t1,t2 | --every s [--from --to] | --beats a,b` (`--tier --w --h --spp --shutter --label`,
+    `--determinism` re-renders the first still after the batch) → `renders/film/stills-<stamp>[-label]/`
+    PNGs + `manifest.json` + `sheet.png` (labelled "t · beat · tod", `compose.grid`).
+  - Sequences: `--render [--tier preview|review|final] [--w --h --spp --shutter] [--from --to] [--codec
+    x264|prores|ffv1] [--crf --preset] [--chunk n] [--budget s] [--run dir] [--force]` streams raw RGBA
+    readbacks into one ffmpeg process per chunk (stdin drain back-pressure; no PNGs on disk), BT.709
+    conversion + tags (`setparams`). A chunk is encoded into `partial/`, ffprobe-checked (frame count) and
+    moved to `chunks/cNNNN.<ext>` with `cNNNN.json` (per frame t, sha256, ms, luma). `run.json` freezes tier,
+    settings, film hash and commit: a resumed run refuses another film hash / commit / dirty tree unless
+    `--force`. Per-call time budget (default 520 s, boot included) → exit 75 = run again with `--run`;
+    `--budget 0` (user-started overnight runs) restarts Chrome every 25 min; free disk ≥ 2 GB per chunk.
+    Tiers: preview 960×540 (x264 crf 20 veryfast, 240-frame chunks) · review 1280×720 (x264 crf 14 medium,
+    96) · final 1920×1080 (ProRes 422 HQ 10-bit, 48).
+  - `--verify-resume --run dir` re-renders each finished chunk's first frame (same sha256?);
+    `--assemble --run dir [--audio master.wav] [--mp4 name] [--reencode]` concatenates the chunks (stream copy)
+    and muxes AAC 320k (`+faststart`, exact film length) → `<run>/<name>.mp4`.
+
+## Music (tools/music — Python / uv, CPU, `pnpm music`)
+The original score as code. `pnpm music --cues <cue sheet> [--label x] [--from s --to s]` runs under the
+heavy-job lock (`tools/heavy.ts music --min-free-mb 1500`), so it never overlaps a capture.
+- **Inputs** (`fetch.py`, gitignored `data/music-src/`, committed `manifest.json`): a sparse checkout of VSCO 2 CE
+  (CC0, SFZ branch; the clone's `.git` is dropped after checkout) and sfizz 1.2.3 `sfizz_render`. The cue sheet
+  comes from `node --import tsx tools/check/film.ts --cues <file>` (`CueSheet`: film {duration, fps, hash},
+  sections, cues per beat {t0, t1, mood, intensity}, hits); event ramps (beacons, beam) are read from
+  `data/tour/timeline.json`, so the score re-fits when the picture is re-timed.
+- **Score** (`journey.py`): sections read beat times from the cues (`Cues.t0 / t1 / event_ramp`, `Grid` for metric
+  passages) and write notes into a `Score` (`engine.py`: per-instrument notes, gain / send envelopes in dB, a hall
+  wetness envelope, the conductor's `arc` bus envelope, markers). `instruments.py`: the orchestra table
+  (sfz, range, pan, gain, hall send, latency, family) and the project's own percussion SFZ maps.
+- **Render**: humanised timing / velocity, re-bowing of long notes (strings 5 s, brass / winds 3.8 s — the
+  samples are not looped) → one MIDI file per stem (1920 ticks / s) → `sfizz_render` (48 kHz, 3 workers).
+  Per-instrument calibration to −20 LUFS at velocity 96 (cached by SFZ hash in `data/music-src/calibration.json`)
+  keeps stems comparable without normalising away dynamics.
+- **Mix / master**: equal-power pan, synthetic stereo hall IR (band-wise decay, early reflections; no third-party
+  IR) on sends via `oaconvolve`, the `arc` bus gain, end fade; 28 Hz high-pass → deterministic stereo-linked glue
+  compressor (2:1 above −24 dB) → integrated loudness −16 LUFS → own look-ahead limiter → true peak ≤ −1.5 dBTP.
+- **Outputs** `renders/music/<stamp>-<label>/`: `master.wav` (48 kHz 24-bit), `stems/`, `spectrogram.png`
+  (section markers), `report.json` (LUFS, true peak, per-section loudness, stem peaks, note counts, cue hash).
+  Deterministic for a given cue sheet, score code and sample set.
 
 ## Validation (tools/check, CPU only)
 - `pnpm check` (run.ts): places/footprints, landmark definitions, assets vs CREDITS (incl. derived detail
