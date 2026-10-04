@@ -44,6 +44,7 @@
     "review": "node --import tsx tools/capture/review.ts",
     "lock": "node --import tsx tools/capture/lock.ts",
     "film": "node --import tsx tools/capture/film.ts",
+    "music": "node --import tsx tools/heavy.ts music --min-free-mb 1500 -- uv run --project tools/music python tools/music/run.py",
     "showcase": "node --import tsx tools/capture/showcase.ts",
     "host": "node --import tsx tools/host.ts",
     "models": "node --import tsx tools/blender/run.ts"

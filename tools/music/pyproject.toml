@@ -1,0 +1,17 @@
+[project]
+name = "mome-music"
+version = "0.1.0"
+description = "Original score for Journey Through Middle-Earth (S5): score-as-code -> MIDI stems -> sfizz_render (CC0 samples) -> mix / master."
+requires-python = ">=3.12,<3.14"
+dependencies = [
+  "numpy>=2.1",
+  "scipy>=1.14",
+  "soundfile>=0.12",
+  "mido>=1.3",
+  "pedalboard>=0.9.20",
+  "pyloudnorm>=0.1.1",
+  "pillow>=11",
+]
+
+[tool.uv]
+package = false

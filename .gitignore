@@ -27,6 +27,11 @@ data/textures-src/*
 !data/textures-src/manifest.json
 public/textures/**
 
+# S5 music: third-party CC0 sample libraries + the sfizz renderer, fetched by tools/music/fetch.py (manifest
+# committed, never shipped); rendered stems / mixes live under renders/music/
+data/music-src/*
+!data/music-src/manifest.json
+
 # renders, captures, caches (review/ holds the curated per-session review stills — local only)
 renders/
 review/
