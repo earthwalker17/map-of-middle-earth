@@ -407,7 +407,9 @@ export class VegetationSystem implements System {
     const shellFar = _band.far;
 
     const e = cam.matrixWorld.elements;
-    const key = [cam.fov, cam.aspect, vh, density, this.exclusionsVersion, this.debug.forceLod ?? -1, +this.debug.noFine, ...e].map((v) => v.toFixed(5)).join(',');
+    // every input of the selection below (the fine band's radius reads the camera target's distance; the
+    // tier's LOD bias rides on its density): a cache hit is exactly what a fresh evaluation would give
+    const key = [cam.fov, cam.aspect, vh, density, this.exclusionsVersion, this.debug.forceLod ?? -1, +this.debug.noFine, ...frame.state.camera.target, ...e].map((v) => v.toFixed(5)).join(',');
     if (key === this.lastKey) return;
     this.lastKey = key;
 

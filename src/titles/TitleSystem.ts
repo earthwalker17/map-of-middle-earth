@@ -28,12 +28,10 @@ const DIAMOND_HALO = 1.6;
 /** the label fades out as its anchor leaves the frame (px beyond the edge, fraction of H) */
 const OFFSCREEN_FADE = 0.04;
 /**
- * reveal (film seconds, from the caption's window; at most IN_SHARE / OUT_SHARE of it): fading in, the
- * diamond pops in, the leader draws up from it, then the text wipes in across the card from the leader
- * side (fractions of the in-time); fading out, all go together
+ * reveal (film seconds: the caption's own fadeIn / fadeOut — the times its SceneState reveal uses — at most
+ * IN_SHARE / OUT_SHARE of its window): fading in, the diamond pops in, the leader draws up from it, then the
+ * text wipes in across the card from the leader side (fractions of the in-time); fading out, all go together
  */
-const IN_S = { place: 1.4, pass: 0.8 } as const;
-const OUT_S = { place: 1.0, pass: 0.6 } as const;
 const IN_SHARE = 0.4;
 const OUT_SHARE = 0.3;
 const CHOREO = { diamond: [0, 0.12], leader: [0.05, 0.45], wipe: [0.3, 1] } as const;
@@ -147,7 +145,8 @@ export interface TitleOptions {
   fps: number;
   /**
    * the film's shutter (fraction of the frame): with motion blur, labels are laid out at the shutter's
-   * centre (stateAt) — the blur's centroid — the same for every sub-sample of a frame
+   * centre (stateAt) — the blur's centroid — the same for every sub-sample of a frame. A capture announces
+   * its own shutter per frame (OverlayPass.frame), which wins; this is the fallback.
    */
   shutter?: number;
   /** the film's state at time t (pure): the layout at the shutter centre and each label's placement */
@@ -182,6 +181,8 @@ export class TitleSystem implements System, OverlayPass {
   private readonly subjectOf = new Map<string, TitleSubject | null>();
   private readonly quad = new PlaneGeometry(1, 1);
   private readonly headTmp: [number, number, number] = [0, 0, 0];
+  /** the frame the capture announced (time, shutter, fps), null outside captures */
+  private capture: { t: number; shutter: number; fps: number } | null = null;
   private W = 0;
   private H = 0;
 
@@ -224,15 +225,24 @@ export class TitleSystem implements System, OverlayPass {
     renderer.render(this.scene, this.camera);
   }
 
+  /** OverlayPass: the frame being captured — its time, actual shutter and frame rate (capture.ts) */
+  frame(t: number, shutter: number, fps: number): void {
+    this.capture = { t, shutter, fps };
+  }
+
   /**
    * The state the labels are laid out from: the frame's own (no motion blur: every sub-sample is at the
    * frame time) or the film's state at the shutter's centre (a sub-sample inside an open shutter) — the
-   * same for all sub-samples of a frame, whatever their count or order.
+   * same for all sub-samples of a frame, whatever their count or order. The shutter is the capture's own
+   * for the frame it announced (frame()), else the film's.
    */
   private layoutState(state: SceneState, tF: number): SceneState {
-    const sh = this.opts.shutter ?? 0;
+    const c = this.capture;
+    const own = c !== null && Math.abs(c.t - tF) < 1e-6;
+    const sh = own ? c.shutter : (this.opts.shutter ?? 0);
+    const fps = own ? c.fps : this.opts.fps;
     if (!this.opts.stateAt || !(sh > 0) || Math.abs(state.t - tF) < 1e-6) return state;
-    return this.opts.stateAt(tF + (0.5 * sh) / this.opts.fps);
+    return this.opts.stateAt(tF + (0.5 * sh) / fps);
   }
 
   // ---------------------------------------------------------------- per caption
@@ -298,11 +308,10 @@ export class TitleSystem implements System, OverlayPass {
     return Math.max(visibility(eye, top, hAt, skip), visibility(eye, mid, hAt, skip), visibility(eye, anchor, hAt, skip));
   }
 
-  /** the reveal windows of a label (s): in, out */
+  /** the reveal windows of a label (s): in, out — the caption's fades, capped by the shares of its window */
   private times(def: CaptionDef): [number, number] {
-    const k = def.kind === 'pass' ? 'pass' : 'place';
     const span = Math.max(0, def.t1 - def.t0);
-    return [Math.min(IN_S[k], span * IN_SHARE), Math.min(OUT_S[k], span * OUT_SHARE)];
+    return [Math.min(Math.max(0, def.fadeIn), span * IN_SHARE), Math.min(Math.max(0, def.fadeOut), span * OUT_SHARE)];
   }
 
   /** a label's side and leader: off its subject at three moments of its window (film camera), else the default */

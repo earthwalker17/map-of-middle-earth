@@ -104,6 +104,15 @@ export function shutterFraction(i: number, n: number): number {
   return (((i * stride) % n) + 0.5) / n;
 }
 
+/**
+ * LOD dither phase of accumulation sub-sample i of n (S5 film, SceneState.lodDither): the cell centres in
+ * index order — a different order from the shutter's permuted time (shutterFraction), so the fine / coarse
+ * share of a dissolving LOD does not ride on the shutter time.
+ */
+export function lodDitherPhase(i: number, n: number): number {
+  return (i + 0.5) / n;
+}
+
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', bytes as BufferSource);
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -148,11 +157,20 @@ export function installCaptureApi(
       engine.setSize(req.width, req.height);
       const spp = Math.max(1, req.spp ?? engine.quality.spp);
       const t0 = req.t ?? 0;
-      const frameDt = 1 / (req.fps ?? 24);
+      const fps = req.fps ?? 24;
+      const frameDt = 1 / fps;
       const shutter = req.shutter ?? 0;
       const start = performance.now();
+      // S5 film: the overlay lays its labels out for this frame's actual shutter (still pages have none)
+      engine.post.overlay?.frame?.(t0, shutter, fps);
+      // a registered timeline (the film) gives each sub-sample a stratified LOD dither phase (LOD switches
+      // dissolve over the accumulation); still shots never carry one
+      const dither = !input && spp > 1;
       // shutter 0 (every still) evaluates t0 for every sub-sample, exactly as before S5
-      engine.renderAccumulated((i, n) => timeline.evaluate(shutter > 0 ? t0 + shutterFraction(i, n) * shutter * frameDt : t0), spp);
+      engine.renderAccumulated((i, n) => {
+        const s = timeline.evaluate(shutter > 0 ? t0 + shutterFraction(i, n) * shutter * frameDt : t0);
+        return dither ? { ...s, lodDither: lodDitherPhase(i, n) } : s;
+      }, spp);
       const pixels = await engine.post.readPixels();
       const renderMs = performance.now() - start;
       let sum = 0;

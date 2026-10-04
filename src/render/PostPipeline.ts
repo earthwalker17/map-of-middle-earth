@@ -150,6 +150,11 @@ export interface OverlayPass {
   readonly active: boolean;
   /** draw into `target` (the RGBA8 readback target, sRGB-encoded bytes, no depth buffer) */
   render(renderer: WebGPURenderer, target: RenderTarget, width: number, height: number): void;
+  /**
+   * The frame about to be captured (capture.ts calls this before its sub-samples): frame time, shutter (a
+   * fraction of the frame interval; 0 = none) and frame rate — the overlay lays out for the actual shutter.
+   */
+  frame?(t: number, shutter: number, fps: number): void;
 }
 
 /**

@@ -92,7 +92,12 @@ async function buildWorld(engine: Engine, quality: QualityTierId, shots: ShotSpe
     await engine.register(s);
     mark(`init:${s.id}`);
   }
-  if (titles) engine.post.overlay = titles;
+  if (film) {
+    if (titles) engine.post.overlay = titles;
+    // motion: the key shadow is fitted continuously (no extent steps, no texel snap) and fades out radially
+    // at the end of its reach — a moving camera never sees the frustum jump (before the first compile)
+    environment.shadow.setMode('smooth');
+  }
 
   // warm up: compile pipelines, then one throwaway frame realizes lazily-created GPU resources
   // (texture uploads, shadow maps, post targets) so the first captured frame is bit-identical to
