@@ -17,7 +17,8 @@
  *     <run>/chunks/cNNNN.<ext> + cNNNN.json (per frame t, sha256, ms, luma); a chunk is encoded into
  *     <run>/partial/ and moved in after ffprobe confirms its frame count. Re-running with --run resumes:
  *     finished chunks are skipped. Exit 0 = the range is complete · 75 = the time budget (seconds per call,
- *     boot included) ran out: run the same command again · 3 = low memory · 1 = error.
+ *     boot included) ran out: run the same command again (a chunk is started only if its estimate fits, and one
+ *     still running 50 s past the budget is discarded) · 3 = low memory · 1 = error.
  *     --budget 0 = no budget (user-started overnight runs; Chrome is restarted every 25 min).
  *     A run refuses other settings, another film hash or another commit unless --force.
  *     Adaptive motion-blur sampling (S5): with --spp-ladder px:spp,… (needs --spp), a frame whose image moves
@@ -148,6 +149,14 @@ const ABORT_FREE_MB = Number(process.env.MOME_ABORT_FREE_MB ?? 500);
 const MB = 1024 * 1024;
 /** Chrome is restarted after this long in unbudgeted (overnight) runs */
 const SESSION_CAP_S = 25 * 60;
+/**
+ * sequence time budget: a chunk is started only if its estimate (the planned sub-samples × the recent wall
+ * time per sub-sample × ESTIMATE_SAFETY) fits the budget — content cost varies from chunk to chunk — and a
+ * chunk still running OVERRUN_S past the budget is discarded (exit 75), so a call never runs into the
+ * 10-minute cap with Chrome holding the GPU lock
+ */
+const ESTIMATE_SAFETY = 1.25;
+const OVERRUN_S = 50;
 /** seconds per frame before a run has measured its own (sequence budget estimates) */
 const DEFAULT_FRAME_S: Record<string, number> = { preview: 0.35, review: 1.4, final: 5 };
 /** per tier: chunk size, codec, x264 crf / preset */
@@ -422,8 +431,8 @@ async function render(args: Args): Promise<number> {
   let dir = args.run;
   const git = gitCommit();
   let exitCode = 0;
-  /** recent frames' render time and spp: the time budget's ms per sub-sample */
-  let measured: { ms: number; spp: number }[] = [];
+  /** recent frames' wall time (render, transfer, encode) and spp: the time budget's ms per sub-sample */
+  let measured: { wall: number; spp: number }[] = [];
   let sessionStart = 0;
 
   // a resumed run keeps its own settings (tier, size, spp, shutter, codec, chunking, range)
@@ -498,13 +507,13 @@ async function render(args: Args): Promise<number> {
       const chrome = await browserVersion(ctx);
       for (const c of todo) {
         const n = c.k1 - c.k0;
-        // the chunk's planned spp (adaptive sampling) × the recent ms per sub-sample: a chunk that turns into a
-        // fast move costs what its spp-8 / 12 / 16 frames will, not what the slow frames before it did
+        // the chunk's planned spp (adaptive sampling) × the recent wall time per sub-sample: a chunk that turns
+        // into a fast move costs what its spp-8 / 12 / 16 frames will, not what the slow frames before it did
         const ks = Array.from({ length: n }, (_, i) => c.k0 + i);
         const plan = await planSpp(page, sppOpts, ks);
         const lastSpp = measured.length ? measured[measured.length - 1].spp : (run.spp ?? 1);
-        const msSub = measured.length ? measured.reduce((x, y) => x + y.ms, 0) / measured.reduce((x, y) => x + y.spp, 0) : (DEFAULT_FRAME_S[run.tier] * 1000) / (run.spp ?? lastSpp);
-        const est = ks.reduce((x, k) => x + (plan.get(k)!.spp ?? lastSpp) * msSub + 40, 0) / 1000 + 4;
+        const msSub = measured.length ? measured.reduce((x, y) => x + y.wall, 0) / measured.reduce((x, y) => x + y.spp, 0) : (DEFAULT_FRAME_S[run.tier] * 1000) / (run.spp ?? lastSpp);
+        const est = (ks.reduce((x, k) => x + (plan.get(k)!.spp ?? lastSpp), 0) * msSub * ESTIMATE_SAFETY) / 1000 + 4;
         if (args.budget > 0 && elapsed() + est > args.budget) {
           more = true;
           console.log(`[film] budget: ${elapsed().toFixed(0)} s used, next chunk ≈ ${est.toFixed(0)} s > ${args.budget} s — run again to continue`);
@@ -523,14 +532,20 @@ async function render(args: Args): Promise<number> {
         enc = new ChunkEncoder(opts, part, join(dir, 'partial', `c${pad(c.i)}.log`));
         const frames: ChunkJson['frames'] = [];
         const ct0 = Date.now();
+        let overrun = false;
         try {
           for (let k = c.k0; k < c.k1; k++) {
+            if (args.budget > 0 && elapsed() > args.budget + OVERRUN_S) {
+              overrun = true;
+              break;
+            }
+            const fw0 = Date.now();
             const t = k / run.fps;
             const fs = plan.get(k)!;
             const req: CaptureRequest = { name: `k${k}`, timelineId: 'film', t, width: run.width, height: run.height, ...(fs.spp ? { spp: fs.spp } : {}), ...(fs.lensSpp ? { lensSpp: fs.lensSpp } : {}), shutter: run.shutter, fps: run.fps };
             const res = await withTimeout(page.evaluate((r) => window.__mm!.render(r), req), RENDER_TIMEOUT, `render frame ${k}`);
             if (sinkErr) throw sinkErr;
-            measured.push({ ms: res.renderMs, spp: res.spp });
+            measured.push({ wall: Date.now() - fw0, spp: res.spp });
             if (measured.length > 48) measured = measured.slice(-48);
             frames.push({ k, t, sha256: res.sha256, ms: Math.round(res.renderMs), luma: Math.round(res.meanLuma * 10) / 10, ...(fs.motion !== undefined ? { spp: res.spp, motion: fs.motion } : {}) });
             if (res.meanLuma < 2) console.warn(`[film] WARNING: frame ${k} (t ${t.toFixed(2)}) is (nearly) black`);
@@ -543,11 +558,18 @@ async function render(args: Args): Promise<number> {
               }
             }
           }
-          await enc.finish();
+          if (!overrun) await enc.finish();
         } catch (e) {
           enc.abort();
           enc = null;
           throw e;
+        }
+        if (overrun) {
+          enc.abort();
+          enc = null;
+          more = true;
+          console.log(`[film] budget: chunk ${c.i} ran past ${args.budget + OVERRUN_S} s (planned ≈ ${est.toFixed(0)} s) — discarded, run again to continue`);
+          break;
         }
         enc = null;
         const got = probeFrames(part);
