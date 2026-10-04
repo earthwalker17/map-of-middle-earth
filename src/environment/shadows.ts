@@ -9,13 +9,16 @@ const { Fn, cameraPosition, cameraProjectionMatrix, float, fract, interleavedGra
  * a static camera's shadow edges never shimmer — but a moving camera sees the frustum jump a step at a time
  * (its border, the texel size and the texel-scaled penumbra / bias all pop together). 'smooth' (S5 film, set
  * by the film boot): a continuous extent and centre (edges may swim by a fraction of a texel, softened by the
- * rotated PCF and the accumulation), and the far end of the shadowed range fades out radially over the last
- * FAR_FADE of the fit's reach instead of at the frustum border — so the far terrain leaves the shadow map
- * gradually while the reach shrinks with the camera (a descent), not as a moving hard edge.
+ * rotated PCF and the accumulation), and the far end of the shadowed range fades out radially just beyond the
+ * fit's reach (FAR_FADE) instead of at the frustum border — so the far terrain leaves the shadow map gradually
+ * while the reach shrinks with the camera (a descent), not as a moving hard edge.
  */
 export type ShadowFitMode = 'snap' | 'smooth';
-/** 'smooth': share of the fit's reach (dMax) over which cast shadows fade out radially from the camera */
-export const FAR_FADE = 0.3;
+/**
+ * 'smooth': the radial fade band beyond the fit's reach (a share of dMax): full shadows out to dMax (as every
+ * snap fit guarantees), fading to none at dMax·(1 + FAR_FADE); the frustum is fitted out to the band's end
+ */
+export const FAR_FADE = 0.2;
 
 /** World-space box that contains every shadow caster/receiver (the slab incl. plinth + landmarks). */
 export interface ShadowBounds {
@@ -138,6 +141,8 @@ export class KeyShadow {
       if (y > y1) y1 = y;
     };
     const dMax = Math.max(focusDist * 3.5, 60);
+    // 'smooth' fits out to the end of its radial fade band (full shadows to dMax, fading beyond)
+    const reach = this.mode === 'snap' ? dMax : dMax * (1 + FAR_FADE);
     _o.copy(camera.position);
     _inv.copy(camera.projectionMatrixInverse);
     camera.getWorldDirection(_fwd);
@@ -147,7 +152,7 @@ export class KeyShadow {
         _d.set((i / G) * 2 - 1, (j / G) * 2 - 1, 0.5).applyMatrix4(_inv).transformDirection(camera.matrixWorld);
         // ray / box slab test
         let tIn = 0;
-        let tOut = dMax;
+        let tOut = reach;
         const axes: [number, number, number, number][] = [
           [_o.x, _d.x, box.xMin, box.xMax],
           [_o.y, _d.y, box.yMin, box.yMax],
@@ -178,7 +183,7 @@ export class KeyShadow {
       zTop = Math.max(zTop, z);
       zBot = Math.min(zBot, z);
       const dist = _p.distanceTo(camera.position);
-      if (dist > dMax) continue;
+      if (dist > reach) continue;
       if (_d.copy(_p).sub(camera.position).dot(_fwd) <= 0) continue;
       const q = _q.copy(_p).project(camera);
       if (q.z >= -1 && q.z <= 1 && Math.abs(q.x) <= 1 && Math.abs(q.y) <= 1) addPoint(_p);
@@ -204,7 +209,7 @@ export class KeyShadow {
     const cx = snap ? Math.round((x0 + x1) / 2 / tx) * tx : (x0 + x1) / 2;
     const cy = snap ? Math.round((y0 + y1) / 2 / ty) * ty : (y0 + y1) / 2;
     this.texel = Math.max(tx, ty);
-    if (!snap) this.farFade.value.set(dMax * (1 - FAR_FADE), dMax);
+    if (!snap) this.farFade.value.set(dMax, reach);
 
     cam.left = -w / 2;
     cam.right = w / 2;
