@@ -25,7 +25,9 @@
  *     · visible place / pass anchors inside the label-safe zone (|x| ≤ 0.75, −0.7 ≤ y ≤ 0.55) with a line
  *       of sight
  *     · the camera probe (tools/check/probe.ts) at hold middles: top void ≤ 1 %, void ≤ 3 % (overview holds
- *       exempt); moves every 1 s: void ≤ 15 % (while the view is narrower than the board)
+ *       exempt), the subject (the hold's label landmark) in frame, ≥ 40 px tall at 1600×900, ≥ 60 % visible,
+ *       line of sight to the target ground; moves every 1 s: void ≤ 15 % (while the view is narrower than the
+ *       board)
  *     · under a covering ash deck the camera stays 6 km below it (crossDeck moves and overviews exempt)
  *     · tod rate ≤ 0.03 h/s in holds, ≤ 0.25 h/s in moves
  *     · light per hold: share of 49 ground points within 3 km of the subject that see the key light (sun
@@ -76,6 +78,9 @@ export const FILM_LIMITS = {
   safeY: [-0.7, 0.55] as [number, number],
   topVoid: 0.01,
   holdVoid: 0.03,
+  /** a hold's subject (its label's landmark) at the hold's middle: ≥ this many px tall at 1600×900, in frame */
+  subjectPx: 40,
+  subjectVisible: 0.6,
   moveVoid: 0.15,
   /** move probes stop counting void once the view is this wide (the whole board in frame), km */
   moveVoidMaxW: 500,
@@ -560,9 +565,16 @@ export async function checkFilm(world: World, landmarks: LandmarkDefinition[], o
   for (const key of rig.keys) {
     if (key.style === 'open' || key.style === 'end') continue;
     const k = Math.round(key.tMid * HZ);
-    const r = probeCamera(ctx, key.id, camOf(k), { subject: key.landmark });
+    // the hold's subject: its label's landmark, else the bookmark's
+    const hj = beats[key.beat] as HoldJson;
+    const subject = hj.captions?.find((c) => c.landmark)?.landmark ?? key.landmark;
+    const r = probeCamera(ctx, key.id, camOf(k), { subject });
     if (r.topVoid > FILM_LIMITS.topVoid) sampledFinding(key.beat, `probe: top void ${fmt(100 * r.topVoid, 0)} % at the hold's middle`);
     if (r.void + r.edge > FILM_LIMITS.holdVoid) sampledFinding(key.beat, `probe: void ${fmt(100 * (r.void + r.edge), 0)} % at the hold's middle`);
+    const s = r.subject;
+    const onScreen = !!s && s.pxH >= FILM_LIMITS.subjectPx && s.topNdcY > -1 && s.bottomNdcY < 1 && Math.abs(s.centerNdcX) < 1;
+    if (subject && (!onScreen || s!.visible < FILM_LIMITS.subjectVisible || r.losGround > 0))
+      sampledFinding(key.beat, `probe: subject ${subject} not framed at the hold's middle (${s ? `${fmt(s.pxH, 0)} px, ${fmt(100 * s.visible, 0)} % visible, NDC x ${fmt(s.centerNdcX, 2)} y ${fmt(s.bottomNdcY, 2)}…${fmt(s.topNdcY, 2)}` : 'not measured'}, line of sight to the target ground ${r.losGround > 0 ? 'blocked' : 'clear'})`);
   }
   for (const m of rig.moves) {
     let worst = 0;
