@@ -1,7 +1,7 @@
 {
   "version": 1,
   "status": "draft",
-  "notes": "Journey Through Middle-Earth (S5 draft). One day on dayOfYear 78 (sunrise 6.09, sunset 17.91, key → moon at 18.32, full night 19.37; waxing moon ≈ 70 % lit, 57–62° up from 18:00). Beats alternate hold / move; durations are cumulative. Camera keys reference landmark bookmarks or QA shots (+ `set` overrides) and never edit them (five bookmarks are lock-v1 sentinels). Azimuths keep the camera mostly south of the route so the low sun side-lights the land (right in the morning, left in the afternoon); Minas Tirith is at blue hour (Mindolluin shades it all afternoon). Compiled by src/tour/compile.ts; checked by tools/check/film.ts (pnpm check).",
+  "notes": "Journey Through Middle-Earth (S5 draft). One day on dayOfYear 78 (sunrise 6.09, sunset 17.91, the sun key fades out by 18.32 and the moon key comes in from 18.3 to 18.85, full night 19.37; waxing moon ≈ 70 % lit, 57–62° up from 18:00). Beats alternate hold / move; durations are cumulative. Camera keys reference landmark bookmarks or QA shots (+ `set` overrides) and never edit them (five bookmarks are lock-v1 sentinels). The hold azimuths run as one journey heading (consecutive holds ≤ ~110° apart, moves turn < 30°/s): south of the road through Eriador (the morning sun from the right), west of the Misty Mountains for Rivendell and Moria, then swinging back through south to the north-east over Rohan and the Anduin (Lórien 200, Isengard 130, Helm's Deep 40, Edoras 60, the Argonath 33, the Black Gate 342) and back counter-clockwise west of the Anduin round Gondor (Henneth Annûn 290 from over the river, Minas Tirith 185 from the south with Osgiliath and the route head in frame, Minas Morgul 195, Mount Doom 166): the camera stays over the river lands, never over the Ephel Dúath (a Minas Tirith key east of the city put the approach over the mountains: the head hidden, the ash deck crossed). Rauros is passed inside the move to the Black Gate (a pass caption while the head goes by). Moves: apexEl 26 (a higher apex swung the view up and down faster than 30°/s), per-move rho / apexEl where a move dips under the clearance margin, jerks, loses the head or shows the board's edge (a low apex where both holds look at the horizon keeps the frame top in the sky). Minas Tirith is at blue hour (Mindolluin shades it all afternoon); Minas Morgul at 18.85–18.95 under the rising moon (the vale's luma 23 at 18.75 → 35 at 18.95) (the moon key only comes in between sun −4° and −11°, 18.3 → 18.85). Compiled by src/tour/compile.ts; checked by tools/check/film.ts (pnpm check).",
   "film": {
     "fps": 24,
     "shutter": 0.5,
@@ -11,21 +11,21 @@
     "weather": { "cloudCoverage": 0.3, "wind": [0.6, 0.2] }
   },
   "defaults": {
-    "move": { "rho": 1.4, "vTarget": 1.2, "minS": 2.5, "maxS": 9, "apexEl": 38, "headLeadS": 0.6 },
+    "move": { "rho": 1.4, "vTarget": 1.2, "minS": 2.5, "maxS": 9, "apexEl": 26, "headLeadS": 0.6 },
     "hero": { "drift": { "azDegPerS": 0.35, "pushPerS": -0.01 } },
     "stop": { "drift": { "azDegPerS": 0.5, "pushPerS": -0.012 } },
     "open": { "drift": { "pushPerS": -0.004 } },
     "end": { "drift": { "azDegPerS": 0.15 } }
   },
   "beats": [
-    { "hold": "open", "style": "open", "dur": 11, "camera": { "shot": "overview-day" }, "tod": [5.85, 6.0], "routeGlow": 0,
+    { "hold": "open", "style": "open", "dur": 9.5, "camera": { "shot": "overview-day" }, "tod": [5.85, 6.0], "routeGlow": 0,
       "captions": [
         { "kind": "fade", "in": 0, "out": 1.6, "fadeIn": 0, "fadeOut": 1.6 },
-        { "kind": "title", "text": "Journey Through Middle-Earth", "sub": "A day's journey across a miniature world", "in": 1.6, "out": -1.4, "fadeIn": 1.8, "fadeOut": 1.4 }
+        { "kind": "title", "text": "Journey Through Middle-Earth", "sub": "A day's journey across a miniature world", "in": 1.4, "out": -1.2, "fadeIn": 1.6, "fadeOut": 1.2 }
       ],
       "music": { "mood": "prologue", "intensity": 0.25 } },
 
-    { "move": "to-hobbiton", "dur": 7, "music": { "mood": "prologue", "intensity": 0.35 } },
+    { "move": "to-hobbiton", "dur": 7, "apexEl": 14, "music": { "mood": "prologue", "intensity": 0.35 } },
 
     { "hold": "hobbiton", "style": "hero", "dur": 9.5, "place": "hobbiton", "camera": { "bookmark": "hobbiton-close", "set": { "distanceKm": 9, "fov": 22 } },
       "tod": [6.45, 6.55], "lens": { "fStop": "bookmark" }, "routeGlow": 1,
@@ -33,82 +33,81 @@
       "music": { "mood": "pastoral", "intensity": 0.35, "hit": "arrive" } },
 
     { "move": "to-bree", "dur": 5.5, "music": { "mood": "pastoral", "intensity": 0.4 } },
-    { "hold": "bree", "style": "stop", "dur": 4, "place": "bree", "camera": { "bookmark": "bree-close", "set": { "distanceKm": 30, "elevationDeg": 20, "azimuthDeg": 190, "fov": 30 } },
-      "tod": [7.0, 7.05], "light": "shade", "captions": [{ "kind": "pass", "landmark": "bree" }], "music": { "mood": "road", "intensity": 0.4 } },
+    { "hold": "bree", "style": "stop", "dur": 4, "place": "bree", "camera": { "bookmark": "bree-close", "set": { "distanceKm": 30, "elevationDeg": 20, "azimuthDeg": 205, "fov": 30 } },
+      "tod": [7.3, 7.35], "light": "shade", "captions": [{ "kind": "pass", "landmark": "bree" }], "music": { "mood": "road", "intensity": 0.4 } },
 
     { "move": "to-weathertop", "dur": 3.5, "music": { "mood": "road", "intensity": 0.45 } },
-    { "hold": "weathertop", "style": "stop", "dur": 4, "place": "weathertop", "camera": { "bookmark": "weathertop-close", "set": { "distanceKm": 32, "elevationDeg": 12, "azimuthDeg": 165, "fov": 22 } },
-      "tod": [7.4, 7.45], "captions": [{ "kind": "pass", "landmark": "weathertop" }], "music": { "mood": "road", "intensity": 0.5 } },
+    { "hold": "weathertop", "style": "stop", "dur": 4, "place": "weathertop", "camera": { "bookmark": "weathertop-close", "set": { "distanceKm": 32, "elevationDeg": 12, "azimuthDeg": 200, "fov": 22 } },
+      "tod": [7.9, 7.95], "captions": [{ "kind": "pass", "landmark": "weathertop" }], "music": { "mood": "road", "intensity": 0.5 } },
 
     { "move": "to-rivendell", "dur": 7.25, "music": { "mood": "road", "intensity": 0.45 } },
-    { "hold": "rivendell", "style": "hero", "dur": 8.5, "place": "rivendell", "camera": { "bookmark": "rivendell-close", "set": { "distanceKm": 12 } },
-      "tod": [8.4, 8.6], "light": "shade", "lens": { "fStop": "bookmark" },
-      "captions": [{ "kind": "place", "landmark": "rivendell", "sub": "The hidden valley · morning" }],
+    { "hold": "rivendell", "style": "hero", "dur": 8.5, "place": "rivendell", "camera": { "bookmark": "rivendell-close", "set": { "distanceKm": 12.5, "elevationDeg": 12, "aimKm": [1.8, 0.9], "fov": 22.5 } },
+      "tod": [9.1, 9.3], "light": "shade", "lens": { "fStop": "bookmark" }, "note": "the sun reaches the house's ledge on the north wall from ≈ 9.0 (the gorge floor stays in shade all morning); the label on the house",
+      "captions": [{ "kind": "place", "landmark": "rivendell", "sub": "The hidden valley · morning", "anchorOffsetKm": [0.15, 1.62], "anchorLiftKm": 0.35 }],
       "music": { "mood": "elven", "intensity": 0.4, "hit": "arrive" } },
 
-    { "move": "to-moria", "dur": 7, "note": "south over Hollin and the snows of Caradhras", "music": { "mood": "mountain", "intensity": 0.5 } },
+    { "move": "to-moria", "dur": 7.5, "note": "back down to the Ford, south along the foot of Hollin, round the spur and up the Sirannon to the West-gate", "music": { "mood": "mountain", "intensity": 0.5 } },
     { "hold": "moria", "style": "hero", "dur": 7.5, "place": "moria", "camera": { "bookmark": "moria-wide", "set": { "distanceKm": 22, "elevationDeg": 9 } },
       "tod": [9.6, 9.8], "light": "shade", "note": "the West-gate faces west: in shade all morning",
       "captions": [{ "kind": "place", "landmark": "moria", "sub": "The West-gate under the mountains" }],
       "music": { "mood": "deep", "intensity": 0.45, "hit": "arrive" } },
 
-    { "move": "to-lothlorien", "dur": 6, "note": "the route runs dotted under the mountains to Dimrill Dale", "music": { "mood": "deep", "intensity": 0.35 } },
-    { "hold": "lothlorien", "style": "hero", "dur": 8, "place": "lothlorien", "camera": { "bookmark": "lothlorien-close" },
+    { "move": "to-lothlorien", "dur": 6, "apexEl": 30, "note": "the route runs dotted under the mountains to Dimrill Dale", "music": { "mood": "deep", "intensity": 0.35 } },
+    { "hold": "lothlorien", "style": "hero", "dur": 8, "place": "lothlorien", "camera": { "bookmark": "lothlorien-close", "set": { "azimuthDeg": 200 } },
       "tod": [10.8, 11.0], "look": { "id": "lorien", "weight": 0.6 },
       "captions": [{ "kind": "place", "landmark": "lothlorien", "sub": "The golden wood" }],
       "music": { "mood": "golden-wood", "intensity": 0.4, "hit": "arrive" } },
 
     { "move": "to-isengard", "dur": 6, "note": "south-west past Fangorn", "music": { "mood": "isengard", "intensity": 0.5 } },
-    { "hold": "isengard", "style": "stop", "dur": 4, "place": "isengard", "camera": { "bookmark": "isengard-close", "set": { "azimuthDeg": 130 } },
+    { "hold": "isengard", "style": "stop", "dur": 4.5, "place": "isengard", "camera": { "bookmark": "isengard-close", "set": { "azimuthDeg": 130 } },
       "tod": [12.0, 12.1], "captions": [{ "kind": "pass", "landmark": "isengard" }], "music": { "mood": "isengard", "intensity": 0.6 } },
 
-    { "move": "to-helms-deep", "dur": 3.5, "music": { "mood": "rohan", "intensity": 0.55 } },
-    { "hold": "helms-deep", "style": "stop", "dur": 4, "place": "helms-deep", "camera": { "bookmark": "helms-deep-close", "set": { "distanceKm": 24, "elevationDeg": 14, "azimuthDeg": 45 } },
+    { "move": "to-helms-deep", "dur": 5.5, "music": { "mood": "rohan", "intensity": 0.55 } },
+    { "hold": "helms-deep", "style": "stop", "dur": 5, "place": "helms-deep", "camera": { "bookmark": "helms-deep-close", "set": { "distanceKm": 22, "elevationDeg": 18, "azimuthDeg": 40, "fov": 28, "aimKm": [0.4, 2] } },
       "tod": [12.6, 12.7], "captions": [{ "kind": "pass", "landmark": "helms-deep" }], "music": { "mood": "rohan", "intensity": 0.6 } },
 
-    { "move": "to-edoras", "dur": 3.75, "music": { "mood": "rohan", "intensity": 0.6 } },
-    { "hold": "edoras", "style": "stop", "dur": 4, "place": "edoras", "camera": { "bookmark": "edoras-close", "set": { "distanceKm": 18, "elevationDeg": 8, "azimuthDeg": 120 } },
+    { "move": "to-edoras", "dur": 5, "music": { "mood": "rohan", "intensity": 0.6 } },
+    { "hold": "edoras", "style": "stop", "dur": 4.5, "place": "edoras", "camera": { "bookmark": "edoras-close", "set": { "distanceKm": 15, "elevationDeg": 8, "azimuthDeg": 60 } },
       "tod": [13.3, 13.4], "captions": [{ "kind": "pass", "landmark": "edoras" }], "music": { "mood": "rohan", "intensity": 0.7, "hit": "horn" } },
 
-    { "move": "to-argonath", "dur": 6.5, "note": "across the Rohan plains, onto the Great River, downstream to the gates", "music": { "mood": "river", "intensity": 0.55 } },
+    { "move": "to-argonath", "dur": 8, "rho": 1.0, "apexEl": 26, "note": "across the Rohan plains, onto the Great River, downstream to the gates", "music": { "mood": "river", "intensity": 0.55 } },
     { "hold": "argonath", "style": "hero", "dur": 8.5, "place": "argonath", "camera": { "bookmark": "argonath-close", "set": { "distanceKm": 14 } },
-      "tod": [14.5, 14.75], "lens": { "fStop": "bookmark" }, "light": "silhouette", "note": "the kings against the afternoon sun (as the bookmark)",
+      "tod": [14.5, 14.75], "lens": { "fStop": "bookmark" }, "light": "silhouette", "note": "the kings against the afternoon sun (as the bookmark); the label's diamond is the route head on the river between them",
       "captions": [{ "kind": "place", "landmark": "argonath", "sub": "The pillars of the kings" }],
       "music": { "mood": "kings", "intensity": 0.75, "hit": "reveal" } },
 
-    { "move": "to-rauros", "dur": 2.5, "music": { "mood": "kings", "intensity": 0.6 } },
-    { "hold": "rauros", "style": "stop", "dur": 3.5, "place": "rauros", "camera": { "bookmark": "rauros-close", "set": { "azimuthDeg": 20 } },
-      "tod": [15.05, 15.15], "captions": [{ "kind": "pass", "landmark": "rauros" }], "music": { "mood": "kings", "intensity": 0.5 } },
-
-    { "move": "to-black-gate", "dur": 5.5, "note": "east over the Emyn Muil and the Dead Marshes", "music": { "mood": "approach", "intensity": 0.5 } },
-    { "hold": "black-gate", "style": "stop", "dur": 4.5, "place": "black-gate", "camera": { "bookmark": "black-gate-wide" },
+    { "move": "to-black-gate", "dur": 8.5, "rho": 1.2, "apexEl": 10, "note": "down Nen Hithoel past Tol Brandir and the falls of Rauros, east under the southern Emyn Muil and over the Dead Marshes",
+      "captions": [{ "kind": "pass", "landmark": "rauros", "in": 2.0, "out": 4.75 }],
+      "music": { "mood": "approach", "intensity": 0.55 } },
+    { "hold": "black-gate", "style": "stop", "dur": 5, "place": "black-gate", "camera": { "bookmark": "black-gate-wide" },
       "tod": [16.05, 16.15], "light": "shade", "captions": [{ "kind": "pass", "landmark": "black-gate" }], "music": { "mood": "approach", "intensity": 0.65, "hit": "arrive" } },
 
-    { "move": "to-henneth-annun", "dur": 4, "music": { "mood": "ithilien", "intensity": 0.45 } },
-    { "hold": "henneth-annun", "style": "stop", "dur": 4, "place": "henneth-annun", "camera": { "bookmark": "henneth-annun-close" },
-      "tod": [16.75, 16.85], "light": "shade", "captions": [{ "kind": "pass", "landmark": "henneth-annun" }], "music": { "mood": "ithilien", "intensity": 0.45 } },
+    { "move": "to-henneth-annun", "dur": 5, "apexEl": 14, "note": "the Gate shut: west round the north end of the Ephel Dúath and south into Ithilien", "music": { "mood": "ithilien", "intensity": 0.45 } },
+    { "hold": "henneth-annun", "style": "stop", "dur": 4, "place": "henneth-annun", "camera": { "bookmark": "henneth-annun-close", "set": { "azimuthDeg": 290, "elevationDeg": 11, "distanceKm": 26 } },
+      "tod": [16.75, 16.85], "light": "shade", "captions": [{ "kind": "pass", "landmark": "henneth-annun" }], "note": "from the west-north-west over the Anduin (the bookmark side): the wet wall round the alcove, the falls and the woods lit by the low sun behind the camera (the light check's ground disk is mostly the alcove floor, shaded by its own walls)",
+      "music": { "mood": "ithilien", "intensity": 0.45 } },
 
-    { "move": "to-minas-tirith", "dur": 6, "music": { "mood": "gondor", "intensity": 0.5 } },
+    { "move": "to-minas-tirith", "dur": 7, "rho": 1.8, "apexEl": 36, "note": "south through golden Ithilien to Osgiliath, the camera west of the line over the Anduin (the slopes face the low sun)", "music": { "mood": "gondor", "intensity": 0.5 } },
     { "hold": "minas-tirith", "style": "hero", "dur": 10, "place": "osgiliath", "head": "osgiliath",
-      "camera": { "orbit": { "place": "minas-tirith", "distanceKm": 34, "elevationDeg": 8, "azimuthDeg": 85, "fov": 30, "lift": 7.5 } },
-      "tod": [17.9, 18.15], "events": { "beacons": [[2, 0], [5, 1]] }, "light": "silhouette", "note": "blue hour from the east: the city against the afterglow, windows lighting, the beacon kindled",
-      "captions": [{ "kind": "place", "landmark": "minas-tirith", "sub": "Gondor · nightfall" }],
+      "camera": { "orbit": { "place": "minas-tirith", "distanceKm": 46, "elevationDeg": 17, "azimuthDeg": 185, "fov": 38, "lift": 5, "aimKm": [8, 2.5] } },
+      "tod": [17.9, 18.15], "events": { "beacons": [[2, 0], [5, 1]] }, "light": "silhouette", "note": "blue hour from the east-south-east over Osgiliath and the Anduin: the city against the afterglow, windows lighting, the beacon kindled",
+      "captions": [{ "kind": "place", "landmark": "minas-tirith", "sub": "Gondor · nightfall", "anchorLiftKm": 2.2 }],
       "music": { "mood": "gondor", "intensity": 0.7, "hit": "beacon" } },
 
-    { "move": "to-minas-morgul", "dur": 5.5, "music": { "mood": "morgul", "intensity": 0.55 } },
-    { "hold": "minas-morgul", "style": "hero", "dur": 9, "place": "minas-morgul", "camera": { "bookmark": "minas-morgul-wide", "set": { "distanceKm": 36, "elevationDeg": 6, "lift": 2 } },
-      "tod": [18.3, 18.4], "events": { "morgul-beam": [[1.5, 0], [4.5, 1]] }, "look": { "id": "mordor", "weight": 0.7 },
+    { "move": "to-minas-morgul", "dur": 5, "music": { "mood": "morgul", "intensity": 0.55 } },
+    { "hold": "minas-morgul", "style": "hero", "dur": 9, "place": "minas-morgul", "camera": { "bookmark": "minas-morgul-close", "set": { "azimuthDeg": 195, "distanceKm": 22, "elevationDeg": 9, "fov": 42 } },
+      "tod": [18.85, 18.95], "events": { "morgul-beam": [[1.5, 0], [4.5, 1]] }, "look": { "id": "mordor", "weight": 0.7 },
       "captions": [{ "kind": "place", "landmark": "minas-morgul", "sub": "The tower in the dead vale" }],
       "music": { "mood": "morgul", "intensity": 0.8, "hit": "beam" } },
 
-    { "move": "to-mount-doom", "dur": 7.5, "maxAltKm": 40, "note": "out of the Morgul vale past the tower of Cirith Ungol, across Gorgoroth under the ash deck (deck ≈ 52 km)", "music": { "mood": "doom", "intensity": 0.75 } },
-    { "hold": "mount-doom", "style": "hero", "dur": 11, "place": "mount-doom", "camera": { "bookmark": "mount-doom-close", "set": { "distanceKm": 55 } },
-      "tod": [18.9, 19.1], "lens": { "fStop": "bookmark" }, "look": { "id": "mordor", "weight": 1 },
+    { "move": "to-mount-doom", "dur": 7.5, "maxAltKm": 40, "rho": 1.6, "apexEl": 34, "note": "out of the Morgul vale past the tower of Cirith Ungol, across Gorgoroth under the ash deck (deck ≈ 52 km)", "music": { "mood": "doom", "intensity": 0.75 } },
+    { "hold": "mount-doom", "style": "hero", "dur": 10, "place": "mount-doom", "camera": { "bookmark": "mount-doom-close", "set": { "distanceKm": 55, "elevationDeg": -0.6 } },
+      "tod": [19.05, 19.25], "lens": { "fStop": "bookmark" }, "look": { "id": "mordor", "weight": 0.7 },
       "captions": [{ "kind": "place", "landmark": "mount-doom", "sub": "The end of the road", "anchorLiftKm": 3.5 }],
       "music": { "mood": "doom", "intensity": 1.0, "hit": "climax" } },
 
-    { "move": "pull-out", "dur": 9, "crossDeck": true, "note": "rise out of Mordor through the ash deck to the whole map", "music": { "mood": "finale", "intensity": 0.8 } },
-    { "hold": "end", "style": "end", "dur": 13, "camera": { "shot": "overview-day" }, "tod": [19.4, 19.5],
+    { "move": "pull-out", "dur": 9, "crossDeck": true, "events": { "morgul-beam": [[0, 1], [3, 0]] }, "note": "rise out of Mordor through the ash deck to the whole map (the Morgul beam goes out as we leave)", "music": { "mood": "finale", "intensity": 0.8 } },
+    { "hold": "end", "style": "end", "dur": 13, "camera": { "shot": "overview-day" }, "tod": [19.5, 19.6],
       "captions": [
         { "kind": "end", "text": "From first light in the Shire to the fires of Mount Doom", "in": 1.0, "out": 6.0 },
         { "kind": "end", "text": "Journey Through Middle-Earth", "lines": [

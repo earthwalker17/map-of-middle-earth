@@ -124,8 +124,8 @@ export function compileFilm(inp: FilmInputs): FilmProgram {
     return ks[ks.length - 1][1];
   };
 
-  // ---- captions (anchors from the build when given; the side from the anchor's projection)
-  const captions: CaptionDef[] = compileCaptions({ world, landmarks: inp.landmarks, built: inp.built, beats, t0s, durs, cameraAt: rig.camera });
+  // ---- captions (anchors from the build when given; the side only where authored)
+  const captions: CaptionDef[] = compileCaptions({ world, landmarks: inp.landmarks, built: inp.built, beats, t0s, durs });
 
   // ---- beat table
   const beatInfo: BeatInfo[] = beats.map((b, i) => {

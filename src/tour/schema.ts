@@ -121,6 +121,11 @@ export interface CaptionJson {
   side?: 'left' | 'right' | 'above' | 'below';
   /** anchor height above the ground at the landmark, km (default from the landmark bounds) */
   anchorLiftKm?: number;
+  /**
+   * anchor offset from the landmark's display position, ME-GIS km [east, north] (e.g. onto the hall a label
+   * names when the display point is the valley's centre); the height then follows the ground there
+   */
+  anchorOffsetKm?: [number, number];
 }
 
 export interface MusicCueJson {

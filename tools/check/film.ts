@@ -1,11 +1,17 @@
 /**
  * Film checks (S5, CPU), part of `pnpm check` — and a CLI for fast iteration:
  *
- *   node --import tsx tools/check/film.ts [--table] [--at t1,t2] [--cues out.json] [--no-built]
+ *   node --import tsx tools/check/film.ts [--table] [--at t1,t2] [--cues out.json] [--no-built] [--sync-shotlist]
+ *
+ * --sync-shotlist writes data/tour/shotlist.json from the compiled film (film.seconds / beats; per segment its
+ * seconds, tod and distance-class mix; per hold subject its tod and screenSeconds — see syncShotlist), keeping
+ * the file's formatting; segment membership stays hand-edited.
  *
  * Structural (always, even without a bake / in CI) — errors:
  *  - data/tour/timeline.json v1 and route.json v2 shapes (unknown keys warn); beats alternate, start and end
- *    with a hold, unique ids; references resolve: bookmarks (landmark definitions), shots (loadShots(); the
+ *    with a hold, unique ids; route legs / points (kebab ids and marks, offsetKm [east, north] numbers, a
+ *    place or `at`); caption fades (as the compiler fills them: captionFades) fit their window; shot-list
+ *    segment routes name route legs; references resolve: bookmarks (landmark definitions), shots (loadShots(); the
  *    page compiles with data/qa/shots.json only), places (places.json), caption landmarks, head marks (the
  *    route's marks), look ids (looks.json); event channels ∈ EVENT_SLOT; tod non-decreasing; total length
  *    within film.lengthS (when no move is `auto`; else on the compiled film)
@@ -27,9 +33,17 @@
  *       above 1.6 (an error above 2.6 when locked)
  *     · view rotation ≤ 2 °/s in holds, ≤ 30 °/s in moves; jerk spikes (|d³P/dt³| / w far above the beat's
  *       own level: a C2 break)
- *     · the route head on screen (|NDC| ≤ 0.9) for ≥ 90 % of a move's samples after its first 0.5 s
- *     · visible place / pass anchors inside the label-safe zone (|x| ≤ 0.75, −0.7 ≤ y ≤ 0.55) with a line
- *       of sight
+ *     · the route head as the RouteSystem draws it (headPoint) on screen (|NDC| ≤ 0.9) for ≥ 90 % of a
+ *       move's samples after its first 0.5 s, and also not behind terrain (layout.ts visibility ≥ 0.5; the
+ *       x-ray Moria leg exempt) for ≥ 80 %
+ *     · place / pass labels as the page draws them — the TitleSystem's own anchorPoint (the diamond moves
+ *       onto the route head while it rests on the subject) and subjectVisible, with the page's inputs, laid
+ *       out at the shutter's centre: opacity onScreen × subjectVisible ≥ 0.5 (else the page fades the label
+ *       out: off frame / hidden), the diamond inside the label-safe zone (|x| ≤ 0.75, −0.7 ≤ y ≤ 0.55; a
+ *       diamond on the route head down to −0.85: its label sits above it)
+ *     · the board's edge in the top 15 % of a move's frame (visibleTopVoid > 5 %: void rays weighted by the
+ *       sky's void darkness, 4 Hz) while the view is narrower than the board; moves to / from an overview
+ *       hold exempt
  *     · the camera probe (tools/check/probe.ts) at hold middles: top void ≤ 1 %, void ≤ 3 % (overview holds
  *       exempt), the subject (the hold's label landmark) in frame, ≥ 40 px tall at 1600×900, ≥ 60 % visible,
  *       line of sight to the target ground; moves every 1 s: void ≤ 15 % (while the view is narrower than the
@@ -49,12 +63,13 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { ShotSpecInput } from '../../src/camera/shots.ts';
-import type { CameraState } from '../../src/core/types.ts';
+import type { CameraState, SceneState } from '../../src/core/types.ts';
 import type { BuiltLandmark } from '../../src/landmarks/records.ts';
 import type { LandmarkDefinition } from '../../src/landmarks/types.ts';
 import type { World } from '../../src/world/World.ts';
 import type { FilmProgram } from '../../src/tour/compile.ts';
 import type { BeatJson, CaptionDef, CaptionJson, HoldJson, MoveJson, RouteJson, TimelineJson } from '../../src/tour/schema.ts';
+import type { V3 } from '../../src/titles/layout.ts';
 import type { CheckResult } from './world.ts';
 import { loadShots } from '../capture/shotList.ts';
 import { bakedDir, hasBake, loadLandmarks, loadWorld, ROOT } from './baked.ts';
@@ -68,7 +83,9 @@ const HOLD_KEYS = ['hold', 'style', 'dur', 'place', 'camera', 'drift', 'tod', 'h
 const MOVE_KEYS = ['move', 'dur', 'maxAltKm', 'rho', 'apexEl', 'crossDeck', 'captions', 'events', 'music', 'note'];
 const SET_KEYS = ['distanceKm', 'elevationDeg', 'azimuthDeg', 'fov', 'lift', 'aimKm', 'roll'];
 const DRIFT_KEYS = ['azDegPerS', 'pushPerS', 'alongKmPerS', 'elDegPerS'];
-const CAPTION_KEYS = ['kind', 'landmark', 'text', 'sub', 'lines', 'in', 'out', 'fadeIn', 'fadeOut', 'side', 'anchorLiftKm'];
+const CAPTION_KEYS = ['kind', 'landmark', 'text', 'sub', 'lines', 'in', 'out', 'fadeIn', 'fadeOut', 'side', 'anchorLiftKm', 'anchorOffsetKm'];
+const LEG_KEYS = ['id', 'mode', 'river', 'lake', 'points', 'note'];
+const POINT_KEYS = ['place', 'at', 'offsetKm', 'mark'];
 const KEBAB = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 /** Sampled-check limits (see the header). */
@@ -83,9 +100,29 @@ export const FILM_LIMITS = {
   jerkFloor: 4,
   headOnScreen: 0.9,
   headShare: 0.9,
+  /**
+   * the head on screen AND not behind terrain: the route runs through valleys and behind ridges — a head
+   * hidden for under a fifth of a move reads as the line passing behind a hill and coming out again; the
+   * Minas Tirith approach the critic flagged (1.5 s of 6 s behind the foothills) is over it
+   */
+  headVisibleShare: 0.8,
   safeX: 0.75,
   safeY: [-0.7, 0.55] as [number, number],
+  /**
+   * the bottom of the safe zone for a diamond that marks the route head (the TitleSystem moves it there while
+   * the head rests on the subject): the head belongs on the ground at the subject's foot and its label block
+   * sits above or beside it (layout.ts keeps the block inside the 90 % title-safe area), so the diamond may
+   * go down to the 90 % action-safe line rather than the anchor zone's −0.7 (e.g. the Argonath: the head on
+   * the river between the kings at −0.79)
+   */
+  headSafeYMin: -0.85,
   topVoid: 0.01,
+  /**
+   * moves: the visible void in the top 15 % of the frame (visibleTopVoid: void rays weighted by how dark the
+   * sky draws them) — calibrated on stills: 15 % (to-argonath) and 31 % (to-black-gate) read as a dark band
+   * over a straight board edge, ≤ 3 % as horizon haze
+   */
+  moveTopVoid: 0.05,
   holdVoid: 0.03,
   /** a hold's subject (its label's landmark) at the hold's middle: ≥ this many px tall at 1600×900, in frame */
   subjectPx: 40,
@@ -104,6 +141,22 @@ export const FILM_LIMITS = {
   backlightDeg: 20,
   deckTolKm: 0.05,
 };
+
+/**
+ * The TitleSystem's off-frame fade (src/titles/TitleSystem.ts OFFSCREEN_FADE, not exported): a label fades out
+ * over this × H beyond the frame edge.
+ */
+const LABEL_OFFSCREEN_FADE = 0.04;
+
+/**
+ * The TitleSystem's per-state label helpers (private, pure functions of the caption and the state): the
+ * diamond's world point and its subject's visibility. The check calls the page's own code rather than a
+ * copy (contract request: export them from src/titles/layout.ts as pure functions).
+ */
+interface TitleInternals {
+  anchorPoint(def: CaptionDef, st: SceneState): V3;
+  subjectVisible(def: CaptionDef, st: SceneState, anchor: V3): number;
+}
 
 const fmt = (v: number, d = 1) => (Number.isFinite(v) ? v.toFixed(d) : '—');
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
@@ -127,6 +180,7 @@ export async function checkFilmStructure(): Promise<CheckResult> {
   const places = new Set(readJson<{ places: { id: string }[] }>('data/world/places.json').places.map((p) => p.id));
   const looks = new Set(Object.keys(readJson<{ regions: Record<string, unknown> }>('data/world/looks.json').regions));
   const { EVENT_SLOT } = (await import(mod('src/materials/gates.ts'))) as typeof import('../../src/materials/gates.ts');
+  const { CAPTION_DEFAULTS, captionFades } = (await import(mod('src/tour/captions.ts'))) as typeof import('../../src/tour/captions.ts');
   const landmarks = await loadLandmarks();
   const lmIds = new Set(landmarks.map((d) => d.id));
   const bookmarks = new Map<string, { def: LandmarkDefinition; fStop?: number }>();
@@ -144,6 +198,8 @@ export async function checkFilmStructure(): Promise<CheckResult> {
   const marks = new Set<string>();
   const legIds = new Set<string>();
   for (const leg of route.legs ?? []) {
+    unknownKeys(leg, LEG_KEYS, `route leg ${leg.id}`);
+    if (typeof leg.id !== 'string' || !KEBAB.test(leg.id)) E(`route leg id '${leg.id}': ids are kebab-case`);
     if (legIds.has(leg.id)) E(`route leg id '${leg.id}' repeats`);
     legIds.add(leg.id);
     marks.add(`${leg.id}:start`).add(`${leg.id}:end`);
@@ -153,10 +209,16 @@ export async function checkFilmStructure(): Promise<CheckResult> {
     if (mode !== 'boat' && (leg.river || leg.lake)) E(`route leg ${leg.id}: river / lake only on boat legs`);
     if (!Array.isArray(leg.points) || leg.points.length < 2) E(`route leg ${leg.id}: needs ≥ 2 points`);
     for (const p of leg.points ?? []) {
+      unknownKeys(p, POINT_KEYS, `route leg ${leg.id} point`);
+      if (p.mark !== undefined && !(typeof p.mark === 'string' && KEBAB.test(p.mark))) E(`route leg ${leg.id}: mark '${p.mark}' is not a kebab-case name`);
+      if (p.place && p.at) E(`route leg ${leg.id}: a point has a place or at [x, y], not both`);
       if (p.place) {
         if (!places.has(p.place)) E(`route leg ${leg.id}: unknown place '${p.place}'`);
+        // offsetKm [east, north] km: NaN would slip through the leg-chain test (a NaN distance is not > 1e-6)
+        if (p.offsetKm !== undefined && !(Array.isArray(p.offsetKm) && p.offsetKm.length === 2 && p.offsetKm.every(num))) E(`route leg ${leg.id}: point ${p.place} offsetKm ${JSON.stringify(p.offsetKm)} is not [east, north] km`);
         marks.add(p.mark ?? p.place);
       } else if (Array.isArray(p.at) && p.at.length === 2 && p.at.every(num)) {
+        if (p.offsetKm !== undefined) E(`route leg ${leg.id}: offsetKm only on place points`);
         if (p.mark) marks.add(p.mark);
       } else E(`route leg ${leg.id}: a point needs a place or at [x, y]`);
     }
@@ -206,15 +268,22 @@ export async function checkFilmStructure(): Promise<CheckResult> {
     for (const k of ['in', 'out', 'fadeIn', 'fadeOut', 'anchorLiftKm'] as const) if (c[k] !== undefined && !num(c[k])) E(`${where}: caption ${k} is not a number`);
     if ((c.fadeIn ?? 0) < 0 || (c.fadeOut ?? 0) < 0) E(`${where}: negative caption fade`);
     if (c.side && !['left', 'right', 'above', 'below'].includes(c.side)) E(`${where}: caption side '${c.side}'`);
+    if (c.anchorOffsetKm !== undefined && !(Array.isArray(c.anchorOffsetKm) && c.anchorOffsetKm.length === 2 && c.anchorOffsetKm.every(num) && Math.hypot(c.anchorOffsetKm[0], c.anchorOffsetKm[1]) <= 5)) E(`${where}: caption anchorOffsetKm ${JSON.stringify(c.anchorOffsetKm)} is not [east, north] km within 5 km of the landmark`);
     if (dur !== null) {
       const rel = (v: number | undefined, dflt: number, isOut: boolean) => {
         const x = v ?? dflt;
         return x < 0 || (isOut && Object.is(x, -0)) ? dur + x : x;
       };
-      const D = { title: [1.5, -1.5], place: [0.8, -0.6], pass: [0.4, -0.4], end: [1, -1], fade: [0, -0] }[c.kind] ?? [0, -0];
+      const D = CAPTION_DEFAULTS[c.kind] ?? [0, -0, 0, 0];
       const a = rel(c.in, D[0], false);
       const b = rel(c.out, D[1], true);
       if (!(a >= -1e-9 && b <= dur + 1e-9 && b > a)) E(`${where}: caption window [${fmt(a, 2)}, ${fmt(b, 2)}] s outside its ${fmt(dur, 2)} s beat`);
+      else if (CAPTION_KINDS.includes(c.kind)) {
+        // the fades the compiler gives it (authored, else the kind's default shrunk to its window) must fit
+        // the window together: otherwise the reveal never reaches 1 and the in / out ramps overlap
+        const [fi, fo] = captionFades(c.kind, b - a, c);
+        if (fi + fo > b - a + 1e-9) E(`${where}: caption fades ${fmt(fi, 2)} + ${fmt(fo, 2)} s (${c.fadeIn === undefined ? 'default' : 'authored'} in, ${c.fadeOut === undefined ? 'default' : 'authored'} out) exceed its ${fmt(b - a, 2)} s window`);
+      }
     }
   };
   const checkEvents = (ev: BeatJson['events'], where: string, dur: number | null) => {
@@ -304,6 +373,13 @@ export async function checkFilmStructure(): Promise<CheckResult> {
     }
   });
   if (!autoMoves && Array.isArray(f.lengthS) && (total < f.lengthS[0] || total > f.lengthS[1])) E(`the film runs ${fmt(total)} s, outside film.lengthS [${f.lengthS.join(', ')}]`);
+  // ---- shotlist.json: a segment's route names a route leg (its beats are checked on the compiled film)
+  try {
+    const sl = readJson<{ segments: { id: string; route?: string | null }[] }>('data/tour/shotlist.json');
+    for (const s of sl.segments ?? []) if (s.route !== null && s.route !== undefined && !legIds.has(s.route)) E(`data/tour/shotlist.json segment ${s.id}: route '${s.route}' is not a leg of route.json (${[...legIds].join(', ')})`);
+  } catch (e) {
+    E(`data/tour/shotlist.json does not parse: ${(e as Error).message}`);
+  }
   out.info.push(`film: timeline v1 ${tl.status}, ${beats.length} beats, ${autoMoves ? `${autoMoves} auto move(s) (length on the compiled film)` : `${fmt(total)} s`}; route ${route.legs?.length ?? 0} legs, ${marks.size} marks`);
   return out;
 }
@@ -334,6 +410,76 @@ export interface FilmCheckResult extends CheckResult {
   timeline: TimelineJson;
 }
 
+/** the sky's studio void: its blend from the horizon haze into the dark backdrop (src/environment/sky.ts voidFalloff) */
+const VOID_FALLOFF = 0.3;
+
+/**
+ * The board's edge as the frame shows it: rays through the top 15 % of the frame (a cols × rows grid, the
+ * top rows of it) that look down past the floating board into the studio void, each weighted by how dark
+ * the sky shader draws that void — 1 − (1 − min(1, depression / VOID_FALLOFF))³ (sin of the depression):
+ * a void just under the horizon is still the bright horizon haze (the far board edge melts into it), one
+ * 10° down is the dark backdrop. Returns the weighted share of the top rows (0 = land or sky up there).
+ */
+export function visibleTopVoid(
+  ctx: { world: World; H(x: number, z: number): number; WL(x: number, z: number): number },
+  cam: CameraState,
+  cols = 32,
+  rows = 18,
+): number {
+  const spec = ctx.world.spec;
+  const [px, py, pz] = cam.position;
+  let fx = cam.target[0] - px;
+  let fy = cam.target[1] - py;
+  let fz = cam.target[2] - pz;
+  const fl = Math.hypot(fx, fy, fz) || 1;
+  fx /= fl;
+  fy /= fl;
+  fz /= fl;
+  let rx = -fz;
+  let rz = fx;
+  const rl = Math.hypot(rx, rz) || 1;
+  rx /= rl;
+  rz /= rl;
+  const ux = -rz * fy;
+  const uy = rz * fx - rx * fz;
+  const uz = rx * fy;
+  const tanV = Math.tan((cam.fov * Math.PI) / 360);
+  const tanH = tanV * (16 / 9);
+  const inside = (x: number, z: number) => x >= spec.xMin && x <= spec.xMax && z >= spec.zMin && z <= spec.zMax;
+  let sum = 0;
+  let n = 0;
+  for (let j = 0; j < rows * 0.15; j++)
+    for (let i = 0; i < cols; i++) {
+      n++;
+      const sx = ((i + 0.5) / cols) * 2 - 1;
+      const sy = 1 - ((j + 0.5) / rows) * 2;
+      let dx = fx + rx * sx * tanH + ux * sy * tanV;
+      let dy = fy + uy * sy * tanV;
+      let dz = fz + rz * sx * tanH + uz * sy * tanV;
+      const dl = Math.hypot(dx, dy, dz);
+      dx /= dl;
+      dy /= dl;
+      dz /= dl;
+      if (dy >= 0) continue; // sky
+      // march down to the ground (or out of the board): the probe's step rule
+      let hit = false;
+      for (let t = 0.05; ; t += Math.max(0.05, t * 0.008)) {
+        const x = px + dx * t;
+        const y = py + dy * t;
+        const z = pz + dz * t;
+        if (!inside(x, z) || y < -44.6) break;
+        if (y < Math.max(ctx.H(x, z), ctx.WL(x, z))) {
+          hit = true;
+          break;
+        }
+      }
+      if (hit) continue;
+      const u = Math.min(1, -dy / VOID_FALLOFF);
+      sum += 1 - (1 - u) ** 3;
+    }
+  return n ? sum / n : 0;
+}
+
 /** Vogel-spiral disk of n points of radius r around (0, 0). */
 function vogel(n: number, r: number): [number, number][] {
   const out: [number, number][] = [];
@@ -353,8 +499,13 @@ export async function checkFilm(world: World, landmarks: LandmarkDefinition[], o
   const route = readJson<RouteJson>('data/tour/route.json');
   const shots = readJson<{ shots: ShotSpecInput[] }>('data/qa/shots.json').shots;
   const { compileFilm } = (await import(mod('src/tour/compile.ts'))) as typeof import('../../src/tour/compile.ts');
-  const { forgetWaterField, routeAt, routeReport, FLOAT_WARN_KM } = (await import(mod('src/tour/route.ts'))) as typeof import('../../src/tour/route.ts');
+  const { forgetWaterField, routeReport, FLOAT_WARN_KM } = (await import(mod('src/tour/route.ts'))) as typeof import('../../src/tour/route.ts');
   const { projectToNdc, captionReveal } = (await import(mod('src/tour/captions.ts'))) as typeof import('../../src/tour/captions.ts');
+  const { projectToScreen, visibility, onScreen } = (await import(mod('src/titles/layout.ts'))) as typeof import('../../src/titles/layout.ts');
+  const { TitleSystem, titleSubjects } = (await import(mod('src/titles/TitleSystem.ts'))) as typeof import('../../src/titles/TitleSystem.ts');
+  const { RouteSystem } = (await import(mod('src/route/RouteSystem.ts'))) as typeof import('../../src/route/RouteSystem.ts');
+  const { pathModeAt } = (await import(mod('src/route/path.ts'))) as typeof import('../../src/route/path.ts');
+  const { ROUTE_MODE } = (await import(mod('src/tour/schema.ts'))) as typeof import('../../src/tour/schema.ts');
   const { CLEAR, DECK_BELOW_KM, DECK_COVER } = (await import(mod('src/tour/rig.ts'))) as typeof import('../../src/tour/rig.ts');
   const { createProbeContext, probeCamera } = await import('./probe.ts');
   const { LandmarkSystem } = (await import(mod('src/landmarks/LandmarkSystem.ts'))) as typeof import('../../src/landmarks/LandmarkSystem.ts');
@@ -555,53 +706,116 @@ export async function checkFilm(world: World, landmarks: LandmarkDefinition[], o
   });
 
   lap('24 Hz samples');
-  // ---- 8 Hz: route head on screen (moves), label anchors, LOD stability (holds)
+  // ---- 8 Hz: route head on screen (moves), labels, LOD stability (holds) — judged with the page's own code:
+  // the head as the RouteSystem draws it (headPoint: the near / far path at the head's depth), the labels
+  // as the TitleSystem places them (anchorPoint: the diamond moves onto the route head while the head rests
+  // on its subject; subjectVisible over the HeightField), laid out at the shutter's centre as in the film
   const ASPECT = 16 / 9;
-  const head3 = (t: number) => routeAt(R, rig.head(t));
+  const LW = 1600;
+  const LH = 900;
+  const heightAt = (x: number, z: number) => world.heights.sample(x, z);
+  const routeSys = new RouteSystem(world, R);
+  const headOf = (st: SceneState): V3 | null => routeSys.headPoint(st, [0, 0, 0]);
   for (const m of rig.moves) {
     let n = 0;
     let on = 0;
+    let hid = 0;
     for (let k = Math.ceil((m.t0 + 0.5) * HZ); k <= Math.floor(m.t1 * HZ) && k <= K; k += 3) {
       if ((states[k].routeGlow ?? 1) <= 0.01) continue;
+      const hp = headOf(states[k]);
+      if (!hp) continue;
       n++;
-      const [x, y, d] = projectToNdc(camOf(k), head3(k * h), ASPECT);
-      if (d > 0 && Math.abs(x) <= FILM_LIMITS.headOnScreen && Math.abs(y) <= FILM_LIMITS.headOnScreen) on++;
+      const cam = camOf(k);
+      const [x, y, d] = projectToNdc(cam, hp, ASPECT);
+      if (!(d > 0 && Math.abs(x) <= FILM_LIMITS.headOnScreen && Math.abs(y) <= FILM_LIMITS.headOnScreen)) continue;
+      // in frame AND not behind terrain (the head's last 0.6 km — its own ground — untested); under the
+      // mountains (Moria) the line is drawn as x-ray dots through the rock: visible by design
+      const under = pathModeAt(routeSys.path, clamp01(states[k].routeProgress) * R.length) === ROUTE_MODE.underground;
+      if (under || visibility(cam.position as V3, hp, heightAt) >= 0.5) on++;
+      else hid++;
     }
-    if (n && on / n < FILM_LIMITS.headShare) sampledFinding(m.beat, `route head on screen ${fmt((100 * on) / n, 0)} % of the move (< ${100 * FILM_LIMITS.headShare} %)`);
+    // on screen (in frame) ≥ headShare; visible (in frame and not behind terrain) ≥ headVisibleShare
+    if (n && (on + hid) / n < FILM_LIMITS.headShare) sampledFinding(m.beat, `route head on screen ${fmt((100 * (on + hid)) / n, 0)} % of the move (< ${100 * FILM_LIMITS.headShare} %)`);
+    if (n && on / n < FILM_LIMITS.headVisibleShare) sampledFinding(m.beat, `route head visible ${fmt((100 * on) / n, 0)} % of the move (< ${100 * FILM_LIMITS.headVisibleShare} %; ${hid} samples in frame but behind terrain)`);
   }
-  const occluded = (a: readonly number[], b: readonly number[]): number => {
-    let worst = -Infinity;
-    for (let s = 0.02; s < 0.985; s += 0.005) worst = Math.max(worst, ctx.H(a[0] + (b[0] - a[0]) * s, a[2] + (b[2] - a[2]) * s) - (a[1] + (b[1] - a[1]) * s));
-    return worst;
-  };
-  // label anchors: on the check's film and on the page's (today without the build); a finding both share is
-  // reported once, the others say which compile they belong to
-  const anchorFindings = (caps: CaptionDef[]): Map<string, { beat: number; msgs: string[] }> => {
-    const res = new Map<string, { beat: number; msgs: string[] }>();
-    for (const c of caps) {
-      if (!c.anchor) continue;
-      let n = 0;
-      let bad = 0;
-      let blocked = 0;
-      let worst = '';
-      for (let k = Math.ceil(c.t0 * HZ); k <= Math.floor(c.t1 * HZ) && k <= K; k += 3) {
-        if (captionReveal(c, k * h) < 0.05) continue;
-        n++;
-        const cam = camOf(k);
-        const [x, y, d] = projectToNdc(cam, c.anchor, ASPECT);
-        if (!(d > 0 && Math.abs(x) <= FILM_LIMITS.safeX && y >= FILM_LIMITS.safeY[0] && y <= FILM_LIMITS.safeY[1])) {
-          bad++;
-          worst = `(${fmt(x, 2)}, ${fmt(y, 2)})`;
-        } else if (occluded(cam.position, c.anchor) > 0) blocked++;
+  // labels: the TitleSystem itself (its pure per-state helpers) with the page's inputs (boot.ts): subjects
+  // from the build (titleSubjects; no silhouette triangles in Node — they only steer the side choice), the
+  // HeightField, the route head as drawn. Each sample = one film frame tF, laid out at the shutter's centre.
+  const titles = new TitleSystem(film.captions, {
+    fps: film.fps,
+    shutter: film.shutter,
+    stateAt: (t) => program.evaluate(t),
+    heightAt,
+    subjects: titleSubjects(ctx.built, heightAt),
+    headAt: (st, o) => routeSys.headPoint(st, o),
+  }) as unknown as TitleInternals;
+  for (const fn of ['anchorPoint', 'subjectVisible'] as const)
+    if (typeof titles[fn] !== 'function') throw new Error(`film check: TitleSystem.${fn} is gone — mirror the TitleSystem's label point / visibility here again`);
+  const layoutAt = (tF: number): SceneState => program.evaluate(film.shutter > 0 ? tF + (0.5 * film.shutter) / film.fps : tF);
+  for (const c of film.captions) {
+    if (!c.anchor) continue;
+    let n = 0;
+    let bad = 0;
+    let off = 0;
+    let hidden = 0;
+    let minVis = 1;
+    let worst = '';
+    for (let k = Math.ceil(c.t0 * HZ); k <= Math.floor(c.t1 * HZ) && k <= K; k += 3) {
+      if (captionReveal(c, k * h) < 0.05) continue;
+      n++;
+      const ls = layoutAt(k * h);
+      const P = titles.anchorPoint(c, ls);
+      const A = projectToScreen(ls.camera, P, LW, LH);
+      const os = A ? onScreen(A, LW, LH, LABEL_OFFSCREEN_FADE * LH) : 0;
+      const sv = titles.subjectVisible(c, ls, P);
+      // the page draws the label at opacity onScreen × subjectVisible (× reveal): below 0.5 it has faded
+      if (!A || os * sv < 0.5) {
+        if (!A || os < 0.5) off++;
+        else {
+          hidden++;
+          minVis = Math.min(minVis, sv);
+        }
+        continue;
       }
-      const msgs: string[] = [];
-      if (bad) msgs.push(`label anchor of ${c.id} outside the safe zone in ${bad}/${n} samples (e.g. NDC ${worst})`);
-      if (blocked) msgs.push(`label anchor of ${c.id} hidden behind terrain in ${blocked}/${n} samples`);
-      res.set(c.id, { beat: beats.findIndex((b) => (isHold(b) ? b.hold : (b as MoveJson).move) === c.id.split(':')[0]), msgs });
+      const x = (2 * A.x) / LW - 1;
+      const y = 1 - (2 * A.y) / LH;
+      // the diamond on the route head (blended more than half way toward it) may sit lower
+      const hp = headOf(ls);
+      const onHead = !!hp && Math.hypot(P[0] - hp[0], P[1] - hp[1], P[2] - hp[2]) < Math.hypot(P[0] - c.anchor[0], P[1] - c.anchor[1], P[2] - c.anchor[2]);
+      const yMin = onHead ? FILM_LIMITS.headSafeYMin : FILM_LIMITS.safeY[0];
+      if (!(Math.abs(x) <= FILM_LIMITS.safeX && y >= yMin && y <= FILM_LIMITS.safeY[1])) {
+        bad++;
+        worst = `(${fmt(x, 2)}, ${fmt(y, 2)})`;
+      }
     }
-    return res;
-  };
-  for (const { beat, msgs } of anchorFindings(film.captions).values()) for (const m of msgs) sampledFinding(beat, m);
+    const beat = beats.findIndex((b) => (isHold(b) ? b.hold : (b as MoveJson).move) === c.id.split(':')[0]);
+    if (off) sampledFinding(beat, `label ${c.id} off frame (its diamond outside the frame: the page fades it out) in ${off}/${n} samples`);
+    if (bad) sampledFinding(beat, `label ${c.id}: its diamond (the anchor, or the route head resting on the subject) outside the safe zone in ${bad}/${n} samples (e.g. NDC ${worst})`);
+    if (hidden) sampledFinding(beat, `label ${c.id} hidden (its subject behind terrain, visibility ${fmt(minVis, 2)}: the page fades it out) in ${hidden}/${n} samples`);
+  }
+  // the board's edge at the top of a move's frame (the dark studio void beyond the floating board where the
+  // land should run to the horizon): visibleTopVoid at 4 Hz while the view is narrower than the board. Moves
+  // to or from an overview hold (the opening descent, the closing pull-out) are exempt: they travel between
+  // the land and the whole floating board, whose edge and the void round it are that shot's subject.
+  const overviewMove = (m: (typeof rig.moves)[number]) => [m.a, m.b].some((j) => ['open', 'end'].includes(style(j)));
+  for (const m of rig.moves) {
+    if (overviewMove(m)) continue;
+    let bad = 0;
+    let worst = 0;
+    let first = -1;
+    let last = -1;
+    for (let k = Math.ceil(m.t0 * HZ); k <= Math.floor(m.t1 * HZ) && k <= K; k += 6) {
+      if (poses[k].w > FILM_LIMITS.moveVoidMaxW) continue;
+      const v = visibleTopVoid(ctx, camOf(k));
+      if (v > FILM_LIMITS.moveTopVoid) {
+        bad++;
+        worst = Math.max(worst, v);
+        if (first < 0) first = k * h;
+        last = k * h;
+      }
+    }
+    if (bad) sampledFinding(m.beat, `the board's edge in the top of the frame (visible void up to ${fmt(100 * worst, 0)} % of the top rows > ${100 * FILM_LIMITS.moveTopVoid} %) at ${fmt(first, 2)}–${fmt(last, 2)} s (${bad} samples at 4 Hz)`);
+  }
   const lodBias = tl.film.lodBias ?? 1;
   // the landmark's real LOD count (the page passes levels.length to selectLod): the Node build keeps no
   // geometry (lods: []), so a landmark that switches under the 3-level assumption is rebuilt with geometry
@@ -737,6 +951,137 @@ export async function checkFilm(world: World, landmarks: LandmarkDefinition[], o
   return out;
 }
 
+// ───────────────────────────── shot-list sync ─────────────────────────────
+
+interface ShotListDoc {
+  film: { seconds: number; beats: number };
+  classes: Record<string, [number, number]>;
+  segments: { id: string; seconds: number; tod: number | null; mix?: Record<string, number>; beats?: string[] }[];
+  landmarks: Record<string, { tod: number | null; screenSeconds: number }>;
+}
+
+/**
+ * data/tour/shotlist.json from the compiled film (`--sync-shotlist`): film.seconds and film.beats; per segment
+ * its seconds (its beats' compiled durations), tod (the middle of its last hold) and mix (screen-time shares
+ * by the camera's distance class, 24 Hz samples of the rig); per hold subject (the hold's label landmark) its
+ * tod (hold middle) and screenSeconds (hold duration). Segment membership is edited by hand (the check
+ * rejects segments that do not list the beats in order). The file's one-line-per-entry formatting is kept:
+ * values are replaced in place and the result must parse to exactly the intended document.
+ */
+export function syncShotlist(text: string, program: FilmProgram, tl: TimelineJson): { text: string; changes: string[] } {
+  const doc = JSON.parse(text) as ShotListDoc;
+  const want = JSON.parse(text) as ShotListDoc;
+  const { rig, film } = program;
+  const beats = tl.beats;
+  const isHold = (b: BeatJson): b is HoldJson => 'hold' in b;
+  const ids = beats.map((b) => (isHold(b) ? b.hold : (b as MoveJson).move));
+  const order = doc.segments.flatMap((s) => s.beats ?? []);
+  if (order.join(',') !== ids.join(',')) throw new Error(`shotlist segments do not list the timeline's beats in order — edit segment membership by hand first (segments: ${order.join(', ')})`);
+  const r2 = (v: number) => Math.round(v * 100) / 100;
+  const changes: string[] = [];
+  const note = (what: string, a: unknown, b: unknown) => {
+    if (JSON.stringify(a) !== JSON.stringify(b)) changes.push(`${what}: ${JSON.stringify(a)} → ${JSON.stringify(b)}`);
+  };
+  want.film.seconds = r2(film.duration);
+  want.film.beats = beats.length;
+  note('film.seconds', doc.film.seconds, want.film.seconds);
+  note('film.beats', doc.film.beats, want.film.beats);
+  // distance class of the rig's camera (slant distance to the target) at 24 Hz
+  const classes = Object.entries(doc.classes).sort((a, b) => a[1][0] - b[1][0]);
+  const classOf = (d: number) => (classes.find(([, [lo, hi]]) => d >= lo && d < hi) ?? (d < classes[0][1][0] ? classes[0] : classes[classes.length - 1]))[0];
+  const HZ = 24;
+  for (const [si, s] of want.segments.entries()) {
+    const idx = (s.beats ?? []).map((id) => ids.indexOf(id));
+    s.seconds = r2(idx.reduce((a, i) => a + rig.durs[i], 0));
+    const lastHold = [...idx].reverse().find((i) => isHold(beats[i]));
+    if (lastHold !== undefined) {
+      const hj = beats[lastHold] as HoldJson;
+      s.tod = r2((hj.tod[0] + hj.tod[1]) / 2);
+    }
+    if (s.mix) {
+      const n: Record<string, number> = {};
+      let total = 0;
+      for (const i of idx)
+        for (let k = Math.ceil(rig.t0s[i] * HZ); k < (rig.t0s[i] + rig.durs[i]) * HZ - 1e-9; k++) {
+          const c = classOf(rig.pose(k / HZ).dist);
+          n[c] = (n[c] ?? 0) + 1;
+          total++;
+        }
+      // in the file's class order (wide → close)
+      const mix: Record<string, number> = {};
+      for (const c of Object.keys(doc.classes)) if (n[c]) mix[c] = r2(n[c] / total);
+      s.mix = mix;
+    }
+    const d = doc.segments[si];
+    note(`segment ${s.id}.seconds`, d.seconds, s.seconds);
+    note(`segment ${s.id}.tod`, d.tod, s.tod);
+    if (s.mix) note(`segment ${s.id}.mix`, d.mix, s.mix);
+  }
+  for (const i of beats.keys()) {
+    const b = beats[i];
+    if (!isHold(b) || b.style === 'open' || b.style === 'end') continue;
+    const lm = b.captions?.find((c) => c.landmark)?.landmark;
+    const L = lm ? want.landmarks[lm] : undefined;
+    if (!lm || !L) continue;
+    L.tod = r2((b.tod[0] + b.tod[1]) / 2);
+    L.screenSeconds = r2(rig.durs[i]);
+    note(`landmark ${lm}.tod`, doc.landmarks[lm].tod, L.tod);
+    note(`landmark ${lm}.screenSeconds`, doc.landmarks[lm].screenSeconds, L.screenSeconds);
+  }
+  // landmarks passed inside a move (a pass caption while the head goes by): tod at the caption's middle,
+  // screenSeconds = its visible window
+  for (const c of film.captions) {
+    const [beatId, kind, idx] = c.id.split(':');
+    const bi = ids.indexOf(beatId);
+    if (bi < 0 || isHold(beats[bi]) || (kind !== 'pass' && kind !== 'place')) continue;
+    const lm = (beats[bi] as MoveJson).captions?.[Number(idx)]?.landmark;
+    const L = lm ? want.landmarks[lm] : undefined;
+    if (!lm || !L) continue;
+    L.tod = r2(program.evaluate((c.t0 + c.t1) / 2).tod);
+    L.screenSeconds = r2(c.t1 - c.t0);
+    note(`landmark ${lm}.tod`, doc.landmarks[lm].tod, L.tod);
+    note(`landmark ${lm}.screenSeconds`, doc.landmarks[lm].screenSeconds, L.screenSeconds);
+  }
+  // in-place edits on the one-line entries
+  const num = (v: number | null) => (v === null ? 'null' : String(v));
+  const setIn = (line: string, key: string, value: string): string => {
+    const re = new RegExp(`("${key}":\\s*)(-?[0-9.eE+-]+|null)`);
+    if (!re.test(line)) throw new Error(`shotlist: no "${key}" on the line ${line.trim().slice(0, 60)}…`);
+    return line.replace(re, `$1${value}`);
+  };
+  const mixText = (m: Record<string, number>) => `{ ${Object.entries(m).map(([k, v]) => `"${k}": ${v}`).join(', ')} }`;
+  const lines = text.split('\n');
+  let section = '';
+  for (let li = 0; li < lines.length; li++) {
+    let line = lines[li];
+    const sec = /^ {2}"(\w+)":/.exec(line);
+    if (sec) section = sec[1];
+    if (section === 'film' && sec) {
+      line = setIn(line, 'seconds', num(want.film.seconds));
+      line = setIn(line, 'beats', num(want.film.beats));
+    } else if (section === 'segments') {
+      const m = /^\s*\{ "id": "([^"]+)"/.exec(line);
+      const s = m && want.segments.find((x) => x.id === m[1]);
+      if (s) {
+        line = setIn(line, 'seconds', num(s.seconds));
+        line = setIn(line, 'tod', num(s.tod));
+        if (s.mix) line = line.replace(/"mix":\s*\{[^}]*\}/, `"mix": ${mixText(s.mix)}`);
+      }
+    } else if (section === 'landmarks') {
+      const m = /^ {4}"([a-z0-9-]+)": \{/.exec(line);
+      const L = m && want.landmarks[m[1]];
+      if (L) {
+        line = setIn(line, 'tod', num(L.tod));
+        line = setIn(line, 'screenSeconds', num(L.screenSeconds));
+      }
+    }
+    lines[li] = line;
+  }
+  const out = lines.join('\n');
+  if (JSON.stringify(JSON.parse(out)) !== JSON.stringify(want)) throw new Error('shotlist: the in-place edit does not reproduce the intended document (formatting the sync does not know?)');
+  return { text: out, changes };
+}
+
 // ───────────────────────────── CLI ─────────────────────────────
 
 async function main(): Promise<void> {
@@ -760,6 +1105,14 @@ async function main(): Promise<void> {
   }
   const { world, landmarks } = await loadWorld(dir);
   const r = await checkFilm(world, landmarks, { table: argv.includes('--table'), built: !argv.includes('--no-built') });
+  if (argv.includes('--sync-shotlist') && r.program) {
+    // write the shot list from the compiled film, then drop the sync findings the check made before it
+    const file = join(ROOT, 'data/tour/shotlist.json');
+    const { text, changes } = syncShotlist(readFileSync(file, 'utf8'), r.program, r.timeline);
+    if (changes.length) writeFileSync(file, text);
+    console.log(`[film] --sync-shotlist: ${changes.length ? `${changes.length} change(s) → data/tour/shotlist.json\n${changes.map((c) => `        ${c}`).join('\n')}` : 'data/tour/shotlist.json already in sync'}`);
+    r.errors = r.errors.filter((e) => !e.includes('data/tour/shotlist.json'));
+  }
   report(r);
   errors += r.errors.length;
   if (r.table.length) console.log(['', ...r.table].join('\n'));
