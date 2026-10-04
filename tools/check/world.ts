@@ -10,6 +10,7 @@
  *    channel cores (with the declared marsh / lake allowances), ribbon edges above the ground, new
  *    cliffs outside declared gorges / falls, confluence joins (see checkHydroReport)
  *  - onRiver only on landmark places
+ *  - the compiled film (S5, tools/check/film.ts checkFilm): determinism, length, shot-list sync, sampled gates
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -313,6 +314,7 @@ export async function checkBakedWorld(dir: string): Promise<CheckResult> {
   const { world, landmarks } = await loadWorld(dir);
   const { checkLandmarks } = await import('./landmarks.ts');
   const { checkBookmarks } = await import('./bookmarks.ts');
+  const { checkFilm } = await import('./film.ts');
   for (const part of [
     checkRiverLevels(rivers, lakes),
     checkContinuations(dir, rivers),
@@ -321,6 +323,7 @@ export async function checkBakedWorld(dir: string): Promise<CheckResult> {
     checkHydroReport(dir),
     await checkLandmarks(world, landmarks),
     await checkBookmarks(world, landmarks),
+    await checkFilm(world, landmarks),
   ]) {
     out.errors.push(...part.errors);
     out.warnings.push(...part.warnings);

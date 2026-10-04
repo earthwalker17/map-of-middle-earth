@@ -111,7 +111,7 @@
       "captions": [{ "kind": "place", "landmark": "mount-doom", "sub": "The end of the road" }],
       "music": { "mood": "doom", "intensity": 1.0, "hit": "climax" } },
 
-    { "move": "pull-out", "dur": 9, "note": "rise out of Mordor through the ash deck to the whole map", "music": { "mood": "finale", "intensity": 0.8 } },
+    { "move": "pull-out", "dur": 9, "crossDeck": true, "note": "rise out of Mordor through the ash deck to the whole map", "music": { "mood": "finale", "intensity": 0.8 } },
     { "hold": "end", "style": "end", "dur": 13, "camera": { "shot": "overview-day" }, "tod": [19.4, 19.5],
       "captions": [
         { "kind": "end", "text": "From first light in the Shire to the fires of Mount Doom", "in": 1.0, "out": 6.0 },

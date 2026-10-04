@@ -173,6 +173,11 @@ export interface MoveJson {
   rho?: number;
   /** peak elevation while zoomed out, degrees */
   apexEl?: number;
+  /**
+   * the move may rise through an ash deck (the final pull-out out of Mordor): the rig's deck rule (stay
+   * 6 km under a covering deck) does not apply to it, and the film check accepts the crossing
+   */
+  crossDeck?: boolean;
   captions?: CaptionJson[];
   events?: EventKeysJson;
   music?: MusicCueJson;
@@ -254,6 +259,50 @@ export interface CompiledFilm {
   captions: CaptionDef[];
   /** content hash of the compiled film (route + timeline + compiler version) */
   hash: string;
+}
+
+// ───────────────────────────── music cue sheet ─────────────────────────────
+
+/** A run of consecutive beats with the same music mood. */
+export interface CueSection {
+  id: string;
+  t0: number;
+  t1: number;
+  mood: string;
+}
+
+/** One beat as a music cue: its window, mood, intensity curve (film seconds, 0..1), subject and time of day. */
+export interface CueBeat {
+  id: string;
+  kind: 'hold' | 'move';
+  /** hold style (hero / stop / open / end); moves: 'move' */
+  style: string;
+  t0: number;
+  t1: number;
+  mood: string;
+  /** [t, value] keys: the intensity ramps from the previous beat's over the first second (moves: across the move) */
+  intensity: [number, number][];
+  place: string | null;
+  /** time of day at the beat's start and end, hours */
+  tod: [number, number];
+}
+
+/** A sync point the score should land on. */
+export interface CueHit {
+  t: number;
+  /** beat hits: the beat's `music.hit` ('arrive', 'reveal', 'beacon', …); events: `event:<channel>` */
+  type: string;
+  beat: string;
+}
+
+/** The music cue sheet (tools/check/film.ts --cues; tools/music reads it). */
+export interface CueSheet {
+  version: 1;
+  film: { duration: number; fps: number; hash: string };
+  tempoHint: { bpm: number };
+  sections: CueSection[];
+  cues: CueBeat[];
+  hits: CueHit[];
 }
 
 /** Metadata the film timeline reports to the capture harness (Timeline.meta). */

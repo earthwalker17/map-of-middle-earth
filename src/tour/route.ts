@@ -1,26 +1,177 @@
 /**
- * Route compiler (S5): data/tour/route.json v2 → CompiledRoute (world units, draped, arc length).
+ * Route compiler (S5): data/tour/route.json v2 → CompiledRoute (world units, draped, arc length s).
  *
- * WAVE-0 STUB (main agent): legs → control points → centripetal Catmull-Rom (foot / underground),
- * river centreline or lake chord (boat) → uniform resampling by arc length → heights. The tour agent
- * refines it (water-aware draping envelope, river projection details) behind the same signature.
+ *  - foot / underground legs: centripetal Catmull-Rom through the leg's points (neighbours from the adjacent
+ *    legs, so joins stay smooth), resampled uniformly by arc length (spacingKm ≈ 0.25 km);
+ *  - boat legs on a river: the leg's ends are projected onto the river's SEGMENTS; the path runs start →
+ *    projection → the river centreline → projection → end at the interpolated baked water level (`level[]`);
+ *  - boat legs on a lake: the chord between the points at the lake level;
+ *  - heights: foot / underground samples take the upper envelope of the water-aware surface (ground, sea at
+ *    0, river ribbons at their level, lakes at theirs) over ±0.2 km across and ±half a sample along the line;
+ *    boat samples ride max(water level, ground); everything + liftKm. The line never dips under water at a
+ *    river crossing nor sinks into a steep bank.
+ * Marks stay at the place points (place ids, explicit `mark`s, `<leg>:start` / `<leg>:end`).
+ * Pure (no three.js render objects, no DOM): Node and the page compile identical routes.
  */
 import type { World } from '../world/World.ts';
 import { fnv1a } from './hash.ts';
 import { ROUTE_MODE, type CompiledRoute, type RouteJson, type RouteLegJson, type RouteMode, type RoutePointJson } from './schema.ts';
 
-export const ROUTE_COMPILER = 'route-v0';
+export const ROUTE_COMPILER = 'route-v1';
+
+/** half width of the drape envelope across the line, km */
+export const DRAPE_ACROSS_KM = 0.2;
 
 interface PolyPt {
   x: number;
   z: number;
-  /** fixed surface height (water legs) or NaN = drape on the ground */
+  /** water surface the sample rides (river legs) or NaN = drape on the surface envelope */
   y: number;
+  /** lake legs: ride the water-aware surface under the sample itself (lake / river level, else the ground) */
+  surf?: boolean;
   mode: number;
   leg: number;
   /** mark name at this vertex */
   mark?: string;
 }
+
+// ───────────────────────────── numeric hashing ─────────────────────────────
+
+/** FNV-1a over numbers quantised to `quantum` (compiled-data hashes: Node and the page must agree). */
+export function hashFloats(h: number, values: ArrayLike<number>, quantum = 1e-4): number {
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i];
+    const q = Number.isFinite(v) ? Math.round(v / quantum) : 0x7fffffff;
+    // fold the integer (up to ±2^53) as two 26-bit halves, 16 bits at a time
+    const lo = (q % 67108864) | 0;
+    const hi = ((q - (q % 67108864)) / 67108864) | 0;
+    h = Math.imul(h ^ (lo & 0xffff), 0x01000193) >>> 0;
+    h = Math.imul(h ^ ((lo >>> 16) & 0xffff), 0x01000193) >>> 0;
+    h = Math.imul(h ^ (hi & 0xffff), 0x01000193) >>> 0;
+    h = Math.imul(h ^ ((hi >>> 16) & 0xffff), 0x01000193) >>> 0;
+  }
+  return h >>> 0;
+}
+
+// ───────────────────────────── the water-aware surface ─────────────────────────────
+
+/** The surface the route and the camera rig stand on: ground, the sea plane, river ribbons and lakes. */
+export interface WaterField {
+  /** water surface at (x, z): a river ribbon's level or a lake's level, else −Infinity (the sea is in `surface`) */
+  level(x: number, z: number): number;
+  /** max(ground, 0 = the sea plane, water level) */
+  surface(x: number, z: number): number;
+}
+
+function insideRing(r: readonly (readonly [number, number])[], x: number, z: number): boolean {
+  let c = false;
+  for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+    const [xi, zi] = r[i];
+    const [xj, zj] = r[j];
+    if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) c = !c;
+  }
+  return c;
+}
+
+const RIVER_CELL = 2;
+/** floats per river segment record */
+const SEG = 8;
+const fields = new WeakMap<World, WaterField>();
+
+/** The world's water field (built once per World and shared by the route compiler and the rig). */
+export function waterField(world: World): WaterField {
+  const cached = fields.get(world);
+  if (cached) return cached;
+  const R = world.spec.json.rivers as { ribbonScale?: number; ribbonMarginKm?: number };
+  const scale = R.ribbonScale ?? 1;
+  const margin = R.ribbonMarginKm ?? 0.1;
+  // river segments: x0, z0, x1, z1, level0, level1, half width², line index — bucketed in a dense 2 km grid
+  // (CSR: cellStart / cellSegs), each segment in every cell its ribbon box overlaps
+  const seg: number[] = [];
+  const GW = Math.ceil((world.spec.xMax - world.spec.xMin) / RIVER_CELL) + 1;
+  const GH = Math.ceil((world.spec.zMax - world.spec.zMin) / RIVER_CELL) + 1;
+  const cellOf = (x: number, z: number): number => {
+    const i = Math.floor((x - world.spec.xMin) / RIVER_CELL);
+    const j = Math.floor((z - world.spec.zMin) / RIVER_CELL);
+    return i < 0 || j < 0 || i >= GW || j >= GH ? -1 : j * GW + i;
+  };
+  const pairs: number[] = [];
+  world.rivers.forEach((r, line) => {
+    // the runtime ribbon half width (src/water/rivers.ts ribbonHalfWidth): never inside the carved core
+    const hw = Math.max((scale * r.widthKm) / 2, Math.max(r.widthKm / 2, 0.5) + margin);
+    const lev = r.level ?? r.points.map((p) => world.heights.sample(p[0], p[1], 'base'));
+    for (let i = 0; i + 1 < r.points.length; i++) {
+      const [x0, z0] = r.points[i];
+      const [x1, z1] = r.points[i + 1];
+      const id = seg.length / SEG;
+      seg.push(x0, z0, x1, z1, lev[i], lev[i + 1], hw * hw, line);
+      const i0 = Math.max(0, Math.floor((Math.min(x0, x1) - hw - world.spec.xMin) / RIVER_CELL));
+      const i1 = Math.min(GW - 1, Math.floor((Math.max(x0, x1) + hw - world.spec.xMin) / RIVER_CELL));
+      const j0 = Math.max(0, Math.floor((Math.min(z0, z1) - hw - world.spec.zMin) / RIVER_CELL));
+      const j1 = Math.min(GH - 1, Math.floor((Math.max(z0, z1) + hw - world.spec.zMin) / RIVER_CELL));
+      for (let b = j0; b <= j1; b++) for (let a = i0; a <= i1; a++) pairs.push(b * GW + a, id);
+    }
+  });
+  const cellStart = new Int32Array(GW * GH + 1);
+  for (let k = 0; k < pairs.length; k += 2) cellStart[pairs[k] + 1]++;
+  for (let c = 0; c < GW * GH; c++) cellStart[c + 1] += cellStart[c];
+  const cellSegs = new Int32Array(pairs.length / 2);
+  const fill = cellStart.slice(0, GW * GH);
+  for (let k = 0; k < pairs.length; k += 2) cellSegs[fill[pairs[k]]++] = pairs[k + 1];
+  const S = Float64Array.from(seg);
+  const lakes = world.lakes
+    .filter((l) => l.level !== null)
+    .map((l) => {
+      const xs = l.ring.map((p) => p[0]);
+      const zs = l.ring.map((p) => p[1]);
+      return { ring: l.ring, level: l.level as number, x0: Math.min(...xs), x1: Math.max(...xs), z0: Math.min(...zs), z1: Math.max(...zs) };
+    });
+  // per query: the nearest covering segment of each river line (a line's ribbon carries the level of its
+  // nearest centreline point — the max over a steep reach would lift the water by the upstream levels)
+  const hitLine: number[] = [];
+  const hitD2: number[] = [];
+  const hitLev: number[] = [];
+  const level = (x: number, z: number): number => {
+    let n = 0;
+    const cell = cellOf(x, z);
+    if (cell >= 0)
+      for (let q = cellStart[cell]; q < cellStart[cell + 1]; q++) {
+        const o = cellSegs[q] * SEG;
+        const ax = S[o];
+        const az = S[o + 1];
+        const dx = S[o + 2] - ax;
+        const dz = S[o + 3] - az;
+        const l2 = dx * dx + dz * dz;
+        const u = l2 > 0 ? Math.min(1, Math.max(0, ((x - ax) * dx + (z - az) * dz) / l2)) : 0;
+        const ex = ax + dx * u - x;
+        const ez = az + dz * u - z;
+        const d2 = ex * ex + ez * ez;
+        if (d2 > S[o + 6]) continue;
+        const line = S[o + 7];
+        const lv = S[o + 4] + (S[o + 5] - S[o + 4]) * u;
+        let j = 0;
+        while (j < n && hitLine[j] !== line) j++;
+        if (j === n) {
+          hitLine[n] = line;
+          hitD2[n] = d2;
+          hitLev[n] = lv;
+          n++;
+        } else if (d2 < hitD2[j]) {
+          hitD2[j] = d2;
+          hitLev[j] = lv;
+        }
+      }
+    let best = -Infinity;
+    for (let j = 0; j < n; j++) if (hitLev[j] > best) best = hitLev[j];
+    for (const l of lakes) if (x >= l.x0 && x <= l.x1 && z >= l.z0 && z <= l.z1 && l.level > best && insideRing(l.ring, x, z)) best = l.level;
+    return best;
+  };
+  const f: WaterField = { level, surface: (x, z) => Math.max(world.heights.sample(x, z), 0, level(x, z)) };
+  fields.set(world, f);
+  return f;
+}
+
+// ───────────────────────────── legs → polyline ─────────────────────────────
 
 /** World XZ of a route point (place display position + offset, or ME-GIS km). */
 export function routePointXZ(world: World, p: RoutePointJson): [number, number] {
@@ -56,18 +207,61 @@ function catmullRom(p0: number[], p1: number[], p2: number[], p3: number[], n: n
   }
 }
 
-/** Closest vertex index of a polyline to (x, z). */
-function nearestIndex(pts: [number, number][], x: number, z: number): number {
-  let best = 0;
-  let bd = Infinity;
-  for (let i = 0; i < pts.length; i++) {
-    const d = (pts[i][0] - x) ** 2 + (pts[i][1] - z) ** 2;
-    if (d < bd) {
-      bd = d;
-      best = i;
-    }
+/** Nearest point of a polyline to (x, z): segment index, parameter on it, distance. */
+export function projectOntoPolyline(pts: readonly (readonly [number, number])[], x: number, z: number): { seg: number; u: number; dist: number } {
+  let best = { seg: 0, u: 0, dist: Infinity };
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const [ax, az] = pts[i];
+    const dx = pts[i + 1][0] - ax;
+    const dz = pts[i + 1][1] - az;
+    const l2 = dx * dx + dz * dz;
+    const u = l2 > 0 ? Math.min(1, Math.max(0, ((x - ax) * dx + (z - az) * dz) / l2)) : 0;
+    const d = Math.hypot(ax + dx * u - x, az + dz * u - z);
+    if (d < best.dist) best = { seg: i, u, dist: d };
   }
   return best;
+}
+
+/** dry ground inside a lake: an island standing more than this above the lake level */
+const ISLAND_KM = 0.05;
+/** margin of a detour around an island along the chord, km */
+const DETOUR_MARGIN_KM = 1.5;
+
+/**
+ * Interior points of a lake crossing a → b at `spacing`: the straight chord, or — when the chord crosses an
+ * island inside the lake (Tol Brandir) — the chord bent sideways by the smallest sin² bump that keeps every
+ * sample inside the lake on the water.
+ */
+function lakeChord(world: World, ring: [number, number][], level: number, a: [number, number], b: [number, number], spacing: number): [number, number][] {
+  const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const n = Math.max(2, Math.ceil(len / spacing));
+  const nx = -(b[1] - a[1]) / Math.max(len, 1e-9);
+  const nz = (b[0] - a[0]) / Math.max(len, 1e-9);
+  const path = (d: number, ua: number, ub: number): [number, number][] => {
+    const out: [number, number][] = [];
+    for (let k = 1; k < n; k++) {
+      const u = k / n;
+      const v = ub > ua ? Math.min(1, Math.max(0, (u - ua) / (ub - ua))) : 0;
+      const bump = Math.sin(Math.PI * v) ** 2;
+      out.push([a[0] + (b[0] - a[0]) * u + nx * d * bump, a[1] + (b[1] - a[1]) * u + nz * d * bump]);
+    }
+    return out;
+  };
+  const dry = (pts: [number, number][]) => pts.map((p) => insideRing(ring, p[0], p[1]) && world.heights.sample(p[0], p[1]) > level + ISLAND_KM);
+  const chord = path(0, 0, 0);
+  const wet = dry(chord);
+  const first = wet.indexOf(true);
+  if (first < 0) return chord;
+  const last = wet.lastIndexOf(true);
+  const m = DETOUR_MARGIN_KM / len;
+  const ua = Math.max(0, (first + 1) / n - m);
+  const ub = Math.min(1, (last + 1) / n + m);
+  for (let k = 1; k <= 16; k++)
+    for (const d of [0.5 * k, -0.5 * k]) {
+      const p = path(d, ua, ub);
+      if (!dry(p).some(Boolean)) return p;
+    }
+  return chord;
 }
 
 function legPolyline(world: World, legs: RouteLegJson[], li: number, spacing: number): PolyPt[] {
@@ -76,23 +270,40 @@ function legPolyline(world: World, legs: RouteLegJson[], li: number, spacing: nu
   const code = ROUTE_MODE[mode];
   const ctrl = leg.points.map((p) => routePointXZ(world, p));
   const out: PolyPt[] = [];
+  const first = leg.points[0];
+  const last = leg.points[leg.points.length - 1];
   if (mode === 'boat' && leg.river) {
     const river = world.rivers.find((r) => r.id === leg.river);
     if (!river) throw new Error(`route leg ${leg.id}: unknown river '${leg.river}'`);
+    const P = river.points;
+    const lev = river.level ?? P.map((p) => Math.max(0, world.heights.sample(p[0], p[1], 'base')));
     const [a, b] = [ctrl[0], ctrl[ctrl.length - 1]];
-    const ia = nearestIndex(river.points, a[0], a[1]);
-    const ib = nearestIndex(river.points, b[0], b[1]);
-    const lev = (i: number) => (river.level ? river.level[i] : Math.max(0, world.heights.sample(river.points[i][0], river.points[i][1])));
-    out.push({ x: a[0], z: a[1], y: lev(ia), mode: code, leg: li, mark: markOf(leg.points[0]) });
-    const step = ia <= ib ? 1 : -1;
-    for (let i = ia; i !== ib; i += step) out.push({ x: river.points[i][0], z: river.points[i][1], y: lev(i), mode: code, leg: li });
-    out.push({ x: b[0], z: b[1], y: lev(ib), mode: code, leg: li, mark: markOf(leg.points[leg.points.length - 1]) });
-    return out;
+    const pa = projectOntoPolyline(P, a[0], a[1]);
+    const pb = projectOntoPolyline(P, b[0], b[1]);
+    const at = (q: { seg: number; u: number }): [number, number, number] => {
+      const i = q.seg;
+      return [P[i][0] + (P[i + 1][0] - P[i][0]) * q.u, P[i][1] + (P[i + 1][1] - P[i][1]) * q.u, lev[i] + (lev[i + 1] - lev[i]) * q.u];
+    };
+    const [ax, az, al] = at(pa);
+    const [bx, bz, bl] = at(pb);
+    out.push({ x: a[0], z: a[1], y: al, mode: code, leg: li, mark: markOf(first) });
+    if (Math.hypot(ax - a[0], az - a[1]) > 1e-6) out.push({ x: ax, z: az, y: al, mode: code, leg: li });
+    const fa = pa.seg + pa.u;
+    const fb = pb.seg + pb.u;
+    if (fa <= fb) for (let i = pa.seg + 1; i <= pb.seg; i++) out.push({ x: P[i][0], z: P[i][1], y: lev[i], mode: code, leg: li });
+    else for (let i = pa.seg; i >= pb.seg + 1; i--) out.push({ x: P[i][0], z: P[i][1], y: lev[i], mode: code, leg: li });
+    if (Math.hypot(bx - b[0], bz - b[1]) > 1e-6) out.push({ x: bx, z: bz, y: bl, mode: code, leg: li });
+    out.push({ x: b[0], z: b[1], y: bl, mode: code, leg: li, mark: markOf(last) });
+    // drop zero-length steps (a projection landing on a vertex)
+    return out.filter((p, i) => i === 0 || Math.hypot(p.x - out[i - 1].x, p.z - out[i - 1].z) > 1e-6 || p.mark);
   }
   if (mode === 'boat' && leg.lake) {
     const lake = world.lakes.find((l) => l.key === leg.lake);
     if (!lake || lake.level === null) throw new Error(`route leg ${leg.id}: unknown lake '${leg.lake}'`);
-    leg.points.forEach((p, i) => out.push({ x: ctrl[i][0], z: ctrl[i][1], y: lake.level!, mode: code, leg: li, mark: markOf(p) }));
+    leg.points.forEach((p, i) => {
+      if (i > 0) for (const q of lakeChord(world, lake.ring, lake.level!, ctrl[i - 1], ctrl[i], spacing)) out.push({ x: q[0], z: q[1], y: NaN, surf: true, mode: code, leg: li });
+      out.push({ x: ctrl[i][0], z: ctrl[i][1], y: NaN, surf: true, mode: code, leg: li, mark: markOf(p) });
+    });
     return out;
   }
   // foot / underground: smooth curve; neighbours come from the adjacent legs so joins stay C1
@@ -107,22 +318,18 @@ function legPolyline(world: World, legs: RouteLegJson[], li: number, spacing: nu
     catmullRom(P[i - 1], P[i], P[i + 1], P[i + 2], n, seg);
     seg.forEach((q, k) => out.push({ x: q[0], z: q[1], y: NaN, mode: code, leg: li, mark: k === 0 ? markOf(leg.points[i - 1]) : undefined }));
   }
-  const last = ctrl[ctrl.length - 1];
-  out.push({ x: last[0], z: last[1], y: NaN, mode: code, leg: li, mark: markOf(leg.points[leg.points.length - 1]) });
+  const end = ctrl[ctrl.length - 1];
+  out.push({ x: end[0], z: end[1], y: NaN, mode: code, leg: li, mark: markOf(last) });
   return out;
 }
 
-/** Ground height for the line: the upper envelope across the line (±0.2 km) so it never sinks into a bank. */
-function drape(world: World, x: number, z: number, tx: number, tz: number): number {
-  let h = -Infinity;
-  for (const o of [-0.2, 0, 0.2]) h = Math.max(h, world.heights.sample(x - tz * o, z + tx * o));
-  return Math.max(0, h);
-}
+// ───────────────────────────── compile ─────────────────────────────
 
 export function compileRoute(world: World, json: RouteJson): CompiledRoute {
   if (json.version !== 2) throw new Error(`route.json: version ${json.version} (want 2)`);
   const spacing = json.defaults.spacingKm;
   const lift = json.defaults.liftKm;
+  const water = waterField(world);
   // legs chain
   for (let i = 1; i < json.legs.length; i++) {
     const [a, b] = [json.legs[i - 1].points.at(-1)!, json.legs[i].points[0]];
@@ -150,47 +357,42 @@ export function compileRoute(world: World, json: RouteJson): CompiledRoute {
   poly.forEach((p, i) => {
     if (p.mark && marks[p.mark] === undefined) marks[p.mark] = cum[i];
   });
-  // leg spans (+ start / end marks)
-  const legs: CompiledRoute['legs'] = json.legs.map((l, li) => {
-    let s0 = Infinity;
-    let s1 = -Infinity;
-    poly.forEach((p, i) => {
-      if (p.leg === li) {
-        s0 = Math.min(s0, cum[i]);
-        s1 = Math.max(s1, cum[i]);
-      }
-    });
-    if (li > 0) s0 = Math.min(s0, legsEnd(li - 1));
-    return { id: l.id, mode: l.mode ?? 'foot', s0, s1 };
+  // leg spans: a leg starts where the previous one ends (its first vertex is the shared join)
+  const legEnd = new Array<number>(json.legs.length).fill(-Infinity);
+  const legStart = new Array<number>(json.legs.length).fill(Infinity);
+  poly.forEach((p, i) => {
+    legEnd[p.leg] = Math.max(legEnd[p.leg], cum[i]);
+    legStart[p.leg] = Math.min(legStart[p.leg], cum[i]);
   });
-  function legsEnd(li: number): number {
-    let s = -Infinity;
-    poly.forEach((p, i) => p.leg === li && (s = Math.max(s, cum[i])));
-    return s;
-  }
+  const legs: CompiledRoute['legs'] = json.legs.map((l, li) => ({ id: l.id, mode: l.mode ?? 'foot', s0: li > 0 ? Math.min(legStart[li], legEnd[li - 1]) : legStart[li], s1: legEnd[li] }));
   for (const l of legs) {
     marks[`${l.id}:start`] = l.s0;
     marks[`${l.id}:end`] = l.s1;
   }
   // uniform resampling by arc length
   const count = Math.max(2, Math.ceil(length / spacing) + 1);
+  const step = length / (count - 1);
   const pts = new Float64Array(count * 4);
   const tan = new Float32Array(count * 2);
   const mode = new Uint8Array(count);
   const leg = new Uint16Array(count);
+  const surf = new Uint8Array(count);
   let j = 0;
   for (let k = 0; k < count; k++) {
-    const s = (length * k) / (count - 1);
+    const s = k === count - 1 ? length : step * k;
     while (j < poly.length - 2 && cum[j + 1] < s) j++;
     const a = poly[j];
     const b = poly[j + 1];
-    const u = cum[j + 1] > cum[j] ? (s - cum[j]) / (cum[j + 1] - cum[j]) : 0;
+    const u = cum[j + 1] > cum[j] ? Math.min(1, Math.max(0, (s - cum[j]) / (cum[j + 1] - cum[j]))) : 0;
     pts[k * 4] = a.x + (b.x - a.x) * u;
     pts[k * 4 + 2] = a.z + (b.z - a.z) * u;
     pts[k * 4 + 3] = s;
     pts[k * 4 + 1] = Number.isNaN(a.y) || Number.isNaN(b.y) ? NaN : a.y + (b.y - a.y) * u;
-    mode[k] = u < 0.5 ? a.mode : b.mode;
-    leg[k] = u < 0.5 ? a.leg : b.leg;
+    // a segment belongs to the leg of its end vertex (a leg's first vertex is the join, kept by the previous leg)
+    const own = k === 0 ? a : b;
+    mode[k] = own.mode;
+    leg[k] = own.leg;
+    surf[k] = own.surf ? 1 : 0;
   }
   for (let k = 0; k < count; k++) {
     const k0 = Math.max(0, k - 1);
@@ -200,10 +402,27 @@ export function compileRoute(world: World, json: RouteJson): CompiledRoute {
     const l = Math.hypot(dx, dz) || 1;
     tan[k * 2] = dx / l;
     tan[k * 2 + 1] = dz / l;
-    const y = pts[k * 4 + 1];
-    pts[k * 4 + 1] = (Number.isNaN(y) ? drape(world, pts[k * 4], pts[k * 4 + 2], tan[k * 2], tan[k * 2 + 1]) : y) + lift;
   }
-  return { pts, tan, mode, leg, count, length, marks, legs, hash: fnv1a(`${ROUTE_COMPILER}|${JSON.stringify(json)}|${count}`) };
+  // heights: boat samples ride their water level (never under the ground), the rest the surface envelope
+  const half = step / 2;
+  for (let k = 0; k < count; k++) {
+    const x = pts[k * 4];
+    const z = pts[k * 4 + 2];
+    const tx = tan[k * 2];
+    const tz = tan[k * 2 + 1];
+    const yw = pts[k * 4 + 1];
+    let h: number;
+    if (surf[k]) h = water.surface(x, z);
+    else if (!Number.isNaN(yw)) h = Math.max(yw, world.heights.sample(x, z), 0);
+    else {
+      h = -Infinity;
+      for (const a of [-half, 0, half])
+        for (const o of [-DRAPE_ACROSS_KM, -DRAPE_ACROSS_KM / 2, 0, DRAPE_ACROSS_KM / 2, DRAPE_ACROSS_KM]) h = Math.max(h, water.surface(x + tx * a - tz * o, z + tz * a + tx * o));
+    }
+    pts[k * 4 + 1] = h + lift;
+  }
+  const hash = hashFloats(hashFloats(Number.parseInt(fnv1a(`${ROUTE_COMPILER}|${JSON.stringify(json)}|${count}`), 16), pts), [length, ...Object.values(marks)]);
+  return { pts, tan, mode, leg, count, length, marks, legs, hash: hash.toString(16).padStart(8, '0') };
 }
 
 /** Position on the compiled route at arc length s (linear between samples), world units. */
@@ -213,4 +432,91 @@ export function routeAt(r: CompiledRoute, s: number, out: [number, number, numbe
   const u = f - i;
   for (let c = 0; c < 3; c++) out[c] = r.pts[i * 4 + c] + (r.pts[(i + 1) * 4 + c] - r.pts[i * 4 + c]) * u;
   return out;
+}
+
+// ───────────────────────────── diagnostics ─────────────────────────────
+
+export interface RouteReport {
+  /** pairs of arc lengths where the line crosses itself (non-adjacent samples) */
+  crossings: [number, number][];
+  /** sharp turns: arc length and the turn angle (degrees) between the incoming and outgoing 0.5 km chords */
+  kinks: { s: number; deg: number; leg: string }[];
+  /** consecutive samples more than 1 km apart in height */
+  jumps: { s: number; dy: number; leg: string }[];
+  /** largest height step between consecutive samples, km */
+  maxStep: number;
+}
+
+/** Suspicious geometry of a compiled route (self-crossings, kinks > 120° within 1 km, height jumps > 1 km). */
+export function routeReport(r: CompiledRoute, kinkDeg = 120, jumpKm = 1): RouteReport {
+  const n = r.count;
+  const P = r.pts;
+  const step = r.length / Math.max(1, n - 1);
+  const legOf = (k: number) => r.legs[r.leg[k]]?.id ?? '?';
+  // kinks: chords of 0.5 km either side (a 1 km window), local maxima only
+  const w = Math.max(1, Math.round(0.5 / step));
+  const kinks: RouteReport['kinks'] = [];
+  for (let k = w; k + w < n; k++) {
+    const ax = P[k * 4] - P[(k - w) * 4];
+    const az = P[k * 4 + 2] - P[(k - w) * 4 + 2];
+    const bx = P[(k + w) * 4] - P[k * 4];
+    const bz = P[(k + w) * 4 + 2] - P[k * 4 + 2];
+    const la = Math.hypot(ax, az);
+    const lb = Math.hypot(bx, bz);
+    if (la < 1e-9 || lb < 1e-9) continue;
+    const deg = (Math.acos(Math.min(1, Math.max(-1, (ax * bx + az * bz) / (la * lb)))) * 180) / Math.PI;
+    if (deg <= kinkDeg) continue;
+    const lastK = kinks[kinks.length - 1];
+    if (lastK && P[k * 4 + 3] - lastK.s < 1) {
+      if (deg > lastK.deg) Object.assign(lastK, { s: P[k * 4 + 3], deg });
+    } else kinks.push({ s: P[k * 4 + 3], deg, leg: legOf(k) });
+  }
+  // height jumps
+  const jumps: RouteReport['jumps'] = [];
+  let maxStep = 0;
+  for (let k = 0; k + 1 < n; k++) {
+    const dy = P[(k + 1) * 4 + 1] - P[k * 4 + 1];
+    maxStep = Math.max(maxStep, Math.abs(dy));
+    if (Math.abs(dy) > jumpKm) jumps.push({ s: P[k * 4 + 3], dy, leg: legOf(k) });
+  }
+  // self-crossings: segments hashed into a 2 km grid, non-adjacent pairs tested (each pair once)
+  const cell = 2;
+  const grid = new Map<string, number[]>();
+  for (let k = 0; k + 1 < n; k++) {
+    const x0 = Math.floor(Math.min(P[k * 4], P[(k + 1) * 4]) / cell);
+    const x1 = Math.floor(Math.max(P[k * 4], P[(k + 1) * 4]) / cell);
+    const z0 = Math.floor(Math.min(P[k * 4 + 2], P[(k + 1) * 4 + 2]) / cell);
+    const z1 = Math.floor(Math.max(P[k * 4 + 2], P[(k + 1) * 4 + 2]) / cell);
+    for (let a = x0; a <= x1; a++)
+      for (let b = z0; b <= z1; b++) {
+        const key = `${a},${b}`;
+        const list = grid.get(key);
+        if (list) list.push(k);
+        else grid.set(key, [k]);
+      }
+  }
+  const crossings: [number, number][] = [];
+  const seen = new Set<string>();
+  const cross = (i: number, j: number) => {
+    const [ax, az, bx, bz] = [P[i * 4], P[i * 4 + 2], P[(i + 1) * 4], P[(i + 1) * 4 + 2]];
+    const [cx, cz, dx, dz] = [P[j * 4], P[j * 4 + 2], P[(j + 1) * 4], P[(j + 1) * 4 + 2]];
+    const d = (bx - ax) * (dz - cz) - (bz - az) * (dx - cx);
+    if (Math.abs(d) < 1e-12) return false;
+    const u = ((cx - ax) * (dz - cz) - (cz - az) * (dx - cx)) / d;
+    const v = ((cx - ax) * (bz - az) - (cz - az) * (bx - ax)) / d;
+    return u > 0 && u < 1 && v > 0 && v < 1;
+  };
+  for (const list of grid.values())
+    for (let p = 0; p < list.length; p++)
+      for (let q = p + 1; q < list.length; q++) {
+        const i = Math.min(list[p], list[q]);
+        const j = Math.max(list[p], list[q]);
+        if (j - i < 3) continue;
+        const key = `${i}:${j}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        if (cross(i, j)) crossings.push([P[i * 4 + 3], P[j * 4 + 3]]);
+      }
+  crossings.sort((a, b) => a[0] - b[0]);
+  return { crossings, kinks, jumps, maxStep };
 }

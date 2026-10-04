@@ -1,33 +1,33 @@
 /**
  * Film compiler (S5): data/tour/timeline.json v1 + route.json v2 → CompiledFilm + a pure evaluate(t).
  *
- * WAVE-0 STUB (main agent): beat timing, camera keys (bookmark / shot / orbit + overrides), a simple
- * orbit-space blend in moves (log distance with a zoom-out bump, shortest-arc azimuth), linear drift,
- * tod / events / look / lens / captions / route head. The tour agent replaces the camera rig
- * (van Wijk–Nuij moves along route rails, C2 drift blends, clearance, deck cap, auto durations)
- * behind the same `compileFilm` signature. Pure: no three.js, no DOM — Node and the page agree.
+ *  - route.ts compiles the draped route, rail.ts its camera rails, rig.ts the camera (keys, van Wijk–Nuij
+ *    moves, C2 drift blends, baked target height / deck cap / clearance, `dur: "auto"`) and the route head;
+ *  - captions.ts compiles the captions (anchors from the landmark build when `built` is given, side chosen
+ *    from the anchor's projection);
+ *  - slow channels are evaluated at the frame's own time t_q = ⌊t·fps⌋/fps (one value per frame, so the sky
+ *    LUT is not rebuilt per motion-blur sub-sample): tod (a monotone Fritsch–Carlson cubic through the holds'
+ *    start / end keys, linear inside each hold), events, look (ids switch only at weight 0), lens (aperture
+ *    eased across moves), captions, route glow, weather. Camera, tFx and the route head use the exact t.
+ * Pure: no three.js render objects, no DOM — Node and the page compile identical films (same hash).
  */
-import type { ShotSpecInput, OrbitSpec } from '../camera/shots.ts';
-import { defaultSceneState, type AnnotationState, type SceneState } from '../core/types.ts';
+import type { ShotSpecInput } from '../camera/shots.ts';
+import { defaultSceneState, type AnnotationState, type SceneState, type WeatherState } from '../core/types.ts';
+import type { BuiltLandmark } from '../landmarks/records.ts';
 import type { LandmarkDefinition } from '../landmarks/types.ts';
 import type { World } from '../world/World.ts';
 import { DEEP_FOCUS_FSTOP } from '../render/lens.ts';
+import { captionReveal, compileCaptions } from './captions.ts';
+import { clamp, lerp, monotoneHermite, pchipAt, smootherstep } from './curves.ts';
 import { fnv1a } from './hash.ts';
-import { compileRoute } from './route.ts';
-import {
-  isHold,
-  type BeatInfo,
-  type CameraRefJson,
-  type CaptionDef,
-  type CaptionJson,
-  type CompiledFilm,
-  type HoldJson,
-  type MoveJson,
-  type RouteJson,
-  type TimelineJson,
-} from './schema.ts';
+import { buildRails, type Rails } from './rail.ts';
+import { buildRig, type CameraRig } from './rig.ts';
+import { compileRoute, hashFloats } from './route.ts';
+import { isHold, type BeatInfo, type CaptionDef, type CompiledFilm, type HoldJson, type RouteJson, type TimelineJson } from './schema.ts';
 
-export const FILM_COMPILER = 'film-v0';
+export { resolveCameraRef } from './rig.ts';
+
+export const FILM_COMPILER = 'film-v1';
 
 export interface FilmInputs {
   world: World;
@@ -36,135 +36,72 @@ export interface FilmInputs {
   shots: ShotSpecInput[];
   route: RouteJson;
   timeline: TimelineJson;
+  /** the landmark build (caption anchors at 0.6 × the built height); absent → ground + 0.5 km */
+  built?: BuiltLandmark[];
 }
 
 export interface FilmProgram {
   film: CompiledFilm;
   /** the complete state at film time t (pure; fractional t for motion-blur sub-samples) */
   evaluate(t: number): SceneState;
+  /** the camera rig (keys, moves, baked tracks, pose / head at t) — diagnostics for the film checks */
+  rig: CameraRig;
+  rails: Rails;
 }
 
-/** A camera key in orbit space (world units / degrees). */
-interface Key {
-  x: number;
-  z: number;
-  lift: number;
-  dist: number;
-  el: number;
-  az: number;
-  fov: number;
-  roll: number;
-  fStop?: number;
+interface LookKey {
+  id: string;
+  weight: number;
 }
-
-const smooth01 = (x: number) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
-const smoother01 = (x: number) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * x * (x * (6 * x - 15) + 10));
-const lerp = (a: number, b: number, u: number) => a + (b - a) * u;
-const wrap180 = (d: number) => ((((d + 180) % 360) + 360) % 360) - 180;
-
-/** The orbit (+ bookmark f-stop) a camera reference resolves to. */
-export function resolveCameraRef(ref: CameraRefJson, inp: Pick<FilmInputs, 'landmarks' | 'shots'>): { orbit: OrbitSpec; fStop?: number; landmark?: LandmarkDefinition } {
-  let orbit: OrbitSpec;
-  let fStop: number | undefined;
-  let landmark: LandmarkDefinition | undefined;
-  if (ref.bookmark) {
-    for (const def of inp.landmarks) {
-      const b = def.bookmarks?.find((x) => x.id === ref.bookmark);
-      if (!b) continue;
-      const { id: _id, tod: _tod, dayOfYear: _d, weather: _w, fStop: f, events: _e, compare: _c, note: _n, expect: _x, ...o } = b;
-      orbit = { place: def.placeId, ...o };
-      fStop = f;
-      landmark = def;
-      break;
-    }
-    if (!orbit!) throw new Error(`film: unknown bookmark '${ref.bookmark}'`);
-  } else if (ref.shot) {
-    const s = inp.shots.find((x) => x.id === ref.shot);
-    if (!s) throw new Error(`film: unknown shot '${ref.shot}'`);
-    if (!('orbit' in s.camera)) throw new Error(`film: shot '${ref.shot}' is not an orbit shot`);
-    orbit = { ...s.camera.orbit };
-    fStop = s.fStop;
-  } else if (ref.orbit) orbit = { ...ref.orbit };
-  else throw new Error('film: camera needs bookmark, shot or orbit');
-  return { orbit: { ...orbit, ...ref.set }, fStop, landmark };
-}
-
-function keyOf(world: World, o: OrbitSpec, fStop?: number): Key {
-  let x: number;
-  let z: number;
-  if (o.place) ({ x, z } = world.place(o.place));
-  else if (o.targetKm) [x, z] = world.spec.kmToWorld(o.targetKm[0], o.targetKm[1]);
-  else throw new Error('film: orbit needs place or targetKm');
-  if (o.aimKm) {
-    x += o.aimKm[0];
-    z -= o.aimKm[1];
-  }
-  return { x, z, lift: o.lift ?? 0, dist: o.distanceKm, el: o.elevationDeg, az: o.azimuthDeg, fov: o.fov ?? 35, roll: o.roll ?? 0, fStop };
-}
-
-/** Caption defaults per kind: [in, out, fadeIn, fadeOut] (beat-relative; negative out = from the end). */
-const CAPTION_DEFAULTS: Record<CaptionJson['kind'], [number, number, number, number]> = {
-  title: [1.5, -1.5, 1.5, 1.2],
-  place: [0.8, -0.6, 0.7, 0.6],
-  pass: [0.4, -0.4, 0.5, 0.4],
-  end: [1, -1, 1.2, 1.2],
-  fade: [0, -0, 0, 0],
-};
 
 export function compileFilm(inp: FilmInputs): FilmProgram {
   const { world, timeline: tl } = inp;
   if (tl.version !== 1) throw new Error(`timeline.json: version ${tl.version} (want 1)`);
-  const route = compileRoute(world, inp.route);
-  const fps = tl.film.fps;
   const beats = tl.beats;
   if (!beats.length || !isHold(beats[0]) || !isHold(beats[beats.length - 1])) throw new Error('timeline: must start and end with a hold');
   for (let i = 1; i < beats.length; i++) if (isHold(beats[i]) === isHold(beats[i - 1])) throw new Error(`timeline: beats must alternate hold / move (at ${i})`);
+  const fps = tl.film.fps;
 
-  // ---- timing
-  const AUTO_STUB_S = 6;
-  const t0s: number[] = [];
-  let t = 0;
-  for (const b of beats) {
-    t0s.push(t);
-    t += isHold(b) ? b.dur : b.dur === 'auto' ? AUTO_STUB_S : b.dur;
-  }
-  const duration = t;
-  const durOf = (i: number) => (i + 1 < beats.length ? t0s[i + 1] : duration) - t0s[i];
+  const route = compileRoute(world, inp.route);
+  const rails = buildRails(route);
+  const rig = buildRig({ world, landmarks: inp.landmarks, shots: inp.shots, route, rails, timeline: tl });
+  const { t0s, durs, duration } = rig;
 
-  // ---- holds: keys, head marks, glow, look, lens
+  // ---- per-hold slow channels
   const holdIdx = beats.map((b, i) => (isHold(b) ? i : -1)).filter((i) => i >= 0);
-  const keys = new Map<number, Key>();
-  const heads = new Map<number, number>();
   const glows = new Map<number, number>();
-  let lastHead = 0;
+  const looks = new Map<number, LookKey | null>();
+  const apertures = new Map<number, number>();
+  const weathers = new Map<number, WeatherState>();
   let glow = 0;
   for (const i of holdIdx) {
     const h = beats[i] as HoldJson;
-    const r = resolveCameraRef(h.camera, inp);
-    keys.set(i, keyOf(world, r.orbit, r.fStop));
-    const mark = h.head ?? h.place;
-    if (mark !== undefined && route.marks[mark] !== undefined) lastHead = route.marks[mark];
-    heads.set(i, lastHead);
     if (h.routeGlow !== undefined) glow = h.routeGlow;
     else if (i > 0) glow = 1;
     glows.set(i, glow);
+    looks.set(i, h.look && h.look.weight > 0 ? { id: h.look.id, weight: h.look.weight } : null);
+    const lens = h.lens?.fStop;
+    const fStop = lens === undefined ? DEEP_FOCUS_FSTOP : lens === 'bookmark' ? (rig.keys[rig.keyOfBeat[i]].fStop ?? DEEP_FOCUS_FSTOP) : lens;
+    apertures.set(i, 1 / Math.min(DEEP_FOCUS_FSTOP, fStop));
+    weathers.set(i, { ...tl.film.weather, ...h.weather, wind: [...(h.weather?.wind ?? tl.film.weather.wind)] as [number, number] });
   }
-  const prevHold = (i: number) => (isHold(beats[i]) ? i : i - 1);
-  const nextHold = (i: number) => (isHold(beats[i]) ? i : i + 1);
-  const driftOf = (i: number) => {
+
+  // ---- time of day: a monotone cubic (Fritsch–Carlson) through every hold's start and end keys whose knot
+  // slopes are the holds' own rates: a hold drifts linearly (the light steady while its text is read), a
+  // move eases from one hold's rate to the next one's (C1, no kinks at the hold boundaries)
+  const todX: number[] = [];
+  const todY: number[] = [];
+  const todM: number[] = [];
+  for (const i of holdIdx) {
     const h = beats[i] as HoldJson;
-    return { ...tl.defaults[h.style].drift, ...h.drift };
-  };
+    const rate = (h.tod[1] - h.tod[0]) / durs[i];
+    todX.push(t0s[i], t0s[i] + durs[i]);
+    todY.push(h.tod[0], h.tod[1]);
+    todM.push(rate, rate);
+  }
+  const todTrack = monotoneHermite(todX, todY, todM);
 
-  /** the hold's key with its drift applied at film time t */
-  const heldKey = (i: number, at: number): Key => {
-    const k = keys.get(i)!;
-    const d = driftOf(i);
-    const dt = at - (t0s[i] + durOf(i) / 2);
-    return { ...k, az: k.az + (d.azDegPerS ?? 0) * dt, dist: k.dist * Math.exp((d.pushPerS ?? 0) * dt), el: k.el + (d.elDegPerS ?? 0) * dt };
-  };
-
-  // ---- events: absolute keys per channel
+  // ---- events: absolute keys per channel (smoothstep between keys, held after the last)
   const evKeys = new Map<string, [number, number][]>();
   beats.forEach((b, i) => {
     for (const [ch, ks] of Object.entries(b.events ?? {})) {
@@ -176,56 +113,31 @@ export function compileFilm(inp: FilmInputs): FilmProgram {
   for (const l of evKeys.values()) l.sort((a, b) => a[0] - b[0]);
   const evalEvent = (ks: [number, number][], at: number): number => {
     if (at <= ks[0][0]) return ks[0][1];
-    for (let k = 1; k < ks.length; k++) if (at <= ks[k][0]) return lerp(ks[k - 1][1], ks[k][1], smooth01((at - ks[k - 1][0]) / Math.max(1e-6, ks[k][0] - ks[k - 1][0])));
+    for (let k = 1; k < ks.length; k++) {
+      if (at > ks[k][0]) continue;
+      const u = (at - ks[k - 1][0]) / Math.max(1e-6, ks[k][0] - ks[k - 1][0]);
+      return lerp(ks[k - 1][1], ks[k][1], u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u));
+    }
     return ks[ks.length - 1][1];
   };
 
-  // ---- captions
-  const captions: CaptionDef[] = [];
-  beats.forEach((b, i) => {
-    (b.captions ?? []).forEach((c, ci) => {
-      const [din, dout, dfi, dfo] = CAPTION_DEFAULTS[c.kind];
-      const bt0 = t0s[i];
-      const bt1 = bt0 + durOf(i);
-      // beat-relative seconds; negative = from the beat's end (an `out` default of -0 = the beat's end)
-      const rel = (v: number | undefined, dflt: number, isOut: boolean) => {
-        const x = v ?? dflt;
-        return x < 0 || (isOut && Object.is(x, -0)) ? bt1 + x : bt0 + x;
-      };
-      const def: CaptionDef = { id: `${(b as HoldJson).hold ?? (b as MoveJson).move}:${c.kind}:${ci}`, kind: c.kind, t0: rel(c.in, din, false), t1: rel(c.out, dout, true), fadeIn: c.fadeIn ?? dfi, fadeOut: c.fadeOut ?? dfo };
-      if (c.kind === 'place' || c.kind === 'pass') {
-        const def0 = inp.landmarks.find((l) => l.id === c.landmark);
-        if (!def0) throw new Error(`film: caption landmark '${c.landmark}' unknown`);
-        const p = world.place(def0.placeId);
-        def.title = c.text ?? def0.annotation.title;
-        if (c.kind === 'place' && c.sub !== false) def.sub = c.sub ?? def0.annotation.subtitle;
-        if (c.kind === 'pass' && typeof c.sub === 'string') def.sub = c.sub;
-        def.anchor = [p.x, Math.max(0, world.heights.sample(p.x, p.z)) + (c.anchorLiftKm ?? 0.5), p.z];
-        if (c.side) def.side = c.side;
-      } else {
-        if (c.text) def.title = c.text;
-        if (typeof c.sub === 'string') def.sub = c.sub;
-        if (c.lines) def.lines = c.lines;
-      }
-      captions.push(def);
-    });
-  });
-  const reveal = (c: CaptionDef, at: number) => {
-    if (at < c.t0 || at > c.t1) return 0;
-    const a = c.fadeIn > 0 ? smooth01((at - c.t0) / c.fadeIn) : 1;
-    const b = c.fadeOut > 0 ? 1 - smooth01((at - (c.t1 - c.fadeOut)) / c.fadeOut) : 1;
-    return Math.min(a, b);
-  };
+  // ---- captions (anchors from the build when given; the side from the anchor's projection)
+  const captions: CaptionDef[] = compileCaptions({ world, landmarks: inp.landmarks, built: inp.built, beats, t0s, durs, cameraAt: rig.camera });
 
   // ---- beat table
   const beatInfo: BeatInfo[] = beats.map((b, i) => {
-    const pa = beats[prevHold(i)] as HoldJson;
-    const nb = beats[nextHold(i)] as HoldJson;
-    return isHold(b)
-      ? { id: b.hold, kind: 'hold', style: b.style, t0: t0s[i], t1: t0s[i] + durOf(i), place: b.place, tod: b.tod, music: b.music }
-      : { id: b.move, kind: 'move', t0: t0s[i], t1: t0s[i] + durOf(i), tod: [pa.tod[1], nb.tod[0]], music: b.music };
+    if (isHold(b)) return { id: b.hold, kind: 'hold', style: b.style, t0: t0s[i], t1: t0s[i] + durs[i], place: b.place, tod: b.tod, music: b.music };
+    const pa = beats[i - 1] as HoldJson;
+    const nb = beats[i + 1] as HoldJson;
+    return { id: b.move, kind: 'move', t0: t0s[i], t1: t0s[i] + durs[i], tod: [pa.tod[1], nb.tod[0]], music: b.music };
   });
 
+  // ---- content hash: inputs + the compiled numbers (Node and the page must agree)
+  let h = Number.parseInt(fnv1a(`${FILM_COMPILER}|${route.hash}|${JSON.stringify(tl)}|${JSON.stringify(captions)}`), 16);
+  h = hashFloats(h, t0s);
+  for (const k of rig.keys) h = hashFloats(h, [k.tx, k.tz, k.ground, k.s, k.ox, k.oz, k.dist, k.el, k.az, k.lnW, k.head]);
+  for (const m of rig.moves) h = hashFloats(h, [m.dur, m.L, m.path.S]);
+  h = hashFloats(hashFloats(hashFloats(h, rig.tracks.gBar.v), rig.tracks.lnK.v), rig.tracks.dC.v);
   const film: CompiledFilm = {
     fps,
     shutter: tl.film.shutter,
@@ -235,113 +147,71 @@ export function compileFilm(inp: FilmInputs): FilmProgram {
     beats: beatInfo,
     route,
     captions,
-    hash: fnv1a(`${FILM_COMPILER}|${route.hash}|${JSON.stringify(tl)}`),
-  };
-
-  const beatAt = (at: number) => {
-    let lo = 0;
-    let hi = beats.length - 1;
-    while (lo < hi) {
-      const mid = (lo + hi + 1) >> 1;
-      if (t0s[mid] <= at) lo = mid;
-      else hi = mid - 1;
-    }
-    return lo;
+    hash: h.toString(16).padStart(8, '0'),
   };
 
   const evaluate = (tIn: number): SceneState => {
-    const at = Math.min(duration, Math.max(0, tIn));
+    const at = clamp(tIn, 0, duration);
     // slow channels at the frame's own time (no per-sub-sample LUT rebuilds, exact per frame)
     const tq = Math.min(duration, Math.floor(at * fps + 1e-6) / fps);
-    const i = beatAt(at);
-    const iq = beatAt(tq);
-    const b = beats[i];
-    const x = Math.min(1, Math.max(0, (at - t0s[i]) / Math.max(1e-6, durOf(i))));
-    const xq = Math.min(1, Math.max(0, (tq - t0s[iq]) / Math.max(1e-6, durOf(iq))));
-
-    // ---- camera (orbit space)
-    let k: Key;
-    let routeS: number;
-    if (isHold(b)) {
-      k = heldKey(i, at);
-      routeS = heads.get(i)!;
-    } else {
-      const A = heldKey(i - 1, t0s[i]);
-      const B = heldKey(i + 1, t0s[i + 1]);
-      const e = smoother01(x);
-      const travel = Math.hypot(B.x - A.x, B.z - A.z);
-      const bump = 1 + 0.6 * (travel / Math.max(A.dist, B.dist)) * Math.sin(Math.PI * x);
-      const lead = Math.min(tl.defaults.move.headLeadS, 0.25 * durOf(i));
-      const eh = smoother01(Math.min(1, ((at - t0s[i]) / Math.max(1e-6, durOf(i) - lead))));
-      k = {
-        x: lerp(A.x, B.x, e),
-        z: lerp(A.z, B.z, e),
-        lift: lerp(A.lift, B.lift, e),
-        dist: Math.exp(lerp(Math.log(A.dist), Math.log(B.dist), e)) * bump,
-        el: lerp(A.el, B.el, e),
-        az: A.az + wrap180(B.az - A.az) * e,
-        fov: lerp(A.fov, B.fov, e),
-        roll: lerp(A.roll, B.roll, e),
-      };
-      const mv = b as MoveJson;
-      if (mv.maxAltKm !== undefined) {
-        const ty = Math.max(0, world.heights.sample(k.x, k.z)) + k.lift;
-        const up = Math.sin((k.el * Math.PI) / 180);
-        if (up > 0 && ty + k.dist * up > mv.maxAltKm) k.dist = Math.max(1, (mv.maxAltKm - ty) / up);
-      }
-      routeS = lerp(heads.get(i - 1)!, heads.get(i + 1)!, eh);
-    }
-    const ty = Math.max(0, world.heights.sample(k.x, k.z)) + k.lift;
-    const el = (k.el * Math.PI) / 180;
-    const az = (k.az * Math.PI) / 180;
-    const hd = k.dist * Math.cos(el);
-    const camera = { position: [k.x + Math.sin(az) * hd, ty + k.dist * Math.sin(el), k.z - Math.cos(az) * hd] as [number, number, number], target: [k.x, ty, k.z] as [number, number, number], fov: k.fov, ...(k.roll ? { roll: k.roll } : {}) };
-
-    // ---- slow channels
+    const iq = rig.beatAt(tq);
     const bq = beats[iq];
-    let tod: number;
+    const xq = clamp((tq - t0s[iq]) / Math.max(1e-9, durs[iq]), 0, 1);
+
     let glowNow: number;
-    let look: { id: string; weight: number } | null = null;
-    let fStop = DEEP_FOCUS_FSTOP;
+    let look: LookKey | null;
+    let aperture: number;
+    let weather: WeatherState;
     if (isHold(bq)) {
-      tod = lerp(bq.tod[0], bq.tod[1], xq);
       glowNow = glows.get(iq)!;
-      look = bq.look ?? null;
-      const lens = bq.lens?.fStop;
-      if (lens !== undefined) fStop = lens === 'bookmark' ? (keys.get(iq)!.fStop ?? DEEP_FOCUS_FSTOP) : lens;
+      look = looks.get(iq)!;
+      aperture = apertures.get(iq)!;
+      const w = weathers.get(iq)!;
+      weather = { cloudCoverage: w.cloudCoverage, wind: [w.wind[0], w.wind[1]] };
     } else {
-      const A = beats[iq - 1] as HoldJson;
-      const B = beats[iq + 1] as HoldJson;
-      tod = lerp(A.tod[1], B.tod[0], smooth01(xq));
-      glowNow = lerp(glows.get(iq - 1)!, glows.get(iq + 1)!, smooth01(xq));
-      // a look fades out in the first half of a move and the next one in over the second (ids switch at 0)
-      if (xq < 0.5 && A.look) look = { id: A.look.id, weight: A.look.weight * (1 - smooth01(xq * 2)) };
-      else if (xq >= 0.5 && B.look) look = { id: B.look.id, weight: B.look.weight * smooth01(xq * 2 - 1) };
+      const E = smootherstep(xq);
+      glowNow = lerp(glows.get(iq - 1)!, glows.get(iq + 1)!, E);
+      const la = looks.get(iq - 1)!;
+      const lb = looks.get(iq + 1)!;
+      // the same look on both sides glides between the weights; otherwise it fades out over the first
+      // half of the move and the next one in over the second (the id switches only at weight 0)
+      if (la && lb && la.id === lb.id) look = { id: la.id, weight: lerp(la.weight, lb.weight, E) };
+      else if (xq < 0.5) look = la ? { id: la.id, weight: la.weight * (1 - smootherstep(xq * 2)) } : null;
+      else look = lb ? { id: lb.id, weight: lb.weight * smootherstep(xq * 2 - 1) } : null;
+      const aa = apertures.get(iq - 1)!;
+      const ab = apertures.get(iq + 1)!;
+      aperture = aa === ab ? aa : lerp(aa, ab, E);
+      const wa = weathers.get(iq - 1)!;
+      const wb = weathers.get(iq + 1)!;
+      weather = { cloudCoverage: lerp(wa.cloudCoverage, wb.cloudCoverage, E), wind: [lerp(wa.wind[0], wb.wind[0], E), lerp(wa.wind[1], wb.wind[1], E)] };
     }
+    // aperture 1/N eased across moves; at (or within rounding of) deep focus the lens stays a pinhole
+    const fStop = aperture <= 1 / DEEP_FOCUS_FSTOP + 1e-12 ? DEEP_FOCUS_FSTOP : 1 / aperture;
     const events: Record<string, number> = {};
     for (const [ch, ks] of evKeys) events[ch] = evalEvent(ks, tq);
     const annotations: AnnotationState[] = [];
     for (const c of captions) {
-      const r = reveal(c, tq);
+      const r = captionReveal(c, tq);
       if (r > 0) annotations.push({ id: c.id, reveal: r });
     }
+    const head = rig.head(at);
     return defaultSceneState({
       t: at,
       tFx: at * tl.film.tFxScale,
-      tod,
+      tod: pchipAt(todTrack, tq),
       dayOfYear: tl.film.dayOfYear,
-      camera,
+      camera: rig.camera(at),
       lens: { fStop },
-      routeProgress: route.length > 0 ? routeS / route.length : 0,
+      routeProgress: route.length > 0 ? head / route.length : 0,
       annotations,
       lookOverride: look && look.weight > 0 ? look.id : null,
       ...(look && look.weight > 0 ? { lookOverrideWeight: look.weight } : {}),
-      weather: { ...tl.film.weather },
+      weather,
       events,
       ...(tl.film.lodBias !== undefined ? { lodBias: tl.film.lodBias } : {}),
       routeGlow: glowNow,
     });
   };
 
-  return { film, evaluate };
+  return { film, evaluate, rig, rails };
 }
