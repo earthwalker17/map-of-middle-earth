@@ -88,7 +88,7 @@
     { "hold": "henneth-annun", "style": "stop", "dur": 4, "place": "henneth-annun", "camera": { "bookmark": "henneth-annun-close", "set": { "azimuthDeg": 20, "elevationDeg": 18, "aimKm": [-2.5, -0.5] } },
       "tod": [16.75, 16.85], "light": "shade", "captions": [{ "kind": "pass", "landmark": "henneth-annun" }], "music": { "mood": "ithilien", "intensity": 0.45 } },
 
-    { "move": "to-minas-tirith", "dur": 7.5, "music": { "mood": "gondor", "intensity": 0.5 } },
+    { "move": "to-minas-tirith", "dur": 7.5, "rho": 1.8, "apexEl": 34, "music": { "mood": "gondor", "intensity": 0.5 } },
     { "hold": "minas-tirith", "style": "hero", "dur": 10, "place": "osgiliath", "head": "osgiliath",
       "camera": { "orbit": { "place": "minas-tirith", "distanceKm": 46, "elevationDeg": 16, "azimuthDeg": 128, "fov": 38, "lift": 5, "aimKm": [8, 2.5] } },
       "tod": [17.9, 18.15], "events": { "beacons": [[2, 0], [5, 1]] }, "light": "silhouette", "note": "blue hour from the east: the city against the afterglow, windows lighting, the beacon kindled",
