@@ -14,7 +14,7 @@ const { Fn, abs, clamp, exp, float, length, max, min, select, texture, uv, vec2,
 /** ivory-gold of the leader lines and diamonds (sRGB display values, as the cards' #ebd9a8) */
 const LINE_RGB: [number, number, number] = [0xeb / 255, 0xd9 / 255, 0xa8 / 255];
 /** peak alpha and Gaussian σ (px at 1080p) of the soft dark halo under the lines / diamonds */
-const HALO_ALPHA = 0.45;
+const HALO_ALPHA = 0.55;
 const HALO_SIGMA = 1.8;
 
 function over(m: NodeMaterial): NodeMaterial {

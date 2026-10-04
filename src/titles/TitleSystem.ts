@@ -14,8 +14,8 @@ const TITLE_BREATH = 0.02;
 /** end / credits card centre */
 const END_Y = 0.5;
 /** hairline half-width (px at 1080p; a thinner line keeps ≥ 1 px of coverage with a lower alpha) and halo σ */
-const LINE_HALF = 0.6;
-const HALO_SIGMA = 2.2;
+const LINE_HALF = 0.7;
+const HALO_SIGMA = 2.6;
 /** anchor diamond half-diagonal (px at 1080p) */
 const DIAMOND = 6.5;
 /** the label fades out as its anchor leaves the frame (px beyond the edge, fraction of H) */

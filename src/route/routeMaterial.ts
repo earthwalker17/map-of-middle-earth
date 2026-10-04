@@ -18,18 +18,20 @@ const { Fn, abs, attribute, cameraProjectionMatrix, cameraViewMatrix, clamp, dot
  * Vertex: the width is in SCREEN pixels. The sample is projected (view depth Z); the projected direction of
  * the route's 3D tangent gives the screen normal, and the vertex moves `side · quadPx` along it in the view
  * plane at its (pulled) depth. Core half-width h = clamp(HALF_KM · pxPerKm / Z, HALF_MIN, HALF_MAX) × H/1080:
- * a 120 m road close up, never thinner than ~3 px (1080p) in the overview, never fatter than 14 px.
+ * a 100 m road close up, never thinner than ~3 px (1080p) in the overview, never fatter than 10 px (the brief's 7 px
+ * cap read as a heavy rope in the 25 km holds).
  * Depth pull: the vertex slides toward the camera by PULL_PX pixels' worth at its depth + PULL_REL of its
  * distance, so the CDLOD terrain (coarser than the HeightField far away) never swallows the draped line.
  * Per vertex: the atmosphere's transmittance (extinction only, like the emission sprites — the far route
  * fades into the haze, the ash veils it in Mordor).
  *
  * Fragment (all in screen px, from the interpolated arc length s and the per-vertex px-per-km along the line):
- * the round head cap — the profile is radial beyond the head (distance √(across² + ahead²)), so the drawn
- * end is a soft dot, not a cut; a Gaussian core and a wider glow; the head comet (brighter and wider over the
- * last ~COMET_PX); a slow shimmer travelling toward the head (env.tFx); underground legs (Moria) dotted at a
- * world period chosen per frame in octaves (no crawling dashes as the camera zooms) and dimmer, fading to a
- * faint solid where the dots would fall below ~4 px. Everything × routeGlow.
+ * round caps — the profile is radial beyond the head and before the start (distance √(across² + ahead²)), so
+ * the drawn ends are soft dots, never cuts (this replaces a hard reveal smoothstep: the Gaussian is its own
+ * anti-aliasing); a Gaussian core and a wider glow; the head comet (brighter and wider over the last
+ * ~COMET_PX); a slow shimmer travelling toward the head (env.tFx); underground legs (Moria) dotted at a world
+ * period chosen per frame in octaves (no crawling dots as the camera zooms) and dimmer, fading to a faint
+ * solid where the dots would fall below ~4 px. Everything × routeGlow.
  *
  * Vertex buffers: position (centre x, y, z) · routeT (3D unit tangent, side ±1) · routeS (s km, mode; + 4 / + 8 on
  * the extension pair before the start / after the end).
@@ -55,9 +57,11 @@ const GAIN_NIGHT = 1.2;
 /**
  * Grade compensation: the line is a luminous graphic element, so the region / night grade must not wash its
  * gold out (the moonlit layer's saturation 0.42 and blue tint turned it white-grey; Mordor's 0.55 × warms 0.4
- * beige). The grade is linear up to its saturation step, so the additive line is pre-divided by the grade's
- * normalised tint and pre-saturated by SAT_REF / (saturation × warms^WARMS_SHARE) (≥ 1, ≤ SAT_COMP_MAX: the
- * charcoal regions keep a duskier gold); and its brightness follows only EXPO_COMP of the exposure bias.
+ * beige). The grade is linear up to its saturation step, so the additive line is pre-divided by TINT_COMP of
+ * the grade's normalised tint (a power) and pre-saturated by SAT_REF / (saturation × warms^WARMS_SHARE) (≥ 1,
+ * ≤ SAT_COMP_MAX: the charcoal regions keep a duskier gold); its brightness follows only EXPO_COMP of the
+ * exposure bias. (The night grade's red-keep then exempts a strongly warm colour from its desaturation —
+ * hence the separate, yellower night golds above and the modest caps.)
  */
 const SAT_REF = 1.1;
 const SAT_COMP_MAX = 1.6;
@@ -67,9 +71,9 @@ const EXPO_COMP = 0.5;
 const TINT_COMP = 0.6;
 const LUM: [number, number, number] = [0.2126, 0.7152, 0.0722];
 /** physical half-width of the core, km, and its clamp in 1080p pixels */
-const HALF_KM = 0.06;
+const HALF_KM = 0.05;
 const HALF_MIN = 1.6;
-const HALF_MAX = 7;
+const HALF_MAX = 5;
 /** the ribbon's half-width (glow and under-stroke reach) in core half-widths */
 export const QUAD_K = 3;
 /** Gaussian σ of the core / glow / comet glow / under-stroke, in core half-widths */

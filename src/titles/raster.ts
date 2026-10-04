@@ -18,13 +18,15 @@ const IVORY = '#ebd9a8';
 const IVORY_SUB = '#e6dcc2';
 const PARCHMENT = '#d8ccaf';
 /**
- * baked shadows (fractions of H): a wide soft one (the text reads on bright ground and sky) and a tight one
- * (crisp edges); drawn shadow-only (the glyphs themselves once, on top)
+ * baked shadows: blur and offset in fractions of H, `spread` in em. The broad ones are cast by the glyphs
+ * dilated by a round-joined stroke (a blurred hairline casts almost nothing), so they form a soft darkening
+ * that follows the words — the text reads on bright canopy, grass and sky, never on a plate; the tight one
+ * crisps the edges. Drawn shadow-only (the glyphs themselves once, on top).
  */
-const SHADOWS: { color: string; blur: number; dy: number }[] = [
-  { color: 'rgba(10,7,3,0.6)', blur: 0.02, dy: 0.002 },
-  { color: 'rgba(10,7,3,0.6)', blur: 0.011, dy: 0.0016 },
-  { color: 'rgba(0,0,0,0.55)', blur: 0.0028, dy: 0.0009 },
+const SHADOWS: { color: string; blur: number; spread: number; dy: number }[] = [
+  { color: 'rgba(8,6,3,0.34)', blur: 0.03, spread: 0.2, dy: 0.002 },
+  { color: 'rgba(8,6,3,0.45)', blur: 0.012, spread: 0.08, dy: 0.0015 },
+  { color: 'rgba(0,0,0,0.55)', blur: 0.0028, spread: 0, dy: 0.0009 },
 ];
 
 /** Type sizes (em, fractions of H), tracking (em), weights. */
@@ -255,12 +257,17 @@ const RULE_ALPHA = 0.8;
 function shadowText(ctx: Ctx, p: Placed, x: number, y: number, H: number, off: number): void {
   setFont(ctx, p.spec);
   ctx.fillStyle = '#000';
+  ctx.strokeStyle = '#000';
+  ctx.lineJoin = 'round';
   for (const s of SHADOWS) {
     ctx.shadowColor = s.color;
     ctx.shadowBlur = s.blur * H;
     ctx.shadowOffsetX = off;
     ctx.shadowOffsetY = s.dy * H;
-    ctx.fillText(p.spec.text, x - off, y);
+    if (s.spread > 0) {
+      ctx.lineWidth = 2 * s.spread * p.spec.size;
+      ctx.strokeText(p.spec.text, x - off, y);
+    } else ctx.fillText(p.spec.text, x - off, y);
   }
   ctx.shadowColor = 'rgba(0,0,0,0)';
   ctx.shadowBlur = 0;
@@ -290,7 +297,8 @@ export function rasterCard(def: CaptionDef, W: number, H: number, align: CardAli
   const { lines, rules, height } = compose(ctx0, def, W, H);
   const blockW = Math.max(1, ...lines.map((l) => l.inkL + l.inkR), ...rules.map((r) => r.half * 2));
   const blockH = Math.max(1, height);
-  const pad = Math.ceil(Math.max(...SHADOWS.map((s) => s.blur * 2.2 + s.dy)) * H + 3);
+  const maxSize = Math.max(1, ...lines.map((l) => l.spec.size));
+  const pad = Math.ceil(Math.max(...SHADOWS.map((s) => (s.blur * 2.2 + s.dy) * H + s.spread * maxSize)) + 3);
   const cw = Math.ceil(blockW + pad * 2);
   const ch = Math.ceil(blockH + pad * 2);
   const canvas = new OffscreenCanvas(cw, ch);
