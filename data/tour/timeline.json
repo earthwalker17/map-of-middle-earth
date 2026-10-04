@@ -84,8 +84,8 @@
     { "hold": "black-gate", "style": "stop", "dur": 4.5, "place": "black-gate", "camera": { "bookmark": "black-gate-wide" },
       "tod": [16.05, 16.15], "light": "shade", "captions": [{ "kind": "pass", "landmark": "black-gate" }], "music": { "mood": "approach", "intensity": 0.65, "hit": "arrive" } },
 
-    { "move": "to-henneth-annun", "dur": 5, "apexEl": 20, "music": { "mood": "ithilien", "intensity": 0.45 } },
-    { "hold": "henneth-annun", "style": "stop", "dur": 4, "place": "henneth-annun", "camera": { "bookmark": "henneth-annun-close", "set": { "azimuthDeg": 20, "elevationDeg": 18, "aimKm": [-2.5, -0.5] } },
+    { "move": "to-henneth-annun", "dur": 5, "music": { "mood": "ithilien", "intensity": 0.45 } },
+    { "hold": "henneth-annun", "style": "stop", "dur": 4, "place": "henneth-annun", "camera": { "bookmark": "henneth-annun-close", "set": { "azimuthDeg": 20, "elevationDeg": 26, "aimKm": [-2.5, -0.5], "distanceKm": 30, "fov": 20 } },
       "tod": [16.75, 16.85], "light": "shade", "captions": [{ "kind": "pass", "landmark": "henneth-annun" }], "music": { "mood": "ithilien", "intensity": 0.45 } },
 
     { "move": "to-minas-tirith", "dur": 7.5, "rho": 1.8, "apexEl": 34, "music": { "mood": "gondor", "intensity": 0.5 } },
