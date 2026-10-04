@@ -20,7 +20,6 @@ import mido
 import numpy as np
 import pyloudnorm
 import soundfile as sf
-from pedalboard import Compressor, HighpassFilter, Pedalboard
 from PIL import Image, ImageDraw
 from scipy.signal import butter, oaconvolve, resample_poly, sosfilt
 
@@ -55,6 +54,8 @@ class Score:
     send: dict[str, list[tuple[float, float]]] = field(default_factory=lambda: defaultdict(list))
     # global hall wetness envelope multiplier (caves / vast spaces)
     hall: list[tuple[float, float]] = field(default_factory=list)
+    # the conductor's dynamic arc: [(t, dB)] on the whole mix (dry + hall), before the master
+    arc: list[tuple[float, float]] = field(default_factory=list)
     markers: list[tuple[float, str]] = field(default_factory=list)
 
     def add(self, inst: str, t: float, dur: float, pitch: int, vel: int) -> None:
@@ -233,6 +234,8 @@ def mix(score: Score, stems: dict[str, Path], hall_gain: float = 0.42, fade_out:
     ir = hall_ir()
     wet = np.stack([oaconvolve(bus[:, c], ir[:, c])[:n] for c in range(2)], axis=1).astype(np.float32)
     out = dry + wet * hall_gain
+    if score.arc:
+        out *= envelope(score.arc, n, 0.0, True)[:, None]
     if fade_out:
         t0, t1 = fade_out
         t = np.arange(n) / SR
@@ -266,11 +269,31 @@ def lookahead_limit(x: np.ndarray, ceiling_db: float, lookahead: float = 0.005, 
     return x * gs[:, None]
 
 
+def glue_compress(x: np.ndarray, threshold_db: float = -24.0, ratio: float = 2.0, attack: float = 0.040, release: float = 0.300, block: int = 48) -> np.ndarray:
+    """deterministic bus glue: a stereo-linked peak detector on 1 ms blocks with attack / release ballistics; above
+    the threshold the gain falls by (1 − 1/ratio) dB per dB; block gains interpolated linearly to the samples"""
+    nb = int(math.ceil(len(x) / block))
+    pad = np.zeros((nb * block - len(x), x.shape[1]), dtype=x.dtype)
+    lvl = np.abs(np.concatenate([x, pad])).reshape(nb, block, -1).max(axis=(1, 2))
+    a_att = math.exp(-block / (attack * SR))
+    a_rel = math.exp(-block / (release * SR))
+    env = np.empty(nb)
+    e = 0.0
+    for i, v in enumerate(lvl):
+        a = a_att if v > e else a_rel
+        e = a * e + (1 - a) * v
+        env[i] = e
+    over = 20 * np.log10(np.maximum(env, 1e-9)) - threshold_db
+    g = 10 ** (np.minimum(0.0, (1 / ratio - 1) * over) / 20)
+    gs = np.interp(np.arange(len(x)) / block, np.arange(nb), g).astype(np.float32)
+    return (x * gs[:, None]).astype(np.float32)
+
+
 def master(x: np.ndarray, target_lufs: float = -16.0, tp_ceiling: float = -1.5) -> tuple[np.ndarray, dict]:
-    """bus glue (gentle 2:1) → loudness to the target → look-ahead limiter at the true-peak ceiling → trim so the
-    integrated loudness never exceeds the target"""
-    board = Pedalboard([HighpassFilter(cutoff_frequency_hz=28), Compressor(threshold_db=-24, ratio=2.0, attack_ms=40, release_ms=300)])
-    y = board(x.T.astype(np.float32), SR).T
+    """28 Hz high-pass → bus glue (gentle 2:1) → loudness to the target → look-ahead limiter at the true-peak ceiling
+    → trim so the integrated loudness never exceeds the target"""
+    y = sosfilt(butter(2, 28, btype="highpass", fs=SR, output="sos"), x, axis=0).astype(np.float32)
+    y = glue_compress(y)
     meter = pyloudnorm.Meter(SR)
     l0 = meter.integrated_loudness(y)
     y = y * (10 ** ((target_lufs - l0) / 20))

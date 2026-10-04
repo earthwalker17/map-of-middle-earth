@@ -8,7 +8,6 @@ dependencies = [
   "scipy>=1.14",
   "soundfile>=0.12",
   "mido>=1.3",
-  "pedalboard>=0.9.20",
   "pyloudnorm>=0.1.1",
   "pillow>=11",
 ]

@@ -537,9 +537,27 @@ def finale(S: Score, c: Cues) -> None:
 SECTIONS = [prologue, pastoral, road, elven, mountain, deep, golden_wood, isengard, rohan, river, kings, approach, ithilien, gondor, morgul, doom, finale]
 
 
+def dynamic_arc(S: Score, c: Cues) -> None:
+    """The conductor's arc over the whole film (bus gain, dB): Rohan and the Argonath reveal stay big but under the
+    summit; the Black Gate gains menace; Mount Doom is the loudest point; the finale settles below it."""
+    # (beat, at its end?, offset s, dB); a key whose beat the cut no longer has is skipped
+    keys = [
+        ("to-helms-deep", False, 0.0, 0.0), ("to-helms-deep", False, 1.5, -2.5),
+        ("argonath", True, 0.0, -2.0), ("argonath", True, 2.0, -1.0),
+        ("to-black-gate", False, 0.0, 0.0), ("black-gate", False, 0.0, 1.0), ("black-gate", True, 0.0, 1.0),
+        ("black-gate", True, 2.0, 0.0),
+        ("to-mount-doom", False, 2.0, 0.0), ("mount-doom", False, 0.0, 1.5), ("mount-doom", True, 0.0, 1.5),
+        ("mount-doom", True, 2.5, -1.5),
+    ]
+    pts = [(0.0, 0.0), (c.duration, -1.5)]
+    pts += [((c.t1(b) if end else c.t0(b)) + dt, db) for b, end, dt, db in keys if b in c.by]
+    S.arc = sorted(pts)
+
+
 def compose(cues: dict) -> Score:
     c = Cues(cues)
     S = Score(duration=c.duration)
     for sec in SECTIONS:
         sec(S, c)
+    dynamic_arc(S, c)
     return S

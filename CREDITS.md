@@ -141,6 +141,22 @@ outputs. Rights remain with their owners:
 | User:FA2010 | Public domain | [photos/general/relief-model-munich-museum.jpg](https://commons.wikimedia.org/wiki/File:M%C3%BCnchen_Reliefmodell_BNM_img01.jpg) | Relief model of Munich (Bavarian National Museum) |
 | Wikitarisch | CC BY 4.0 | [photos/general/relief-model-luebeck-landscape.jpg](https://commons.wikimedia.org/wiki/File:Reliefmodell_L%C3%BCbeck_und_Wakenitz_%28Museum_f%C3%BCr_Natur_und_Umwelt_L%C3%BCbeck%29.jpg) | Relief model, Lübeck and Wakenitz |
 
+## Music (S5)
+
+The film's score is an **original composition by this project**, written as code (`tools/music/journey.py`) and
+rendered offline (`pnpm music`); it uses and imitates no film-score material. The rendered audio is a project render
+like the README stills — nothing in `public/` — and the sample libraries and renderer are fetched locally by
+`tools/music/fetch.py` into the gitignored `data/music-src/` (manifest: `data/music-src/manifest.json`), never
+committed or redistributed.
+
+| Input | Author | Licence | Use |
+|---|---|---|---|
+| [VSCO 2 Community Edition](https://github.com/sgossner/VSCO-2-CE) (SFZ branch, commit `6dd651d`) — strings, harp, horns, trumpet, trombone, tuba, flute, oboe, clarinet, piccolo, percussion | Versilian Studios (Sam Gossner) | CC0-1.0 | instrument samples, render-time only |
+| [sfizz](https://github.com/sfztools/sfizz) 1.2.3 (`sfizz_render`) | the sfizz authors (SFZ Tools) | BSD-2-Clause | offline SFZ → audio renderer, a tool (not shipped) |
+
+The mix and master (convolution hall from a synthetic impulse response, bus glue, look-ahead limiter, loudness)
+are the project's own code on numpy / scipy; loudness metering uses pyloudnorm (see Software).
+
 ## Software
 
 | Package | Licence | Use |
@@ -167,6 +183,19 @@ Python bake (`tools/bake`, dev-only):
 | Pillow | MIT-CMU (HPND) |
 | scikit-image | BSD-3-Clause |
 | tifffile | BSD-3-Clause |
+
+Python score toolchain (`tools/music`, dev-only):
+
+| Package | Licence |
+|---|---|
+| NumPy, SciPy | BSD-3-Clause |
+| python-soundfile (libsndfile) | BSD-3-Clause (LGPL-2.1 libsndfile, bundled in the wheel) |
+| mido | MIT |
+| pyloudnorm | MIT |
+| Pillow | MIT-CMU (HPND) |
+
+The film renderer (`pnpm film`) encodes with a system install of [FFmpeg](https://ffmpeg.org) (LGPL-2.1+ / GPL
+depending on the build; called as an external program, not shipped).
 
 ## Trademarks & IP
 
