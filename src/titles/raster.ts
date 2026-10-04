@@ -24,18 +24,25 @@ const PARCHMENT = '#d8ccaf';
  * crisps the edges. Drawn shadow-only (the glyphs themselves once, on top).
  */
 const SHADOWS: { color: string; blur: number; spread: number; dy: number }[] = [
-  { color: 'rgba(8,6,3,0.34)', blur: 0.03, spread: 0.2, dy: 0.002 },
-  { color: 'rgba(8,6,3,0.45)', blur: 0.012, spread: 0.08, dy: 0.0015 },
-  { color: 'rgba(0,0,0,0.55)', blur: 0.0028, spread: 0, dy: 0.0009 },
+  { color: 'rgba(8,6,3,0.42)', blur: 0.02, spread: 0.12, dy: 0.0015 },
+  { color: 'rgba(8,6,3,0.4)', blur: 0.008, spread: 0.05, dy: 0.001 },
+  { color: 'rgba(0,0,0,0.5)', blur: 0.0028, spread: 0, dy: 0.0009 },
 ];
+/**
+ * the floating labels' scrim: a very soft elliptical darkening behind the text block (SCRIM_SIZE × the
+ * block, Gaussian falloff, peak SCRIM_ALPHA) — invisible on dark ground, it keeps the ivory legible on
+ * bright canopy and sunlit grass without a plate
+ */
+const SCRIM_ALPHA = 0.24;
+const SCRIM_SIZE = 1.3;
 
 /** Type sizes (em, fractions of H), tracking (em), weights. */
 export const TYPE = {
   /** title: Cinzel, cap height target (fit to TITLE_MAX_W of the width), tracking */
-  titleCap: 0.075,
+  titleCap: 0.055,
   titleTrack: 0.09,
   titleWeight: 430,
-  titleMaxW: 0.84,
+  titleMaxW: 0.62,
   titleSub: 0.04,
   /** place label: name / subtitle */
   placeName: 0.045,
@@ -97,6 +104,16 @@ function scratchCtx(): Ctx {
     scratch = c;
   }
   return scratch;
+}
+
+/** Typographic quotes: ' and " become ’ ‘ “ ” (an apostrophe inside a word is always ’). */
+export function typeset(text: string): string {
+  return text
+    .replace(/(\p{L})'(\p{L})/gu, '$1’$2')
+    .replace(/(^|[\s(\[])'/g, '$1‘')
+    .replace(/'/g, '’')
+    .replace(/(^|[\s(\[])"/g, '$1“')
+    .replace(/"/g, '”');
 }
 
 const fontOf = (s: LineSpec, size = s.size) => `${s.italic ? 'italic ' : ''}${s.weight} ${size.toFixed(3)}px "${s.family}"`;
@@ -175,7 +192,8 @@ interface Rule {
 }
 
 /** The lines (and rule) of a card, stacked from the block top (the first line's cap top). */
-function compose(ctx: Ctx, def: CaptionDef, W: number, H: number): { lines: Placed[]; rules: Rule[]; height: number } {
+function compose(ctx: Ctx, def0: CaptionDef, W: number, H: number): { lines: Placed[]; rules: Rule[]; height: number } {
+  const def: CaptionDef = { ...def0, title: def0.title && typeset(def0.title), sub: def0.sub && typeset(def0.sub), lines: def0.lines?.map(typeset) };
   const lines: Placed[] = [];
   const rules: Rule[] = [];
   let y = 0;
@@ -290,6 +308,12 @@ function rulePath(ctx: Ctx, cx: number, y: number, r: Rule, t: number): void {
   }
 }
 
+/** The text block size (px) of a caption's card for a W × H frame — layout without rasterising. */
+export function cardBlock(def: CaptionDef, W: number, H: number): { w: number; h: number } {
+  const { lines, rules, height } = compose(scratchCtx(), def, W, H);
+  return { w: Math.max(1, ...lines.map((l) => l.inkL + l.inkR), ...rules.map((r) => r.half * 2)), h: Math.max(1, height) };
+}
+
 /** Rasterise a caption's card for a W × H frame (`align`: the text's alignment against the block edges). */
 export function rasterCard(def: CaptionDef, W: number, H: number, align: CardAlign): Card {
   const key = `${def.id}|${W}x${H}|${align}`;
@@ -298,7 +322,11 @@ export function rasterCard(def: CaptionDef, W: number, H: number, align: CardAli
   const blockW = Math.max(1, ...lines.map((l) => l.inkL + l.inkR), ...rules.map((r) => r.half * 2));
   const blockH = Math.max(1, height);
   const maxSize = Math.max(1, ...lines.map((l) => l.spec.size));
-  const pad = Math.ceil(Math.max(...SHADOWS.map((s) => (s.blur * 2.2 + s.dy) * H + s.spread * maxSize)) + 3);
+  const scrim = def.kind === 'place' || def.kind === 'pass';
+  const shadowPad = Math.max(...SHADOWS.map((s) => (s.blur * 2.2 + s.dy) * H + s.spread * maxSize));
+  // the scrim's Gaussian reaches ≈ 2.2σ beyond the block's half-size (σ = (SCRIM_SIZE − 1)/2 · size + 0.02 H)
+  const scrimPad = scrim ? Math.max(blockW, blockH) * 0.5 * (SCRIM_SIZE - 1) + 0.06 * H : 0;
+  const pad = Math.ceil(Math.max(shadowPad, scrimPad) + 3);
   const cw = Math.ceil(blockW + pad * 2);
   const ch = Math.ceil(blockH + pad * 2);
   const canvas = new OffscreenCanvas(cw, ch);
@@ -314,6 +342,24 @@ export function rasterCard(def: CaptionDef, W: number, H: number, align: CardAli
   };
   const off = cw + 64;
   const t = Math.max(1, H * 0.0011);
+  if (scrim) {
+    // soft elliptical darkening centred on the block (a unit-circle radial gradient, scaled to an ellipse)
+    const rx = (blockW * SCRIM_SIZE) / 2 + 0.02 * H;
+    const ry = (blockH * SCRIM_SIZE) / 2 + 0.02 * H;
+    ctx.save();
+    ctx.translate(bx + blockW / 2, by + blockH / 2);
+    ctx.scale(rx, ry);
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 1.6);
+    for (let i = 0; i <= 8; i++) {
+      const u = i / 8;
+      // Gaussian in the ellipse's radius (σ ≈ 0.62 of the half-size), to 0 at 1.6
+      const a = SCRIM_ALPHA * Math.exp(-0.5 * ((u * 1.6) / 0.62) ** 2) * (1 - u ** 4);
+      g.addColorStop(u, `rgba(6,5,3,${a.toFixed(4)})`);
+    }
+    ctx.fillStyle = g;
+    ctx.fillRect(-1.6, -1.6, 3.2, 3.2);
+    ctx.restore();
+  }
   // shadows (all lines and rules) under every glyph
   for (const l of lines) shadowText(ctx, l, xOf(l), by + l.baseline, H, off);
   for (const r of rules) {

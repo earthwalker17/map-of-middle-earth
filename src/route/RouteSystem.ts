@@ -1,29 +1,37 @@
-import { BufferGeometry, Float32BufferAttribute, Mesh, Uint16BufferAttribute, Uint32BufferAttribute, type NodeMaterial } from 'three/webgpu';
+import { BufferGeometry, Float32BufferAttribute, InterleavedBuffer, InterleavedBufferAttribute, Mesh, Uint16BufferAttribute, Uint32BufferAttribute, type NodeMaterial } from 'three/webgpu';
 import type { FrameContext, InitContext, SceneState, System } from '../core/types.ts';
 import type { LightRecord, V3 } from '../landmarks/records.ts';
 import type { World } from '../world/World.ts';
 import type { CompiledRoute } from '../tour/schema.ts';
-import { routeAt } from '../tour/route.ts';
-import { createRouteCoreMaterial, createRouteUnderMaterial, createRouteUniforms, DASH_PX, PULL_PX, PULL_REL, QUAD_K, ROUTE_GOLD } from './routeMaterial.ts';
+import { pathAt, ribbonPath, type RibbonPath } from './path.ts';
+import { cameraBasis, projectWith } from '../titles/layout.ts';
+import { createRouteCoreMaterial, createRouteUnderMaterial, createRouteUniforms, createRouteXrayMaterial, DASH_PX, HALF_KM, HALF_MAX, HALF_MIN, MORPH, PULL_CORE, PULL_PX, PULL_REL, QUAD_K, ROUTE_GOLD } from './routeMaterial.ts';
 
 /** render orders: after the water (1–3), before the ash deck (30), mist (34), falls (35), sprites (50) */
 const ORDER_UNDER = 20;
 const ORDER_CORE = 21;
+const ORDER_XRAY = 22;
 /** the drawn range reaches this far (1080p px at the head depth) beyond the head: the round cap and comet glow */
 const CAP_REACH_PX = 60;
+/** neighbour stencil (samples) of the near / far path: the chord tangent and the screen curvature */
+const STENCIL_NEAR = 2;
+const STENCIL_FAR = 4;
+/** indices per segment (two quads across) */
+const IDX = 12;
 /**
  * Head light (the comet's heart): a gold 'magic' sprite of HEAD_PX (1080p px) radius at the head; its energy
  * is kept when the light's physical radius hits the kind's cap far out (intensity × (r / cap)², ≤ the cap).
  */
-const HEAD_PX = 2.2;
-const HEAD_INTENSITY = 0.3;
+const HEAD_PX = 1.6;
+const HEAD_INTENSITY = 0.2;
 const HEAD_RADIUS_CAP = 0.8;
-const HEAD_INTENSITY_CAP = 12;
-const HEAD_COLOR: V3 = [ROUTE_GOLD[0], ROUTE_GOLD[1] * 1.1, ROUTE_GOLD[2] * 1.3];
+const HEAD_INTENSITY_CAP = 8;
+const HEAD_COLOR: V3 = [ROUTE_GOLD[0], ROUTE_GOLD[1] * 1.15, 0.12];
 /** the head light's seed (rand: flicker phase) */
 const HEAD_SEED = 0x5f0a7e;
 
 const _p: [number, number, number] = [0, 0, 0];
+const _q: [number, number, number] = [0, 0, 0];
 
 /** Camera basics of a state (pure): position, unit forward, px-per-km factor 1 / (2·tan(fov/2)). */
 function viewOf(state: SceneState): { pos: V3; fwd: V3; k: number } {
@@ -38,17 +46,27 @@ export function routeGlowOf(state: SceneState): number {
   return Math.min(1, Math.max(0, state.routeGlow ?? (state.routeProgress > 0 ? 1 : 0)));
 }
 
+const smooth = (e0: number, e1: number, x: number): number => {
+  const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
+  return t * t * (3 - 2 * t);
+};
+
 /**
  * RouteSystem (S5 film only, `?film=1`): the journey's luminous route line over the miniature, drawn up to
  * the head (SceneState.routeProgress × length) with a comet and a gold head light. One static ribbon
- * (routeMaterial.ts) built once from the CompiledRoute; evaluate() writes four uniforms and the draw range —
- * a pure function of the state (no geometry rebuilds, nothing carried between frames).
+ * (routeMaterial.ts) built once from the route's render path (path.ts: near / far heights, the Moria leg
+ * through the mountain); evaluate() writes four uniforms and two draw ranges — a pure function of the state
+ * (no geometry rebuilds, nothing carried between frames).
  */
 export class RouteSystem implements System {
   readonly id = 'route';
-  readonly stats = { samples: 0, vertices: 0, drawnSegments: 0, headKm: 0, glow: 0 };
+  readonly stats = { samples: 0, vertices: 0, drawnSegments: 0, xraySegments: 0, headKm: 0, glow: 0 };
+  readonly path: RibbonPath;
   private readonly u = createRouteUniforms();
   private geometry: BufferGeometry | null = null;
+  private xray: BufferGeometry | null = null;
+  /** ascending segment indices (row q → q + 1) of the x-ray geometry */
+  private xraySegs: Uint32Array = new Uint32Array(0);
   private materials: NodeMaterial[] = [];
   private meshes: Mesh[] = [];
   private readonly spacing: number;
@@ -60,68 +78,111 @@ export class RouteSystem implements System {
   ) {
     this.spacing = route.count > 1 ? route.length / (route.count - 1) : 1;
     this.stats.samples = route.count;
+    this.path = ribbonPath(route);
   }
 
   init(ctx: InitContext): void {
     void this.world;
-    const r = this.route;
-    const n = r.count;
-    // vertex pairs: the start's extension (slid out by the shader), the n samples, the end's extension
-    const pairs = n + 2;
-    const pos = new Float32Array(pairs * 2 * 3);
-    const tan = new Float32Array(pairs * 2 * 4);
-    const sm = new Float32Array(pairs * 2 * 2);
-    for (let q = 0; q < pairs; q++) {
+    const P = this.path;
+    const n = P.count;
+    // vertex triples across (edge −1, centre, edge +1): the start's extension (slid out by the shader), the n
+    // samples, the end's extension
+    const rows = n + 2;
+    const pos = new Float32Array(rows * 3 * 3);
+    // interleaved: An(3) Bn(3) Pf(3) Af(3) Bf(3) S(4)
+    const STRIDE = 19;
+    const il = new Float32Array(rows * 3 * STRIDE);
+    const put = (o: number, src: Float64Array, k: number) => {
+      il[o] = src[k * 3];
+      il[o + 1] = src[k * 3 + 1];
+      il[o + 2] = src[k * 3 + 2];
+    };
+    const segMode = new Uint8Array(rows);
+    for (let q = 0; q < rows; q++) {
       const k = Math.min(n - 1, Math.max(0, q - 1));
-      const ext = q === 0 ? 4 : q === pairs - 1 ? 8 : 0;
-      // 3D tangent from the neighbours (the drape's slope matters for the screen direction on steep ground)
-      const a = Math.max(0, k - 1) * 4;
-      const b = Math.min(n - 1, k + 1) * 4;
-      let tx = r.pts[b] - r.pts[a];
-      let ty = r.pts[b + 1] - r.pts[a + 1];
-      let tz = r.pts[b + 2] - r.pts[a + 2];
-      const l = Math.hypot(tx, ty, tz) || 1;
-      tx /= l;
-      ty /= l;
-      tz /= l;
-      for (let side = 0; side < 2; side++) {
-        const v = q * 2 + side;
-        pos[v * 3] = r.pts[k * 4];
-        pos[v * 3 + 1] = r.pts[k * 4 + 1];
-        pos[v * 3 + 2] = r.pts[k * 4 + 2];
-        tan[v * 4] = tx;
-        tan[v * 4 + 1] = ty;
-        tan[v * 4 + 2] = tz;
-        tan[v * 4 + 3] = side === 0 ? -1 : 1;
-        sm[v * 2] = r.pts[k * 4 + 3];
-        sm[v * 2 + 1] = r.mode[k] + ext;
+      const ext = q === 0 ? 4 : q === rows - 1 ? 8 : 0;
+      const an = Math.max(0, k - STENCIL_NEAR);
+      const bn = Math.min(n - 1, k + STENCIL_NEAR);
+      const af = Math.max(0, k - STENCIL_FAR);
+      const bf = Math.min(n - 1, k + STENCIL_FAR);
+      // one chord span ds (the near stencil's) serves both levels: the far neighbours are pulled toward the
+      // far centre to span ds of s, so (B − A) / ds is dP/ds on both (the far turn angle is unchanged; its
+      // radius estimate halves — a conservative inner reach)
+      const dsN = Math.max(1e-6, P.s[bn] - P.s[an]);
+      const dsF = Math.max(1e-6, P.s[bf] - P.s[af]);
+      segMode[q] = P.mode[k];
+      for (let side = 0; side < 3; side++) {
+        const v = q * 3 + side;
+        pos[v * 3] = P.p[k * 3];
+        pos[v * 3 + 1] = P.p[k * 3 + 1];
+        pos[v * 3 + 2] = P.p[k * 3 + 2];
+        const o = v * STRIDE;
+        put(o, P.p, an);
+        put(o + 3, P.p, bn);
+        put(o + 6, P.pc, k);
+        const r = dsN / dsF;
+        for (let c = 0; c < 3; c++) {
+          const ctr = P.pc[k * 3 + c];
+          il[o + 9 + c] = ctr + (P.pc[af * 3 + c] - ctr) * r;
+          il[o + 12 + c] = ctr + (P.pc[bf * 3 + c] - ctr) * r;
+        }
+        il[o + 15] = P.s[k];
+        il[o + 16] = side - 1;
+        il[o + 17] = P.mode[k] + ext;
+        il[o + 18] = dsN;
       }
     }
-    const segs = pairs - 1;
-    const idx = pairs * 2 > 65535 ? new Uint32Array(segs * 6) : new Uint16Array(segs * 6);
-    for (let k = 0; k < segs; k++) {
-      const v = k * 2;
-      idx.set([v, v + 1, v + 2, v + 1, v + 3, v + 2], k * 6);
-    }
-    const g = new BufferGeometry();
-    g.setAttribute('position', new Float32BufferAttribute(pos, 3));
-    g.setAttribute('routeT', new Float32BufferAttribute(tan, 4));
-    g.setAttribute('routeS', new Float32BufferAttribute(sm, 2));
-    g.setIndex(idx instanceof Uint32Array ? new Uint32BufferAttribute(idx, 1) : new Uint16BufferAttribute(idx, 1));
-    g.setDrawRange(0, 0);
-    this.geometry = g;
-    this.stats.vertices = pairs * 2;
+    const segs = rows - 1;
+    const big = rows * 3 > 65535;
+    const idx = big ? new Uint32Array(segs * IDX) : new Uint16Array(segs * IDX);
+    // two quads per segment: edge −1 ↔ centre, centre ↔ edge +1
+    const quadAt = (k: number, out: Uint16Array | Uint32Array, at: number) => {
+      const a = k * 3;
+      const b = a + 3;
+      out.set([a, a + 1, b, a + 1, b + 1, b, a + 1, a + 2, b + 1, a + 2, b + 2, b + 1], at);
+    };
+    for (let k = 0; k < segs; k++) quadAt(k, idx, k * IDX);
+    // the x-ray: the segments touching an underground sample
+    const xs: number[] = [];
+    for (let k = 0; k < segs; k++) if (segMode[k] === 2 || segMode[k + 1] === 2) xs.push(k);
+    this.xraySegs = Uint32Array.from(xs);
+    const xidx = big ? new Uint32Array(Math.max(1, xs.length) * IDX) : new Uint16Array(Math.max(1, xs.length) * IDX);
+    xs.forEach((k, i) => quadAt(k, xidx, i * IDX));
+
+    const ib = new InterleavedBuffer(il, STRIDE);
+    const attrs: [string, number, number][] = [
+      ['routeAn', 3, 0],
+      ['routeBn', 3, 3],
+      ['routePf', 3, 6],
+      ['routeAf', 3, 9],
+      ['routeBf', 3, 12],
+      ['routeS', 4, 15],
+    ];
+    const position = new Float32BufferAttribute(pos, 3);
+    const make = (index: Uint16Array | Uint32Array): BufferGeometry => {
+      const g = new BufferGeometry();
+      g.setAttribute('position', position);
+      for (const [name, size, offset] of attrs) g.setAttribute(name, new InterleavedBufferAttribute(ib, size, offset));
+      g.setIndex(index instanceof Uint32Array ? new Uint32BufferAttribute(index, 1) : new Uint16BufferAttribute(index, 1));
+      g.setDrawRange(0, 0);
+      return g;
+    };
+    this.geometry = make(idx);
+    this.xray = make(xidx);
+    this.stats.vertices = rows * 3;
     const under = createRouteUnderMaterial(this.u);
     const core = createRouteCoreMaterial(this.u);
-    this.materials = [under, core];
-    for (const [m, order, name] of [
-      [under, ORDER_UNDER, 'route-under'],
-      [core, ORDER_CORE, 'route-core'],
+    const xray = createRouteXrayMaterial(this.u);
+    this.materials = [under, core, xray];
+    for (const [g, m, order, name] of [
+      [this.geometry, under, ORDER_UNDER, 'route-under'],
+      [this.geometry, core, ORDER_CORE, 'route-core'],
+      [this.xray, xray, ORDER_XRAY, 'route-xray'],
     ] as const) {
       const mesh = new Mesh(g, m);
       mesh.name = name;
       mesh.renderOrder = order;
-      // always in the scene (the warm-up's compileAsync builds both pipelines); off = an empty draw range
+      // always in the scene (the warm-up's compileAsync builds the pipelines); off = an empty draw range
       mesh.frustumCulled = false;
       mesh.castShadow = false;
       mesh.receiveShadow = false;
@@ -133,7 +194,8 @@ export class RouteSystem implements System {
 
   evaluate(frame: FrameContext): void {
     const g = this.geometry;
-    if (!g) return;
+    const gx = this.xray;
+    if (!g || !gx) return;
     const { state, viewport } = frame;
     const glow = routeGlowOf(state);
     const head = Math.min(1, Math.max(0, state.routeProgress)) * this.route.length;
@@ -143,18 +205,22 @@ export class RouteSystem implements System {
     this.stats.glow = glow;
     if (glow <= 0) {
       g.setDrawRange(0, 0);
+      gx.setDrawRange(0, 0);
       this.stats.drawnSegments = 0;
+      this.stats.xraySegments = 0;
       return;
     }
     // km per render px at the head's view depth (dot period, drawn reach)
     const { pos, fwd, k } = viewOf(state);
-    routeAt(this.route, head, _p);
+    pathAt(this.path, head, 1, _p);
     const zHead = Math.max(0.01, (_p[0] - pos[0]) * fwd[0] + (_p[1] - pos[1]) * fwd[1] + (_p[2] - pos[2]) * fwd[2]);
     const pxPerKm = viewport.height * k;
     const kmPerPx = zHead / pxPerKm;
     const scale = viewport.height / 1080;
-    // underground dots: DASH_PX (1080p) at the head depth, in world octaves crossfaded (dots never crawl)
-    const L = Math.log2(Math.max(1e-6, DASH_PX * scale * kmPerPx));
+    // underground dots: DASH_PX (1080p) along the line as it is foreshortened at the head (a leg receding
+    // from the camera keeps visible dots), in world octaves crossfaded (dots never crawl)
+    const alongKmPerPx = Math.min(5 * kmPerPx, this.kmPerPxAlong(state, head, viewport.width, viewport.height) ?? kmPerPx);
+    const L = Math.log2(Math.max(1e-6, DASH_PX * scale * alongKmPerPx));
     const k0 = Math.floor(L);
     this.u.dashKm.value = 2 ** k0;
     this.u.dashMix.value = L - k0;
@@ -163,8 +229,46 @@ export class RouteSystem implements System {
     const reachKm = CAP_REACH_PX * scale * kmPerPx * QUAD_K;
     const kEnd = Math.min(this.route.count - 1, Math.ceil((head + reachKm) / this.spacing) + 1);
     const segs = Math.min(this.route.count + 1, kEnd + 2);
-    g.setDrawRange(0, segs * 6);
+    g.setDrawRange(0, segs * IDX);
     this.stats.drawnSegments = segs;
+    // x-ray: its segments below `segs` (ascending list → binary search)
+    let lo = 0;
+    let hi = this.xraySegs.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (this.xraySegs[mid] < segs) lo = mid + 1;
+      else hi = mid;
+    }
+    gx.setDrawRange(0, lo * IDX);
+    this.stats.xraySegments = lo;
+  }
+
+  /** km of route per render px along the projected line at arc length s (±0.5 km chord), null if behind */
+  private kmPerPxAlong(state: SceneState, s: number, W: number, H: number): number | null {
+    const b = cameraBasis(state.camera);
+    const a = projectWith(b, pathAt(this.path, Math.max(0, s - 0.5), 1, _q), W, H);
+    const c = projectWith(b, pathAt(this.path, Math.min(this.route.length, s + 0.5), 1, _q), W, H);
+    if (!a || !c) return null;
+    const px = Math.hypot(c.x - a.x, c.y - a.y);
+    const ds = Math.min(this.route.length, s + 0.5) - Math.max(0, s - 0.5);
+    return px > 1e-6 && ds > 1e-6 ? ds / px : null;
+  }
+
+  /**
+   * The head's world position as the line draws it (the near / far morph at its depth, as the shader), or
+   * null while the line is off. Pure function of the state.
+   */
+  headPoint(state: SceneState, out: [number, number, number] = [0, 0, 0]): [number, number, number] | null {
+    if (routeGlowOf(state) <= 0) return null;
+    const head = Math.min(1, Math.max(0, state.routeProgress)) * this.route.length;
+    pathAt(this.path, head, 1, out);
+    const { pos, fwd, k } = viewOf(state);
+    const z = Math.max(0.01, (out[0] - pos[0]) * fwd[0] + (out[1] - pos[1]) * fwd[1] + (out[2] - pos[2]) * fwd[2]);
+    // resolution independent: iso / quad in 1080p px
+    const iso = (1080 * k) / z;
+    const h = Math.min(HALF_MAX, Math.max(HALF_MIN, iso * HALF_KM));
+    const wN = smooth(MORPH[0], MORPH[1], iso / (h * QUAD_K));
+    return pathAt(this.path, head, wN, out);
   }
 
   /**
@@ -175,18 +279,17 @@ export class RouteSystem implements System {
    */
   lights(state: SceneState): LightRecord[] {
     const glow = routeGlowOf(state);
-    if (glow <= 0) return [];
-    const head = Math.min(1, Math.max(0, state.routeProgress)) * this.route.length;
-    routeAt(this.route, head, _p);
+    if (glow <= 0 || !this.headPoint(state, _p)) return [];
     const { pos, fwd, k } = viewOf(state);
     const dx = _p[0] - pos[0];
     const dy = _p[1] - pos[1];
     const dz = _p[2] - pos[2];
     const dist = Math.hypot(dx, dy, dz) || 1;
     const z = Math.max(0.01, dx * fwd[0] + dy * fwd[1] + dz * fwd[2]);
-    // km per 1080p px at the head depth
+    // km per 1080p px at the head depth; the line centre's pull there (PULL_PX + PULL_CORE core half-widths)
     const kmPerPx = z / (1080 * k);
-    const pull = Math.min(0.9, (PULL_PX * kmPerPx + PULL_REL * dist) / dist);
+    const h = Math.min(HALF_MAX, Math.max(HALF_MIN, HALF_KM / kmPerPx));
+    const pull = Math.min(0.9, ((PULL_PX + PULL_CORE * h) * kmPerPx + PULL_REL * dist) / dist);
     const rWant = HEAD_PX * kmPerPx;
     const r = Math.min(rWant, HEAD_RADIUS_CAP);
     const rec = this.head;
@@ -199,6 +302,7 @@ export class RouteSystem implements System {
   dispose(): void {
     for (const m of this.meshes) m.removeFromParent();
     this.geometry?.dispose();
+    this.xray?.dispose();
     for (const m of this.materials) m.dispose();
   }
 }

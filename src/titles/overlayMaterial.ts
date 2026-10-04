@@ -13,9 +13,13 @@ const { Fn, abs, clamp, exp, float, length, max, min, select, texture, uv, vec2,
 
 /** ivory-gold of the leader lines and diamonds (sRGB display values, as the cards' #ebd9a8) */
 const LINE_RGB: [number, number, number] = [0xeb / 255, 0xd9 / 255, 0xa8 / 255];
-/** peak alpha and Gaussian σ (px at 1080p) of the soft dark halo under the lines / diamonds */
-const HALO_ALPHA = 0.55;
-const HALO_SIGMA = 1.8;
+/**
+ * peak alpha of the soft dark halo under the leader lines (its σ is set per segment: ≈ the hairline's own
+ * width, so the line stays a fine ivory thread, never a grey stick) and under the diamonds
+ */
+const HALO_ALPHA_LINE = 0.36;
+const HALO_ALPHA_DIAMOND = 0.42;
+const HALO_SIGMA = 1.2;
 
 function over(m: NodeMaterial): NodeMaterial {
   m.transparent = true;
@@ -81,7 +85,7 @@ export function createLineMaterial(): LineMaterial {
     const ax = max(abs(p.x).sub(shape.x.mul(0.5)), 0);
     const d = length(vec2(ax, p.y));
     const a = clamp(shape.y.add(0.5).sub(d), 0, 1).mul(shape.w);
-    const halo = exp(d.mul(d).div(shape.z.mul(shape.z)).mul(-0.5)).mul(HALO_ALPHA);
+    const halo = exp(d.mul(d).div(shape.z.mul(shape.z)).mul(-0.5)).mul(HALO_ALPHA_LINE);
     const alpha = a.add(halo.mul(float(1).sub(a)));
     return vec4(vec3(...LINE_RGB).mul(a), alpha).mul(opacity);
   })();
@@ -107,7 +111,7 @@ export function createDiamondMaterial(): DiamondMaterial {
     const d = l1.sub(shape.y).mul(Math.SQRT1_2);
     const a = clamp(float(0.5).sub(d), 0, 1);
     const dh = max(d, 0);
-    const halo = exp(dh.mul(dh).div(shape.z.mul(shape.z)).mul(-0.5)).mul(HALO_ALPHA);
+    const halo = exp(dh.mul(dh).div(shape.z.mul(shape.z)).mul(-0.5)).mul(HALO_ALPHA_DIAMOND);
     const alpha = a.add(halo.mul(float(1).sub(a)));
     return vec4(vec3(...LINE_RGB).mul(a), min(alpha, 1)).mul(opacity);
   })();
@@ -117,6 +121,30 @@ export function createDiamondMaterial(): DiamondMaterial {
 export interface FadeMaterial {
   material: NodeMaterial;
   opacity: { value: number };
+}
+
+export interface BandMaterial {
+  material: NodeMaterial;
+  opacity: { value: number };
+  /** x = quad height (px), y = Gaussian σ (px) of the band across */
+  shape: { value: Vector2 };
+}
+
+/**
+ * A soft horizontal band of darkness (premultiplied black, Gaussian across, full width): the end line's
+ * scrim — the world dims behind the words, never a plate.
+ */
+export function createBandMaterial(): BandMaterial {
+  const opacity = uniform(0);
+  const shape = uniform(new Vector2(100, 20));
+  const m = new NodeMaterial();
+  m.name = 'title-band';
+  m.fragmentNode = Fn(() => {
+    const y = uv().y.sub(0.5).mul(shape.x);
+    const a = exp(y.mul(y).div(shape.y.mul(shape.y)).mul(-0.5)).mul(opacity);
+    return vec4(0, 0, 0, a);
+  })();
+  return { material: over(m), opacity, shape };
 }
 
 /** Full-frame black (fades to / from black). */

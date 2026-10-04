@@ -26,7 +26,7 @@ import { compileFilm, type FilmProgram } from '../tour/compile.ts';
 import { FilmTimeline } from '../tour/FilmTimeline.ts';
 import type { RouteJson, TimelineJson } from '../tour/schema.ts';
 import { RouteSystem } from '../route/RouteSystem.ts';
-import { TitleSystem } from '../titles/TitleSystem.ts';
+import { TitleSystem, titleSubjects } from '../titles/TitleSystem.ts';
 import { loadFilmFonts } from '../titles/fonts.ts';
 
 /**
@@ -74,8 +74,18 @@ async function buildWorld(engine: Engine, quality: QualityTierId, shots: ShotSpe
     await loadFilmFonts();
     mark('filmFonts');
     route = new RouteSystem(world, film.film.route);
-    titles = new TitleSystem(film.film.captions, { fps: film.film.fps });
     const r = route;
+    const f = film;
+    // labels: laid out at the shutter's centre, placed off their landmark's silhouette, faded while it is
+    // hidden behind terrain, and marking the route head while it rests on their landmark
+    titles = new TitleSystem(film.film.captions, {
+      fps: film.film.fps,
+      shutter: film.film.shutter,
+      stateAt: (t) => f.evaluate(t),
+      heightAt: (x, z) => world.heights.sample(x, z),
+      subjects: titleSubjects(built, (x, z) => world.heights.sample(x, z)),
+      headAt: (s, out) => r.headPoint(s, out),
+    });
     emission.setDynamic((s) => [...effects.lights(s), ...r.lights(s)]);
   } else emission.setDynamic((s) => effects.lights(s));
   for (const s of [environment, terrain, water, vegetation, diorama, landmarks, emission, effects, ...(route ? [route] : []), ...(titles ? [titles] : [])]) {
