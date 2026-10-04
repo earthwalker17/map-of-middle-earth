@@ -15,6 +15,9 @@ Velocities: pp 34 · p 48 · mp 62 · mf 78 · f 98 · ff 116.
 """
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from engine import Score
 
 PP, P, MP, MF, F, FF = 34, 48, 62, 78, 98, 116
@@ -50,6 +53,17 @@ class Cues:
     """beats from the film cue sheet: {id, kind, style, t0, t1, music{mood, intensity, hit}} + event keys"""
 
     def __init__(self, data: dict):
+        if "cues" in data:  # the film's CueSheet (tools/check/film.ts --cues): event ramps from the timeline itself
+            self.duration = float(data["film"]["duration"])
+            self.beats = data["cues"]
+            self.by = {b["id"]: b for b in self.beats}
+            tl = json.loads((Path(__file__).resolve().parents[2] / "data" / "tour" / "timeline.json").read_text(encoding="utf-8"))
+            self.events = {}
+            for b in tl["beats"]:
+                for ch, keys in (b.get("events") or {}).items():
+                    t0 = self.t0(b["hold"])
+                    self.events.setdefault(ch, []).extend([t0 + t, v] for t, v in keys)
+            return
         self.duration = float(data["duration"])
         self.beats = data["beats"]
         self.by = {b["id"]: b for b in self.beats}
@@ -441,7 +455,7 @@ def morgul(S: Score, c: Cues) -> None:
     """Minas Morgul: tritone pedal, string clusters, heartbeat drum; the green beam: swell → brass cluster stinger."""
     t0 = c.t0("to-minas-morgul")
     mm = c.t0("minas-morgul")
-    t1 = c.t0("cirith-ungol")
+    t1 = c.t0("to-mount-doom") + 2.0  # the camera leaves the vale
     S.mark(t0, "morgul")
     pad(S, t0, t1 + 0.4, {"cb": "D1", "tba": "D1"}, MP)
     pad(S, mm, t1 + 0.4, {"tbn": "Ab2"}, MP)
@@ -463,8 +477,8 @@ def morgul(S: Score, c: Cues) -> None:
 
 
 def doom(S: Score, c: Cues) -> None:
-    """Cirith Ungol → Gorgoroth → Mount Doom: the theme in minor, tutti, the climax at the mountain."""
-    t0 = c.t0("cirith-ungol")
+    """Past Cirith Ungol, across Gorgoroth → Mount Doom: the theme in minor, tutti, the climax at the mountain."""
+    t0 = c.t0("to-mount-doom") + 2.0
     md = c.t0("mount-doom")
     t1 = c.t1("mount-doom")
     S.mark(t0, "doom")

@@ -1,8 +1,8 @@
 """
 Render the score (S5):  pnpm music --cues <cues.json> [--out renders/music/<dir>] [--from s --to s]
 
-cues.json: the film's cue sheet — {duration, beats: [{id, kind, style, t0, t1, music: {mood, intensity, hit}}],
-events: {channel: [[t, v], …]}} (tools/check/film.ts --cues, or the draft exporter). Output: stems/*.wav (+ .mid),
+cues.json: the film's cue sheet — `node --import tsx tools/check/film.ts --cues <file>` ({film, sections, cues, hits};
+event ramps are read from data/tour/timeline.json), or the draft format {duration, beats, events}. Output: stems/*.wav (+ .mid),
 master.wav (48 kHz, 24-bit, −16 LUFS, ≤ −1.5 dBTP), spectrogram.png (section markers), report.json.
 Deterministic for a given cue sheet, score code and sample set.
 """
@@ -47,7 +47,7 @@ def main() -> None:
     stems = render_stems(score, out / "stems")
     t1 = time.time()
     end_fade = None
-    fade = [b for b in cues["beats"] if b["id"] == "end"]
+    fade = [b for b in cues.get("beats") or cues.get("cues") or [] if b["id"] == "end"]
     if fade:
         end_fade = (score.duration - 2.2, score.duration)
     y, rep = mix(score, stems, fade_out=end_fade)
@@ -57,7 +57,8 @@ def main() -> None:
         score.markers = [(t - (a.t_from or 0), m) for t, m in score.markers if (a.t_from or 0) <= t < (a.t_to or score.duration)]
     y, m = master(y)
     rep.update(m)
-    rep["cues"] = {"file": str(a.cues), "duration": cues["duration"], "hash": cues.get("hash")}
+    film = cues.get("film", {})  # the film's CueSheet (tools/check/film.ts --cues) or the draft exporter's sheet
+    rep["cues"] = {"file": str(a.cues), "duration": cues.get("duration", film.get("duration")), "hash": cues.get("hash", film.get("hash"))}
     rep["notes"] = {k: len(v) for k, v in score.notes.items() if v}
     write_outputs(out, y, rep, score)
     print(f"[music] {len(stems)} stems in {t1 - t0:.0f} s, mix + master {time.time() - t1:.0f} s → {out}")
