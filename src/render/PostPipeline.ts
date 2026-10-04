@@ -148,7 +148,8 @@ const GLOW_LIMIT = 3;
 export interface OverlayPass {
   /** false = nothing to draw this frame (the pass is skipped entirely) */
   readonly active: boolean;
-  render(renderer: WebGPURenderer, width: number, height: number): void;
+  /** draw into `target` (the RGBA8 readback target, sRGB-encoded bytes, no depth buffer) */
+  render(renderer: WebGPURenderer, target: RenderTarget, width: number, height: number): void;
 }
 
 /**
@@ -347,7 +348,8 @@ export class PostPipeline {
     if (toReadback && this.overlay?.active) {
       const autoClear = r.autoClear;
       r.autoClear = false;
-      this.overlay.render(r, this.width, this.height);
+      r.setRenderTarget(this.out);
+      this.overlay.render(r, this.out, this.width, this.height);
       r.autoClear = autoClear;
     }
     r.setRenderTarget(null);
