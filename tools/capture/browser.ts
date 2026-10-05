@@ -26,11 +26,13 @@ const OUR_DISABLED_FEATURES = ['CalculateNativeWinOcclusion'];
 /**
  * Launch the installed Chrome (new headless) with a persistent profile so Dawn's shader/pipeline
  * cache stays warm between runs. WebGPU canvas screenshots are black in headless — all captures
- * go through the page's readback API instead.
+ * go through the page's readback API instead. MOME_CHROME = a chrome.exe to use instead (a private
+ * copy of the locked version, so an auto-update cannot change pixels during a long film render).
  */
 export async function launchChrome(opts: { headed?: boolean } = {}): Promise<BrowserContext> {
+  const exe = process.env.MOME_CHROME;
   return chromium.launchPersistentContext(chromeProfileDir(), {
-    channel: 'chrome',
+    ...(exe ? { executablePath: exe } : { channel: 'chrome' }),
     headless: !opts.headed,
     viewport: { width: 1280, height: 720 },
     deviceScaleFactor: 1,

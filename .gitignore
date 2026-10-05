@@ -32,9 +32,11 @@ public/textures/**
 data/music-src/*
 !data/music-src/manifest.json
 
-# renders, captures, caches (review/ holds the curated per-session review stills — local only)
+# renders, captures, caches (review/ holds the curated per-session review stills — local only;
+# final/ holds the finished film and its master — local only until the data authors give permission)
 renders/
 review/
+final/
 .cache/
 *.log
 

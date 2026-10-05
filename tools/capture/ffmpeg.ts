@@ -88,9 +88,11 @@ export class ChunkEncoder {
   }
 }
 
-/** decoded frame count of a video file (null if unreadable) */
-export function probeFrames(file: string): number | null {
-  const r = spawnSync(FFPROBE, ['-v', 'error', '-count_frames', '-select_streams', 'v:0', '-show_entries', 'stream=nb_read_frames', '-of', 'csv=p=0', file], { encoding: 'utf8', windowsHide: true });
+/** decoded frame count of a video file (null if unreadable); packets = count packets instead of decoding
+ *  (one packet per frame for intra-only codecs such as ProRes: seconds instead of minutes) */
+export function probeFrames(file: string, packets = false): number | null {
+  const what = packets ? ['-count_packets', '-show_entries', 'stream=nb_read_packets'] : ['-count_frames', '-show_entries', 'stream=nb_read_frames'];
+  const r = spawnSync(FFPROBE, ['-v', 'error', ...what.slice(0, 1), '-select_streams', 'v:0', ...what.slice(1), '-of', 'csv=p=0', file], { encoding: 'utf8', windowsHide: true });
   if (r.status !== 0) return null;
   const n = Number(r.stdout.trim());
   return Number.isFinite(n) ? n : null;
@@ -133,4 +135,9 @@ export function deliver(video: string, audio: string | null, out: string, o: Del
   if (o.duration !== undefined) args.push('-t', o.duration.toFixed(3));
   args.push('-movflags', '+faststart', out);
   run(args, 'deliver');
+}
+
+/** the master: the video stream copied as it is (ProRes for final runs) + the audio as 24-bit PCM, exact length */
+export function muxMaster(video: string, audio: string, out: string, duration: number): void {
+  run(['-i', video, '-i', audio, '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'copy', '-c:a', 'pcm_s24le', '-ar', '48000', '-t', duration.toFixed(3), out], 'master');
 }

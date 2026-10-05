@@ -18,9 +18,13 @@
  *     <run>/partial/ and moved in after ffprobe confirms its frame count. Re-running with --run resumes:
  *     finished chunks are skipped. Exit 0 = the range is complete · 75 = the time budget (seconds per call,
  *     boot included) ran out: run the same command again (a chunk is started only if its estimate fits, and one
- *     still running 50 s past the budget is discarded) · 3 = low memory · 1 = error.
- *     --budget 0 = no budget (user-started overnight runs; Chrome is restarted every 25 min).
- *     A run refuses other settings, another film hash or another commit unless --force.
+ *     still running 50 s past the budget is discarded) · 3 = low memory · 2 = the run refuses (below) · 1 = error.
+ *     --budget 0 = no budget (overnight runs in their own window, tools/capture/film-overnight.ps1; Chrome is
+ *     restarted every 25 min — a chunk longer than that still renders on a fresh session).
+ *     A run keeps its own settings and refuses another film hash, a commit that changes its inputs (src, data,
+ *     public, …, tools/capture — docs-only commits are fine), a dirty tree (checked at every Chrome restart) or
+ *     another Chrome version (S6: pin one with MOME_CHROME) unless --force. A render holds a keep-awake request
+ *     (no idle sleep; the lid still sleeps).
  *     Adaptive motion-blur sampling (S5): with --spp-ladder px:spp,… (needs --spp), a frame whose image moves
  *     more than px (at the run's size; window.__mm.motionPx: 90th percentile of the ground's screen
  *     displacement while the shutter is open) gets that step's spp instead of --spp — more time samples where
@@ -29,15 +33,19 @@
  *     filled (a closing), so a level never flickers for a frame or two (pure: from the timeline). The lens keeps deciding on the base spp. Per-frame spp / motion go
  *     into the chunk JSON; the time budget plans each chunk's spp before rendering it. Stills mode takes the
  *     same flags. x264: one keyframe per chunk unless --gop N (fewer of the encoder's keyframe "ticks").
- *   pnpm film --verify-resume --run <dir>           re-render the first frame of each finished chunk: same sha?
- *   pnpm film --assemble --run <dir> [--audio a.wav] [--mp4 name.mp4] [--reencode]
- *     → concat (stream copy) → <run>/<name>.mp4 (+ AAC 320k audio, exact film length).
+ *   pnpm film --verify-resume --run <dir> [--sample 12]
+ *     re-render the middle frame of --sample finished chunks spread over the run (on the run's Chrome): same sha?
+ *   pnpm film --assemble --run <dir> [--audio a.wav] [--mp4 name.mp4] [--master name.mov] [--reencode]
+ *     → concat (stream copy) → <run>/video.<ext>; --master (needs --audio): the chunks' stream + 24-bit PCM
+ *     audio in a .mov (seconds), which then replaces video.<ext>; → <name>.mp4 (H.264 crf 16 slow for non-x264
+ *     runs — ~10 min at 1080p on the laptop — + AAC 320k audio, exact film length, written aside and moved in
+ *     when complete). Relative names land in the run folder, absolute paths where they say.
  *
  * One invocation = one bounded capture session (memory guard → GPU lock → Vite + Chrome) in the
  * foreground; keep a call under ~10 minutes (the default budget is 520 s).
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statfsSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, statfsSync, writeFileSync } from 'node:fs';
 import { freemem } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -46,7 +54,8 @@ import type { CaptureRequest, CaptureResult } from '../../src/render/capture.ts'
 import type { FilmMeta } from '../../src/tour/schema.ts';
 import { browserVersion, collectGarbage } from './browser.ts';
 import { grid, labelled } from './compose.ts';
-import { CODEC_EXT, ChunkEncoder, concatChunks, deliver, probeFrames, type Codec, type EncodeOpts } from './ffmpeg.ts';
+import { CODEC_EXT, ChunkEncoder, concatChunks, deliver, muxMaster, probeFrames, type Codec, type EncodeOpts } from './ffmpeg.ts';
+import { keepAwake } from './host.ts';
 import { bootCapturePage, openCaptureSession, withTimeout, type CaptureSession } from './session.ts';
 
 interface Args {
@@ -84,11 +93,15 @@ interface Args {
   force: boolean;
   audio?: string;
   mp4?: string;
+  /** assemble: also mux the chunks' video (stream copy) + the audio as PCM into this .mov (the master) */
+  master?: string;
   reencode: boolean;
+  /** verify-resume: how many finished chunks to re-render (evenly spaced) */
+  sample: number;
 }
 
 function parseArgs(argv: string[]): Args {
-  const a: Args = { mode: 'stills', at: [], beats: [], tier: 'review', w: 1280, h: 720, fastPx: 12, determinism: false, headed: false, port: 5199, sheetCols: 4, budget: 520, force: false, reencode: false };
+  const a: Args = { mode: 'stills', at: [], beats: [], tier: 'review', w: 1280, h: 720, fastPx: 12, determinism: false, headed: false, port: 5199, sheetCols: 4, budget: 520, force: false, reencode: false, sample: 12 };
   const list = (v: string) => v.split(',').map((x) => x.trim()).filter(Boolean);
   let wSet = false;
   let hSet = false;
@@ -128,7 +141,9 @@ function parseArgs(argv: string[]): Args {
     else if (k === '--force') a.force = true;
     else if (k === '--audio') a.audio = v();
     else if (k === '--mp4') a.mp4 = v();
+    else if (k === '--master') a.master = v();
     else if (k === '--reencode') a.reencode = true;
+    else if (k === '--sample') a.sample = Number(v());
     else throw new Error(`film: unknown argument ${k}`);
   }
   if (a.sppFast !== undefined) {
@@ -138,6 +153,8 @@ function parseArgs(argv: string[]): Args {
   if (a.ladder && !(a.spp && a.ladder.every(([, n]) => n > a.spp!))) throw new Error('film: --spp-ladder / --spp-fast need an explicit --spp below every step');
   if (a.dilate !== undefined && !(Number.isInteger(a.dilate) && a.dilate >= 0)) throw new Error('film: --spp-dilate takes a whole number of frames');
   if (a.gop !== undefined && !(Number.isInteger(a.gop) && a.gop >= 1)) throw new Error('film: --gop takes a whole number of frames');
+  if (!(Number.isInteger(a.sample) && a.sample >= 1)) throw new Error('film: --sample takes a whole number of chunks');
+  if (a.master && !a.audio) throw new Error('film: --master needs --audio (without audio the master is video.<ext>)');
   // sequence defaults per tier (animatic / review cut / final)
   if (a.mode === 'render' && !wSet && !hSet && a.tier === 'preview') [a.w, a.h] = [960, 540];
   if (a.mode === 'render' && !wSet && !hSet && a.tier === 'final') [a.w, a.h] = [1920, 1080];
@@ -177,10 +194,18 @@ export function beatAt(meta: FilmMeta, t: number): FilmMeta['beats'][number] {
   return meta.beats.find((b) => t >= b.t0 && t < b.t1) ?? meta.beats[meta.beats.length - 1];
 }
 
+/** what the film page is built from (Vite serves these): a run's frames depend on nothing else in the repo */
+const RENDER_INPUTS = ['src', 'data', 'public', 'index.html', 'vite.config.ts', 'package.json', 'pnpm-lock.yaml'];
+
 function gitCommit(): { commit: string; dirty: boolean } {
   const c = spawnSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' });
-  const d = spawnSync('git', ['status', '--porcelain', '--', 'src', 'data', 'public', 'index.html', 'vite.config.ts', 'package.json'], { encoding: 'utf8' });
+  const d = spawnSync('git', ['status', '--porcelain', '--', ...RENDER_INPUTS], { encoding: 'utf8' });
   return { commit: c.stdout.trim(), dirty: d.stdout.trim().length > 0 };
+}
+
+/** a commit since the run started that touches its inputs or the capture tools (docs-only commits are fine) */
+function inputsChanged(from: string, to: string): boolean {
+  return from !== to && spawnSync('git', ['diff', '--quiet', from, to, '--', ...RENDER_INPUTS, 'tools/capture']).status !== 0;
 }
 
 /** boot the film page and return the film's metadata */
@@ -384,6 +409,8 @@ interface RunJson {
   film: { hash: string; duration: number; status: string };
   commit: string;
   dirty: boolean;
+  /** the Chrome version the run started with (S6; older runs: their first chunk's) — a resume refuses another */
+  chrome?: string;
   label?: string;
 }
 
@@ -418,6 +445,13 @@ function chunkDone(dir: string, run: RunJson, c: { i: number; k0: number; k1: nu
   return j.frames.length === c.k1 - c.k0 && j.frames[0]?.k === c.k0;
 }
 
+/** the Chrome a run was started with: run.json, else its first finished chunk's (runs before S6) */
+function runChrome(dir: string, run: RunJson): string | null {
+  if (run.chrome) return run.chrome;
+  const first = chunkList(run).find((c) => existsSync(join(dir, 'chunks', `c${pad(c.i)}.json`)));
+  return first ? (JSON.parse(readFileSync(join(dir, 'chunks', `c${pad(first.i)}.json`), 'utf8')) as ChunkJson).chrome : null;
+}
+
 function freeDiskMB(dir: string): number {
   const s = statfsSync(dir);
   return Math.round((s.bavail * s.bsize) / MB);
@@ -429,7 +463,6 @@ async function render(args: Args): Promise<number> {
   const t0 = Date.now();
   const elapsed = () => (Date.now() - t0) / 1000;
   let dir = args.run;
-  const git = gitCommit();
   let exitCode = 0;
   /** recent frames' wall time (render, transfer, encode) and spp: the time budget's ms per sub-sample */
   let measured: { wall: number; spp: number }[] = [];
@@ -438,10 +471,15 @@ async function render(args: Args): Promise<number> {
   // a resumed run keeps its own settings (tier, size, spp, shutter, codec, chunking, range)
   const existing = dir && existsSync(join(dir, 'run.json')) ? (JSON.parse(readFileSync(join(dir, 'run.json'), 'utf8')) as RunJson) : null;
   const tier = existing?.tier ?? args.tier;
+  // no idle sleep while rendering (released on return; the helper also exits with this process)
+  const release = keepAwake();
 
   while (true) {
     const session = await openCaptureSession({ label: `film render ${args.label ?? tier}`, port: args.port, headed: args.headed });
     sessionStart = Date.now();
+    // per session: an unbudgeted run restarts Chrome + Vite, which serve the files as they are now
+    const git = gitCommit();
+    let chunksThisSession = 0;
     const { srv, ctx, page, logs } = session;
     let enc: ChunkEncoder | null = null;
     let sinkErr: Error | null = null;
@@ -458,18 +496,27 @@ async function render(args: Args): Promise<number> {
     try {
       const { info, meta } = await bootFilm(session, tier);
       const nFrames = Math.ceil(meta.duration * meta.fps - 1e-9);
+      const chrome = await browserVersion(ctx);
       // ---- the run (new or resumed)
       let run: RunJson;
       if (dir && existsSync(join(dir, 'run.json'))) {
         run = JSON.parse(readFileSync(join(dir, 'run.json'), 'utf8')) as RunJson;
+        const was = runChrome(dir, run);
         const diffs = [
           run.film.hash !== meta.hash && `film hash ${run.film.hash} → ${meta.hash}`,
-          run.commit !== git.commit && `commit ${run.commit.slice(0, 8)} → ${git.commit.slice(0, 8)}`,
+          inputsChanged(run.commit, git.commit) && `commit ${run.commit.slice(0, 8)} → ${git.commit.slice(0, 8)} changes the render inputs`,
           git.dirty && 'uncommitted changes in src / data / public',
+          was && was !== chrome && `Chrome ${was} → ${chrome} (pin it: MOME_CHROME)`,
         ].filter(Boolean);
-        if (diffs.length && !args.force) throw new Error(`film: run ${dir} differs (${diffs.join(', ')}) — start a new run or pass --force`);
+        if (diffs.length && !args.force) {
+          exitCode = 2;
+          throw new Error(`film: run ${dir} differs (${diffs.join(', ')}) — start a new run or pass --force`);
+        }
       } else {
-        if (git.dirty && !args.force) throw new Error('film: uncommitted changes in src / data / public — commit first (or --force for a throwaway run)');
+        if (git.dirty && !args.force) {
+          exitCode = 2;
+          throw new Error('film: uncommitted changes in src / data / public — commit first (or --force for a throwaway run)');
+        }
         const k0 = Math.max(0, Math.round((args.from ?? 0) * meta.fps));
         const k1 = Math.min(nFrames, Math.round((args.to ?? meta.duration) * meta.fps));
         dir = dir ?? join('renders', 'film', `${args.tier}-${args.w}x${args.h}-${stamp()}${args.label ? `-${args.label}` : ''}`);
@@ -492,6 +539,7 @@ async function render(args: Args): Promise<number> {
           film: { hash: meta.hash, duration: meta.duration, status: meta.status },
           commit: git.commit,
           dirty: git.dirty,
+          chrome,
           ...(args.label ? { label: args.label } : {}),
         };
         mkdirSync(join(dir, 'chunks'), { recursive: true });
@@ -504,7 +552,6 @@ async function render(args: Args): Promise<number> {
       console.log(`[film] ${info.gpu.vendor}/${info.gpu.architecture} · film ${meta.hash} · ${chunks.length - todo.length}/${chunks.length} chunks done · boot ${elapsed().toFixed(0)} s`);
       const opts: EncodeOpts = { width: run.width, height: run.height, fps: run.fps, codec: run.codec, crf: run.crf, preset: run.preset, ...(run.gop ? { gop: run.gop } : {}) };
       const sppOpts: SppOpts = { spp: run.spp, ladder: runLadder(run), dilate: run.dilate ?? 0, shutter: run.shutter, fps: run.fps, w: run.width, h: run.height, nFrames };
-      const chrome = await browserVersion(ctx);
       for (const c of todo) {
         const n = c.k1 - c.k0;
         // the chunk's planned spp (adaptive sampling) × the recent wall time per sub-sample: a chunk that turns
@@ -519,7 +566,8 @@ async function render(args: Args): Promise<number> {
           console.log(`[film] budget: ${elapsed().toFixed(0)} s used, next chunk ≈ ${est.toFixed(0)} s > ${args.budget} s — run again to continue`);
           break;
         }
-        if (args.budget === 0 && (Date.now() - sessionStart) / 1000 + est > SESSION_CAP_S) {
+        // a chunk longer than the whole cap still renders on a fresh session (else: a restart loop)
+        if (args.budget === 0 && chunksThisSession > 0 && (Date.now() - sessionStart) / 1000 + est > SESSION_CAP_S) {
           more = true;
           console.log('[film] restarting Chrome (session cap)');
           break;
@@ -579,6 +627,7 @@ async function render(args: Args): Promise<number> {
         const bytes = readFileSync(final).length;
         const cj: ChunkJson = { chunk: c.i, frames, file: `c${pad(c.i)}.${ext}`, bytes, renderedAt: new Date().toISOString(), chrome };
         writeFileSync(join(dir, 'chunks', `c${pad(c.i)}.json`), JSON.stringify(cj));
+        chunksThisSession++;
         const secs = (Date.now() - ct0) / 1000;
         const done = chunks.length - todo.length + todo.indexOf(c) + 1;
         console.log(`[film] chunk ${c.i} (frames ${c.k0}–${c.k1 - 1}, t ${(c.k0 / run.fps).toFixed(1)}–${(c.k1 / run.fps).toFixed(1)} s): ${secs.toFixed(0)} s (planned ≈ ${est.toFixed(0)} s), ${(secs / n).toFixed(2)} s/frame, ${(bytes / MB).toFixed(1)} MB · ${done}/${chunks.length} · ${Math.round(freemem() / MB)} MB free · ${freeDiskMB(dir)} MB disk`);
@@ -605,6 +654,7 @@ async function render(args: Args): Promise<number> {
       break;
     }
   }
+  release();
   console.log(`[film] run: ${dir} · exit ${exitCode} · ${elapsed().toFixed(0)} s`);
   return exitCode;
 }
@@ -620,9 +670,19 @@ async function verifyResume(args: Args): Promise<number> {
   try {
     const { meta } = await bootFilm(session, run.tier);
     if (meta.hash !== run.film.hash) console.warn(`[film] film hash differs: run ${run.film.hash}, now ${meta.hash}`);
-    for (const c of done.slice(0, 12)) {
+    const chrome = await browserVersion(session.ctx);
+    const was = runChrome(args.run, run);
+    if (was && was !== chrome) {
+      if (!args.force) throw new Error(`film: run ${args.run} was rendered on Chrome ${was}, this is ${chrome} — set MOME_CHROME to that build (or --force)`);
+      console.warn(`[film] Chrome differs: run ${was}, now ${chrome} — DIFFERENT frames are expected`);
+    }
+    // --sample chunks spread evenly over the finished ones, each checked on its middle frame (the first chunks'
+    // first frames are the black fade-in)
+    const n = Math.min(args.sample, done.length);
+    const picks = [...new Set(Array.from({ length: n }, (_, i) => done[n === 1 ? 0 : Math.round((i * (done.length - 1)) / (n - 1))]))];
+    for (const c of picks) {
       const j = JSON.parse(readFileSync(join(args.run, 'chunks', `c${pad(c.i)}.json`), 'utf8')) as ChunkJson;
-      const f = j.frames[0];
+      const f = j.frames[Math.floor(j.frames.length / 2)];
       const spp = f.spp ?? run.spp;
       const res = await session.page.evaluate((r) => window.__mm!.render(r), { name: 'verify', timelineId: 'film', t: f.t, width: run.width, height: run.height, ...(spp ? { spp } : {}), ...(runLadder(run) && run.spp ? { lensSpp: run.spp } : {}), shutter: run.shutter, fps: run.fps } as CaptureRequest);
       const same = res.sha256 === f.sha256;
@@ -643,16 +703,38 @@ function assemble(args: Args): number {
   if (missing.length) throw new Error(`film: ${missing.length} chunks missing (first: ${missing[0].i}) — finish the render first`);
   const ext = CODEC_EXT[run.codec];
   const files = chunks.map((c) => resolve(args.run!, 'chunks', `c${pad(c.i)}.${ext}`));
+  // the concat copies the chunks once more, the master once again (stream copies), plus the delivery file
+  const chunkBytes = files.reduce((s, f) => s + statSync(f).size, 0);
+  const needMB = Math.round(((args.master ? 2.2 : 1.2) * chunkBytes) / MB) + 1024;
+  const disk = freeDiskMB(args.run);
+  if (disk < needMB) throw new Error(`film: assemble needs ≈ ${needMB} MB free, ${disk} MB available`);
   const video = join(args.run, `video.${ext}`);
   concatChunks(files, join(args.run, 'concat.txt'), video);
-  const name = args.mp4 ?? `journey-${run.tier}-${run.height}p.mp4`;
-  const out = join(args.run, name);
-  const duration = (run.frames[1] - run.frames[0]) / run.fps;
-  deliver(video, args.audio ?? null, out, { reencode: args.reencode || run.codec !== 'x264', fps: run.fps, duration });
-  const got = probeFrames(out);
-  console.log(`[film] assembled ${out}: ${got} frames (${duration.toFixed(2)} s)${args.audio ? ` + audio ${args.audio}` : ''}`);
+  const expect = run.frames[1] - run.frames[0];
+  const duration = expect / run.fps;
+  let code = 0;
+  // relative names land in the run folder, absolute paths where they say
+  let master: string | null = null;
+  if (args.master && args.audio) {
+    // the master first (a stream copy: seconds): the chunks' own video stream + the audio as PCM
+    master = resolve(args.run, args.master);
+    muxMaster(video, args.audio, master, duration);
+    const gotM = probeFrames(master, run.codec !== 'x264');
+    console.log(`[film] master ${master}: ${gotM} frames + PCM audio`);
+    if (gotM !== expect) code = 1;
+  }
+  const out = resolve(args.run, args.mp4 ?? `journey-${run.tier}-${run.height}p.mp4`);
+  // the delivery file (minutes for an H.264 re-encode): written aside, moved in once complete
+  const part = `${out}.part.mp4`;
+  deliver(video, args.audio ?? null, part, { reencode: args.reencode || run.codec !== 'x264', fps: run.fps, duration });
+  const got = probeFrames(part);
+  if (got === expect) renameSync(part, out);
+  else code = 1;
+  console.log(`[film] assembled ${got === expect ? out : part}: ${got} frames (${duration.toFixed(2)} s)${args.audio ? ` + audio ${args.audio}` : ''}`);
+  // the master holds the same stream as video.<ext>: keep one
+  if (master && code === 0) rmSync(video, { force: true });
   for (const f of readdirSync(join(args.run, 'partial'))) rmSync(join(args.run, 'partial', f), { force: true });
-  return got === run.frames[1] - run.frames[0] ? 0 : 1;
+  return code;
 }
 
 async function main(): Promise<void> {

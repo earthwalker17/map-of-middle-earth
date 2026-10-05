@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { rmSync } from 'node:fs';
 import { freemem } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -233,4 +233,35 @@ export function captureFootprint(profile = chromeProfileDir()): Footprint {
     chromeProcs: chromes.length,
     nodeMB: Math.round(process.memoryUsage().rss / MB),
   };
+}
+
+/**
+ * Keep Windows from idle-sleeping while a long job runs (no power-setting change): a hidden PowerShell child
+ * holds SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED) until its stdin closes — on release() or
+ * when this process dies — so the request never outlives the job. The display may still turn off; closing the
+ * lid still sleeps. Returns release(); a no-op off Windows or if the helper cannot start.
+ */
+export function keepAwake(): () => void {
+  if (process.platform !== 'win32') return () => {};
+  // 2147483649 = ES_CONTINUOUS | ES_SYSTEM_REQUIRED as a decimal: PowerShell reads 0x80000001 as a negative
+  // Int32, which the uint parameter rejects. The helper reports a failed call on stderr (warned once below).
+  const ps =
+    "Add-Type -Namespace MoMe -Name Power -MemberDefinition '[DllImport(\"kernel32.dll\")] public static extern uint SetThreadExecutionState(uint f);'; " +
+    'if ([MoMe.Power]::SetThreadExecutionState(2147483649) -eq 0) { [Console]::Error.WriteLine("SetThreadExecutionState failed") }; [void][Console]::In.ReadToEnd()';
+  try {
+    const p = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { stdio: ['pipe', 'ignore', 'pipe'], windowsHide: true });
+    let warned = false;
+    p.stderr!.on('data', (d: Buffer) => {
+      if (!warned) console.warn(`[host] keep-awake helper: ${d.toString().trim().split('\n')[0]}`);
+      warned = true;
+    });
+    p.on('error', () => {});
+    p.stdin!.on('error', () => {});
+    return () => {
+      p.stdin!.end();
+      setTimeout(() => p.kill(), 5000).unref();
+    };
+  } catch {
+    return () => {};
+  }
 }
