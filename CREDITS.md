@@ -103,6 +103,17 @@ derived from ME-DEM / ME-GIS / Arda (above), so they are **not** covered by the 
 reuse licence is granted for them: they are here to illustrate the project (see also
 `docs/images/README.md`). Their titles are set in Cinzel and Cormorant Garamond (OFL, see Fonts).
 
+## Film
+
+The film *Journey Through Middle-Earth* and its score (see Music) are project renders under the same terms
+as the images above: made by the project's own renderer (`pnpm film`) and score code (`pnpm music`), not
+covered by the code's MIT licence, no reuse licence granted. They are kept locally and are **not published**
+(nor attached to a release) until the ME-DEM / ME-GIS / Arda authors give permission. Besides that geography
+data, their only third-party inputs are those credited here: the CC0 terrain detail (Textures), the OFL fonts
+of the titles (Cinzel, Cormorant Garamond, EB Garamond) and the CC0 samples of the score (Music). The end
+card's credits (geography, samples, fonts, a non-affiliation note) are data in `data/tour/timeline.json` (the
+`end` hold).
+
 ## Reference material (dev-only, not redistributed)
 
 Visual references in `reference/` (local only, never committed) are used only to guide look-development
@@ -141,7 +152,7 @@ outputs. Rights remain with their owners:
 | User:FA2010 | Public domain | [photos/general/relief-model-munich-museum.jpg](https://commons.wikimedia.org/wiki/File:M%C3%BCnchen_Reliefmodell_BNM_img01.jpg) | Relief model of Munich (Bavarian National Museum) |
 | Wikitarisch | CC BY 4.0 | [photos/general/relief-model-luebeck-landscape.jpg](https://commons.wikimedia.org/wiki/File:Reliefmodell_L%C3%BCbeck_und_Wakenitz_%28Museum_f%C3%BCr_Natur_und_Umwelt_L%C3%BCbeck%29.jpg) | Relief model, Lübeck and Wakenitz |
 
-## Music (S5)
+## Music
 
 The film's score is an **original composition by this project**, written as code (`tools/music/journey.py`) and
 rendered offline (`pnpm music`); it uses and imitates no film-score material. The rendered audio is a project render
@@ -195,7 +206,10 @@ Python score toolchain (`tools/music`, dev-only):
 | Pillow | MIT-CMU (HPND) |
 
 The film renderer (`pnpm film`) encodes with a system install of [FFmpeg](https://ffmpeg.org) (LGPL-2.1+ / GPL
-depending on the build; called as an external program, not shipped).
+depending on the build; called as an external program, not shipped): ProRes with FFmpeg's own `prores_ks`, AAC
+with its native encoder, and H.264 — the preview / review chunks and the film's delivery mp4 — with
+[x264](https://www.videolan.org/developers/x264.html) (`libx264`, GPL-2.0-or-later), which needs a GPL build
+(developed with the gyan.dev FFmpeg 8.0.1 full build).
 
 ## Trademarks & IP
 

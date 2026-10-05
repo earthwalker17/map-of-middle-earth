@@ -2,10 +2,12 @@
  * Review stills — compose a curated review folder from a QA run (CPU only, sharp):
  *
  *   node --import tsx tools/capture/review.ts --from renders/qa/<stamp> [--before <before qa run>]
- *        [--manifest data/qa/review-s4.json] [--out review/s4] [--allow-missing]
+ *        [--manifest data/qa/review-v1.json] [--out review/v1] [--allow-missing]
  *
  * Render the stills first (one bounded qa run, see the manifest's `render`), e.g.
  *   pnpm qa --set s4-review --quality final --w 1920 --h 1080 --spp 12 --batch 6 --label s4-review
+ * (review/v1 = --from renders/qa/20261003-230100 with the manifest's before run 20261003-010300; the S4
+ * manifest review-s4.json was retired in S6 with its deleted S3 "before" run)
  *
  * Writes into --out (gitignored `review/`; its previous stills / pairs / before-after are replaced):
  *  - stills/NN-<id>.png             the renders in the manifest's order (bytes as rendered)
@@ -70,10 +72,10 @@ interface QaResult {
 // ------------------------------------------------------------------ inputs
 const from = arg('from');
 if (!from) throw new Error('review: --from <qa run folder> is required (renders/qa/<stamp>)');
-const manifestPath = arg('manifest', join('data', 'qa', 'review-s4.json'))!;
+const manifestPath = arg('manifest', join('data', 'qa', 'review-v1.json'))!;
 const doc = JSON.parse(readFileSync(manifestPath, 'utf8')) as ReviewManifest;
 const beforeRun = arg('before') ?? doc.before?.run;
-const outDir = arg('out', join('review', 's4'))!;
+const outDir = arg('out', join('review', 'v1'))!;
 const allowMissing = flag('allow-missing');
 const beforeTag = doc.before?.tag ?? 'S3';
 const afterTag = doc.after?.tag ?? 'S4';

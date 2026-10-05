@@ -38,8 +38,9 @@
  *   pnpm film --assemble --run <dir> [--audio a.wav] [--mp4 name.mp4] [--master name.mov] [--reencode]
  *     → concat (stream copy) → <run>/video.<ext>; --master (needs --audio): the chunks' stream + 24-bit PCM
  *     audio in a .mov (seconds), which then replaces video.<ext>; → <name>.mp4 (H.264 crf 16 slow for non-x264
- *     runs — ~10 min at 1080p on the laptop — + AAC 320k audio, exact film length, written aside and moved in
- *     when complete). Relative names land in the run folder, absolute paths where they say.
+ *     runs — ~33 min for the film at 1080p on the laptop: run it in its own window — + AAC 320k audio, exact
+ *     film length, written aside and moved in when complete). Relative names land in the run folder, absolute
+ *     paths where they say.
  *
  * One invocation = one bounded capture session (memory guard → GPU lock → Vite + Chrome) in the
  * foreground; keep a call under ~10 minutes (the default budget is 520 s).
@@ -734,6 +735,10 @@ function assemble(args: Args): number {
   // the master holds the same stream as video.<ext>: keep one
   if (master && code === 0) rmSync(video, { force: true });
   for (const f of readdirSync(join(args.run, 'partial'))) rmSync(join(args.run, 'partial', f), { force: true });
+  // the concat list (absolute chunk paths) is rewritten by every assemble; an assembled run needs neither it
+  // nor the empty staging folder (a later --render recreates partial/)
+  rmSync(join(args.run, 'concat.txt'), { force: true });
+  if (code === 0) rmSync(join(args.run, 'partial'), { recursive: true, force: true });
   return code;
 }
 

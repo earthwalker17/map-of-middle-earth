@@ -41,16 +41,23 @@ re-disables their autostart, sweeps orphans), **then read `docs/PROJECT_STATE.md
   bounded batches (`pnpm qa --batch 8`, fresh Chrome per batch), in the foreground, ≤ 10 min per call
   (split long sets with `qa --only a,b,…`; Claude Code's background shells are killed on low RAM); iterate at
   1280×720 spp 2, milestone QA at 1600×900 spp 4. Agents never run `pnpm build` or long-lived dev servers.
-  Blender (`pnpm models`) runs headless under the same lock and guard.
+  Blender (`pnpm models`) runs headless under the same lock and guard. The one exception is a full film
+  render (hours): it runs unbudgeted in its own window via `tools/capture/film-overnight.ps1` (retries,
+  keep-awake, `<run>/render.log`) on a pinned Chrome copy (`MOME_CHROME`), watched by foreground polls of its log;
+  no commit that touches the render inputs (src, data, public, index.html, vite.config.ts, package.json,
+  pnpm-lock.yaml, tools/capture) until it is assembled.
 - Max **2** parallel implementation agents on this host, each in its own worktree and module files; the
   main agent reviews and integrates — never accept subagent output unseen. `pnpm perf --gate` guards the
   preview tier against `data/qa/perf-baseline.json`; the laptop has slow / fast power regimes (~1.7×), so
   compare code only by rested, interleaved A/B runs against a frozen worktree, never across days.
-- **The static world is locked for V1** (S4.5, `data/qa/lock-v1.json`): film work keeps `pnpm lock --verify` at exit 0;
-  a look change needs the user's request, before / after renders and a re-lock (change control in PROJECT_STATE).
+- **The static world is locked for V1** (S4.5, `data/qa/lock-v1.json`): film work keeps `pnpm lock --verify` at exit 0
+  (captures on the pinned Chrome via `MOME_CHROME`: the installed Chrome is newer than the lock); a look change
+  needs the user's request, before / after renders and a re-lock (change control in PROJECT_STATE).
 - **Film-only behaviour** comes from optional SceneState fields (absent in stills) or the `?film=1` boot block —
   never from changing what a still page runs. The picture is locked (`data/tour/timeline.json` `status: locked`):
   a timing change means re-exporting the cue sheet and re-rendering the score.
+- **V1 is complete** (`v1.0.0`, S6: the final film in `final/`, local only). A V2 starts under change control: the
+  user's brief, `lock-v2` for world changes, picture unlock (timeline `status: draft`) for film changes.
 - Commit at meaningful milestones; update `docs/PROJECT_STATE.md` at each milestone.
   **Push only at session end, after explicit user approval.**
 - `CLAUDE.md` changes only when stable rules change; session logs go to `PROJECT_STATE.md`.
@@ -83,6 +90,8 @@ re-disables their autostart, sweeps orphans), **then read `docs/PROJECT_STATE.md
 `pnpm lock --write|--verify <run> [--set lock-v1]` · `pnpm lock --compare <runA> <runB>` (pixel-hash lock) ·
 `pnpm showcase [--dry|--snippet]` (README images from `data/qa/showcase.json` → `docs/images/`) ·
 `pnpm film --at|--every|--beats …` (film stills) · `pnpm film --render [--run <dir>] …` (chunked, resumable film
-sequence; exit 75 = call again) · `pnpm film --assemble --run <dir> --audio <wav>` ·
+sequence; exit 75 = call again, 2 = the run refuses) · `tools/capture/film-overnight.ps1 -Run <dir> -Chrome <exe>
+-FilmArgs:"…"` (unbudgeted render in its own window) · `pnpm film --verify-resume --run <dir> [--sample 12]` ·
+`pnpm film --assemble --run <dir> --audio <wav> [--mp4 <path>] [--master <path>.mov]` ·
 `node --import tsx tools/check/film.ts [--table] [--cues f] [--sync-shotlist]` (film gates; errors once the timeline is
 `locked`) · `pnpm music --cues <cue sheet> [--label x]` (the score: tools/music, uv)

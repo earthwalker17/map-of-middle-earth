@@ -1,7 +1,7 @@
 {
   "name": "map-of-middle-earth",
   "private": true,
-  "version": "0.5.0",
+  "version": "1.0.0",
   "type": "module",
   "description": "A cinematic floating miniature diorama of Middle-earth (three.js WebGPU + TSL) and the world of the film Journey Through Middle-Earth. Non-commercial fan project.",
   "license": "MIT",

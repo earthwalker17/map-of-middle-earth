@@ -1,7 +1,7 @@
 {
   "generatedBy": "tools/capture/showcase.ts (pnpm showcase)",
   "manifest": "data/qa/showcase.json",
-  "commit": "66efaa0685210f9c4f9ad9f4b7a6b347bfb3620f",
+  "commit": "0f0aa5be45610ef097a53fb099f9d51c788f272b",
   "dirty": true,
   "sharp": "0.35.5",
   "libvips": "8.18.7",
@@ -15,16 +15,16 @@
     "mozjpeg": true
   },
   "budgetMB": 6,
-  "totalBytes": 2340103,
+  "totalBytes": 2344725,
   "images": [
     {
       "file": "film-placeholder.jpg",
       "kind": "banner",
       "w": 1600,
       "h": 500,
-      "bytes": 68915,
-      "sha256": "9c1a9eebc59bc81fc858dd74ce797ca9cfeecc005f789a0735fb7cde4d6513cd",
-      "alt": "Journey Through Middle-Earth: the film is in production",
+      "bytes": 73537,
+      "sha256": "e38df4dfcefb06885f6ea816db4f52cd96948755e6e9c52b238be4069c751770",
+      "alt": "Journey Through Middle-Earth: the film is finished and awaits the data authors' permission before it is published",
       "caption": "",
       "sources": [
         {

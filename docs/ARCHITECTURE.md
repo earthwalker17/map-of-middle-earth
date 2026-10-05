@@ -37,9 +37,11 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
   `quality`. Bookmark shots carry their landmark's `lookOverride`. `events` (S4) are named 0..1 channels
   switched by the timeline / a shot (`beacons`, `morgul-beam`): gate-`event` lights and event-bound emitters
   read them; `ShotSpec.events` / `BookmarkDecl.events` set them for stills.
-- `Timeline.evaluate(t) → SceneState`. `StaticTimeline` for stills/bookmarks; the tour timeline (S4) is data
-  (`data/tour/timeline.json`), drafted by the S3 shot list `data/tour/shotlist.json` (film segments,
-  per-landmark role, hero / context framing, detail budgets).
+- `Timeline.evaluate(t) → SceneState`. `StaticTimeline` for stills/bookmarks; the film is `FilmTimeline`
+  (`'film'`, S5): `compileFilm` of `data/tour/timeline.json` (beats; picture-locked, `status: locked`) and
+  `data/tour/route.json` (see Tour). The S3 shot list `data/tour/shotlist.json` (segments, per-landmark role,
+  hero / context framing, detail budgets) drives the landmark / bookmark gates; the film check validates its
+  segment routes and `--sync-shotlist` writes the compiled film's lengths and mixes back into it.
 - Shots: explicit `{position, target, fov, roll}` or `{orbit: {place | targetKm, distanceKm, elevationDeg,
   azimuthDeg, fov, lift, aimKm [east, north], roll}}` (src/camera/shots.ts). Landmark bookmarks
   (`<id>-close` hero, `<id>-wide` context) carry tod, dayOfYear, weather, fStop, compare, note and the
@@ -286,8 +288,10 @@ Engine: Timeline.evaluate(t) → SceneState → systems.evaluate(frame) → HDR 
    energy-normalised Gaussian core (σ ≥ 0.6 px, exact per-instance energy) + a per-kind halo, so sub-pixel
    lights stay stable sparkles under jittered accumulation; transmittance `exp(−extinction ·
    atmosphere.opticalDepth)` (no in-scatter squares); capped distance gain for window / lamp / fire; gates
-   from env (window / lamp / ithildin at night + twilight, fire from dusk, lava / eye / magic always,
-   beacon / event off until the S4 timeline via `setDynamic(fn(state))`); deterministic `env.tFx` flicker.
+   from the shared gate table (window / lamp / ithildin at night + twilight, fire from dusk, lava / eye / magic
+   always, beacons and other `event` lights by their `SceneState.events` channel — see Gates under Materials);
+   dynamic sprite lights (the effects' beacon flames / sparks, the film's route head) come from
+   `setDynamic(fn(state))`, a pure function of the state re-packed per frame; deterministic `env.tFx` flicker.
    **Settlement aggregation:** a landmark's windows / lamps / fires (per gate) crossfade into one aggregate
    spark at their energy-weighted centroid as the group shrinks below ~12 → 6 px (pure function of the
    camera), with a visibility floor. `gradeUniforms.glowKeep` (RegionLook: 0.9·max(night, twilight)) exempts
@@ -396,8 +400,9 @@ realize their declarations.
   silhouette (stamps), value contrast and emission; framing gates in tools/check/bookmarks.ts.
 - **Blender GLBs** (close-up heroes only, after the S3 spike): `pnpm models [--only id] [--verify]`
   (tools/blender/run.ts: memory guard ≥ 1.5 GB → the GPU lock → Blender 4.5 headless without a shell, 10 min
-  timeout; `--verify` rebuilds and requires identical bytes) runs `tools/blender/<id>.py` (lib.py: 1 BU =
-  1 km, fixed seeds, remesh / decimate into nodes lod0/1/2, materials named `fam:<FamilyId>`, COLOR_0
+  timeout; `--verify` rebuilds and requires identical bytes; `--probe` prints the Blender version and the glTF
+  exporter options) runs `tools/blender/<id>.py` (lib.py: 1 BU = 1 km, fixed seeds, remesh / decimate into
+  nodes lod0/1/2, materials named `fam:<FamilyId>`, COLOR_0
   paint, no UVs / textures / Draco) → `public/models/<id>.glb` + `public/models/manifest.json` (sha256,
   script hash, tris, bounds). Runtime (model.ts): GLTFLoader → families by material name (unknown names
   throw), COLOR_0 → paint, the kit's packing + AO; GLB materials are never used. `ModelDecl {file,
@@ -432,10 +437,11 @@ realize their declarations.
   `reference/`. `qa.ts --blind <set>` picks the anonymised set; bookmark ids `<landmarkId>-<suffix>` pair
   with references by the longest landmark-id prefix.
 - `tools/capture/pair.ts --a <run> --b <run>` — blind A/B sheets (left/right shuffled; key outside the folder).
-- `pnpm review --from <qa run> --before <run> --manifest data/qa/review-s4.json --out review/s4`
-  (tools/capture/review.ts, CPU / sharp) composes a session's review stills for the user: numbered stills,
-  labelled day / night pairs, S3 → S4 before / after sheets, a contact sheet, README.md (what to look at, the
-  critic issue each still answers) and manifest.json (commit, tier, spp, sha256). `review/` is gitignored.
+- `pnpm review --from <qa run> [--before <run>] --manifest data/qa/review-v1.json --out review/v1`
+  (tools/capture/review.ts, CPU / sharp; these are its defaults since S6, `review-s4.json` is retired) composes a
+  session's review stills for the user: numbered stills, labelled day / night pairs, before / after sheets, a
+  contact sheet, README.md (what to look at, the critic issue each still answers) and manifest.json (commit,
+  tier, spp, sha256). `review/` is gitignored.
   Manifest `before.tag` / `after.tag` label the sheets (default S3 / S4; `review-v1.json`: S4 → V1).
 - Shared helpers: `compose.ts` (`labelled`, `sideBySide` / `sideBySideImage`, `size`, `sha` / `shaBuf`) and
   `runs.ts` (`readRun`: a qa run folder, its `shots/` folder or a `pnpm shots` output folder →
@@ -453,29 +459,63 @@ realize their declarations.
   against Pango's fallback; without them the title is dropped). Byte-reproducible; writes only listed files,
   deletes only files its own previous manifest listed, refuses foreign folders; `--dry`, `--snippet`.
 
-- **`pnpm film` (S5, tools/capture/film.ts + ffmpeg.ts)** — frames of the compiled film (`?capture=1&film=1`,
-  timeline `'film'`; frame k shows t = k / fps). One invocation = one bounded capture session.
+- **`pnpm film` (S5; S6 unattended tooling — tools/capture/film.ts + ffmpeg.ts)** — frames of the compiled
+  film (`?capture=1&film=1`, timeline `'film'`; frame k shows t = k / fps). One invocation = one bounded
+  capture session (`--budget 0`: a series of them, see Unattended runs). ffmpeg / ffprobe come from `PATH`
+  (8.x full build) or `MOME_FFMPEG` / `MOME_FFPROBE`.
   - Stills: `--at t1,t2 | --every s [--from --to] | --beats a,b` (`--tier --w --h --spp --shutter --label`,
     `--determinism` re-renders the first still after the batch) → `renders/film/stills-<stamp>[-label]/`
     PNGs + `manifest.json` + `sheet.png` (labelled "t · beat · tod", `compose.grid`).
   - Sequences: `--render [--tier preview|review|final] [--w --h --spp --shutter] [--from --to] [--codec
-    x264|prores|ffv1] [--crf --preset] [--chunk n] [--budget s] [--run dir] [--force]` streams raw RGBA
-    readbacks into one ffmpeg process per chunk (stdin drain back-pressure; no PNGs on disk), BT.709
+    x264|prores|ffv1] [--crf --preset] [--chunk n] [--budget s] [--run dir] [--label x] [--force]` streams raw
+    RGBA readbacks into one ffmpeg process per chunk (stdin drain back-pressure; no PNGs on disk), BT.709
     conversion + tags (`setparams`). A chunk is encoded into `partial/`, ffprobe-checked (frame count) and
-    moved to `chunks/cNNNN.<ext>` with `cNNNN.json` (per frame t, sha256, ms, luma). `run.json` freezes tier,
-    settings, film hash and commit: a resumed run refuses another film hash / commit / dirty tree unless
-    `--force`. Per-call time budget (default 520 s, boot included) → exit 75 = run again with `--run`;
-    `--budget 0` (user-started overnight runs) restarts Chrome every 25 min; free disk ≥ 2 GB per chunk.
+    moved to `chunks/cNNNN.<ext>` with `cNNNN.json` (per frame t, sha256, ms, luma, and spp / motion with a
+    ladder; the chunk's Chrome). `run.json` freezes tier, size, spp / ladder, shutter, codec, chunking, frame
+    range, film hash, commit, dirty and (S6) `chrome`; a resume keeps the run's settings. Exit 0 = the range
+    is complete · 75 = the per-call budget ran out (default 520 s, boot included): run again with `--run` ·
+    3 = low memory · 2 = the run refuses · 1 = error. Disk guard: ≥ 2 GB free before each chunk.
     Tiers: preview 960×540 (x264 crf 20 veryfast, 240-frame chunks) · review 1280×720 (x264 crf 14 medium,
-    96) · final 1920×1080 (ProRes 422 HQ 10-bit, 48). Adaptive motion-blur sampling: `--spp-ladder px:spp,…`
-    (e.g. `12:8,24:12,36:16`) gives a frame more time samples when the ground moves more than px on screen
-    while the shutter is open (`window.__mm.motionPx`, p90 of a 9×5 ray grid); levels are dilated ±2 frames
-    and short dips filled (pure: from the timeline); the lens keeps deciding on the base spp. Each chunk's spp
-    is planned before it renders (budget from wall time per sub-sample × 1.25; a chunk 50 s past the budget is
+    96) · final 1920×1080 (ProRes 422 HQ 10-bit 4:2:2, `prores_ks` profile 3, 48). Adaptive motion-blur
+    sampling: `--spp-ladder px:spp,…` (e.g. `12:8,24:12,36:16`; needs a `--spp` below every step) gives a
+    frame more time samples when the ground moves more than px on screen while the shutter is open
+    (`window.__mm.motionPx`, p90 of a 9×5 ray grid); levels are dilated ±`--spp-dilate` (2) frames and short
+    dips filled (pure: from the timeline); the lens keeps deciding on the base spp. Each chunk's spp is
+    planned before it renders (budget from wall time per sub-sample × 1.25; a chunk 50 s past the budget is
     discarded). x264: one keyframe per chunk (`--gop`).
-  - `--verify-resume --run dir` re-renders each finished chunk's first frame (same sha256?);
-    `--assemble --run dir [--audio master.wav] [--mp4 name] [--reencode]` concatenates the chunks (stream copy)
-    and muxes AAC 320k (`+faststart`, exact film length) → `<run>/<name>.mp4`.
+  - **Resume refusals** (exit 2 unless `--force`; checked at every session start, i.e. at every Chrome
+    restart): another film hash; a commit since the run started whose diff touches the render inputs (`src`,
+    `data`, `public`, `index.html`, `vite.config.ts`, `package.json`, `pnpm-lock.yaml`) or `tools/capture` —
+    docs-only commits are fine; uncommitted changes in the render inputs (a new run refuses them too); another
+    Chrome version than the run's (`run.json` `chrome`; older runs: their first chunk's).
+  - **Unattended runs (S6):** `--budget 0` restarts Chrome + Vite when the next chunk's estimate would pass the
+    25-min session cap, but only after ≥ 1 chunk in that session (a chunk longer than the cap still renders on
+    a fresh session). `MOME_CHROME` (browser.ts; every capture) launches that chrome.exe instead of the
+    installed Chrome channel, with the same profile: the final render uses a private copy of the locked
+    Chrome 154.0.8037.95 (`%LOCALAPPDATA%\map-of-middle-earth\chrome-154.0.8037.95\`), so an auto-update cannot
+    change pixels mid-render. `--render` holds `keepAwake()` (host.ts: a hidden PowerShell child holds
+    `SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)` until its stdin closes — on return or when
+    the process dies; no idle sleep, the display may turn off, closing the lid still sleeps).
+    `tools/capture/film-overnight.ps1 -Run <dir> [-Chrome <exe>] [-FilmArgs:"…"] [-Retries 8] [-WaitS 120]`
+    runs `pnpm film --render --run <dir> --budget 0 …` in its own window (not an agent shell), sets
+    `MOME_CHROME` from `-Chrome`, holds its own keep-awake across attempts, appends everything to
+    `<run>/render.log` (UTF-8) and resumes after a non-zero exit (after `-WaitS` s, up to `-Retries` times;
+    never after exit 2). `run.json` wins on resume, so `-FilmArgs` matter only for a new run; bind them with a
+    colon (`Start-Process` joins its arguments unquoted).
+  - `--verify-resume --run dir [--sample 12]` re-renders the middle frame of `--sample` finished chunks spread
+    evenly over the run (the first chunks' first frames are the black fade-in) at the frame's recorded spp and
+    compares sha256 (exit 1 if any differs); it runs on the run's Chrome and refuses another (set
+    `MOME_CHROME`) unless `--force`.
+  - `--assemble --run dir [--audio a.wav] [--mp4 name|abs] [--master name|abs.mov] [--reencode]` (no capture
+    session) refuses missing chunks and checks free disk (≈ 1.2 × the chunks' bytes + 1 GB; 2.2 × with
+    `--master`), then: concat (stream copy) → `<run>/video.<ext>` → the master first (`--master`, needs
+    `--audio`: the chunks' video stream copied + the audio as 24-bit PCM 48 kHz, exact film length; seconds;
+    frame count checked) → the delivery mp4: H.264 High (libx264 crf 16 preset slow, yuv420p, BT.709;
+    re-encoded for non-x264 runs or with `--reencode`, else a stream copy; ≈ 33 min for the 227.75 s film at
+    1080p on the laptop) + AAC 320k 48 kHz (with `--audio`), `+faststart`, exact film length — written to `<name>.part.mp4` and moved
+    in once ffprobe confirms the frame count. When both check out the master replaces `video.<ext>` (the same
+    stream); `partial/` is emptied. Default mp4 name `journey-<tier>-<height>p.mp4`; relative names land in the
+    run folder, absolute paths where they say. A frame-count mismatch exits 1.
 
 ## Music (tools/music — Python / uv, CPU, `pnpm music`)
 The original score as code. `pnpm music --cues <cue sheet> [--label x] [--from s --to s]` runs under the

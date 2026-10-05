@@ -19,7 +19,7 @@
      Full film elsewhere (YouTube …): a poster linking to it, e.g.
      <a href="<film url>"><img src="docs/images/film-poster.jpg" width="100%" alt="Journey Through Middle-Earth — watch the film"></a> -->
 <p align="center">
-  <img src="docs/images/film-placeholder.jpg" width="100%" alt="Journey Through Middle-Earth: the film is in production">
+  <img src="docs/images/film-placeholder.jpg" width="100%" alt="Journey Through Middle-Earth: the film is finished and awaits the data authors' permission before it is published">
 </p>
 
 <p align="center">
@@ -29,12 +29,14 @@
 
 A miniature Middle-earth that you can fly over, from the Grey Havens to Mount Doom. The terrain is built from
 community GIS data, 24 landmarks are modelled in code, and the sky, water, smoke and light are all rendered
-live: nothing is pre-rendered. It runs in the browser with three.js WebGPU, and the film will be captured
+live: nothing is pre-rendered. It runs in the browser with three.js WebGPU, and the film was captured
 from it frame by frame. The look aims at the bigatures of Peter Jackson's films: a physical model under real
 light, never a toy.
 
-**Status:** the static world is complete and locked (`v0.5.0`). The film is in production: Frodo's road
-from the Shire to Mount Doom, with a luminous route line, title cards and an original score.
+**Status:** V1 is complete (`v1.0.0`): the locked static world and the finished film, 227.75 s at 1080p24.
+The film is a west → east grand tour via Rohan, loosely on Frodo's road from the Shire to Mount Doom, with a
+luminous gold route line, floating labels, title cards and an original orchestral score. It will not be
+published until the ME-GIS, Arda and ME-DEM authors give their permission.
 
 ## Gallery
 
@@ -123,17 +125,18 @@ in [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
 | Path | What lives there |
 |:---|:---|
 | `src/` | the renderer: core / timeline, world services, terrain, water, vegetation, environment, landmarks, emission, effects, materials, diorama slab, camera, render (post, capture) |
-| `tools/` | the Python bake, capture / QA / review, checks and the camera probe, Blender model scripts |
-| `data/world`, `data/tour`, `data/qa` | authored world data, the film's route and shot list, QA shots / sets / locks |
+| `tools/` | the Python bake, capture / QA / review, the film renderer (`pnpm film`), the score (`tools/music`, Python), checks and the camera probe, Blender model scripts |
+| `data/world`, `data/tour`, `data/qa` | authored world data, the film's route, shot list and picture-locked timeline, QA shots / sets / locks |
 | `docs/` | architecture, project state, early research briefs, README images |
 
 ## Running it
 
 You need **Google Chrome** with hardware WebGPU (the capture tools drive the installed Chrome; other WebGPU
 browsers are untested for the explorer), **Node 24** (≥ 22.12), **pnpm 11** (`corepack enable` picks the
-pinned version) and [uv](https://docs.astral.sh/uv/) for the Python bake. Allow about 2.5 GB of disk for
-the data, the bake and its Python environment. Blender 4.5 is only needed to rebuild the Argonath model,
-which is committed (`pnpm models`; set `MOME_BLENDER` to its binary off Windows).
+pinned version) and [uv](https://docs.astral.sh/uv/) for the Python bake and the score. Allow about 2.5 GB
+of disk for the data, the bake and its Python environment. The film also needs an
+[FFmpeg](https://ffmpeg.org) 8 full build (see [The film](#the-film)). Blender 4.5 is only needed to rebuild
+the Argonath model, which is committed (`pnpm models`; set `MOME_BLENDER` to its binary off Windows).
 
 ```bash
 pnpm install
@@ -146,13 +149,52 @@ pnpm shots --shot minas-tirith-close --quality final --spp 12   # a still
 The explorer and the captures need the fetched data and the bake; there is no prebuilt world. The explorer
 has orbit controls and a panel for the QA shots and landmark bookmarks, time of day, day of the year (sun
 and moon), field of view and exposure. Stills are written to `renders/shots/latest/` (1920×1080 by
-default). `pnpm typecheck` and `pnpm check` run without any third-party data (without a bake, `pnpm check`
-skips the world, landmark and bookmark gates).
+default). `pnpm typecheck` and `pnpm check` run without any third-party data. Without a bake, `pnpm check`
+runs the place, landmark-definition, asset-credit, light-gate, static effects (textures, presets, declarations)
+and film-structure checks, and skips the baked-world gates (rivers, stamps, hydro), the landmark build and
+bookmark framing gates, the effects' world placement, particle and budget checks and the compiled-film gates.
 
 The project was developed on a Windows 11 laptop with 8 GB of RAM and an Intel UHD iGPU, and the real-time
 preview tier is tuned for that machine. The capture, bake and QA tooling (GPU job lock, memory guard) is
 written for and tested on Windows. The bake and captures first wait for free RAM (2.5 / 1.8 GB); if they
 wait in vain (e.g. on macOS, where Node under-reports free memory), set `MOME_MEM_GUARD=0`.
+
+## The film
+
+*Journey Through Middle-Earth* runs 227.75 s (5,466 frames at 24 fps, 1920×1080). It is rendered from the
+picture-locked timeline (`data/tour/timeline.json`, film hash `1c3edf71`) at the final tier: 12 samples per
+pixel, up to 48 on fast moves for the motion blur of a 180° shutter, subtle depth of field on the four close
+hero holds (Hobbiton, Rivendell, the Argonath, Mount Doom) and film grain. The finished film lives only in the
+gitignored `final/` folder: `journey-through-middle-earth-1080p.mp4` (H.264, AAC 320k), the master
+`journey-through-middle-earth-1080p-master.mov` (ProRes 422 HQ 10-bit, 24-bit PCM) and `ABOUT.txt`
+(provenance). The film and its score are not distributed.
+
+To reproduce them (with the data fetched and baked: the cue export compiles the film on the baked world), render
+the score first (uv; the fetch puts the CC0 samples and the sfizz renderer, ≈ 1.5 GB, in `data/music-src/`):
+
+```bash
+uv run --project tools/music python tools/music/fetch.py
+node --import tsx tools/check/film.ts --cues renders/music/cues-v2.json   # the cue sheet of the locked picture
+pnpm music --cues renders/music/cues-v2.json --label v4-lock             # → renders/music/<stamp>-v4-lock/master.wav
+```
+
+Then render the picture in its own PowerShell window. `tools/capture/film-overnight.ps1` runs
+`pnpm film --render` with no time budget, resumes after a failure and holds off idle sleep; `-Chrome` sets
+`MOME_CHROME` to a private copy of Chrome 154.0.8037.95, the build the world was locked on, so an auto-update
+cannot change pixels mid-render. A run refuses another Chrome, another film hash, a dirty tree or a commit
+that changes the render inputs.
+
+```powershell
+Start-Process pwsh -ArgumentList '-NoExit','-File','tools\capture\film-overnight.ps1','-Run','renders\film\<dir>','-Chrome',"$env:LOCALAPPDATA\map-of-middle-earth\chrome-154.0.8037.95\chrome.exe",'-FilmArgs:"--tier final --spp 12 --spp-ladder 36:16,48:24,72:32,96:48 --shutter 0.5 --label final-1080p"'
+$env:MOME_CHROME = "$env:LOCALAPPDATA\map-of-middle-earth\chrome-154.0.8037.95\chrome.exe"
+pnpm film --verify-resume --run renders\film\<dir>   # re-renders sample frames: same sha256?
+pnpm film --assemble --run renders\film\<dir> --audio renders\music\<stamp>-v4-lock\master.wav --mp4 <abs>.mp4 --master <abs>.mov
+```
+
+This needs FFmpeg 8.x (full build) on `PATH`, or `MOME_FFMPEG` / `MOME_FFPROBE`, and about 11 GB of free disk
+for what stays (≈ 5 GB of ProRes chunks, ≈ 5 GB for the master, ≈ 0.5 GB for the mp4), plus a temporary concat
+copy of the chunks while assembling (`--assemble` first checks for 2.2 × the chunks' size + 1 GB free). The
+final render took 11.1 h on the dev laptop (one unattended overnight run, 2026-10-05 → 06).
 
 ## Roadmap
 
@@ -164,7 +206,9 @@ wait in vain (e.g. on macOS, where Node under-reports free memory), set `MOME_ME
 | 4 | Look and still effects: sky, night, water, effects, lens and grade, hero polish | ✅ |
 | 4.5 | Static world locked (`v0.5.0`), README, repository polish | ✅ |
 | 5 | The journey: camera rig and timeline, gold route line, titles, picture lock, original score, 720p review cut | ✅ |
-| 6 | Final render (1080p24), release | next |
+| 6 | Final render (1080p24, final tier), V1 release (`v1.0.0`) | ✅ |
+
+Deferred work and polish candidates are listed under "V2 candidates" in [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
 
 ## Credits
 
@@ -175,10 +219,14 @@ layers created for ME-DEM by monks and SeerBlue and improved by jvangeld
 the GeoPackage conversion by tetrakai1 ([bburns/Arda](https://github.com/bburns/Arda)). The data authors
 are being asked for their blessing for this use. Terrain detail textures are from
 [Poly Haven](https://polyhaven.com) (CC0). The fonts are Cinzel, Cinzel Decorative, Cormorant Garamond,
-EB Garamond, IM Fell English and IM Fell English SC (SIL OFL 1.1). The project is built with
-[three.js](https://threejs.org), [Vite](https://vite.dev), TypeScript, [Playwright](https://playwright.dev),
-[sharp](https://sharp.pixelplumbing.com) and [Blender](https://www.blender.org). Every asset and source is
-listed in [`CREDITS.md`](CREDITS.md).
+EB Garamond, IM Fell English and IM Fell English SC (SIL OFL 1.1). The score is played by the
+[VSCO 2 Community Edition](https://github.com/sgossner/VSCO-2-CE) samples of Versilian Studios (CC0) through
+[sfizz](https://github.com/sfztools/sfizz) (BSD-2-Clause), both used at render time only and never
+redistributed. The project is built with [three.js](https://threejs.org), [Vite](https://vite.dev),
+TypeScript, [Playwright](https://playwright.dev), [sharp](https://sharp.pixelplumbing.com) and
+[Blender](https://www.blender.org), and the film is encoded with [FFmpeg](https://ffmpeg.org) (LGPL-2.1+ / GPL
+depending on the build; called as an external program, not shipped). Every asset and source is listed in
+[`CREDITS.md`](CREDITS.md).
 
 ## License
 
@@ -189,6 +237,9 @@ listed in [`CREDITS.md`](CREDITS.md).
   licence of the Arda DEM and vectors is uncertain.
 - **Renders** (`docs/images/`) show terrain derived from that data. They are not covered by the MIT licence
   and no reuse licence is granted; they are here to illustrate the project.
+- **The film and its score** (the rendered picture and audio, not the code that makes them) are project
+  renders and recordings. They are not covered by the MIT licence, no reuse licence is granted, and they are
+  not published while the data authors' permission is pending.
 
 ## Disclaimer
 

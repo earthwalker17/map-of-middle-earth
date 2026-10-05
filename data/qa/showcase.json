@@ -4,7 +4,7 @@
   "runs": { "review": "renders/qa/20261003-230100", "hero": "renders/shots/20261003-231307" },
   "defaults": { "quality": 88, "chroma": "4:4:4", "budgetMB": 6 },
   "images": [
-    { "file": "film-placeholder.jpg", "banner": true, "src": "hero:weathertop-close", "w": 1600, "h": 500, "crop": [0.1, 0.0556, 0.8, 0.444], "darken": 0.3, "title": { "text": "Journey Through Middle-Earth", "sub": "The film is in production", "subScale": 0.6 }, "alt": "Journey Through Middle-Earth: the film is in production", "caption": "" },
+    { "file": "film-placeholder.jpg", "banner": true, "src": "hero:weathertop-close", "w": 1600, "h": 500, "crop": [0.1, 0.0556, 0.8, 0.444], "darken": 0.3, "title": { "text": "Journey Through Middle-Earth", "sub": "Finished · awaiting the data authors' blessing", "subScale": 0.6 }, "alt": "Journey Through Middle-Earth: the film is finished and awaits the data authors' permission before it is published", "caption": "" },
     { "file": "hero-golden-hour.jpg", "src": "review:overview-golden", "w": 1920, "h": 1080, "quality": 90, "alt": "The floating map of Middle-earth at golden hour", "caption": "The map at golden hour (18:20), the overview camera of the day / night pair" },
     { "file": "erebor.jpg", "src": "review:erebor-close", "w": 1280, "h": 720, "alt": "Erebor, the Lonely Mountain, in low evening sun", "caption": "Erebor" },
     { "file": "lake-town.jpg", "src": "review:lake-town-close", "w": 1280, "h": 720, "alt": "Lake-town on its piles in the Long Lake", "caption": "Lake-town" },
