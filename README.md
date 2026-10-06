@@ -13,13 +13,9 @@
   <a href="tsconfig.json"><img alt="TypeScript strict" src="https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white"></a>
 </p>
 
-<!-- FILM: replace the placeholder below with the film when it is published.
-     Inline player: drag the mp4 (≤ 10 MB teaser) into this file in GitHub's web editor; the generated
-     https://github.com/user-attachments/assets/<id> URL, alone on its own line, renders as a video player.
-     Full film elsewhere (YouTube …): a poster linking to it, e.g.
-     <a href="<film url>"><img src="docs/images/film-poster.jpg" width="100%" alt="Journey Through Middle-Earth — watch the film"></a> -->
 <p align="center">
-  <img src="docs/images/film-placeholder.jpg" width="100%" alt="Journey Through Middle-Earth: the film is finished and awaits the data authors' permission before it is published">
+  <a href="https://youtu.be/kRuPq4GjhGc"><img src="docs/images/film-poster.png" width="100%" alt="Journey Through Middle-Earth: watch the film on YouTube"></a>
+  <br><sub>▶ <a href="https://youtu.be/kRuPq4GjhGc">Watch <i>Journey Through Middle-Earth</i> on YouTube</a></sub>
 </p>
 
 <p align="center">
@@ -35,8 +31,8 @@ light, never a toy.
 
 **Status:** V1 is complete (`v1.0.0`): the locked static world and the finished film, 227.75 s at 1080p24.
 The film is a west → east grand tour via Rohan, loosely on Frodo's road from the Shire to Mount Doom, with a
-luminous gold route line, floating labels, title cards and an original orchestral score. It will not be
-published until the ME-GIS, Arda and ME-DEM authors give their permission.
+luminous gold route line, floating labels, title cards and an original orchestral score.
+[Watch it on YouTube](https://youtu.be/kRuPq4GjhGc).
 
 ## Gallery
 
@@ -164,10 +160,11 @@ wait in vain (e.g. on macOS, where Node under-reports free memory), set `MOME_ME
 *Journey Through Middle-Earth* runs 227.75 s (5,466 frames at 24 fps, 1920×1080). It is rendered from the
 picture-locked timeline (`data/tour/timeline.json`, film hash `1c3edf71`) at the final tier: 12 samples per
 pixel, up to 48 on fast moves for the motion blur of a 180° shutter, subtle depth of field on the four close
-hero holds (Hobbiton, Rivendell, the Argonath, Mount Doom) and film grain. The finished film lives only in the
-gitignored `final/` folder: `journey-through-middle-earth-1080p.mp4` (H.264, AAC 320k), the master
+hero holds (Hobbiton, Rivendell, the Argonath, Mount Doom) and film grain. The finished film is
+[on YouTube](https://youtu.be/kRuPq4GjhGc). Its files live in the gitignored `final/` folder:
+`journey-through-middle-earth-1080p.mp4` (H.264, AAC 320k), the master
 `journey-through-middle-earth-1080p-master.mov` (ProRes 422 HQ 10-bit, 24-bit PCM) and `ABOUT.txt`
-(provenance). The film and its score are not distributed.
+(provenance); neither they nor the score are distributed with this repository.
 
 To reproduce them (with the data fetched and baked: the cue export compiles the film on the baked world), render
 the score first (uv; the fetch puts the CC0 samples and the sfizz renderer, ≈ 1.5 GB, in `data/music-src/`):
@@ -238,8 +235,8 @@ depending on the build; called as an external program, not shipped). Every asset
 - **Renders** (`docs/images/`) show terrain derived from that data. They are not covered by the MIT licence
   and no reuse licence is granted; they are here to illustrate the project.
 - **The film and its score** (the rendered picture and audio, not the code that makes them) are project
-  renders and recordings. They are not covered by the MIT licence, no reuse licence is granted, and they are
-  not published while the data authors' permission is pending.
+  renders and recordings. They are not covered by the MIT licence and no reuse licence is granted. The film
+  is published on [YouTube](https://youtu.be/kRuPq4GjhGc); neither its files nor the score are part of this repository.
 
 ## Disclaimer
 

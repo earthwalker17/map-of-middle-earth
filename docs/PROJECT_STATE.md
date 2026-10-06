@@ -3,7 +3,7 @@
 _Rolling document: roadmap, current state, decisions, next steps. Keep it compact; replace stale detail
 instead of appending logs._
 
-**Last updated:** 2026-10-06 · end of Session 6 — V1 complete (`v1.0.0`): pushed with the tag and the GitHub release (user-approved; CI green)
+**Last updated:** 2026-10-06 · end of Session 6 — V1 complete (`v1.0.0`): pushed with the tag and the GitHub release (user-approved; CI green); then the film on YouTube, linked from the README's top poster
 
 ## Where we are
 **S1–S6 are complete: V1 is done.** V1 = the static world locked in S4.5 (`v0.5.0`, below) + the film
@@ -12,8 +12,8 @@ locked`, film hash 1c3edf71), a west → east grand tour via Rohan with a gold r
 end cards, one day of light (dawn in the Shire → moonlit Mordor) and an original orchestral score. The user
 approved the 720p review cut with no picture rework (S6). Next is V2 (not scheduled; see "V2 candidates").
 
-**The deliverable — the final film** (`final/` is gitignored, local only; not published until the data authors
-give permission):
+**The deliverable — the final film** (`final/` is gitignored, local only; the user published the film on YouTube
+on 2026-10-06: https://youtu.be/kRuPq4GjhGc, linked from the README's top poster `docs/images/film-poster.png`):
 - `final/journey-through-middle-earth-1080p.mp4` (`C:\Users\A\Desktop\MAP\final\` on the dev laptop) — H.264 High 1080p24 BT.709, AAC 320k
   48 kHz, 5466 frames = 227.75 s, faststart, −16.0 LUFS; 492.7 MB (17.3 Mb/s), sha256 dafdaaee…94d777de.
 - `final/journey-through-middle-earth-1080p-master.mov` — ProRes 422 HQ 10-bit + 24-bit PCM 48 kHz, 5.28 GB
@@ -48,10 +48,11 @@ give permission):
   identical · 1 changed · 2 Chrome / driver differ, hashes advisory · 3 other settings).
 - **Review stills:** `review/v1/` (24 stills, 4 day / night pairs, 4 S4 → V1 sheets) from
   `renders/qa/20261003-230100` (final 1920×1080 spp 12, KEEP); 14 of 24 are pixel-identical to the S4 stills.
-- **README stills:** `docs/images/` (15 JPEGs, ≈ 2.3 MB) by `pnpm showcase` from `data/qa/showcase.json`. The
+- **README stills:** `docs/images/` (14 JPEGs, ≈ 2.2 MB) by `pnpm showcase` from `data/qa/showcase.json`, plus
+  the hand-added YouTube cover `film-poster.png` (1672×941 PNG, 2.8 MB; outside the showcase manifest). The
   hero `hero-golden-hour.jpg` is `overview-golden` (the day / night pair's overview camera at 18:20, 16:9; since
   S5) from the V1 review run, like the tiles and pairs; `renders/shots/20261003-231307` (KEEP) feeds
-  `black-gate-wide`, the banner `film-placeholder.jpg` (weathertop-close) and `social-preview.jpg` (the 2.4:1
+  `black-gate-wide` and `social-preview.jpg` (the 2.4:1
   `pano-golden-sw`, 3072×1280 spp 16, cropped to 2:1 and scaled to 1280×640); provenance and render hashes in
   `docs/images/manifest.json`.
 - **Change control:** film or other work must leave locked frames bit-identical — run the lock verify after
@@ -255,9 +256,12 @@ re-export the cue sheet, re-render the score and re-render the film. Re-baseline
 - **Licence and stills (user, S4.5):** code and original models MIT (`LICENSE`, earthwalker17); the README
   shows the project's own renders (`docs/images/`: not MIT, no reuse licence granted; `docs/images/README.md`) with
   prominent ME-DEM / ME-GIS / Arda credit; source and baked data never committed; permission from the data
-  authors is needed before the film or any derived data is published.
-- **Film files (user, S6):** the film and its score stay local (`final/`, the score run); the README keeps the
-  film placeholder and releases attach neither until permission arrives.
+  authors is needed before any other derived data is published (the film: below).
+- **Film files (user, S6; 2026-10-06):** the film files and the score stay local (`final/`, the score run) and
+  releases attach neither. The user published the film on YouTube (https://youtu.be/kRuPq4GjhGc); the README's top
+  poster (`docs/images/film-poster.png`, the YouTube cover, hand-added) links to it and replaced the
+  `film-placeholder.jpg` banner (dropped from `data/qa/showcase.json`). Repo text makes no claim about the data
+  authors' permission either way.
 
 ## Host and workflow (Surface Laptop Go, i5-1035G1, 7.6 GB RAM shared with the iGPU)
 - **Session start:** `pnpm host --fix` (approved: stop windowless Edge / WPS / OneDrive / Teams / Phone Link /

@@ -56,7 +56,7 @@ re-disables their autostart, sweeps orphans), **then read `docs/PROJECT_STATE.md
 - **Film-only behaviour** comes from optional SceneState fields (absent in stills) or the `?film=1` boot block —
   never from changing what a still page runs. The picture is locked (`data/tour/timeline.json` `status: locked`):
   a timing change means re-exporting the cue sheet and re-rendering the score.
-- **V1 is complete** (`v1.0.0`, S6: the final film in `final/`, local only). A V2 starts under change control: the
+- **V1 is complete** (`v1.0.0`, S6: the final film in `final/`, local only; on YouTube since 2026-10-06, https://youtu.be/kRuPq4GjhGc). A V2 starts under change control: the
   user's brief, `lock-v2` for world changes, picture unlock (timeline `status: draft`) for film changes.
 - Commit at meaningful milestones; update `docs/PROJECT_STATE.md` at each milestone.
   **Push only at session end, after explicit user approval.**
@@ -77,8 +77,10 @@ re-disables their autostart, sweeps orphans), **then read `docs/PROJECT_STATE.md
 
 ## Licensing & IP (hard rules)
 - Never commit `data/source/`, `data/baked/`, anything in `reference/` (images, index, manifest) or fetched textures (public repo).
-  The only published derivative is the README's own renders (`docs/images/`, `pnpm showcase`, credited, user decision
-  S4.5); the film and any derived data need the ME-GIS / Arda / ME-DEM authors' permission before release.
+  The published derivatives are the README's own renders (`docs/images/`, `pnpm showcase`, credited, user decision
+  S4.5) and the film on YouTube (user decision 2026-10-06; README poster `docs/images/film-poster.png`); the film
+  files, the score and any other derived data are not committed or attached, and other derived data needs the
+  ME-GIS / Arda / ME-DEM authors' permission before release.
 - Every shipped asset in `public/` must be listed in `CREDITS.md`.
 - OFL fonts only; no Tengwar/Cirth, no film logos or film typography; no imitation of Howard Shore's music.
 

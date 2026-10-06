@@ -76,8 +76,8 @@ The terrain and map layers are derived from community Middle-earth GIS work. Sou
 The source data and everything baked from it stay out of the repository. The project's own renders
 (below) show terrain derived from this data and are published, with this credit, as part of a
 non-commercial fan work. The authors are being asked for their blessing for these renders; they will be
-taken down at the authors' request, and **neither the film nor any derived data will be released without
-their permission**.
+taken down at the authors' request. The film is published on YouTube (see Film); **no other derived data will
+be released without their permission**.
 
 A few factual coordinates are committed as authored data: `data/world/places.json` (canonical landmark
 positions read from ME-GIS points, label anchors, vectors and DEM peaks) and `data/qa/ct1980-points.json`
@@ -97,8 +97,9 @@ reuse licence is granted for them: they are here to illustrate the project (see 
 
 The film *Journey Through Middle-Earth* and its score (see Music) are project renders under the same terms
 as the images above: made by the project's own renderer (`pnpm film`) and score code (`pnpm music`), not
-covered by the code's MIT licence, no reuse licence granted. They are kept locally and are **not published**
-(nor attached to a release) until the ME-DEM / ME-GIS / Arda authors give permission. Besides that geography
+covered by the code's MIT licence, no reuse licence granted. The film is published on YouTube
+(https://youtu.be/kRuPq4GjhGc); the film files and the rendered score are not in this repository nor attached to a
+release. Besides that geography
 data, their only third-party inputs are those credited here: the CC0 terrain detail (Textures), the OFL fonts
 of the titles (Cinzel, Cormorant Garamond, EB Garamond) and the CC0 samples of the score (Music). The end
 card's credits (geography, samples, fonts, a non-affiliation note) are data in `data/tour/timeline.json` (the

@@ -1,7 +1,7 @@
 {
   "generatedBy": "tools/capture/showcase.ts (pnpm showcase)",
   "manifest": "data/qa/showcase.json",
-  "commit": "0f0aa5be45610ef097a53fb099f9d51c788f272b",
+  "commit": "6e081df1583fcedace168570f263c34f6cbfa6f1",
   "dirty": true,
   "sharp": "0.35.5",
   "libvips": "8.18.7",
@@ -15,29 +15,8 @@
     "mozjpeg": true
   },
   "budgetMB": 6,
-  "totalBytes": 2344725,
+  "totalBytes": 2271188,
   "images": [
-    {
-      "file": "film-placeholder.jpg",
-      "kind": "banner",
-      "w": 1600,
-      "h": 500,
-      "bytes": 73537,
-      "sha256": "e38df4dfcefb06885f6ea816db4f52cd96948755e6e9c52b238be4069c751770",
-      "alt": "Journey Through Middle-Earth: the film is finished and awaits the data authors' permission before it is published",
-      "caption": "",
-      "sources": [
-        {
-          "run": "renders/shots/20261003-231307",
-          "id": "weathertop-close",
-          "renderSha256": "93a5e4a2979d4053c44e2e88475f1e0a954549e79dc239f3eb0fe2c58883ece4",
-          "width": 1920,
-          "height": 1080,
-          "spp": 12,
-          "tier": "final"
-        }
-      ]
-    },
     {
       "file": "hero-golden-hour.jpg",
       "kind": "still",

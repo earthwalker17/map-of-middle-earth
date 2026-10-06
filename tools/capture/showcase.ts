@@ -13,7 +13,7 @@
  *  - social  { file, social: true, src, w: 1280, h: 640, crop?, darken?, title?: { text, sub } } → must be
  *            1280×640 and < 1 MB (GitHub's social preview)
  *  - banner  { file, banner: true, src, w, h, crop?, darken: 0..1, title: { text, sub } } → a darkened strip
- *            with the centred title (the README's film placeholder)
+ *            with the centred title (was the README's film placeholder until the film went on YouTube)
  * Titles: sharp `text` (Pango) with the project's OFL fonts only — Cinzel for the title, Cormorant Garamond
  * for `sub` (`subScale` × the title size, default 0.42); white with a soft shadow. The fonts are verified against Pango's fallback first: if this sharp
  * build cannot render text with them, the images are written without titles (warning; never system fonts).
