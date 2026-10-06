@@ -73,7 +73,10 @@ give permission):
   the S1–S4 historical QA baselines (`renders/qa` 20260929-215504, 20260930-092759, 20261001-174844,
   20261001-181521, 20261002-211200, 20261003-005500, 20261003-212112), host temp (loose agent scratch in
   `%TEMP%`, a stale VS Code installer, Remote Desktop diag logs, app crash dumps, `uv cache prune` 579 MB).
-  C: free 28.3 → 31.1 GiB. The review cut's videos go once the final is verified (its `run.json` + per-frame
+  C: free 28.3 → 31.1 GiB. After the release (user-approved): the final run's 114 ProRes chunks (5.2 GB, the
+  master's video stream, verified by stream hash; their per-frame JSONs stay), the unused IM Fell fonts
+  (`public/fonts`, CREDITS / README / `_manifest.json`), the 8 unused Poly Haven sources (folders, 40 manifest
+  items, CREDITS rows) and the 218 direct image-file links in the two research briefs (article sources kept). The review cut's videos go once the final is verified (its `run.json` + per-frame
   `chunks/*.json` stay as provenance) — done after the final checked out, with the final-tier test stills.
 - **Host prep:** Windows Update paused until 2026-10-12 (elevated, user-approved); power mode "Best
   performance" for the render, Balanced restored after the assemble; no sleep-setting change (the render holds a
@@ -162,7 +165,8 @@ black-gate-wide, the banner, the social preview) · `review/v1` · `renders/musi
 (master.wav, report.json, spectrogram.png, stems/*.mid) +
 `renders/music/cues-v2.json` (the cue sheet of film hash 1c3edf71) · the final run folder
 `renders/film/final-1920x1080-20261005-184304-final-1080p` (run.json, render.log, assemble.log, per-frame chunk
-JSONs; see Open issues for its ProRes chunks) · the review cut's `run.json` +
+JSONs; its ProRes chunks were deleted after the assemble — the master holds the same stream) · the review cut's
+`run.json` +
 `chunks/*.json` (per-frame sha256 / ms / spp / motion) · `data/baked-s1` · all source data.
 
 ## Roadmap (6 sessions)
@@ -213,9 +217,8 @@ re-export the cue sheet, re-render the score and re-render the film. Re-baseline
   block's comment in `README.md`; upload from the ProRes master).
 - **Host:** move the checkout to `C:\dev\MAP` (shorter paths, outside Desktop / OneDrive churn) — ask.
 - **Repo hygiene (S6 tracked-files audit; none affects the film or lock-v1):**
-  - unused IM Fell fonts in `public/fonts` (`imfellenglish`, `imfellenglishsc`; also in CREDITS, README and
-    `public/fonts/_manifest.json`); Cinzel Decorative and EB Garamond italic are registered by
-    `src/titles/fonts.ts` but never drawn by the film.
+  - Cinzel Decorative and EB Garamond italic are registered by `src/titles/fonts.ts` but never drawn by the
+    film (the unused IM Fell fonts were removed in S6).
   - `data/tour/timeline.json` notes still say "(S5 draft)" — editing them changes the film hash (only with a
     picture unlock).
   - Hero-camera copy drift in `data/qa/shots.d` (QA-only; fix with a pixel-hash proof): `w1a-doom-night` uses the
@@ -223,10 +226,8 @@ re-export the cue sheet, re-render the score and re-render the film. Re-baseline
     `lookOverride: mordor`; `s4e-riv-fx` lacks `fStop: 8`; the `lm-w3e` / `lm-w5j` copies (`w3e-barad-night`,
     `w5j-bg-night`, `w5j-mm-day`, `w5j-riv-dusk`) are in no set and lack their bookmark's look / fStop — fix or
     drop.
-  - 8 unused Poly Haven source folders in `data/textures-src` (~97 MB, gitignored; trim the manifest and the
-    CREDITS textures table with them, or `pnpm data:fetch --check` reports them missing).
-  - the two landmark research briefs (`docs/research/landmarks-*.md`) carry direct image URLs to copyrighted
-    stills / art — keep as a record or strip (the user's call).
+  - `data/textures-src` keeps the `rough` / `ao` maps of the six used Poly Haven sources although
+    `tools/textures/prep.mjs` reads only `diffuse` / `nor_gl` / `disp` (the 8 unused sources were removed in S6).
   - `.claude/worktrees` (gitignored): `s5-env.sh` (exports `MOME_CHROME` since S6) + `briefs/s5-*.md` are the
     agent template; the S4 / S4.5 briefs are kept as the only written visual-critic / blind A/B / hero-polish
     protocols (for a V2 look wave); `s4-env.sh` / `s45-env.sh` are older copies of `s5-env.sh`.

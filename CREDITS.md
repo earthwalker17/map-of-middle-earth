@@ -16,8 +16,6 @@ family's `OFL.txt` sits next to its font files. Source: [google/fonts](https://g
 | Cinzel Decorative | Natanael Gama | OFL-1.1 | **"Cinzel"** | `cinzeldecorative/CinzelDecorative-{Regular,Bold}.ttf` |
 | Cormorant Garamond | Christian Thalmann (Catharsis Fonts, The Cormorant Project Authors) | OFL-1.1 | none | `cormorantgaramond/CormorantGaramond{,-Italic}-VariableFont_wght.ttf` |
 | EB Garamond | Georg Duffner, Octavio Pardo (The EB Garamond Project Authors) | OFL-1.1 | none | `ebgaramond/EBGaramond{,-Italic}-VariableFont_wght.ttf` |
-| IM Fell English | Igino Marini (revival of the Fell Types) | OFL-1.1 | none | `imfellenglish/IMFeEN{rm,it}28P.ttf` |
-| IM Fell English SC | Igino Marini (revival of the Fell Types) | OFL-1.1 | none | `imfellenglishsc/IMFeENsc28P.ttf` |
 
 Cinzel Decorative carries the Reserved Font Name "Cinzel": we ship it unmodified under its original
 name. Any subset, conversion or other modified version must be renamed (OFL §3). Variable-font
@@ -40,18 +38,10 @@ files are saved without the upstream `[wght]` brackets in the filename; content 
 
 | Asset | Maps | Intended use |
 |---|---|---|
-| [aerial_beach_01](https://polyhaven.com/a/aerial_beach_01) | diffuse, nor_gl, rough, ao, disp | Coastal sand beach — Grey Havens / Belfalas coast / river banks |
 | [aerial_grass_rock](https://polyhaven.com/a/aerial_grass_rock) | diffuse, nor_gl, rough, ao, disp | Shire / Eriador meadow with rock outcrops; general lowland grass |
 | [aerial_rocks_02](https://polyhaven.com/a/aerial_rocks_02) | diffuse, nor_gl, rough, ao, disp | Grey rock — Misty / White Mountains cliffs and peaks |
-| [brown_mud_leaves_01](https://polyhaven.com/a/brown_mud_leaves_01) | diffuse, nor_gl, rough, ao, disp | Wet mud — Dead Marshes / Nindalf / riverside marsh |
 | [burned_ground_01](https://polyhaven.com/a/burned_ground_01) | diffuse, nor_gl, rough, ao, disp | Burned ash ground — Mordor / Gorgoroth / Dagorlad |
-| [dark_rock](https://polyhaven.com/a/dark_rock) | diffuse, nor_gl, rough, ao, disp | Dark volcanic rock — Mordor, Mount Doom, Ephel Dúath |
-| [dirt_aerial_02](https://polyhaven.com/a/dirt_aerial_02) | diffuse, nor_gl, rough, ao, disp | Bare soil — roads, fields, Brown Lands |
-| [forrest_ground_01](https://polyhaven.com/a/forrest_ground_01) | diffuse, nor_gl, rough, ao, disp | Forest floor — Fangorn, Mirkwood, Lothlórien, Ithilien |
-| [leafy_grass](https://polyhaven.com/a/leafy_grass) | diffuse, nor_gl, rough, ao, disp | Lush grass detail — Shire / Ithilien lowlands |
-| [mossy_rock](https://polyhaven.com/a/mossy_rock) | diffuse, nor_gl, rough, ao, disp | Mossy rock — Fangorn, Rivendell, damp crags |
 | [river_small_rocks](https://polyhaven.com/a/river_small_rocks) | diffuse, nor_gl, rough, ao, disp | River gravel — riverbeds, scree, fords |
-| [rocky_terrain_02](https://polyhaven.com/a/rocky_terrain_02) | diffuse, nor_gl, rough, ao, disp | Rocky scree — mountain slopes, Emyn Muil |
 | [snow_field_aerial](https://polyhaven.com/a/snow_field_aerial) | diffuse, nor_gl, rough, ao, disp | Snow field — Caradhras / high peaks |
 | [withered_grass](https://polyhaven.com/a/withered_grass) | diffuse, nor_gl, rough, ao, disp | Dry golden grass — Rohan plains / Pelennor |
 

@@ -1,3 +1,7 @@
+> **S6 (V1 release):** direct links to image files (film stills, concept art, set photos) were removed
+> from this public brief; the article and page sources remain. The images themselves were only ever
+> local look references (`reference/`, never committed).
+
 # South & East landmarks: Peter Jackson film visual reference (Map of Middle-Earth)
 
 **Scope and checks.** Every image URL below was fetched with HTTP GET on 2026-09-28/29 and returned 200 with an image content type. I looked directly at 15 of the stills. Hex values marked **[S]** were sampled with Pillow from the still named in brackets. Hex values marked **[E]** are my own estimates. Anything marked **[mem]** comes from memory of the films and I could not confirm it against a source.
@@ -32,8 +36,8 @@
 - **(e) FX:** flowing water with specular sparkle; drifting low mist on the lake; soft cloud shadows moving over the hills.
 - **Filming:** the Waiau River between Te Anau and Manapouri was the Anduin; Mavora Lakes was Nen Hithoel (per newzealandfilmmap and travel sources).
 - **(f) References:**
-  - Fandom Aax.jpg (FotR, Nen Hithoel page): https://static.wikia.nocookie.net/lotr/images/1/11/Aax.jpg/revision/latest
-  - Fandom Amon_Hen_from_Nen_Hithoel_-_FotR.jpg: https://static.wikia.nocookie.net/lotr/images/9/9e/Amon_Hen_from_Nen_Hithoel_-_FotR.jpg/revision/latest
+  - Fandom Aax.jpg (FotR, Nen Hithoel page): [image link removed]
+  - Fandom Amon_Hen_from_Nen_Hithoel_-_FotR.jpg: [image link removed]
 
 ### 2. Argonath (Pillars of the Kings)
 - **(a) Silhouette:** two colossal robed kings set into the gorge walls on either bank, facing upstream. Each raises its **left hand, palm outward** in warning. The pair forms a narrow gate with a bright mist-filled gap between them (the view toward Nen Hithoel).
@@ -46,10 +50,10 @@
 - **(d) Mood:** low-angle, awe-inspiring, backlit with pale gold light, and the statues read partly in silhouette.
 - **(e) FX:** river flow; mist rising from the downstream gap; a slow push-in camera move (the video should copy the "reveal" dolly).
 - **(f) References:**
-  - [V] https://tolkiengateway.net/w/images/8/89/The_Lord_of_the_Rings_-_The_Fellowship_of_the_Ring_-_Argonath.png (1920 px film still)
-  - [V] https://static.wikia.nocookie.net/lotr/images/7/79/Argonath.png/revision/latest (1620×796)
-  - [V] https://tolkiengateway.net/w/images/e/ea/John_Howe_-_The_Argonath.jpg
-  - [V] Commons real gorge (Kawarau Gorge, the plate location): https://upload.wikimedia.org/wikipedia/commons/9/9e/Kawarau_Gorge._Otago_NZ.jpg
+  - [V] [image link removed] (1920 px film still)
+  - [V] [image link removed] (1620×796)
+  - [V] [image link removed]
+  - [V] Commons real gorge (Kawarau Gorge, the plate location): [image link removed]
 
 ### 3. Falls of Rauros & Amon Hen (Seat of Seeing)
 - **(a) Silhouette:**
@@ -66,10 +70,10 @@
   - Boromir's funeral boat drifting over the falls.
   - Frodo's vision from the Seat (a rapid tilt up Barad-dûr).
 - **(f) References:**
-  - [V] https://tolkiengateway.net/w/images/6/6a/The_Lord_of_the_Rings_-_The_Fellowship_of_the_Ring_-_Amon_Hen.jpg
-  - [V] Fandom Rauros (FotR still): https://static.wikia.nocookie.net/lotr/images/7/7a/Rauros.jpg/revision/latest
-  - [V] https://tolkiengateway.net/w/images/9/90/Ted_Nasmith_-_At_the_Falls.jpg
-  - [V] https://tolkiengateway.net/w/images/f/f2/J.R.R._Tolkien_-_Rauros_Falls_%26_the_Tindrock.jpg (Tolkien's own drawing, good for topology)
+  - [V] [image link removed]
+  - [V] Fandom Rauros (FotR still): [image link removed]
+  - [V] [image link removed]
+  - [V] [image link removed] (Tolkien's own drawing, good for topology)
 
 ### 4. Emyn Muil
 - **(a) Silhouette:** a maze of jagged, broken grey volcanic ridges, knife-edge crags and sudden cliffs, with no vegetation to speak of.
@@ -79,8 +83,8 @@
 - **(e) FX:** fog rolling through the gaps; lightning flashes; rain streaks.
 - **Filming:** Meads Wall, Whakapapa ski area on Ruapehu.
 - **(f) References:**
-  - [V] https://static.wikia.nocookie.net/lotr/images/f/f3/Emyn_Muil.webp/revision/latest
-  - [V] https://tolkiengateway.net/w/images/c/c6/Ted_Nasmith_-_No_Way_Down.jpg
+  - [V] [image link removed]
+  - [V] [image link removed]
 
 ### 5. Dead Marshes
 - **(a) Silhouette:** a flat, endless bog of stagnant pools and tussock under a low sky. The horizon line is broken only by Mordor's mountains in the distance.
@@ -93,10 +97,10 @@
 - **(e) FX:** ground mist hugging the pools; flickering will-o'-wisp point sprites; slow ripples.
 - **Filming:** aerial shots at Kepler Mire; close-ups on a Weta wet-set in Lower Hutt.
 - **(f) References:**
-  - [V] https://static.wikia.nocookie.net/lotr/images/2/29/Dead-marshes.jpg/revision/latest
-  - [V] https://static.wikia.nocookie.net/lotr/images/f/fb/Dead-Marshes-Water.jpg/revision/latest
-  - [V] https://tolkiengateway.net/w/images/7/7c/Alan_Lee_-_The_Passage_of_the_Marshes.jpg
-  - [V] Commons: https://upload.wikimedia.org/wikipedia/commons/e/e6/Kepler_Mire_-_Dead_Marshes.JPG
+  - [V] [image link removed]
+  - [V] [image link removed]
+  - [V] [image link removed]
+  - [V] Commons: [image link removed]
 
 ### 6. Black Gate (Morannon) & Towers of the Teeth
 - **(a) Silhouette:**
@@ -113,10 +117,10 @@
   - The Eye visible in the distance.
 - **Filming:** the plain is the Rangipo Desert.
 - **(f) References:**
-  - [V] https://tolkiengateway.net/w/images/d/d4/The_Lord_of_the_Rings_-_The_Return_of_the_King_-_The_Black_Gate.jpg
-  - [V] https://static.wikia.nocookie.net/lotr/images/a/a0/BlackGate.jpg/revision/latest (3840×1600)
-  - [V] https://tolkiengateway.net/w/images/e/ef/John_Howe_-_The_Black_Gates.jpg
-  - [V] Commons: https://upload.wikimedia.org/wikipedia/commons/8/8a/Rangipo_Desert_05.jpg
+  - [V] [image link removed]
+  - [V] [image link removed] (3840×1600)
+  - [V] [image link removed]
+  - [V] Commons: [image link removed]
 
 ### 7. Ithilien & Henneth Annûn
 - **(a) Silhouette:**
@@ -130,11 +134,11 @@
 - **(e) FX:** waterfall with a sunset glow through the curtain (the "Window" at sunset in the book and in the Lee/Nasmith art); spray; the Oliphaunt battle.
 - **Filming:** Twelve Mile Delta near Queenstown for the Ithilien camp. Mangawhero Falls is a reference Commons photo; I could not confirm it as a filming location.
 - **(f) References:**
-  - [V] https://tolkiengateway.net/w/images/5/51/The_Lord_of_the_Rings_-_The_Two_Towers_-_Henneth_Ann%C3%BBn.jpeg (low-res)
-  - [V] https://static.wikia.nocookie.net/lotr/images/5/52/Ithilien_-_TtT.jpg/revision/latest
-  - [V] Alan Lee's Henneth Annûn: https://static.wikia.nocookie.net/lotr/images/2/26/HennethAnnun.jpg/revision/latest
-  - [V] https://tolkiengateway.net/w/images/f/f4/Alan_Lee_-_The_Window_on_the_West.jpg
-  - [V] https://tolkiengateway.net/w/images/d/df/Ted_Nasmith_-_First_Sight_of_Ithilien.jpg
+  - [V] [image link removed] (low-res)
+  - [V] [image link removed]
+  - [V] Alan Lee's Henneth Annûn: [image link removed]
+  - [V] [image link removed]
+  - [V] [image link removed]
 
 ### 8. Osgiliath
 - **(a) Silhouette:** a ruined city straddling the Anduin, with broken towers, roofless halls and a partly collapsed multi-arched bridge. The broken skyline is full of gaps.
@@ -143,9 +147,9 @@
 - **(d) Mood:** a heavy white-grey atmospheric haze, so depth falls off quickly. Cold and battle-worn.
 - **(e) FX:** drifting smoke and haze; Nazgûl on fell beasts overhead; at night, Orc boats crossing with torches and fire glints on the water **[mem]**.
 - **(f) References:**
-  - [V] https://tolkiengateway.net/w/images/4/44/The_Lord_of_the_Rings_%28film_series%29_-_Osgiliath.png
-  - [V] https://static.wikia.nocookie.net/lotr/images/a/ac/Osgiliath_reclaimed.png/revision/latest
-  - [V] https://static.wikia.nocookie.net/lotr/images/1/1a/Boromir_speech.png/revision/latest
+  - [V] [image link removed]
+  - [V] [image link removed]
+  - [V] [image link removed]
 
 ### 9. Minas Tirith (+ Citadel, White Tree, Pelennor, Rammas Echor)
 - **(a) Silhouette:**
@@ -170,12 +174,12 @@
 - **Pelennor:** in the film it is **empty grassland** and the Rammas Echor wall is **not shown** (Fandom; secondary sources). Filmed at Ben Ohau Station, Twizel, with golden tussock.
   - For the map: optionally draw the Rammas Echor as a faint low ring wall, for geographic accuracy.
 - **(f) References:**
-  - [V] https://tolkiengateway.net/w/images/4/45/The_Lord_of_the_Rings_-_The_Return_of_the_King_-_Minas_Tirith.jpg
-  - [V] https://static.wikia.nocookie.net/lotr/images/e/e4/Minas_Tirith.jpg/revision/latest (1920×1170)
-  - [V] https://static.wikia.nocookie.net/lotr/images/0/0b/Seventh_level_of_Minas_Tirith.png/revision/latest
-  - [V] https://static.wikia.nocookie.net/lotr/images/4/41/White_Tree_of_Gondor.png/revision/latest
-  - [V] John Howe's Tower of Ecthelion: https://static.wikia.nocookie.net/lotr/images/2/24/Ecthelion.jpg/revision/latest
-  - [V] https://tolkiengateway.net/w/images/d/da/Alan_Lee_-_The_Last_Debate.jpg
+  - [V] [image link removed]
+  - [V] [image link removed] (1920×1170)
+  - [V] [image link removed]
+  - [V] [image link removed]
+  - [V] John Howe's Tower of Ecthelion: [image link removed]
+  - [V] [image link removed]
 
 ### 10. Mindolluin, White Mountains & the beacons
 - **(a) Silhouette:** jagged snow-capped alpine peaks running west from Minas Tirith. Each beacon sits on a summit crag.
@@ -187,10 +191,10 @@
 - **(e) FX:** a chain ignition that hops peak to peak (the camera chases it); fire and ember particles; smoke trails bent by wind.
 - **Filming:** Mount Gunn near Franz Josef. Only one real beacon was filmed; the rest are CG (NZ Film Map).
 - **(f) References:**
-  - [V] https://static.wikia.nocookie.net/lotr/images/1/1f/Beacons_of_War.png/revision/latest
-  - [V] https://static.wikia.nocookie.net/lotr/images/6/64/Beacon-hills_of_Gondor.jpeg/revision/latest
-  - [V] https://tolkiengateway.net/w/images/a/aa/Alan_Lee_-_Mindolluin.jpg
-  - [V] https://static.wikia.nocookie.net/lotr/images/7/79/White_Mountains.png/revision/latest
+  - [V] [image link removed]
+  - [V] [image link removed]
+  - [V] [image link removed]
+  - [V] [image link removed]
 
 ### 11. Minas Morgul
 - **(a) Silhouette:**
@@ -209,9 +213,9 @@
   - Then the Witch-king leaves on his fell beast and the army marches out with torches.
   - Suggested approach: a twisting additive cylinder with scrolling noise, plus pulsing green emissive walls and green volumetric fog.
 - **(f) References:**
-  - [V] https://tolkiengateway.net/w/images/0/09/The_Lord_of_the_Rings_-_The_Motion_Picture_Trilogy_-_Minas_Morgul.jpg (film)
-  - [V] https://static.wikia.nocookie.net/lotr/images/0/02/MinasMorgul.jpg/revision/latest (same film frame, 1317×786)
-  - [V] https://tolkiengateway.net/w/images/f/ff/Ted_Nasmith_-_The_Tower_of_the_Moon.jpg
+  - [V] [image link removed] (film)
+  - [V] [image link removed] (same film frame, 1317×786)
+  - [V] [image link removed]
   - Do **not** use Fandom Minas_Mogul_Tower.jpg or Side_view: they are from *Shadow of War*, not the films.
 
 ### 12. Cirith Ungol (stairs & tower)
@@ -225,9 +229,9 @@
 - **(d) Mood:** a silhouette against the smouldering amber-brown glow of Mordor; the stairs are cold and lit green from below.
 - **(e) FX:** drifting mist in the pass; the orange glow behind it breathing slowly.
 - **(f) References:**
-  - [V] https://tolkiengateway.net/w/images/7/7f/The_Lord_of_the_Rings_-_The_Return_of_the_King_-_The_Tower_of_Cirith_Ungol.png
-  - [V] https://static.wikia.nocookie.net/lotr/images/0/0d/Stairs_of_Cirith_Ungol_-_RotK.png/revision/latest
-  - [V] https://tolkiengateway.net/w/images/6/66/Alan_Lee_-_Cirith_Ungol.jpg
+  - [V] [image link removed]
+  - [V] [image link removed]
+  - [V] [image link removed]
 
 ### 13. Plateau of Gorgoroth (Mordor)
 - **(a) Silhouette:** a vast, cracked volcanic plain ringed by jagged ranges (Ephel Dúath and Ered Lithui). Orodruin rises in the middle and Barad-dûr to the north-east.
@@ -236,9 +240,9 @@
 - **(d) Mood:** a permanent low cloud ceiling; no sun; the only light is a glow from below plus the Eye.
 - **(e) FX:** ember sparks; heat shimmer; steam vents; slowly pulsing lava cracks (emissive noise); the sweep of the Eye's beam.
 - **(f) References:**
-  - [V] https://tolkiengateway.net/w/images/e/e0/Ted_Nasmith_-_Across_Gorgoroth.jpg
-  - [V] https://static.wikia.nocookie.net/lotr/images/e/ec/Mordor%27s_DuoSpire.png/revision/latest (RotK: tower and Doom together)
-  - [V] Commons Rangipo Desert: https://upload.wikimedia.org/wikipedia/commons/8/8a/Rangipo_Desert_05.jpg
+  - [V] [image link removed]
+  - [V] [image link removed] (RotK: tower and Doom together)
+  - [V] Commons Rangipo Desert: [image link removed]
 
 ### 14. Barad-dûr & the Eye of Sauron
 - **(a) Silhouette:**
@@ -263,11 +267,11 @@
     - Add bloom.
     - Finish with an implosion then a ring shockwave.
 - **(f) References:**
-  - [V] https://tolkiengateway.net/w/images/d/d6/The_Lord_of_the_Rings_-_The_Return_of_the_King_-_Barad-dur.jpg (the key reference)
-  - [V] https://tolkiengateway.net/w/images/1/1a/John_Howe_-_The_Dark_Tower_01.jpg
-  - [V] https://tolkiengateway.net/w/images/8/84/John_Howe_-_The_Eye_of_Sauron_01.jpg
-  - [V] https://static.wikia.nocookie.net/lotr/images/b/b7/Rotk-1-1707-barad-dur.jpg/revision/latest (red-sky variant, 400×300)
-  - [V] https://tolkiengateway.net/w/images/6/6a/Alan_Lee_-_The_building_of_Barad-dur.jpg
+  - [V] [image link removed] (the key reference)
+  - [V] [image link removed]
+  - [V] [image link removed]
+  - [V] [image link removed] (red-sky variant, 400×300)
+  - [V] [image link removed]
 
 ### 15. Mount Doom / Orodruin & Sammath Naur
 - **(a) Silhouette:**
@@ -289,10 +293,10 @@
   - At the climax: a violent eruption and lava rivers around Frodo and Sam, then the eagles.
   - Lightning inside the plume **[mem/U]**.
 - **(f) References:**
-  - [V] https://tolkiengateway.net/w/images/9/9d/The_Lord_of_the_Rings_-_The_Fellowship_of_the_Ring_-_Mount_Doom.jpg (small, 14 KB)
-  - [V] https://tolkiengateway.net/w/images/f/fd/Alan_Lee_-_Mount_Doom.jpg
-  - [V] https://static.wikia.nocookie.net/lotr/images/d/d1/558_2_SN_detail.jpg/revision/latest
-  - [V] Commons Ngauruhoe: https://upload.wikimedia.org/wikipedia/commons/a/a3/Mount_Ngauruhoe_01.jpg
+  - [V] [image link removed] (small, 14 KB)
+  - [V] [image link removed]
+  - [V] [image link removed]
+  - [V] Commons Ngauruhoe: [image link removed]
 
 ### 16. Dol Guldur (Hobbit trilogy)
 - **(a) Silhouette:**
@@ -307,10 +311,10 @@
 - **(d) Mood:** a cold sickly-green overcast with streaked, wind-torn clouds. A different green from Morgul: murky teal-grey rather than glowing lime.
 - **(e) FX:** black shadow-smoke of the Necromancer **[mem]**; the Eye of fire forming; Galadriel's white light against the dark (BotFA); dead branches creaking in wind.
 - **(f) References:**
-  - [V] https://tolkiengateway.net/w/images/b/ba/The_Hobbit_-_An_Unexpected_Journey_-_Dol_Guldur.png
-  - [V] https://static.wikia.nocookie.net/lotr/images/1/1d/Dol_Guldur_-_DoS.png/revision/latest
-  - [V] https://static.wikia.nocookie.net/lotr/images/7/79/Dol_Guldur_bridge_-_DoS.png/revision/latest
-  - [V] https://tolkiengateway.net/w/images/d/d0/John_Howe_-_Pass_the_Doors_of_Dol_Guldur.jpg
+  - [V] [image link removed]
+  - [V] [image link removed]
+  - [V] [image link removed]
+  - [V] [image link removed]
 
 ---
 
@@ -319,44 +323,44 @@ All resolved with HTTP 200 when checked.
 
 | # | URL | Shows | Filename |
 |---|---|---|---|
-| 1 | https://tolkiengateway.net/w/images/d/d6/The_Lord_of_the_Rings_-_The_Return_of_the_King_-_Barad-dur.jpg | Tower, horns, Eye, Gorgoroth (RotK) | ref_baraddur_eye_rotk.jpg |
-| 2 | https://tolkiengateway.net/w/images/4/45/The_Lord_of_the_Rings_-_The_Return_of_the_King_-_Minas_Tirith.jpg | Minas Tirith, prow, tiers, cliff | ref_minastirith_rotk.jpg |
-| 3 | https://static.wikia.nocookie.net/lotr/images/e/e4/Minas_Tirith.jpg/revision/latest | Minas Tirith, 1920 px | ref_minastirith_rotk_hi.webp |
-| 4 | https://tolkiengateway.net/w/images/0/09/The_Lord_of_the_Rings_-_The_Motion_Picture_Trilogy_-_Minas_Morgul.jpg | Morgul gate, bridge, green glow | ref_minasmorgul_film.jpg |
-| 5 | https://tolkiengateway.net/w/images/8/89/The_Lord_of_the_Rings_-_The_Fellowship_of_the_Ring_-_Argonath.png | Argonath, 1920 px | ref_argonath_fotr.png |
-| 6 | https://tolkiengateway.net/w/images/d/d4/The_Lord_of_the_Rings_-_The_Return_of_the_King_-_The_Black_Gate.jpg | Black Gate and both towers | ref_blackgate_rotk.jpg |
-| 7 | https://static.wikia.nocookie.net/lotr/images/a/a0/BlackGate.jpg/revision/latest | Black Gate, 3840×1600 | ref_blackgate_rotk_4k.webp |
-| 8 | https://tolkiengateway.net/w/images/9/9d/The_Lord_of_the_Rings_-_The_Fellowship_of_the_Ring_-_Mount_Doom.jpg | Doom, plume, lava (FotR) | ref_mountdoom_fotr.jpg |
-| 9 | https://static.wikia.nocookie.net/lotr/images/e/ec/Mordor%27s_DuoSpire.png/revision/latest | Barad-dûr and Doom together (RotK) | ref_mordor_duospire_rotk.webp |
-| 10 | https://static.wikia.nocookie.net/lotr/images/d/d1/558_2_SN_detail.jpg/revision/latest | Sammath Naur interior | ref_sammathnaur_rotk.webp |
-| 11 | https://tolkiengateway.net/w/images/7/7f/The_Lord_of_the_Rings_-_The_Return_of_the_King_-_The_Tower_of_Cirith_Ungol.png | Cirith Ungol tower, Mordor glow | ref_cirithungol_tower_rotk.png |
-| 12 | https://static.wikia.nocookie.net/lotr/images/0/0d/Stairs_of_Cirith_Ungol_-_RotK.png/revision/latest | Stairs of Cirith Ungol | ref_cirithungol_stairs_rotk.webp |
-| 13 | https://tolkiengateway.net/w/images/4/44/The_Lord_of_the_Rings_%28film_series%29_-_Osgiliath.png | Osgiliath ruins, haze | ref_osgiliath_film.png |
-| 14 | https://tolkiengateway.net/w/images/6/6a/The_Lord_of_the_Rings_-_The_Fellowship_of_the_Ring_-_Amon_Hen.jpg | Seat of Seeing, lake | ref_amonhen_seat_fotr.jpg |
-| 15 | https://static.wikia.nocookie.net/lotr/images/7/7a/Rauros.jpg/revision/latest | Falls of Rauros (FotR) | ref_rauros_fotr.webp |
-| 16 | https://static.wikia.nocookie.net/lotr/images/f/f3/Emyn_Muil.webp/revision/latest | Emyn Muil crags, 4K | ref_emynmuil_ttt.webp |
-| 17 | https://static.wikia.nocookie.net/lotr/images/2/29/Dead-marshes.jpg/revision/latest | Dead Marshes wide | ref_deadmarshes_ttt.webp |
-| 18 | https://static.wikia.nocookie.net/lotr/images/f/fb/Dead-Marshes-Water.jpg/revision/latest | Marsh water and faces | ref_deadmarshes_water_ttt.webp |
-| 19 | https://static.wikia.nocookie.net/lotr/images/5/52/Ithilien_-_TtT.jpg/revision/latest | Ithilien woodland | ref_ithilien_ttt.webp |
-| 20 | https://tolkiengateway.net/w/images/5/51/The_Lord_of_the_Rings_-_The_Two_Towers_-_Henneth_Ann%C3%BBn.jpeg | Henneth Annûn waterfall | ref_hennethannun_ttt.jpg |
-| 21 | https://static.wikia.nocookie.net/lotr/images/1/1f/Beacons_of_War.png/revision/latest | Lit beacon on a peak | ref_beacons_rotk.webp |
-| 22 | https://static.wikia.nocookie.net/lotr/images/6/64/Beacon-hills_of_Gondor.jpeg/revision/latest | Beacon chain, mountains | ref_beaconhills_rotk.webp |
-| 23 | https://static.wikia.nocookie.net/lotr/images/0/0b/Seventh_level_of_Minas_Tirith.png/revision/latest | Citadel, 7th level | ref_minastirith_citadel_rotk.webp |
-| 24 | https://static.wikia.nocookie.net/lotr/images/4/41/White_Tree_of_Gondor.png/revision/latest | White Tree, Court of the Fountain | ref_whitetree_rotk.webp |
-| 25 | https://tolkiengateway.net/w/images/b/ba/The_Hobbit_-_An_Unexpected_Journey_-_Dol_Guldur.png | Dol Guldur silhouette | ref_dolguldur_auj.png |
-| 26 | https://static.wikia.nocookie.net/lotr/images/7/79/Dol_Guldur_bridge_-_DoS.png/revision/latest | Dol Guldur bridge approach | ref_dolguldur_bridge_dos.webp |
-| 27 | https://tolkiengateway.net/w/images/1/1a/John_Howe_-_The_Dark_Tower_01.jpg | Howe's source design for Barad-dûr | art_howe_darktower.jpg |
-| 28 | https://tolkiengateway.net/w/images/8/84/John_Howe_-_The_Eye_of_Sauron_01.jpg | Howe's Eye | art_howe_eye.jpg |
-| 29 | https://tolkiengateway.net/w/images/f/fd/Alan_Lee_-_Mount_Doom.jpg | Lee's Doom slopes (rock and ash) | art_lee_mountdoom.jpg |
-| 30 | https://tolkiengateway.net/w/images/e/e0/Ted_Nasmith_-_Across_Gorgoroth.jpg | Gorgoroth plain | art_nasmith_gorgoroth.jpg |
-| 31 | https://tolkiengateway.net/w/images/7/7c/Alan_Lee_-_The_Passage_of_the_Marshes.jpg | Dead Marshes art | art_lee_deadmarshes.jpg |
-| 32 | https://tolkiengateway.net/w/images/f/f4/Alan_Lee_-_The_Window_on_the_West.jpg | Henneth Annûn art | art_lee_windowwest.jpg |
-| 33 | https://tolkiengateway.net/w/images/6/66/Alan_Lee_-_Cirith_Ungol.jpg | Cirith Ungol art | art_lee_cirithungol.jpg |
-| 34 | https://tolkiengateway.net/w/images/f/f2/J.R.R._Tolkien_-_Rauros_Falls_%26_the_Tindrock.jpg | Tolkien's Rauros/Tol Brandir topology | art_tolkien_rauros.jpg |
-| 35 | https://upload.wikimedia.org/wikipedia/commons/a/a3/Mount_Ngauruhoe_01.jpg | Real Doom cone (CC) | photo_ngauruhoe.jpg |
-| 36 | https://upload.wikimedia.org/wikipedia/commons/8/8a/Rangipo_Desert_05.jpg | Real Mordor / Black Gate plain (CC) | photo_rangipo.jpg |
-| 37 | https://upload.wikimedia.org/wikipedia/commons/9/9e/Kawarau_Gorge._Otago_NZ.jpg | Real Argonath gorge (CC) | photo_kawarau.jpg |
-| 38 | https://upload.wikimedia.org/wikipedia/commons/e/e6/Kepler_Mire_-_Dead_Marshes.JPG | Real Dead Marshes (CC, 590 px) | photo_keplermire.jpg |
+| 1 | [image link removed] | Tower, horns, Eye, Gorgoroth (RotK) | ref_baraddur_eye_rotk.jpg |
+| 2 | [image link removed] | Minas Tirith, prow, tiers, cliff | ref_minastirith_rotk.jpg |
+| 3 | [image link removed] | Minas Tirith, 1920 px | ref_minastirith_rotk_hi.webp |
+| 4 | [image link removed] | Morgul gate, bridge, green glow | ref_minasmorgul_film.jpg |
+| 5 | [image link removed] | Argonath, 1920 px | ref_argonath_fotr.png |
+| 6 | [image link removed] | Black Gate and both towers | ref_blackgate_rotk.jpg |
+| 7 | [image link removed] | Black Gate, 3840×1600 | ref_blackgate_rotk_4k.webp |
+| 8 | [image link removed] | Doom, plume, lava (FotR) | ref_mountdoom_fotr.jpg |
+| 9 | [image link removed] | Barad-dûr and Doom together (RotK) | ref_mordor_duospire_rotk.webp |
+| 10 | [image link removed] | Sammath Naur interior | ref_sammathnaur_rotk.webp |
+| 11 | [image link removed] | Cirith Ungol tower, Mordor glow | ref_cirithungol_tower_rotk.png |
+| 12 | [image link removed] | Stairs of Cirith Ungol | ref_cirithungol_stairs_rotk.webp |
+| 13 | [image link removed] | Osgiliath ruins, haze | ref_osgiliath_film.png |
+| 14 | [image link removed] | Seat of Seeing, lake | ref_amonhen_seat_fotr.jpg |
+| 15 | [image link removed] | Falls of Rauros (FotR) | ref_rauros_fotr.webp |
+| 16 | [image link removed] | Emyn Muil crags, 4K | ref_emynmuil_ttt.webp |
+| 17 | [image link removed] | Dead Marshes wide | ref_deadmarshes_ttt.webp |
+| 18 | [image link removed] | Marsh water and faces | ref_deadmarshes_water_ttt.webp |
+| 19 | [image link removed] | Ithilien woodland | ref_ithilien_ttt.webp |
+| 20 | [image link removed] | Henneth Annûn waterfall | ref_hennethannun_ttt.jpg |
+| 21 | [image link removed] | Lit beacon on a peak | ref_beacons_rotk.webp |
+| 22 | [image link removed] | Beacon chain, mountains | ref_beaconhills_rotk.webp |
+| 23 | [image link removed] | Citadel, 7th level | ref_minastirith_citadel_rotk.webp |
+| 24 | [image link removed] | White Tree, Court of the Fountain | ref_whitetree_rotk.webp |
+| 25 | [image link removed] | Dol Guldur silhouette | ref_dolguldur_auj.png |
+| 26 | [image link removed] | Dol Guldur bridge approach | ref_dolguldur_bridge_dos.webp |
+| 27 | [image link removed] | Howe's source design for Barad-dûr | art_howe_darktower.jpg |
+| 28 | [image link removed] | Howe's Eye | art_howe_eye.jpg |
+| 29 | [image link removed] | Lee's Doom slopes (rock and ash) | art_lee_mountdoom.jpg |
+| 30 | [image link removed] | Gorgoroth plain | art_nasmith_gorgoroth.jpg |
+| 31 | [image link removed] | Dead Marshes art | art_lee_deadmarshes.jpg |
+| 32 | [image link removed] | Henneth Annûn art | art_lee_windowwest.jpg |
+| 33 | [image link removed] | Cirith Ungol art | art_lee_cirithungol.jpg |
+| 34 | [image link removed] | Tolkien's Rauros/Tol Brandir topology | art_tolkien_rauros.jpg |
+| 35 | [image link removed] | Real Doom cone (CC) | photo_ngauruhoe.jpg |
+| 36 | [image link removed] | Real Mordor / Black Gate plain (CC) | photo_rangipo.jpg |
+| 37 | [image link removed] | Real Argonath gorge (CC) | photo_kawarau.jpg |
+| 38 | [image link removed] | Real Dead Marshes (CC, 590 px) | photo_keplermire.jpg |
 
 **Unverified or not found:**
 - No reliable film still of Narchost/Carchost: the TG one is a 788 px, heavily artefacted crop.

@@ -219,7 +219,7 @@ layers created for ME-DEM by monks and SeerBlue and improved by jvangeld
 the GeoPackage conversion by tetrakai1 ([bburns/Arda](https://github.com/bburns/Arda)). The data authors
 are being asked for their blessing for this use. Terrain detail textures are from
 [Poly Haven](https://polyhaven.com) (CC0). The fonts are Cinzel, Cinzel Decorative, Cormorant Garamond,
-EB Garamond, IM Fell English and IM Fell English SC (SIL OFL 1.1). The score is played by the
+and EB Garamond (SIL OFL 1.1). The score is played by the
 [VSCO 2 Community Edition](https://github.com/sgossner/VSCO-2-CE) samples of Versilian Studios (CC0) through
 [sfizz](https://github.com/sfztools/sfizz) (BSD-2-Clause), both used at render time only and never
 redistributed. The project is built with [three.js](https://threejs.org), [Vite](https://vite.dev),
