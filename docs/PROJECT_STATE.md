@@ -3,7 +3,7 @@
 _Rolling document: roadmap, current state, decisions, next steps. Keep it compact; replace stale detail
 instead of appending logs._
 
-**Last updated:** 2026-10-06 · end of Session 6 — V1 complete (`v1.0.0`); not pushed yet (asks the user)
+**Last updated:** 2026-10-06 · end of Session 6 — V1 complete (`v1.0.0`): pushed with the tag and the GitHub release (user-approved; CI green)
 
 ## Where we are
 **S1–S6 are complete: V1 is done.** V1 = the static world locked in S4.5 (`v0.5.0`, below) + the film
@@ -113,8 +113,8 @@ give permission):
   re-baseline rested on a fresh day in V2.
 - **Release:** package.json 0.5.0 → 1.0.0 and `CHANGELOG.md` (new: v0.5.0 2026-10-03 "the static world,
   locked"; v1.0.0 2026-10-06 "the film") after the render (package.json is a render input); the README banner's
-  subtitle (`data/qa/showcase.json` `film-placeholder`) via `pnpm showcase`; tag `v1.0.0` + GitHub release only
-  after the user approves the push; the release attaches neither the film nor the score.
+  subtitle (`data/qa/showcase.json` `film-placeholder`) via `pnpm showcase`; after the user's approval: pushed, tag `v1.0.0`,
+  GitHub release "v1.0.0 — the film" (attaches neither the film nor the score; images only from `docs/images`).
 
 ## Earlier sessions (condensed; contracts in `docs/ARCHITECTURE.md`)
 **S5 (2026-10-04 → 05) — cinematic journey + music.**
@@ -352,6 +352,5 @@ re-export the cue sheet, re-render the score and re-render the film. Re-baseline
   + `renders/music/cues-v2.json`) exist only on this laptop — copy them to private storage (not public).
 - **Windows Update** is paused until 2026-10-12 (for the render); resume it any time. After an Intel driver
   update, re-render lock-v1 (with `MOME_CHROME`) on the locked code and re-write the lock before judging code.
-- **Approve the push / tag / release** (`v1.0.0`; the release attaches neither the film nor the score). The `gh`
-  token lacks the `workflow` scope, but git's stored credential has it: workflow-file pushes work; `gh` cannot
-  edit workflows.
+- **GitHub:** V1 is pushed and released (`v1.0.0`). The `gh` token lacks the `workflow` scope, but git's stored
+  credential has it: workflow-file pushes work; `gh` cannot edit workflows.
